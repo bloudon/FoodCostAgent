@@ -50,7 +50,7 @@ vi.mock("./posIngestion", () => ({
 
 // ── Imports (resolved after mocks are hoisted) ────────────────────────────────
 
-import { runIncrementalSync } from "./posSyncJobs";
+import { runIncrementalSync, runBackfill } from "./posSyncJobs";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
@@ -306,5 +306,120 @@ describe("token redaction — raw Square tokens are redacted before being writte
     // Short identifier must survive unchanged
     expect(storedError).toContain(shortPhrase);
     expect(storedError).not.toContain("[REDACTED]");
+  });
+});
+
+// ── Tests: runBackfill revocation guard ──────────────────────────────────────
+
+describe("runBackfill — SquareTokenRevokedError from retrieveSales", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: MOCK_JOB });
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+    mockIngest.mockResolvedValue({ rowsIngested: 0, rowsSkipped: 0, adhocItems: [] });
+  });
+
+  it("aborts on 401 from the first location — marks connection disconnected, job failed, no data written", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(ACTIVE_CONN_NO_REFRESH);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_ONE]);
+    mockSquare.retrieveSales.mockRejectedValue(new SquareTokenRevokedError("unauthorized"));
+
+    const result = await runBackfill("conn-revoke-test", 30);
+
+    // Result signals failure
+    expect(result.rowsIngested).toBe(0);
+    expect(result.error).toBeDefined();
+
+    // Connection must be marked disconnected
+    const disconnectCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[2]?.status === "disconnected",
+    );
+    expect(disconnectCall).toBeDefined();
+
+    // Job must be marked failed
+    const failedCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[1]?.status === "failed",
+    );
+    expect(failedCall).toBeDefined();
+
+    // Ingestion never ran — no data was written
+    expect(mockIngest).not.toHaveBeenCalled();
+  });
+
+  it("401 mid-backfill after location 1 succeeds — partial rows preserved, location 2 never written, connection disconnected", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(ACTIVE_CONN_NO_REFRESH);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_ONE, LOC_TWO]);
+
+    // Location 1 succeeds — retrieveSales returns one batch
+    mockSquare.retrieveSales
+      .mockResolvedValueOnce([
+        { locationId: "loc-east", businessDate: "2026-07-26", lines: [{}] },
+      ])
+      // Location 2 — token revoked mid-backfill
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    mockIngest.mockResolvedValue({ rowsIngested: 3, rowsSkipped: 0, adhocItems: [] });
+
+    const result = await runBackfill("conn-revoke-test", 30);
+
+    // Rows from location 1 are preserved (partial result is acceptable)
+    expect(result.rowsIngested).toBe(3);
+
+    // Ingestion called only for location 1
+    expect(mockIngest).toHaveBeenCalledTimes(1);
+
+    // Connection must be marked disconnected
+    const disconnectCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[2]?.status === "disconnected",
+    );
+    expect(disconnectCall).toBeDefined();
+
+    // Job must be marked failed (not completed), reporting partial rows
+    const failedCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[1]?.status === "failed",
+    );
+    expect(failedCall).toBeDefined();
+    expect(failedCall![1].rowsIngested).toBe(3);
+
+    // The failed-location rows (loc-west) were never ingested
+    expect(mockIngest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ locationId: "loc-west" }),
+      expect.anything(),
+    );
+  });
+
+  it("redacts a realistic Square-format token from the stored job errorMessage", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(ACTIVE_CONN_NO_REFRESH);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_ONE]);
+
+    // Square access tokens are ~60 chars, alphanumeric, often starting with "EAAA".
+    // This string satisfies the \b[A-Za-z0-9+/=_-]{40,}\b pattern in sanitizeErrorMessage.
+    const rawToken = "EAAAEaBcDeFgHiJkLmNoPqRsTuVwXyZ12345678AbCdEfGhIjKlMnOpQr";
+    expect(rawToken.length).toBeGreaterThanOrEqual(40);
+
+    mockSquare.retrieveSales.mockRejectedValue(
+      new SquareTokenRevokedError(`invalid scope for token ${rawToken}`),
+    );
+
+    await runBackfill("conn-revoke-test", 30);
+
+    const jobUpdateCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => typeof args[1]?.errorMessage === "string",
+    );
+    expect(jobUpdateCall).toBeDefined();
+
+    const storedError: string = jobUpdateCall![1].errorMessage;
+
+    // Raw token must be absent from the stored message
+    expect(storedError).not.toContain(rawToken);
+
+    // The [REDACTED] sentinel must be present in its place
+    expect(storedError).toContain("[REDACTED]");
   });
 });

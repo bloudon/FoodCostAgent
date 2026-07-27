@@ -159,6 +159,13 @@ export async function runBackfill(
     return { rowsIngested: totalRows, error: firstError };
   } catch (err: any) {
     console.error("[POS Backfill] Error:", err.message);
+
+    // If Square revoked the token mid-backfill, mark the connection as disconnected.
+    if (err instanceof SquareTokenRevokedError) {
+      console.warn(`[POS Backfill] Token revoked during backfill for connection ${connectionId} — marking disconnected`);
+      await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+    }
+
     const safeMsg = sanitizeErrorMessage(err.message);
     await storage.updatePosSyncJob(job.id, {
       status: "failed",
