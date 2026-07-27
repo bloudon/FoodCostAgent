@@ -936,8 +936,42 @@ async function runStartupMigrations() {
     await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS connection_id varchar`);
     await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS external_order_id text`);
     await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS external_line_item_id text`);
-    // Partial unique index — one row per (connection, order, line item); partial so CSV rows
-    // (NULL fields) are never blocked by this constraint.
+
+    // Drop the old full unique constraint on (companyId…sourceBatchId) — it blocks per-line
+    // POS ingestion because multiple orders in the same batch can sell the same menu item.
+    // We replace it with a partial version scoped to CSV rows (WHERE connection_id IS NULL).
+    await db.execute(sql`
+      DO $$
+      DECLARE r RECORD;
+      BEGIN
+        FOR r IN (
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+          WHERE t.relname = 'daily_menu_item_sales'
+            AND c.contype = 'u'
+            AND EXISTS (
+              SELECT 1 FROM pg_attribute a
+              WHERE a.attrelid = t.oid
+                AND a.attname = 'source_batch_id'
+                AND a.attnum = ANY(c.conkey)
+            )
+        ) LOOP
+          EXECUTE format('ALTER TABLE daily_menu_item_sales DROP CONSTRAINT %I', r.conname);
+        END LOOP;
+      END $$
+    `);
+
+    // CSV idempotency — one aggregate row per company/store/menuItem/date/daypart/batch,
+    // but ONLY for non-POS rows (connection_id IS NULL).
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS dmis_csv_aggregate_uniq
+        ON daily_menu_item_sales (company_id, store_id, menu_item_id, sales_date, daypart_id, source_batch_id)
+        WHERE connection_id IS NULL
+    `);
+
+    // POS idempotency — one row per (connection, order, line item); partial so CSV rows
+    // (any NULL field) are never blocked by this constraint.
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS dmis_pos_line_uniq
         ON daily_menu_item_sales (connection_id, external_order_id, external_line_item_id)

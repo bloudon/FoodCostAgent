@@ -973,11 +973,14 @@ export const dailyMenuItemSales = pgTable("daily_menu_item_sales", {
   externalOrderId: text("external_order_id"),   // POS system order ID (e.g. Square order UUID)
   externalLineItemId: text("external_line_item_id"), // POS line item UID (unique within an order)
 }, (table) => ({
-  // Idempotency for CSV uploads: one aggregate row per company/store/menuItem/date/daypart/batch
-  uniqueSaleAggregate: unique().on(table.companyId, table.storeId, table.menuItemId, table.salesDate, table.daypartId, table.sourceBatchId),
+  // NOTE: idempotency constraints are both managed as partial unique indexes via startup
+  // migration rather than table-level Drizzle constraints because Drizzle cannot express
+  // partial (WHERE clause) unique indexes in the table definition DSL.
+  //
+  // CSV rows  → dmis_csv_aggregate_uniq  on (companyId … sourceBatchId) WHERE connectionId IS NULL
+  // POS rows  → dmis_pos_line_uniq       on (connectionId, externalOrderId, externalLineItemId)
+  //                                         WHERE all three are NOT NULL
   companyStoreDateIdx: index("daily_sales_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
-  // POS idempotency: partial unique index on (connectionId, externalOrderId, externalLineItemId)
-  // WHERE those columns are not null — enforced via startup migration CREATE UNIQUE INDEX.
 }));
 
 export const insertDailyMenuItemSalesSchema = createInsertSchema(dailyMenuItemSales).omit({ id: true });

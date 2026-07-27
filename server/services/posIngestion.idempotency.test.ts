@@ -174,6 +174,62 @@ const refundBatch: PosSalesBatch = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+/** A batch with three orders all selling the same pizza — would collide on the old
+ *  uniqueSaleAggregate constraint (same menuItemId, same sourceBatchId).  After the
+ *  fix (constraint is partial: WHERE connection_id IS NULL), each per-line row has a
+ *  unique (connectionId, orderId, lineId) key and all three rows must insert cleanly. */
+const multiLineSamePizzaBatch: PosSalesBatch = {
+  locationId: "loc-1",
+  businessDate: "2024-01-15",
+  lines: [
+    {
+      provider: "square",
+      externalLocationId: "loc-1",
+      externalOrderId: "order-1",
+      externalLineId: "line-a",
+      businessDate: "2024-01-15",
+      closedAt: "2024-01-15T20:00:00Z",
+      externalVariationId: "var-pizza",
+      itemName: "Margherita Pizza",
+      quantity: 1,
+      grossSalesMoney: 1200,
+      discountsMoney: 0,
+      netSalesMoney: 1200,
+      rawPayloadReference: "{}",
+    },
+    {
+      provider: "square",
+      externalLocationId: "loc-1",
+      externalOrderId: "order-2",
+      externalLineId: "line-b",
+      businessDate: "2024-01-15",
+      closedAt: "2024-01-15T21:00:00Z",
+      externalVariationId: "var-pizza",
+      itemName: "Margherita Pizza",
+      quantity: 2,
+      grossSalesMoney: 2400,
+      discountsMoney: 0,
+      netSalesMoney: 2400,
+      rawPayloadReference: "{}",
+    },
+    {
+      provider: "square",
+      externalLocationId: "loc-1",
+      externalOrderId: "order-3",
+      externalLineId: "line-c",
+      businessDate: "2024-01-15",
+      closedAt: "2024-01-15T22:00:00Z",
+      externalVariationId: "var-pizza",
+      itemName: "Margherita Pizza",
+      quantity: 1,
+      grossSalesMoney: 1200,
+      discountsMoney: 0,
+      netSalesMoney: 1200,
+      rawPayloadReference: "{}",
+    },
+  ],
+};
+
 describe("POS ingestion — idempotency", () => {
   let storageMock: any;
 
@@ -235,5 +291,37 @@ describe("POS ingestion — idempotency", () => {
     const pizzaRows = [...rowStore.values()].filter((r) => r.menuItemId === "item-pizza");
     const netQty = pizzaRows.reduce((s: number, r: any) => s + r.qtySold, 0);
     expect(netQty).toBe(1); // 2 + (-1)
+  });
+
+  it("multiple orders selling the same menu item in one batch insert separate per-line rows without colliding", async () => {
+    // This is the regression guard for the uniqueSaleAggregate constraint bug:
+    // before the fix, three orders all selling var-pizza within one batch would
+    // share (companyId, storeId, menuItemId, salesDate, daypartId, sourceBatchId)
+    // and collide on the old full unique constraint.  After the fix the constraint
+    // is partial (WHERE connection_id IS NULL) so per-line POS rows are free.
+    const result = await ingestSalesBatch(multiLineSamePizzaBatch, opts);
+
+    // All three lines must be ingested — no constraint collision
+    expect(result.rowsIngested).toBe(3);
+    expect(result.rowsSkipped).toBe(0);
+    expect(rowStore.size).toBe(3);
+
+    // Each row has its own unique POS identity
+    expect(rowStore.has("conn-1|order-1|line-a")).toBe(true);
+    expect(rowStore.has("conn-1|order-2|line-b")).toBe(true);
+    expect(rowStore.has("conn-1|order-3|line-c")).toBe(true);
+
+    // Total pizza qty across the three rows = 1 + 2 + 1 = 4
+    const netQty = [...rowStore.values()].reduce((s: number, r: any) => s + r.qtySold, 0);
+    expect(netQty).toBe(4);
+  });
+
+  it("re-ingesting a multi-order batch still does not double rows", async () => {
+    await ingestSalesBatch(multiLineSamePizzaBatch, opts);
+    expect(rowStore.size).toBe(3);
+
+    await ingestSalesBatch(multiLineSamePizzaBatch, opts);
+    // Second run upserts (overwrites) — still exactly 3 rows
+    expect(rowStore.size).toBe(3);
   });
 });
