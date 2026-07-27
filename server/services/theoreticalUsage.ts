@@ -71,6 +71,22 @@ export class TheoreticalUsageService {
       const company = await storage.getCompany(companyId);
 
       for (const sale of salesData) {
+        // Business rule — refund rows (qtySold < 0) are intentionally skipped for
+        // ingredient-cost accumulation.
+        //
+        // Rationale: when a modifier is sold, the kitchen has already consumed the
+        // ingredients to prepare it.  A subsequent customer refund does not un-cook
+        // the food, so the ingredient cost should remain in the theoretical cost
+        // numerator.  The refund does reduce totalRevenue (via the unconditional
+        // netSales reduce above) because that sale no longer appears in the
+        // denominator.
+        //
+        // Known side-effect: if a modifier is sold and fully refunded on the same
+        // day, totalRevenue nets to $0 for that modifier while its ingredient cost
+        // stays in totalTheoreticalCost.  This raises the reported food-cost % above
+        // what it would be had the modifier never been sold.  The food-cost variance
+        // report surfaces a note to users explaining this behaviour so they are not
+        // caught off guard by an inflated percentage on high-refund days.
         if (sale.qtySold <= 0) continue;
 
         const menuItem = await storage.getMenuItem(sale.menuItemId);

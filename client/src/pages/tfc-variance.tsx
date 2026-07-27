@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -424,7 +424,7 @@ function TfcVarianceContent() {
           </Card>
 
           {/* Sales Summary Section */}
-          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 mb-6">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 mb-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -458,6 +458,22 @@ function TfcVarianceContent() {
                 </p>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Refund note */}
+          <div
+            className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 mb-6 text-sm text-muted-foreground"
+            data-testid="note-refund-cost-behaviour"
+          >
+            <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <span>
+              <strong className="text-foreground">Refunded modifiers:</strong>{" "}
+              When a modifier is sold and then refunded on the same day, the refund reduces net
+              sales (the revenue denominator) but the ingredient cost of the original sale is
+              retained — the kitchen already consumed the food. On days with high refund
+              activity this may cause food-cost&nbsp;% to appear slightly elevated compared to a
+              period without refunds.
+            </span>
           </div>
 
           {/* Variance Summary Section */}
