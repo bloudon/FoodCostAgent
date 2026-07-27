@@ -133,6 +133,21 @@ describe("POS sync lock — runIncrementalSync", () => {
     expect(result.error).toMatch(/inactive/i);
     expect(storageMock.tryAcquirePosSyncLock).not.toHaveBeenCalled();
   });
+
+  it("marks preCreatedJob failed immediately when connection is inactive — no 30-min lock leak", async () => {
+    storageMock.getPosConnectionById.mockResolvedValue({ ...mockConnection, status: "disconnected" });
+    const preJob = { ...mockRunningJob, id: "pre-inactive-job" };
+
+    const result = await runIncrementalSync("conn-1", preJob);
+
+    expect(result.error).toMatch(/inactive/i);
+    // The pre-created job must be released immediately to unblock future syncs
+    expect(storageMock.updatePosSyncJob).toHaveBeenCalledWith(
+      preJob.id,
+      expect.objectContaining({ status: "failed", completedAt: expect.any(Date) }),
+    );
+    expect(storageMock.tryAcquirePosSyncLock).not.toHaveBeenCalled();
+  });
 });
 
 describe("POS sync lock — runBackfill", () => {
@@ -170,5 +185,19 @@ describe("POS sync lock — runBackfill", () => {
       preJob.id,
       expect.objectContaining({ status: "completed" }),
     );
+  });
+
+  it("marks preCreatedJob failed immediately when connection is inactive — no 30-min lock leak", async () => {
+    storageMock.getPosConnectionById.mockResolvedValue({ ...mockConnection, status: "disconnected" });
+    const preJob = { ...mockRunningJob, id: "pre-inactive-backfill", jobType: "backfill" };
+
+    const result = await runBackfill("conn-1", 30, preJob);
+
+    expect(result.error).toMatch(/inactive/i);
+    expect(storageMock.updatePosSyncJob).toHaveBeenCalledWith(
+      preJob.id,
+      expect.objectContaining({ status: "failed", completedAt: expect.any(Date) }),
+    );
+    expect(storageMock.tryAcquirePosSyncLock).not.toHaveBeenCalled();
   });
 });

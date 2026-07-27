@@ -42,6 +42,15 @@ export async function runBackfill(
 ): Promise<{ rowsIngested: number; error?: string; alreadyRunning?: boolean; jobId?: string }> {
   const connection = await storage.getPosConnectionById(connectionId);
   if (!connection || connection.status !== "active") {
+    // If a pre-created job row exists, release the lock immediately rather than
+    // leaving the row stuck in `running` for up to 30 min.
+    if (preCreatedJob) {
+      await storage.updatePosSyncJob(preCreatedJob.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: "Connection not found or inactive — lock released",
+      });
+    }
     return { rowsIngested: 0, error: "Connection not found or inactive" };
   }
 
@@ -134,6 +143,15 @@ export async function runIncrementalSync(
 ): Promise<{ rowsIngested: number; error?: string; alreadyRunning?: boolean; jobId?: string }> {
   let connection = await storage.getPosConnectionById(connectionId);
   if (!connection || connection.status !== "active") {
+    // If a pre-created job row exists, release the lock immediately rather than
+    // leaving the row stuck in `running` for up to 30 min.
+    if (preCreatedJob) {
+      await storage.updatePosSyncJob(preCreatedJob.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: "Connection not found or inactive — lock released",
+      });
+    }
     return { rowsIngested: 0, error: "Connection not found or inactive" };
   }
 

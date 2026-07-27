@@ -381,6 +381,12 @@ export function registerPosRoutes(app: Express): void {
         return res.status(404).json({ error: "Connection not found" });
       }
 
+      // Reject sync attempts on inactive/disconnected connections BEFORE acquiring the
+      // lock — otherwise the lock row would be left stuck in `running` for 30 min.
+      if (connection.status !== "active") {
+        return res.status(400).json({ error: "Connection is not active — reconnect Square before syncing" });
+      }
+
       const { type = "incremental", days = 30 } = req.body;
 
       // Atomically acquire the sync lock by inserting the job row.

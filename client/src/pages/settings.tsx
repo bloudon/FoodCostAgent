@@ -2006,23 +2006,36 @@ function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null
   const syncNow = async (id: string, type: "incremental" | "backfill" = "incremental") => {
     setSyncingId(id);
     try {
-      await apiRequest("POST", `/api/pos/connections/${id}/sync`, { type });
-      // Start polling so the button stays disabled until the job finishes
-      setPollingId(id);
-      toast({ title: "Sync started", description: "Sales data is being imported in the background." });
-    } catch (err: any) {
-      const is409 = err.message?.startsWith("409:");
-      if (is409) {
-        // Another sync is already running — start polling so the button shows "Sync in progress…"
+      // Use raw fetch so we can inspect the HTTP status code directly — apiRequest
+      // normalises non-2xx errors to just the `error` string, stripping the status.
+      const res = await fetch(`/api/pos/connections/${id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ type }),
+      });
+
+      if (res.status === 409) {
+        // Another sync is already running — start polling so the button stays disabled
         setPollingId(id);
         toast({
           title: "Sync already in progress",
           description: "A sync job is already running for this connection.",
         });
-      } else {
-        toast({ title: "Sync failed", description: err.message, variant: "destructive" });
-        setSyncingId(null);
+        return;
       }
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any).error || `Sync request failed (${res.status})`);
+      }
+
+      // Start polling so the button stays disabled until the job finishes
+      setPollingId(id);
+      toast({ title: "Sync started", description: "Sales data is being imported in the background." });
+    } catch (err: any) {
+      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+      setSyncingId(null);
     }
   };
 
