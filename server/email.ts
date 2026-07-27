@@ -384,6 +384,79 @@ export async function sendImportSummaryEmail(opts: {
   }
 }
 
+export async function sendSquareTokenRevokedAlert(opts: {
+  to: string;
+  firstName: string;
+  companyName: string;
+  merchantId: string;
+  reconnectUrl: string;
+}) {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping Square token-revoked alert — no transport configured");
+    return;
+  }
+
+  const { to, firstName, companyName, merchantId, reconnectUrl } = opts;
+
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject: `Action required: Square connection disconnected for ${companyName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e293b; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">
+              <span style="color: #ffffff;">FNB</span>
+              <span style="color: #22c55e; font-size: 16px;"> cost pro</span>
+            </h1>
+          </div>
+          <div style="padding: 32px; background: #ffffff;">
+            <h2 style="color: #1e293b; margin-top: 0;">Square Connection Disconnected</h2>
+            <p style="color: #475569; line-height: 1.6;">Hi ${firstName},</p>
+            <p style="color: #475569; line-height: 1.6;">
+              The Square integration for <strong>${companyName}</strong> has been disconnected
+              because the access token was revoked. Sales data will not sync until the connection
+              is restored.
+            </p>
+            <div style="margin: 24px 0; padding: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+              <p style="color: #991b1b; margin: 0; font-size: 14px;">
+                <strong>Merchant ID:</strong> ${merchantId}
+              </p>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Please reconnect your Square account as soon as possible to prevent gaps in your
+              sales data.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${reconnectUrl}"
+                 style="display: inline-block; background: #22c55e; color: #ffffff;
+                        text-decoration: none; padding: 14px 32px; border-radius: 8px;
+                        font-weight: 600; font-size: 16px;">
+                Reconnect Square
+              </a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px;">
+              If you did not disconnect Square intentionally, please check your Square account
+              security settings and reconnect immediately.
+            </p>
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${firstName},\n\nThe Square integration for ${companyName} (Merchant ID: ${merchantId}) has been disconnected because the access token was revoked.\n\nSales data will not sync until the connection is restored. Please reconnect at:\n${reconnectUrl}\n\nIf you did not disconnect Square intentionally, please check your Square account security settings.`,
+    });
+    console.log(`[Email] Square token-revoked alert sent to ${to}`);
+  } catch (err) {
+    console.error("[Email] Failed to send Square token-revoked alert:", err);
+  }
+}
+
 export async function sendContactEmail(opts: {
   name: string;
   email: string;

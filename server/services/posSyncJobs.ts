@@ -14,6 +14,7 @@ import type { PosSyncJob } from "@shared/schema";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch, type AdhocItem } from "./posIngestion";
+import { sendSquareTokenRevokedAlert } from "../email";
 
 /**
  * Maximum number of ad hoc item entries stored per sync job.
@@ -41,6 +42,60 @@ function sanitizeErrorMessage(msg: string): string {
   // Square access tokens are long alphanumeric strings starting with "EAAAl" or similar.
   // Conservatively redact any word of 40+ characters that looks like a bearer token.
   return msg.replace(/\b[A-Za-z0-9+/=_-]{40,}\b/g, "[REDACTED]");
+}
+
+/**
+ * Build the app base URL using the same priority order as buildSquareRedirectUri:
+ * APP_BASE_URL env var → REPLIT_DEV_DOMAIN → localhost fallback.
+ */
+function getAppBaseUrl(): string {
+  const appBase = process.env.APP_BASE_URL;
+  if (appBase) return appBase.replace(/\/$/, "");
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN;
+  return replitDomain ? `https://${replitDomain}` : "http://localhost:5000";
+}
+
+/**
+ * Notify all company admins by email that their Square token was revoked and the
+ * connection has been marked disconnected.  Failures are logged but never thrown —
+ * the revocation handling must continue regardless.
+ */
+async function alertAdminsOnTokenRevocation(
+  companyId: string,
+  merchantId: string,
+  context: string,
+): Promise<void> {
+  try {
+    const [company, users] = await Promise.all([
+      storage.getCompany(companyId),
+      storage.getUsers(companyId),
+    ]);
+
+    const companyName = company?.name ?? companyId;
+    const reconnectUrl = `${getAppBaseUrl()}/settings/integrations`;
+    const admins = users.filter(
+      (u) => u.role === "company_admin" || u.role === "global_admin",
+    );
+
+    if (admins.length === 0) {
+      console.warn(`[${context}] No admin users found for company ${companyId} — skipping token-revoked alert`);
+      return;
+    }
+
+    await Promise.all(
+      admins.map((admin) =>
+        sendSquareTokenRevokedAlert({
+          to: admin.email,
+          firstName: admin.firstName,
+          companyName,
+          merchantId,
+          reconnectUrl,
+        }),
+      ),
+    );
+  } catch (alertErr: any) {
+    console.error(`[${context}] Failed to send token-revoked alert:`, alertErr.message);
+  }
 }
 
 function todayMinus(days: number): string {
@@ -160,10 +215,12 @@ export async function runBackfill(
   } catch (err: any) {
     console.error("[POS Backfill] Error:", err.message);
 
-    // If Square revoked the token mid-backfill, mark the connection as disconnected.
+    // If Square revoked the token mid-backfill, mark the connection as disconnected
+    // and alert the company admins so they can reconnect before data gaps grow.
     if (err instanceof SquareTokenRevokedError) {
       console.warn(`[POS Backfill] Token revoked during backfill for connection ${connectionId} — marking disconnected`);
       await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+      await alertAdminsOnTokenRevocation(connection.companyId, connection.merchantId, "POS Backfill");
     }
 
     const safeMsg = sanitizeErrorMessage(err.message);
@@ -233,6 +290,7 @@ export async function runIncrementalSync(
         if (refreshErr instanceof SquareTokenRevokedError) {
           console.warn(`[POS Incremental] Token revoked for connection ${connectionId} — marking disconnected`);
           await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+          await alertAdminsOnTokenRevocation(connection.companyId, connection.merchantId, "POS Incremental (token refresh)");
           return { rowsIngested: 0, error: "Square token revoked — connection marked as disconnected" };
         }
         // Non-auth refresh failures: log and continue with existing token.
@@ -326,10 +384,12 @@ export async function runIncrementalSync(
   } catch (err: any) {
     console.error("[POS Incremental] Error:", err.message);
 
-    // If Square revoked the token mid-sync, mark the connection as disconnected.
+    // If Square revoked the token mid-sync, mark the connection as disconnected
+    // and alert the company admins so they can reconnect before data gaps grow.
     if (err instanceof SquareTokenRevokedError) {
       console.warn(`[POS Incremental] Token revoked during sync for connection ${connectionId} — marking disconnected`);
       await storage.updatePosConnection(connectionId, connection.companyId, { status: "disconnected" });
+      await alertAdminsOnTokenRevocation(connection.companyId, connection.merchantId, "POS Incremental");
     }
 
     const safeMsg = sanitizeErrorMessage(err.message);
@@ -381,6 +441,7 @@ export async function refreshAllPosTokens(): Promise<{ success: number; failed: 
         console.warn(
           `[POS Token Refresh] Token revoked for connection ${conn.id} — marked disconnected`,
         );
+        await alertAdminsOnTokenRevocation(conn.companyId, conn.merchantId, "POS Token Refresh");
       } else {
         console.error(
           `[POS Token Refresh] Failed for connection ${conn.id}: ${sanitizeErrorMessage(err.message)}`,
