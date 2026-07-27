@@ -1,9 +1,48 @@
 /**
  * Tests for Square POS reconnect flow.
  * Covers: signed state creation/verification, nonce lifecycle,
- *         reconnect callback logic (success, expiry, replay, merchant mismatch, cancellation).
+ *         reconnect callback logic (success, expiry, replay, merchant mismatch, cancellation),
+ *         and OAuth callback route integration (first-time create, reconnect upsert, bad code).
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import express from "express";
+import request from "supertest";
+import type { Server } from "http";
+
+// ── Module mocks (hoisted by vitest — must be defined before imports that use them) ──
+// These mocks are hoisted to module scope by vitest so they intercept the imports
+// in posRoutes.ts before any test runs. The existing pure-function tests are not
+// affected because they only exercise createSignedState / verifySignedState (crypto-only).
+
+vi.mock("../storage", () => ({
+  storage: {
+    getPosConnectionById: vi.fn(),
+    createPosConnection: vi.fn(),
+    updatePosConnection: vi.fn(),
+    upsertPosLocationMappings: vi.fn(),
+    getPosConnections: vi.fn(),
+    deletePosConnection: vi.fn(),
+    getPosLocationMappings: vi.fn(),
+    upsertPosLocationMapping: vi.fn(),
+    getPosItemMappings: vi.fn(),
+    upsertPosItemMappings: vi.fn(),
+    getPosSyncAuditRows: vi.fn(),
+  },
+}));
+
+vi.mock("../integrations/pos/square", () => ({
+  squarePosConnector: {
+    exchangeCode: vi.fn(),
+    listLocations: vi.fn(),
+  },
+  buildSquareAuthUrl: vi.fn(() => "https://connect.squareup.com/oauth2/authorize?fake=1"),
+}));
+
+vi.mock("../services/posSyncJobs", () => ({
+  backfillLocationTimezones: vi.fn().mockResolvedValue(undefined),
+  runBackfill: vi.fn().mockResolvedValue(undefined),
+  runIncrementalSync: vi.fn().mockResolvedValue(undefined),
+}));
 
 // ── Import helpers under test ──────────────────────────────────────────────────
 // We test the pure helpers in isolation; route-level tests use mocked storage.
@@ -251,5 +290,185 @@ describe("reconnect callback logic", () => {
     // Since mismatch is detected, no DB write should occur
     expect(result.error).toBe("merchant_mismatch");
     expect(dbWritten.value).toBe(false);
+  });
+});
+
+// ── OAuth callback route — integration tests (supertest + stubbed storage) ────
+//
+// These tests mount only the callback route on a minimal Express app so we can
+// exercise the full handler (state validation → exchangeCode → DB write) without
+// a real database.  vi.mock() at the top of this file stubs storage and the Square
+// connector before any import runs.
+
+import { storage } from "../storage";
+import { squarePosConnector } from "../integrations/pos/square";
+import { registerPosRoutes } from "./posRoutes";
+
+describe("OAuth callback route — connection upsert behaviour", () => {
+  let app: ReturnType<typeof express>;
+  let server: Server;
+
+  // Cast to vi.Mock so TypeScript accepts .mockResolvedValue etc.
+  const mockGetById = storage.getPosConnectionById as ReturnType<typeof vi.fn>;
+  const mockCreate = storage.createPosConnection as ReturnType<typeof vi.fn>;
+  const mockUpdate = storage.updatePosConnection as ReturnType<typeof vi.fn>;
+  const mockUpsertLoc = storage.upsertPosLocationMappings as ReturnType<typeof vi.fn>;
+  const mockExchange = squarePosConnector.exchangeCode as ReturnType<typeof vi.fn>;
+  const mockListLoc = squarePosConnector.listLocations as ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Default non-fatal stubs
+    mockUpsertLoc.mockResolvedValue([]);
+    mockListLoc.mockResolvedValue([]);
+
+    // Build a fresh Express app for each test so nonce state doesn't leak
+    app = express();
+    app.use(express.json());
+    registerPosRoutes(app);
+
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, () => resolve());
+    });
+  });
+
+  afterAll(async () => {
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  // Helper: build a valid signed-state query param
+  function newConnectionState(companyId = "company-new") {
+    return createSignedState({ companyId, userId: "user-1", timestamp: Date.now() });
+  }
+
+  function reconnectState(connectionId: string, companyId = "company-abc") {
+    return createSignedState({
+      companyId,
+      userId: "user-1",
+      connectionId,
+      nonce: `nonce-${Math.random()}`,
+      timestamp: Date.now(),
+    });
+  }
+
+  // ── (a) First-time connection creates exactly one row ─────────────────────
+
+  it("(a) first-time connection calls createPosConnection exactly once and never updatePosConnection", async () => {
+    const fakeTokens = {
+      accessToken: "tok-access",
+      refreshToken: "tok-refresh",
+      tokenExpiresAt: new Date(),
+      merchantId: "merchant-NEW",
+    };
+    mockExchange.mockResolvedValue(fakeTokens);
+    mockCreate.mockResolvedValue({ id: "conn-created", ...fakeTokens });
+
+    const state = newConnectionState();
+    const addr = server.address() as { port: number };
+
+    const res = await request(`http://127.0.0.1:${addr.port}`)
+      .get("/api/pos/oauth/square/callback")
+      .query({ code: "good-code", state })
+      .redirects(0); // capture the redirect without following it
+
+    // Must redirect to the location-mapping page (success path)
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/\/pos\/location-mapping\/conn-created/);
+
+    // Storage assertions: exactly one create, zero updates
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).not.toHaveBeenCalled();
+
+    // Verify the payload passed to create includes the correct fields
+    const createArg = mockCreate.mock.calls[0][0];
+    expect(createArg.provider).toBe("square");
+    expect(createArg.merchantId).toBe("merchant-NEW");
+    expect(createArg.status).toBe("active");
+  });
+
+  // ── (b) Reconnect upserts — never creates a duplicate row ────────────────
+
+  it("(b) reconnect path calls updatePosConnection exactly once and never createPosConnection", async () => {
+    const existingConnection = {
+      id: "conn-existing",
+      companyId: "company-abc",
+      merchantId: "merchant-ABC",
+      accessToken: "old-tok",
+      refreshToken: "old-refresh",
+      tokenExpiresAt: new Date(),
+      status: "disconnected",
+    };
+    mockGetById.mockResolvedValue(existingConnection);
+
+    const fakeTokens = {
+      accessToken: "new-tok-access",
+      refreshToken: "new-tok-refresh",
+      tokenExpiresAt: new Date(),
+      merchantId: "merchant-ABC", // same merchant
+    };
+    mockExchange.mockResolvedValue(fakeTokens);
+    mockUpdate.mockResolvedValue({ ...existingConnection, ...fakeTokens, status: "active" });
+
+    const state = reconnectState("conn-existing");
+    const addr = server.address() as { port: number };
+
+    const res = await request(`http://127.0.0.1:${addr.port}`)
+      .get("/api/pos/oauth/square/callback")
+      .query({ code: "reconnect-code", state })
+      .redirects(0);
+
+    // Must redirect to the reconnected success page
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/pos_reconnected=1/);
+
+    // Storage assertions: exactly one update, zero creates
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).not.toHaveBeenCalled();
+
+    // Confirm update was called with the right connection id and fresh tokens
+    const [updatedId, updatedCompanyId, updatedFields] = mockUpdate.mock.calls[0];
+    expect(updatedId).toBe("conn-existing");
+    expect(updatedCompanyId).toBe("company-abc");
+    expect(updatedFields.accessToken).toBe("new-tok-access");
+    expect(updatedFields.status).toBe("active");
+  });
+
+  // ── (c) Bad OAuth code — no DB row created ────────────────────────────────
+
+  it("(c) bad OAuth code from Square causes a redirect with error and no DB writes", async () => {
+    mockExchange.mockRejectedValue(new Error("Square token exchange failed: invalid_grant"));
+
+    const state = newConnectionState();
+    const addr = server.address() as { port: number };
+
+    const res = await request(`http://127.0.0.1:${addr.port}`)
+      .get("/api/pos/oauth/square/callback")
+      .query({ code: "bad-code", state })
+      .redirects(0);
+
+    // Must redirect to the error page — not a 200 or 500
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/pos_error/);
+
+    // No storage writes must occur
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  // ── Edge: missing code/state params redirect without any DB writes ─────────
+
+  it("missing code param redirects to error without any DB writes", async () => {
+    const addr = server.address() as { port: number };
+
+    const res = await request(`http://127.0.0.1:${addr.port}`)
+      .get("/api/pos/oauth/square/callback")
+      .query({ state: newConnectionState() }) // no code
+      .redirects(0);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/pos_error=missing_params/);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
