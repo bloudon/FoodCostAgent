@@ -327,3 +327,182 @@ describe("POS ingestion — idempotency", () => {
     expect(rowStore.size).toBe(3);
   });
 });
+
+// ── Modifier ingestion classification ─────────────────────────────────────────
+
+describe("POS ingestion — modifier and ad hoc item classification", () => {
+  let storageMock: any;
+
+  beforeEach(async () => {
+    rowStore.clear();
+    vi.clearAllMocks();
+
+    const mod = await import("../storage");
+    storageMock = (mod as any).storage;
+
+    storageMock.getPosLocationMappings.mockResolvedValue(LOCATION_MAPPINGS);
+    // Include a mapping for the modifier's catalog_object_id
+    storageMock.getPosItemMappings.mockResolvedValue([
+      ...ITEM_MAPPINGS,
+      { externalVariationId: "mod-cat-extra-cheese", menuItemId: "item-extra-cheese" },
+    ]);
+    storageMock.createSalesUploadBatch.mockResolvedValue({ id: "batch-mod" });
+    storageMock.updateSalesUploadBatchStatus.mockResolvedValue(undefined);
+    storageMock.upsertPosDailyMenuItemSales.mockImplementation(makeUpsertImpl(rowStore));
+  });
+
+  it("catalog-backed modifier line is ingested via the mapping lookup", async () => {
+    const batchWithMappedModifier: PosSalesBatch = {
+      locationId: "loc-1",
+      businessDate: "2024-01-20",
+      lines: [
+        // Base pizza line (mapped)
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-mod",
+          externalLineId: "li-base",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: "var-pizza",
+          itemName: "Margherita Pizza",
+          quantity: 1,
+          grossSalesMoney: 1200,
+          discountsMoney: 0,
+          netSalesMoney: 1200,
+          rawPayloadReference: "{}",
+        },
+        // Modifier line emitted by square.ts — has catalog_object_id → in ITEM_MAPPINGS
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-mod",
+          externalLineId: "li-base-mod-mod-uid-1",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: "mod-cat-extra-cheese",
+          itemName: "Extra Cheese",
+          quantity: 1,
+          grossSalesMoney: 150,
+          discountsMoney: 0,
+          netSalesMoney: 150,
+          rawPayloadReference: "{}",
+        },
+      ],
+    };
+
+    const result = await ingestSalesBatch(batchWithMappedModifier, opts);
+
+    // Both the base line and the modifier line are ingested
+    expect(result.rowsIngested).toBe(2);
+    expect(result.rowsSkipped).toBe(0);
+    expect(result.adhocItems).toHaveLength(0);
+
+    // The modifier row is stored with the correct menu item ID
+    const modRow = rowStore.get("conn-1|order-mod|li-base-mod-mod-uid-1");
+    expect(modRow).toBeDefined();
+    expect(modRow!.menuItemId).toBe("item-extra-cheese");
+    expect(modRow!.qtySold).toBe(1);
+    expect(modRow!.netSales).toBeCloseTo(1.5); // 150 cents → $1.50
+  });
+
+  it("ad hoc modifier line (no externalVariationId) goes into adhocItems, not rowsSkipped", async () => {
+    const batchWithAdhocModifier: PosSalesBatch = {
+      locationId: "loc-1",
+      businessDate: "2024-01-20",
+      lines: [
+        // Base pizza line (mapped)
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-adhoc-mod",
+          externalLineId: "li-base2",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: "var-pizza",
+          itemName: "Margherita Pizza",
+          quantity: 2,
+          grossSalesMoney: 2400,
+          discountsMoney: 0,
+          netSalesMoney: 2400,
+          rawPayloadReference: "{}",
+        },
+        // Ad hoc modifier — no catalog_object_id, so externalVariationId is undefined
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-adhoc-mod",
+          externalLineId: "li-base2-mod-mod-uid-adhoc",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: undefined, // ad hoc — square.ts leaves this undefined
+          itemName: "Special Request",
+          quantity: 2,
+          grossSalesMoney: 0,
+          discountsMoney: 0,
+          netSalesMoney: 0,
+          rawPayloadReference: "{}",
+        },
+      ],
+    };
+
+    const result = await ingestSalesBatch(batchWithAdhocModifier, opts);
+
+    // Base line ingested; ad hoc modifier is NOT counted as rowsSkipped
+    expect(result.rowsIngested).toBe(1);
+    expect(result.rowsSkipped).toBe(0);
+
+    // Ad hoc modifier captured in adhocItems with correct metadata
+    expect(result.adhocItems).toHaveLength(1);
+    expect(result.adhocItems[0].name).toBe("Special Request");
+    expect(result.adhocItems[0].quantity).toBe(2);
+    expect(result.adhocItems[0].orderId).toBe("order-adhoc-mod");
+    expect(result.adhocItems[0].reason).toBe("no_catalog_id");
+  });
+
+  it("unmapped catalog modifier (has variationId but no FnB mapping) counts in rowsSkipped", async () => {
+    const batchWithUnmappedModifier: PosSalesBatch = {
+      locationId: "loc-1",
+      businessDate: "2024-01-20",
+      lines: [
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-unmapped-mod",
+          externalLineId: "li-base3",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: "var-pizza",
+          itemName: "Margherita Pizza",
+          quantity: 1,
+          grossSalesMoney: 1200,
+          discountsMoney: 0,
+          netSalesMoney: 1200,
+          rawPayloadReference: "{}",
+        },
+        // Modifier has a catalog ID but no FnB mapping → rowsSkipped
+        {
+          provider: "square",
+          externalLocationId: "loc-1",
+          externalOrderId: "order-unmapped-mod",
+          externalLineId: "li-base3-mod-mod-uid-x",
+          businessDate: "2024-01-20",
+          closedAt: "2024-01-20T22:00:00Z",
+          externalVariationId: "mod-cat-unknown", // not in ITEM_MAPPINGS
+          itemName: "Mystery Modifier",
+          quantity: 1,
+          grossSalesMoney: 50,
+          discountsMoney: 0,
+          netSalesMoney: 50,
+          rawPayloadReference: "{}",
+        },
+      ],
+    };
+
+    const result = await ingestSalesBatch(batchWithUnmappedModifier, opts);
+
+    expect(result.rowsIngested).toBe(1);
+    expect(result.rowsSkipped).toBe(1);   // has catalog ID but no FnB mapping
+    expect(result.adhocItems).toHaveLength(0); // it's not ad hoc — it has a catalog ID
+  });
+});

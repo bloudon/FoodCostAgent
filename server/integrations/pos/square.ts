@@ -326,14 +326,19 @@ export const squarePosConnector: PosConnector = {
 
           batchesByDate.get(businessDate)!.push(salesLine);
 
-          // ── Modifiers — each modifier with a catalog ID becomes its own line ──
-          // This lets modifiers (e.g. "Extra Cheese") be mapped to FnB items just
-          // like regular variations. Modifiers WITHOUT a catalog_object_id are ad hoc
-          // add-ons; the ingestion service will capture them in the adhocItems log.
-          for (const modifier of line.modifiers || []) {
-            const modCatId = modifier.catalog_object_id;
-            if (!modCatId) continue; // ad hoc modifier — ingestion will record it
-            const modLineId = `${lineId}-mod-${modifier.uid || modCatId}`;
+          // ── Modifiers — every modifier becomes its own PosSalesLine ──────────
+          // Modifiers WITH a catalog_object_id can be mapped to FnB items via the
+          // item-mapping UI (once #559 adds modifiers to the catalog fetch).
+          // Modifiers WITHOUT a catalog_object_id (open-price / free-text add-ons)
+          // are emitted without externalVariationId so posIngestion classifies them
+          // as ad hoc items — visible in the sync job log, never silently dropped.
+          for (let mi = 0; mi < (line.modifiers || []).length; mi++) {
+            const modifier = (line.modifiers as any[])[mi];
+            const modCatId: string | undefined = modifier.catalog_object_id;
+            // Use uid when available; fall back to a stable index-based suffix so
+            // the synthetic externalLineId is repeatable across re-syncs of the same order.
+            const modSuffix = modifier.uid || `idx${mi}`;
+            const modLineId = `${lineId}-mod-${modSuffix}`;
             const modMoney = modifier.applied_money?.amount ?? 0;
             batchesByDate.get(businessDate)!.push({
               provider: "square",
@@ -342,12 +347,14 @@ export const squarePosConnector: PosConnector = {
               externalLineId: modLineId,
               businessDate,
               closedAt,
+              // Ad hoc modifiers have no catalog ID → externalItemId/VariationId left
+              // undefined so posIngestion routes them into adhocItems correctly.
               externalItemId: modCatId,
               externalVariationId: modCatId,
               externalModifierIds: [],
               itemName: modifier.name || "Modifier",
               variationName: undefined,
-              quantity: qty, // modifier sold once per parent item
+              quantity: qty, // modifier sold once per parent item sold
               grossSalesMoney: modMoney,
               discountsMoney: 0,
               netSalesMoney: modMoney,

@@ -258,3 +258,123 @@ describe("retrieveSales cursor pagination", () => {
   });
 });
 
+// ── Modifier ingestion ────────────────────────────────────────────────────────
+
+describe("retrieveSales modifier handling", () => {
+  it("emits a separate PosSalesLine for a catalog-backed modifier (has catalog_object_id)", async () => {
+    stubFetch(makeResponse(200, {
+      orders: [{
+        id: "ord-mod-1",
+        closed_at: "2024-02-28T03:00:00Z",
+        line_items: [{
+          uid: "li-1",
+          quantity: "1",
+          catalog_object_id: "var-burger",
+          name: "Burger",
+          gross_sales_money: { amount: 1200 },
+          total_discount_money: { amount: 0 },
+          total_money: { amount: 1200 },
+          modifiers: [{
+            uid: "mod-uid-1",
+            catalog_object_id: "mod-cat-extra-cheese",
+            name: "Extra Cheese",
+            applied_money: { amount: 150 },
+          }],
+        }],
+        returns: [],
+      }],
+    }));
+
+    const batches = await squarePosConnector.retrieveSales("tok", "loc-1", "2024-02-28", "2024-02-28");
+    const lines = batches[0].lines;
+
+    // Should have 2 lines: the base burger and the modifier
+    expect(lines).toHaveLength(2);
+
+    const burgerLine = lines.find((l) => l.externalLineId === "li-1")!;
+    expect(burgerLine.externalVariationId).toBe("var-burger");
+    expect(burgerLine.quantity).toBe(1);
+    expect(burgerLine.grossSalesMoney).toBe(1200);
+
+    const modLine = lines.find((l) => l.externalLineId === "li-1-mod-mod-uid-1")!;
+    expect(modLine).toBeDefined();
+    expect(modLine.externalVariationId).toBe("mod-cat-extra-cheese");
+    expect(modLine.itemName).toBe("Extra Cheese");
+    expect(modLine.quantity).toBe(1); // same qty as parent
+    expect(modLine.grossSalesMoney).toBe(150);
+    expect(modLine.netSalesMoney).toBe(150);
+  });
+
+  it("emits a PosSalesLine WITHOUT externalVariationId for an ad hoc modifier (no catalog_object_id)", async () => {
+    stubFetch(makeResponse(200, {
+      orders: [{
+        id: "ord-adhoc-mod",
+        closed_at: "2024-02-28T03:00:00Z",
+        line_items: [{
+          uid: "li-2",
+          quantity: "2",
+          catalog_object_id: "var-pizza",
+          name: "Pizza",
+          gross_sales_money: { amount: 2400 },
+          total_discount_money: { amount: 0 },
+          total_money: { amount: 2400 },
+          modifiers: [{
+            uid: "mod-uid-adhoc",
+            // No catalog_object_id — free-text / open-price add-on
+            name: "Special Request",
+            applied_money: { amount: 0 },
+          }],
+        }],
+        returns: [],
+      }],
+    }));
+
+    const batches = await squarePosConnector.retrieveSales("tok", "loc-1", "2024-02-28", "2024-02-28");
+    const lines = batches[0].lines;
+
+    // Still 2 lines — ad hoc modifier is emitted (not dropped)
+    expect(lines).toHaveLength(2);
+
+    const modLine = lines.find((l) => l.externalLineId === "li-2-mod-mod-uid-adhoc")!;
+    expect(modLine).toBeDefined();
+    // No catalog ID → externalVariationId is undefined so ingestion routes it to adhocItems
+    expect(modLine.externalVariationId).toBeUndefined();
+    expect(modLine.itemName).toBe("Special Request");
+    expect(modLine.quantity).toBe(2); // same qty as parent
+  });
+
+  it("uses a stable index-based suffix when modifier has no uid", async () => {
+    stubFetch(makeResponse(200, {
+      orders: [{
+        id: "ord-no-uid",
+        closed_at: "2024-02-28T03:00:00Z",
+        line_items: [{
+          uid: "li-3",
+          quantity: "1",
+          catalog_object_id: "var-salad",
+          name: "Salad",
+          gross_sales_money: { amount: 900 },
+          total_discount_money: { amount: 0 },
+          total_money: { amount: 900 },
+          modifiers: [
+            // No uid on either modifier
+            { catalog_object_id: "mod-dressing", name: "Ranch", applied_money: { amount: 50 } },
+            { catalog_object_id: "mod-croutons", name: "Croutons", applied_money: { amount: 25 } },
+          ],
+        }],
+        returns: [],
+      }],
+    }));
+
+    const batches = await squarePosConnector.retrieveSales("tok", "loc-1", "2024-02-28", "2024-02-28");
+    const lines = batches[0].lines;
+
+    // 1 base line + 2 modifier lines
+    expect(lines).toHaveLength(3);
+
+    // Stable index-based IDs when uid is absent
+    expect(lines.some((l) => l.externalLineId === "li-3-mod-idx0")).toBe(true);
+    expect(lines.some((l) => l.externalLineId === "li-3-mod-idx1")).toBe(true);
+  });
+});
+
