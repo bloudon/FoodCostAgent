@@ -78,6 +78,7 @@ export async function runBackfill(
 
   let totalRows = 0;
   let totalSkipped = 0;
+  const locationErrors: string[] = [];
 
   try {
     const locationMappings = await storage.getPosLocationMappings(connectionId);
@@ -87,36 +88,51 @@ export async function runBackfill(
     const startDate = todayMinus(days);
 
     for (const loc of mappedLocations) {
-      const batches = await squarePosConnector.retrieveSales(
-        connection.accessToken,
-        loc.externalLocationId,
-        startDate,
-        endDate,
-      );
+      try {
+        const batches = await squarePosConnector.retrieveSales(
+          connection.accessToken,
+          loc.externalLocationId,
+          startDate,
+          endDate,
+        );
 
-      for (const batch of batches) {
-        const result = await ingestSalesBatch(batch, {
-          companyId: connection.companyId,
-          connectionId,
-          connectedByUserId: connection.connectedByUserId,
-        });
-        totalRows += result.rowsIngested;
-        totalSkipped += result.rowsSkipped;
+        for (const batch of batches) {
+          const result = await ingestSalesBatch(batch, {
+            companyId: connection.companyId,
+            connectionId,
+            connectedByUserId: connection.connectedByUserId,
+          });
+          totalRows += result.rowsIngested;
+          totalSkipped += result.rowsSkipped;
+        }
+      } catch (locErr: any) {
+        // A single location failure must not abort the whole backfill.
+        // If the token was revoked, re-throw so the outer catch marks the
+        // connection as disconnected.
+        if (locErr instanceof SquareTokenRevokedError) throw locErr;
+        const safeMsg = sanitizeErrorMessage(locErr.message);
+        console.error(`[POS Backfill] Location ${loc.externalLocationId} failed: ${safeMsg}`);
+        locationErrors.push(`${loc.externalLocationId}: ${safeMsg}`);
       }
     }
 
+    // Mark completed; if some locations failed, surface them in errorMessage.
+    // Only mark "failed" if ALL locations errored and nothing was ingested.
+    const allFailed = locationErrors.length > 0 && totalRows === 0 && mappedLocations.length > 0 && locationErrors.length === mappedLocations.length;
     await storage.updatePosSyncJob(job.id, {
-      status: "completed",
+      status: allFailed ? "failed" : "completed",
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
+      errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 
     await storage.updatePosConnection(connectionId, connection.companyId, {
       lastSyncedAt: new Date(),
     });
 
-    return { rowsIngested: totalRows };
+    const firstError = locationErrors.length > 0 ? locationErrors[0] : undefined;
+    return { rowsIngested: totalRows, error: firstError };
   } catch (err: any) {
     console.error("[POS Backfill] Error:", err.message);
     const safeMsg = sanitizeErrorMessage(err.message);
@@ -217,6 +233,7 @@ export async function runIncrementalSync(
 
   let totalRows = 0;
   let totalSkipped = 0;
+  const locationErrors: string[] = [];
 
   try {
     const locationMappings = await storage.getPosLocationMappings(connectionId);
@@ -227,36 +244,51 @@ export async function runIncrementalSync(
     const endDate = todayMinus(1);
 
     for (const loc of mappedLocations) {
-      const batches = await squarePosConnector.retrieveSales(
-        connection.accessToken,
-        loc.externalLocationId,
-        startDate,
-        endDate,
-      );
+      try {
+        const batches = await squarePosConnector.retrieveSales(
+          connection.accessToken,
+          loc.externalLocationId,
+          startDate,
+          endDate,
+        );
 
-      for (const batch of batches) {
-        const result = await ingestSalesBatch(batch, {
-          companyId: connection.companyId,
-          connectionId,
-          connectedByUserId: connection.connectedByUserId,
-        });
-        totalRows += result.rowsIngested;
-        totalSkipped += result.rowsSkipped;
+        for (const batch of batches) {
+          const result = await ingestSalesBatch(batch, {
+            companyId: connection.companyId,
+            connectionId,
+            connectedByUserId: connection.connectedByUserId,
+          });
+          totalRows += result.rowsIngested;
+          totalSkipped += result.rowsSkipped;
+        }
+      } catch (locErr: any) {
+        // A single location failure must not abort the whole sync.
+        // If the token was revoked, re-throw so the outer catch marks the
+        // connection as disconnected.
+        if (locErr instanceof SquareTokenRevokedError) throw locErr;
+        const safeMsg = sanitizeErrorMessage(locErr.message);
+        console.error(`[POS Incremental] Location ${loc.externalLocationId} failed: ${safeMsg}`);
+        locationErrors.push(`${loc.externalLocationId}: ${safeMsg}`);
       }
     }
 
+    // Mark completed even when some locations failed; only mark "failed" when
+    // every mapped location errored and nothing was ingested.
+    const allFailed = locationErrors.length > 0 && totalRows === 0 && mappedLocations.length > 0 && locationErrors.length === mappedLocations.length;
     await storage.updatePosSyncJob(job.id, {
-      status: "completed",
+      status: allFailed ? "failed" : "completed",
       completedAt: new Date(),
       rowsIngested: totalRows,
       rowsSkipped: totalSkipped,
+      errorMessage: locationErrors.length > 0 ? locationErrors.join("; ") : undefined,
     });
 
     await storage.updatePosConnection(connectionId, connection.companyId, {
       lastSyncedAt: new Date(),
     });
 
-    return { rowsIngested: totalRows };
+    const firstError = locationErrors.length > 0 ? locationErrors[0] : undefined;
+    return { rowsIngested: totalRows, error: firstError };
   } catch (err: any) {
     console.error("[POS Incremental] Error:", err.message);
 

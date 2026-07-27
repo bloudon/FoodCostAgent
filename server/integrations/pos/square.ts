@@ -6,6 +6,22 @@ import type { PosConnector, PosLocation, PosCatalogVariation, PosSalesBatch, Pos
 
 const SQUARE_ENV = process.env.SQUARE_ENVIRONMENT || "sandbox";
 
+/**
+ * Pinned Square API version.  All requests include this as the `Square-Version`
+ * header.  Bump this intentionally after reviewing the Square changelog at
+ * https://developer.squareup.com/changelog/apis
+ */
+export const SQUARE_API_VERSION = "2024-02-28";
+
+/** Status codes that are safe to retry (transient). */
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503]);
+
+/** Maximum number of attempts (1 original + 3 retries). */
+const MAX_ATTEMPTS = 4;
+
+/** Base delay for exponential backoff (1 s). */
+const BASE_DELAY_MS = 1_000;
+
 function baseUrl(): string {
   return SQUARE_ENV === "production"
     ? "https://connect.squareup.com"
@@ -27,27 +43,84 @@ export class SquareTokenRevokedError extends Error {
   }
 }
 
+/**
+ * Compute the delay before the next retry attempt.
+ *
+ * @param attempt   Zero-based attempt index (0 = first failure).
+ * @param retryAfterMs  Value from the `Retry-After` header in ms, if present.
+ * @returns Milliseconds to wait before retrying.
+ */
+function retryDelayMs(attempt: number, retryAfterMs?: number): number {
+  if (retryAfterMs != null) return retryAfterMs;
+  // Exponential base-2: 1s, 2s, 4s, 8s + ±25% jitter
+  const base = BASE_DELAY_MS * Math.pow(2, attempt);
+  const jitter = base * 0.25 * (Math.random() * 2 - 1); // ±25%
+  return Math.max(0, Math.round(base + jitter));
+}
+
+/**
+ * Injectable sleep function — overridable in unit tests to skip real delays.
+ * Import and replace `squareSleepFn` before the test if you need instant retries.
+ *
+ * @example
+ * import { squareTestHooks } from "./square";
+ * squareTestHooks.sleep = async () => {};
+ */
+export const squareTestHooks = {
+  sleep: (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+/**
+ * Fetch a Square API endpoint with automatic retry on transient errors.
+ *
+ * - 401   → throws SquareTokenRevokedError immediately (no retry)
+ * - 429   → retries, honouring the Retry-After header when present
+ * - 5xx   → retries with exponential backoff + jitter
+ * - other → throws immediately
+ */
 async function squareFetch(
   path: string,
   accessToken: string,
   options: RequestInit = {},
 ): Promise<any> {
   const url = `${baseUrl()}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Square-Version": "2024-01-17",
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
+  let lastError: Error = new Error("Square API request failed");
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Square-Version": SQUARE_API_VERSION,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+
+    if (res.ok) return res.json();
+
     const body = await res.text();
-    if (res.status === 401) throw new SquareTokenRevokedError(body);
-    throw new Error(`Square API ${res.status}: ${body}`);
+
+    // Non-retryable errors
+    if (!RETRYABLE_STATUS_CODES.has(res.status)) {
+      if (res.status === 401) throw new SquareTokenRevokedError(body);
+      throw new Error(`Square API ${res.status}: ${body}`);
+    }
+
+    // Retryable — record and sleep before next attempt
+    lastError = new Error(`Square API ${res.status}: ${body}`);
+
+    if (attempt < MAX_ATTEMPTS - 1) {
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const retryAfterMs = retryAfterHeader != null
+        ? Math.ceil(parseFloat(retryAfterHeader) * 1_000)
+        : undefined;
+      const delay = retryDelayMs(attempt, retryAfterMs);
+      await squareTestHooks.sleep(delay);
+    }
   }
-  return res.json();
+
+  throw lastError;
 }
 
 /** Build the Square OAuth authorization URL */
@@ -86,7 +159,7 @@ export const squarePosConnector: PosConnector = {
 
     const res = await fetch(`${baseUrl()}/oauth2/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Square-Version": "2024-01-17" },
+      headers: { "Content-Type": "application/json", "Square-Version": SQUARE_API_VERSION },
       body: JSON.stringify({
         client_id: appId,
         client_secret: appSecret,
@@ -311,7 +384,7 @@ export const squarePosConnector: PosConnector = {
 
     const res = await fetch(`${baseUrl()}/oauth2/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Square-Version": "2024-01-17" },
+      headers: { "Content-Type": "application/json", "Square-Version": SQUARE_API_VERSION },
       body: JSON.stringify({
         client_id: appId,
         client_secret: appSecret,
