@@ -260,3 +260,206 @@ describe("TheoreticalUsageService — modifier revenue roll-up", () => {
     expect(capturedRuns[0].totalMenuItemsSold).toBe(2);
   });
 });
+
+// ── Negative-qty refund tests ─────────────────────────────────────────────────
+//
+//  A catalog-backed modifier refund is represented as a sales row with a
+//  negative qtySold and a negative netSales value.
+//
+//  Design decision (asserted below):
+//    - totalRevenue DOES include refund rows (negative netSales reduces the
+//      denominator, keeping food-cost % correct after a refund).
+//    - totalTheoreticalCost does NOT include refund rows (the ingredient cost
+//      loop skips rows where qtySold <= 0, which is correct: the kitchen did
+//      not produce additional food for a refund).
+//
+//  The asymmetry — revenue reduced, cost not — is intentional: the refund
+//  removes the sale from the revenue denominator without pretending a negative
+//  amount of food was consumed.
+
+describe("TheoreticalUsageService — negative-qty modifier refund behaviour", () => {
+  let storageMock: any;
+  let capturedRuns: any[];
+
+  // ── Scenario ────────────────────────────────────────────────────────────────
+  //
+  //  Pizza sold once:           qtySold=+1  netSales=+$12.00
+  //  Cheese modifier sold once: qtySold=+1  netSales=+$1.50
+  //  Cheese modifier refunded:  qtySold=-1  netSales=-$1.50
+  //
+  //  Expected after roll-up:
+  //    totalRevenue        = $12.00 + $1.50 + (-$1.50) = $12.00  (net)
+  //    totalTheoreticalCost = $4.00  (flour only — refund row skipped for cost)
+  //    food-cost %          ≈ 33.3 %  (same as pizza-only scenario)
+
+  const PIZZA_SALES_NEG = makeSalesRow({ menuItemId: "item-pizza", netSales: 12.0, qtySold: 1 });
+  const CHEESE_SALE_POS = makeSalesRow({ menuItemId: "item-cheese", netSales: 1.5, qtySold: 1 });
+  const CHEESE_SALE_NEG = makeSalesRow({ menuItemId: "item-cheese", netSales: -1.5, qtySold: -1 });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    capturedRuns = [];
+
+    const mod = await import("../storage");
+    storageMock = (mod as any).storage;
+
+    let lastCreatedRun: any = null;
+    storageMock.createTheoreticalUsageRun.mockImplementation(async (input: any) => {
+      const run = { id: "run-ref", ...input };
+      lastCreatedRun = run;
+      capturedRuns.push(run);
+      return run;
+    });
+
+    storageMock.updateTheoreticalUsageRun.mockImplementation(
+      async (_runId: string, _companyId: string, updates: any) => ({
+        ...lastCreatedRun,
+        ...updates,
+      }),
+    );
+
+    storageMock.createTheoreticalUsageLines.mockResolvedValue([]);
+    storageMock.getCompany.mockResolvedValue(COMPANY);
+
+    storageMock.getMenuItem.mockImplementation(async (id: string) => {
+      if (id === "item-pizza") return PIZZA_MENU_ITEM;
+      if (id === "item-cheese") return CHEESE_MENU_ITEM;
+      return null;
+    });
+
+    storageMock.getRecipe.mockImplementation(async (id: string) => {
+      if (id === "recipe-pizza") return PIZZA_RECIPE;
+      if (id === "recipe-cheese") return CHEESE_RECIPE;
+      return null;
+    });
+
+    storageMock.getRecipeComponents.mockImplementation(async (recipeId: string) => {
+      if (recipeId === "recipe-pizza") return [PIZZA_COMPONENT];
+      if (recipeId === "recipe-cheese") return [CHEESE_COMPONENT];
+      return [];
+    });
+
+    storageMock.getInventoryItem.mockImplementation(async (id: string) => {
+      if (id === "inv-flour") return INV_FLOUR;
+      if (id === "inv-cheese") return INV_CHEESE;
+      return null;
+    });
+
+    storageMock.getUnitConversions.mockResolvedValue([]);
+    storageMock.getUnit.mockResolvedValue(null);
+  });
+
+  it("totalRevenue equals the net of positive and negative modifier rows", async () => {
+    const svc = new TheoreticalUsageService();
+    await svc.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-refund",
+      salesData: [PIZZA_SALES_NEG, CHEESE_SALE_POS, CHEESE_SALE_NEG],
+    });
+
+    expect(capturedRuns).toHaveLength(1);
+    // $12.00 + $1.50 + (-$1.50) = $12.00 net
+    expect(capturedRuns[0].totalRevenue).toBeCloseTo(12.0);
+  });
+
+  it("refund row with negative netSales reduces totalRevenue below the positive-only total", async () => {
+    const svc = new TheoreticalUsageService();
+
+    // Without refund row
+    await svc.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-no-refund",
+      salesData: [PIZZA_SALES_NEG, CHEESE_SALE_POS],
+    });
+    const revenueWithoutRefund = capturedRuns[0].totalRevenue; // $13.50
+
+    capturedRuns = [];
+
+    // With refund row
+    await svc.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-with-refund",
+      salesData: [PIZZA_SALES_NEG, CHEESE_SALE_POS, CHEESE_SALE_NEG],
+    });
+    const revenueWithRefund = capturedRuns[0].totalRevenue; // $12.00
+
+    expect(revenueWithRefund).toBeLessThan(revenueWithoutRefund);
+    expect(revenueWithRefund).toBeCloseTo(12.0);
+    expect(revenueWithoutRefund).toBeCloseTo(13.5);
+  });
+
+  it("refund row does NOT add ingredient cost (skipped because qtySold <= 0)", async () => {
+    const svc = new TheoreticalUsageService();
+
+    const result = await svc.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-refund-cost",
+      salesData: [PIZZA_SALES_NEG, CHEESE_SALE_POS, CHEESE_SALE_NEG],
+    });
+
+    // Cost = flour ($4, from pizza) + cheese ($2, from positive cheese sale only)
+    // Refund row is skipped — no negative cost applied.
+    // total = $6.00
+    expect(result.totalTheoreticalCost).toBeCloseTo(6.0);
+  });
+
+  it("documents the known asymmetry: refund cancels revenue but not cost, raising FC%", async () => {
+    // Design decision: the service accumulates ingredient cost only for rows where
+    // qtySold > 0 (line 74 in theoreticalUsage.ts).  A refund row (qtySold = -1)
+    // reduces totalRevenue (via the unconditional netSales reduce, lines 50-53) but
+    // does NOT subtract from totalTheoreticalCost.  This means selling a modifier
+    // and then fully refunding it leaves its ingredient cost in the denominator while
+    // removing its revenue — raising the reported food-cost %.
+    //
+    // Scenario:
+    //   Pizza only (base):             revenue $12, cost $4  →  FC% ≈ 33.3 %
+    //   Pizza + cheese sold + refunded: revenue $12, cost $6  →  FC% ≈ 50.0 %
+    //     ($6 = flour $4 + cheese $2 from the positive sale; refund skipped for cost)
+
+    // ── With positive modifier sale then full refund ───────────────────────────
+    const svc = new TheoreticalUsageService();
+    const withRefund = await svc.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-fc-refund",
+      salesData: [PIZZA_SALES_NEG, CHEESE_SALE_POS, CHEESE_SALE_NEG],
+    });
+
+    // ── Base item only (modifier never sold) ──────────────────────────────────
+    capturedRuns = [];
+    const svc2 = new TheoreticalUsageService();
+    const baseOnly = await svc2.calculateTheoreticalUsage({
+      companyId: "co-1",
+      storeId: "store-1",
+      salesDate: new Date("2024-01-20"),
+      sourceBatchId: "batch-fc-base",
+      salesData: [PIZZA_SALES_NEG],
+    });
+
+    // Revenue nets to $12 in both cases
+    expect(withRefund.totalRevenue).toBeCloseTo(12.0);
+    expect(baseOnly.totalRevenue).toBeCloseTo(12.0);
+
+    // Cost is higher in the refund scenario — the positive cheese sale's cost was
+    // accumulated and the refund row did not subtract it.
+    expect(withRefund.totalTheoreticalCost).toBeCloseTo(6.0); // flour $4 + cheese $2
+    expect(baseOnly.totalTheoreticalCost).toBeCloseTo(4.0);   // flour $4 only
+
+    const fcPctWithRefund = (withRefund.totalTheoreticalCost / withRefund.totalRevenue) * 100;
+    const fcPctBaseOnly = (baseOnly.totalTheoreticalCost / baseOnly.totalRevenue) * 100;
+
+    // Asymmetry: FC% is higher when a modifier was sold-then-refunded vs never sold
+    expect(fcPctWithRefund).toBeGreaterThan(fcPctBaseOnly);
+    expect(fcPctWithRefund).toBeCloseTo(50.0, 1); // $6 / $12
+    expect(fcPctBaseOnly).toBeCloseTo(33.3, 1);   // $4 / $12
+  });
+});
