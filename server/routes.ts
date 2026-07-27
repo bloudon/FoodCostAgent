@@ -772,6 +772,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Admin: Stuck POS Sync Jobs ──────────────────────────────────────────────
 
+  // GET /api/admin/pos-sync-jobs/stuck/count — lightweight count for badge polling
+  app.get("/api/admin/pos-sync-jobs/stuck/count", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    if (user?.role !== "global_admin") return res.status(403).json({ error: "Global admin only" });
+    try {
+      const jobs = await storage.getStuckPosSyncJobs(30);
+      return res.json({ count: jobs.length });
+    } catch (err) {
+      console.error("GET /api/admin/pos-sync-jobs/stuck/count error:", err);
+      return res.status(500).json({ error: "Failed to fetch stuck job count" });
+    }
+  });
+
   // GET /api/admin/pos-sync-jobs/stuck — list running jobs older than 30 min
   app.get("/api/admin/pos-sync-jobs/stuck", requireAuth, async (req, res) => {
     const user = (req as any).user;

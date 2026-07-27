@@ -14,6 +14,14 @@ export function GlobalAdminHeader() {
     enabled: !!selectedCompanyId,
   });
 
+  const { data: stuckCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/pos-sync-jobs/stuck/count"],
+    refetchInterval: 5 * 60 * 1000, // refresh every 5 minutes
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const stuckCount = stuckCountData?.count ?? 0;
+
   const handleBackToCompanies = () => {
     localStorage.removeItem("selectedCompanyId");
     setLocation("/companies");
@@ -65,11 +73,16 @@ export function GlobalAdminHeader() {
           variant="ghost"
           size="sm"
           onClick={() => setLocation("/admin/pos-sync-jobs")}
-          className="gap-1.5"
+          className="gap-1.5 relative"
           data-testid="button-admin-pos-sync-jobs"
         >
           <AlertTriangle className="h-4 w-4" />
           <span className="hidden sm:inline">Stuck Syncs</span>
+          {stuckCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground leading-none">
+              {stuckCount}
+            </span>
+          )}
         </Button>
         <Button
           variant="ghost"
