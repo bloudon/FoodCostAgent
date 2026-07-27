@@ -1520,3 +1520,235 @@ describe("runTimezoneAwareIncrementalSyncs — zero connections in 4 AM window",
     expect(mockStorage.updatePosSyncJob).not.toHaveBeenCalled();
   });
 });
+
+// ── Tests: double-fault — updatePosSyncJob itself throws inside the catch block ─
+
+/**
+ * Proves the safety net added in task #605: if storage.updatePosSyncJob throws
+ * while the error-handler catch block is trying to mark the job "failed", the
+ * outer scheduler (runTimezoneAwareIncrementalSyncs / runAllIncrementalSyncs)
+ * must still resolve — it must NOT re-throw the secondary error.
+ *
+ * Scenario:
+ *   1. retrieveSales throws a generic Error   → runIncrementalSync enters its catch block
+ *   2. updatePosSyncJob also throws           → double-fault
+ *   3. runIncrementalSync must return normally (not throw)
+ *   4. The scheduler must also resolve        (outer try/catch logs, doesn't crash)
+ */
+describe("runIncrementalSync — double-fault: updatePosSyncJob throws inside the catch block", () => {
+  const DF_CONN = {
+    id: "df-conn",
+    companyId: "co-df",
+    status: "active",
+    accessToken: "access-token-df",
+    refreshToken: null,
+    connectedByUserId: "user-df",
+    merchantId: "merchant-df",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const JOB_DF = { id: "job-df", status: "running" };
+
+  const LOC_DF = {
+    externalLocationId: "loc-df",
+    storeId: "store-df",
+    externalTimezone: "America/Chicago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("runIncrementalSync resolves (does not throw) when updatePosSyncJob rejects inside the catch block", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(DF_CONN);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_DF]);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_DF });
+
+    // Primary failure: retrieveSales throws
+    mockSquare.retrieveSales.mockRejectedValue(new Error("DB connection lost during sync"));
+
+    // Secondary failure (double-fault): the job-update inside catch also throws
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB connection dropped — cannot update job"));
+
+    // Must resolve, not throw
+    await expect(runIncrementalSync("df-conn")).resolves.toBeDefined();
+  });
+
+  it("runIncrementalSync returns the primary error message even when the job-update fails", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(DF_CONN);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_DF]);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_DF });
+
+    // Use SquareTokenRevokedError so it re-throws to the outer catch (not silently
+    // absorbed by the per-location inner catch) — this is the true double-fault path.
+    mockSquare.retrieveSales.mockRejectedValue(new SquareTokenRevokedError("unauthorized"));
+
+    // Double-fault: updatePosSyncJob also throws inside the outer catch block
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB connection dropped — cannot update job"));
+
+    const result = await runIncrementalSync("df-conn");
+
+    // The primary (SquareTokenRevokedError) message must be surfaced, NOT the
+    // secondary updatePosSyncJob error — proves safeMsg is captured before the
+    // double-fault try/catch so the secondary throw cannot overwrite it.
+    expect(result.error).toMatch(/Square API 401/i);
+    expect(result.rowsIngested).toBe(0);
+  });
+
+  it("runTimezoneAwareIncrementalSyncs resolves without throwing when both retrieveSales and updatePosSyncJob fail", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN]);
+
+    // Window-check pass
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_DF])  // window check
+      .mockResolvedValueOnce([LOC_DF]); // sync pass
+
+    mockStorage.getPosConnectionById.mockResolvedValue(DF_CONN);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_DF });
+
+    // Primary failure
+    mockSquare.retrieveSales.mockRejectedValue(new Error("DB connection lost during sync"));
+
+    // Double-fault: job update inside catch also throws
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB connection dropped — cannot update job"));
+
+    // The scheduler must resolve cleanly — it logs but does not rethrow
+    await expect(
+      runTimezoneAwareIncrementalSyncs({ getLocalHour: () => 4, utcHour: 9 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("runAllIncrementalSyncs resolves without throwing when both retrieveSales and updatePosSyncJob fail", async () => {
+    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN]);
+    mockStorage.getPosConnectionById.mockResolvedValue(DF_CONN);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_DF]);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_DF });
+
+    // Primary failure
+    mockSquare.retrieveSales.mockRejectedValue(new Error("DB connection lost during sync"));
+
+    // Double-fault: job update inside catch also throws
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB connection dropped — cannot update job"));
+
+    // The nightly scheduler must also resolve cleanly
+    await expect(runAllIncrementalSyncs()).resolves.toBeUndefined();
+  });
+
+  it("runAllIncrementalSyncs continues processing conn-b even when conn-a hits a double-fault", async () => {
+    const DF_CONN_B = {
+      ...DF_CONN,
+      id: "df-conn-b",
+      companyId: "co-df-b",
+      merchantId: "merchant-df-b",
+    };
+    const JOB_DF_B = { id: "job-df-b", status: "running" };
+    const LOC_DF_B = { externalLocationId: "loc-df-b", storeId: "store-df-b", externalTimezone: "America/Denver" };
+
+    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN, DF_CONN_B]);
+
+    // conn-a: lock acquired, retrieveSales throws, then updatePosSyncJob also throws
+    mockStorage.getPosConnectionById
+      .mockResolvedValueOnce(DF_CONN)
+      .mockResolvedValueOnce(DF_CONN_B);
+
+    mockStorage.tryAcquirePosSyncLock
+      .mockResolvedValueOnce({ acquired: true, job: JOB_DF })
+      .mockResolvedValueOnce({ acquired: true, job: JOB_DF_B });
+
+    mockStorage.getPosLocationMappings
+      .mockResolvedValueOnce([LOC_DF])    // conn-a sync
+      .mockResolvedValueOnce([LOC_DF_B]); // conn-b sync
+
+    // conn-a: primary failure
+    mockSquare.retrieveSales
+      .mockRejectedValueOnce(new Error("DB connection lost"))  // conn-a fails
+      .mockResolvedValueOnce([                                  // conn-b succeeds
+        { locationId: "loc-df-b", businessDate: "2026-07-27", lines: [{}] },
+      ]);
+
+    mockIngest.mockResolvedValueOnce({ rowsIngested: 6, rowsSkipped: 0, adhocItems: [] });
+
+    // conn-a: double-fault on updatePosSyncJob; conn-b: resolves normally
+    mockStorage.updatePosSyncJob
+      .mockRejectedValueOnce(new Error("DB dropped"))  // conn-a double-fault
+      .mockResolvedValueOnce(undefined);               // conn-b success
+
+    await runAllIncrementalSyncs();
+
+    // conn-b's job must be marked completed with the correct row count
+    const jobBCompleted = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === JOB_DF_B.id && args[1]?.status === "completed",
+    );
+    expect(jobBCompleted).toBeDefined();
+    expect(jobBCompleted![1].rowsIngested).toBe(6);
+
+    // Both connections were attempted despite the double-fault on conn-a
+    expect(mockStorage.getPosConnectionById).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── Tests: runBackfill double-fault ──────────────────────────────────────────
+
+describe("runBackfill — double-fault: updatePosSyncJob throws inside the catch block", () => {
+  const BF_CONN = {
+    id: "bf-conn",
+    companyId: "co-bf",
+    status: "active",
+    accessToken: "access-token-bf",
+    refreshToken: null,
+    connectedByUserId: "user-bf",
+    merchantId: "merchant-bf",
+    tokenRefreshedAt: new Date(),
+    tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+  };
+
+  const JOB_BF = { id: "job-bf", status: "running" };
+
+  const LOC_BF = {
+    externalLocationId: "loc-bf",
+    storeId: "store-bf",
+    externalTimezone: "America/Chicago",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("runBackfill resolves (does not throw) when updatePosSyncJob rejects inside the catch block", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(BF_CONN);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_BF]);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_BF });
+
+    // Primary failure
+    mockSquare.retrieveSales.mockRejectedValue(new Error("DB connection lost during backfill"));
+
+    // Double-fault: job update in catch also throws
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB dropped — cannot update job"));
+
+    // Must resolve, not throw
+    await expect(runBackfill("bf-conn", 30)).resolves.toBeDefined();
+  });
+
+  it("runBackfill returns the primary error message even when the job-update fails", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(BF_CONN);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_BF]);
+    mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_BF });
+
+    // Use SquareTokenRevokedError so it re-throws to the outer catch — true double-fault path.
+    mockSquare.retrieveSales.mockRejectedValue(new SquareTokenRevokedError("unauthorized"));
+
+    // Double-fault: updatePosSyncJob also throws inside the outer catch block
+    mockStorage.updatePosSyncJob.mockRejectedValue(new Error("DB dropped — cannot update job"));
+
+    const result = await runBackfill("bf-conn", 30);
+
+    // The primary (SquareTokenRevokedError) message must be surfaced, not the
+    // secondary updatePosSyncJob error.
+    expect(result.error).toMatch(/Square API 401/i);
+    expect(result.rowsIngested).toBe(0);
+  });
+});

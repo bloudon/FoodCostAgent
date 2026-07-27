@@ -224,13 +224,23 @@ export async function runBackfill(
     }
 
     const safeMsg = sanitizeErrorMessage(err.message);
-    await storage.updatePosSyncJob(job.id, {
-      status: "failed",
-      completedAt: new Date(),
-      errorMessage: safeMsg,
-      rowsIngested: totalRows,
-      rowsSkipped: totalSkipped,
-    });
+    try {
+      await storage.updatePosSyncJob(job.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: safeMsg,
+        rowsIngested: totalRows,
+        rowsSkipped: totalSkipped,
+      });
+    } catch (updateErr: any) {
+      // Double-fault: the DB call to mark the job as failed itself failed.
+      // Log prominently so the stuck job can be found, but do NOT re-throw —
+      // the outer scheduler loop must continue processing other connections.
+      console.error(
+        `[POS Backfill] Failed to mark job ${job.id} as failed — ` +
+        `job may be stuck in running state: ${updateErr.message}`,
+      );
+    }
     return { rowsIngested: totalRows, error: safeMsg };
   }
 }
@@ -393,13 +403,23 @@ export async function runIncrementalSync(
     }
 
     const safeMsg = sanitizeErrorMessage(err.message);
-    await storage.updatePosSyncJob(job.id, {
-      status: "failed",
-      completedAt: new Date(),
-      errorMessage: safeMsg,
-      rowsIngested: totalRows,
-      rowsSkipped: totalSkipped,
-    });
+    try {
+      await storage.updatePosSyncJob(job.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: safeMsg,
+        rowsIngested: totalRows,
+        rowsSkipped: totalSkipped,
+      });
+    } catch (updateErr: any) {
+      // Double-fault: the DB call to mark the job as failed itself failed.
+      // Log prominently so the stuck job can be found, but do NOT re-throw —
+      // the outer scheduler loop must continue processing other connections.
+      console.error(
+        `[POS Incremental] Failed to mark job ${job.id} as failed — ` +
+        `job may be stuck in running state: ${updateErr.message}`,
+      );
+    }
     return { rowsIngested: totalRows, error: safeMsg };
   }
 }
