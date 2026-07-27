@@ -6,7 +6,7 @@ import type { Express } from "express";
 import crypto from "crypto";
 import { storage } from "../storage";
 import { requireAuth } from "../auth";
-import { squarePosConnector, buildSquareAuthUrl } from "../integrations/pos/square";
+import { squarePosConnector, buildSquareAuthUrl, buildSquareRedirectUri } from "../integrations/pos/square";
 import { runBackfill, runIncrementalSync } from "../services/posSyncJobs";
 
 // ── HMAC-signed state helpers (mirrors QB OAuth pattern) ─────────────────────
@@ -81,12 +81,7 @@ export function registerPosRoutes(app: Express): void {
       };
       const state = createSignedState(stateData);
 
-      const replitDomain = process.env.REPLIT_DEV_DOMAIN;
-      const redirectUri = replitDomain
-        ? `https://${replitDomain}/api/pos/oauth/square/callback`
-        : `http://localhost:5000/api/pos/oauth/square/callback`;
-
-      const authUrl = buildSquareAuthUrl(state, redirectUri);
+      const authUrl = buildSquareAuthUrl(state, buildSquareRedirectUri());
       res.redirect(authUrl);
     } catch (error: any) {
       console.error("[POS] Square connect error:", error.message);
@@ -119,12 +114,7 @@ export function registerPosRoutes(app: Express): void {
       };
       const state = createSignedState(stateData);
 
-      const replitDomain = process.env.REPLIT_DEV_DOMAIN;
-      const redirectUri = replitDomain
-        ? `https://${replitDomain}/api/pos/oauth/square/callback`
-        : `http://localhost:5000/api/pos/oauth/square/callback`;
-
-      const authUrl = buildSquareAuthUrl(state, redirectUri);
+      const authUrl = buildSquareAuthUrl(state, buildSquareRedirectUri());
       res.redirect(authUrl);
     } catch (error: any) {
       console.error("[POS] Square reconnect error:", error.message);

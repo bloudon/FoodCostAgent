@@ -116,6 +116,14 @@ See **`STANDARDS.md`** for the full ratified standards. Key rules for quick refe
 - **Replit Deploy button**: Do not use. Do not suggest. Do not mention unless the user explicitly brings it up.
 - The Expo mobile app points to `app.fnbcostpro.com` — any hosting change would require updating the mobile app config too.
 
+## Required environment variables on the VPS
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `APP_BASE_URL` | `https://app.fnbcostpro.com` | Base URL used to build the Square OAuth callback URI. **Required for Square OAuth to work in production.** Without it the server falls back to `REPLIT_DEV_DOMAIN` (absent on VPS) and then `localhost:5000`, both of which break the flow. |
+
+**Square developer dashboard**: register `https://app.fnbcostpro.com/api/pos/oauth/square/callback` as an OAuth redirect URL. This is a one-time manual step in the Square Developer Portal → your application → OAuth settings.
+
 ---
 
 # System Architecture

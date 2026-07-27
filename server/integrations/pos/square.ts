@@ -123,6 +123,25 @@ async function squareFetch(
   throw lastError;
 }
 
+/**
+ * Build the canonical Square OAuth callback URI.
+ *
+ * Priority order:
+ *   1. `APP_BASE_URL` env var — set this on any non-Replit deployment
+ *      (e.g. `https://app.fnbcostpro.com`).  Must match a URI registered
+ *      in the Square developer dashboard.
+ *   2. `REPLIT_DEV_DOMAIN` — automatic in Replit preview sessions.
+ *   3. `http://localhost:5000` — local development fallback.
+ */
+export function buildSquareRedirectUri(): string {
+  const appBase = process.env.APP_BASE_URL;
+  if (appBase) return `${appBase.replace(/\/$/, "")}/api/pos/oauth/square/callback`;
+  const replitDomain = process.env.REPLIT_DEV_DOMAIN;
+  return replitDomain
+    ? `https://${replitDomain}/api/pos/oauth/square/callback`
+    : `http://localhost:5000/api/pos/oauth/square/callback`;
+}
+
 /** Build the Square OAuth authorization URL */
 export function buildSquareAuthUrl(
   state: string,
@@ -152,10 +171,7 @@ export const squarePosConnector: PosConnector = {
       throw new Error("SQUARE_APP_ID and SQUARE_APP_SECRET must be set");
     }
 
-    const replitDomain = process.env.REPLIT_DEV_DOMAIN;
-    const redirectUri = replitDomain
-      ? `https://${replitDomain}/api/pos/oauth/square/callback`
-      : `http://localhost:5000/api/pos/oauth/square/callback`;
+    const redirectUri = buildSquareRedirectUri();
 
     const res = await fetch(`${baseUrl()}/oauth2/token`, {
       method: "POST",
