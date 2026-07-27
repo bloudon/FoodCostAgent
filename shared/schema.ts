@@ -968,10 +968,16 @@ export const dailyMenuItemSales = pgTable("daily_menu_item_sales", {
   qtySold: real("qty_sold").notNull(),
   netSales: real("net_sales").notNull().default(0), // Total revenue (price * qty)
   sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
+  // POS-specific idempotency fields (nullable for CSV-sourced rows)
+  connectionId: varchar("connection_id"),       // POS connection that produced this row
+  externalOrderId: text("external_order_id"),   // POS system order ID (e.g. Square order UUID)
+  externalLineItemId: text("external_line_item_id"), // POS line item UID (unique within an order)
 }, (table) => ({
-  // Idempotency: one aggregate row per company/store/menuItem/date/daypart/batch
+  // Idempotency for CSV uploads: one aggregate row per company/store/menuItem/date/daypart/batch
   uniqueSaleAggregate: unique().on(table.companyId, table.storeId, table.menuItemId, table.salesDate, table.daypartId, table.sourceBatchId),
   companyStoreDateIdx: index("daily_sales_company_store_date_idx").on(table.companyId, table.storeId, table.salesDate),
+  // POS idempotency: partial unique index on (connectionId, externalOrderId, externalLineItemId)
+  // WHERE those columns are not null — enforced via startup migration CREATE UNIQUE INDEX.
 }));
 
 export const insertDailyMenuItemSalesSchema = createInsertSchema(dailyMenuItemSales).omit({ id: true });

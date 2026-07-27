@@ -181,8 +181,10 @@ export const squarePosConnector: PosConnector = {
     startDate: string,
     endDate: string,
   ): Promise<PosSalesBatch[]> {
-    // Business date filtering: use closed_at range covering the full local day window.
-    // Square uses RFC 3339 timestamps — pad with time bounds to cover a full business day.
+    // Filter by updated_at (not closed_at) so that orders updated by a refund after their
+    // original close date re-appear in the rolling window.  The business date is always
+    // derived from closed_at so sales land on the correct date regardless of when the
+    // refund was applied.
     const batchesByDate = new Map<string, PosSalesLine[]>();
     let cursor: string | undefined;
 
@@ -193,13 +195,13 @@ export const squarePosConnector: PosConnector = {
           filter: {
             state_filter: { states: ["COMPLETED"] },
             date_time_filter: {
-              closed_at: {
+              updated_at: {
                 start_at: `${startDate}T00:00:00Z`,
                 end_at: `${endDate}T23:59:59Z`,
               },
             },
           },
-          sort: { sort_field: "CLOSED_AT", sort_order: "ASC" },
+          sort: { sort_field: "UPDATED_AT", sort_order: "ASC" },
         },
         limit: 500,
       };
@@ -212,7 +214,6 @@ export const squarePosConnector: PosConnector = {
 
       const orders: any[] = data.orders || [];
       for (const order of orders) {
-        if (!order.line_items) continue;
         const closedAt: string = order.closed_at || order.updated_at || "";
         // Derive business date from closedAt timestamp (date portion only)
         const businessDate = closedAt.slice(0, 10);
@@ -221,6 +222,7 @@ export const squarePosConnector: PosConnector = {
           batchesByDate.set(businessDate, []);
         }
 
+        // ── Forward sale lines ──────────────────────────────────────────────
         for (const line of order.line_items || []) {
           const lineId = line.uid || line.id || `${order.id}-line`;
           const qty = parseFloat(line.quantity || "0");
@@ -250,6 +252,45 @@ export const squarePosConnector: PosConnector = {
           };
 
           batchesByDate.get(businessDate)!.push(salesLine);
+        }
+
+        // ── Return (refund) line items ──────────────────────────────────────
+        // Each entry in order.returns can have multiple return_line_items.
+        // Lines with a catalog_object_id are itemized refunds — emit them as
+        // negative-quantity rows so that re-ingesting the order correctly
+        // reverses the mapped item's theoretical usage.
+        // Lines WITHOUT a catalog_object_id are custom-dollar refunds; the
+        // ingestion service will detect the missing variationId and skip them.
+        for (const ret of order.returns || []) {
+          for (const rline of ret.return_line_items || []) {
+            const rlineId = rline.uid || `${order.id}-return-${ret.uid ?? ""}`;
+            const rqty = -Math.abs(parseFloat(rline.quantity || "0")); // always negative
+            const rGross = -(rline.gross_return_money?.amount ?? 0);
+            const rNet   = -(rline.total_money?.amount ?? 0);
+
+            const returnLine: PosSalesLine = {
+              provider: "square",
+              externalLocationId: locationId,
+              externalOrderId: order.id,
+              externalLineId: rlineId,
+              businessDate,
+              closedAt,
+              externalItemId: rline.catalog_object_id,
+              externalVariationId: rline.catalog_object_id, // null for custom-dollar refunds
+              externalModifierIds: [],
+              itemName: rline.name || "Return",
+              variationName: rline.variation_name,
+              quantity: rqty,
+              grossSalesMoney: rGross,
+              discountsMoney: 0,
+              netSalesMoney: rNet,
+              voidedQuantity: undefined,
+              refundedQuantity: Math.abs(rqty),
+              rawPayloadReference: JSON.stringify({ orderId: order.id, returnLineUid: rline.uid }),
+            };
+
+            batchesByDate.get(businessDate)!.push(returnLine);
+          }
         }
       }
 

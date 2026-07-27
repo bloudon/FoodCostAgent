@@ -533,6 +533,14 @@ export interface IStorage {
 
   // TFC - Daily Menu Item Sales
   createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]>;
+  /**
+   * Upsert POS sales rows using the partial unique index on
+   * (connectionId, externalOrderId, externalLineItemId).
+   * Re-ingesting the same order line updates qtySold / netSales / sourceBatchId
+   * instead of inserting a duplicate.  Rows without those three fields set
+   * (e.g. rows emitted without valid POS IDs) fall through to a plain INSERT.
+   */
+  upsertPosDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]>;
   getDailyMenuItemSales(companyId: string, storeId: string, startDate: Date, endDate: Date): Promise<DailyMenuItemSales[]>;
 
   // TFC - Recipe Cost Snapshots
@@ -4022,6 +4030,31 @@ export class DatabaseStorage implements IStorage {
   async createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]> {
     if (sales.length === 0) return [];
     return db.insert(dailyMenuItemSales).values(sales).returning();
+  }
+
+  async upsertPosDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]> {
+    if (sales.length === 0) return [];
+    // ON CONFLICT on the partial unique index (connection_id, external_order_id,
+    // external_line_item_id) WHERE all three are NOT NULL — re-ingesting the same
+    // Square order line overwrites qtySold/netSales/sourceBatchId rather than
+    // inserting a duplicate.  Rows without the three POS fields fall through to
+    // a plain INSERT (the partial index WHERE condition is false → no conflict).
+    return db
+      .insert(dailyMenuItemSales)
+      .values(sales)
+      .onConflictDoUpdate({
+        target: [
+          dailyMenuItemSales.connectionId,
+          dailyMenuItemSales.externalOrderId,
+          dailyMenuItemSales.externalLineItemId,
+        ],
+        set: {
+          qtySold: sql`excluded.qty_sold`,
+          netSales: sql`excluded.net_sales`,
+          sourceBatchId: sql`excluded.source_batch_id`,
+        },
+      })
+      .returning();
   }
 
   async getDailyMenuItemSales(

@@ -932,6 +932,19 @@ async function runStartupMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS pos_sync_jobs_one_running_per_connection
         ON pos_sync_jobs (connection_id) WHERE status = 'running'
     `);
+    // Task #543: POS idempotency — order/line tracking columns on daily_menu_item_sales
+    await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS connection_id varchar`);
+    await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS external_order_id text`);
+    await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS external_line_item_id text`);
+    // Partial unique index — one row per (connection, order, line item); partial so CSV rows
+    // (NULL fields) are never blocked by this constraint.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS dmis_pos_line_uniq
+        ON daily_menu_item_sales (connection_id, external_order_id, external_line_item_id)
+        WHERE connection_id IS NOT NULL
+          AND external_order_id IS NOT NULL
+          AND external_line_item_id IS NOT NULL
+    `);
 
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {

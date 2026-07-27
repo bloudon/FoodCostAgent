@@ -2,6 +2,20 @@
  * POS Ingestion Service
  * Normalizes PosSalesBatch data and writes it into daily_menu_item_sales,
  * then triggers TheoreticalUsageService — identical pipeline to CSV upload.
+ *
+ * Idempotency model (Square):
+ *   One daily_menu_item_sales row is written per (connectionId, orderId, lineItemId).
+ *   The partial unique index dmis_pos_line_uniq on those three columns makes every
+ *   subsequent sync an upsert — re-ingesting the same order overwrites the existing
+ *   row rather than inserting a duplicate.
+ *
+ *   Return (refund) lines arrive with negative quantities and are stored as-is, so
+ *   the net qty_sold across all rows for a (menuItem, date, store) naturally reflects
+ *   the post-refund total.
+ *
+ *   Custom-dollar refunds have no catalog_object_id → no variationId mapping → they
+ *   are detected by the negative-qty + no-variationId condition and counted in
+ *   rowsSkipped with a log note.
  */
 import { storage } from "../storage";
 import type { PosSalesBatch } from "../integrations/pos/types";
@@ -15,11 +29,9 @@ export interface IngestBatchOptions {
 
 /**
  * Ingest one PosSalesBatch (one location × one business date).
- * Idempotent: duplicate lines are skipped via the unique constraint on
- * (company_id, store_id, menu_item_id, sales_date, daypart_id, source_batch_id).
  *
- * Returns { rowsIngested, rowsSkipped } where rowsSkipped counts positive-quantity
- * lines that had no posItemMapping so callers can surface a warning to users.
+ * Returns { rowsIngested, rowsSkipped } where rowsSkipped counts lines that
+ * could not be mapped to a menu item — including custom-dollar refunds.
  */
 export async function ingestSalesBatch(
   batch: PosSalesBatch,
@@ -57,58 +69,64 @@ export async function ingestSalesBatch(
     status: "processing",
   });
 
-  // 4. Group lines by (variationId) and sum quantities + revenue; count unmapped lines
-  const aggregated = new Map<
-    string,
-    { menuItemId: string; qtySold: number; netSales: number }
-  >();
-
+  // 4. Build per-line records — no aggregation.
+  //    Each POS order line (including refund/return lines) becomes its own row,
+  //    identified by (connectionId, externalOrderId, externalLineItemId).
+  const salesRecords: Parameters<typeof storage.upsertPosDailyMenuItemSales>[0] = [];
   let rowsSkipped = 0;
 
   for (const line of batch.lines) {
-    if (line.quantity <= 0) continue;
+    // Skip zero-quantity lines (fully voided before close)
+    if (line.quantity === 0) continue;
 
-    // Find mapping by variation ID
+    // Custom-dollar refund: negative qty with no variationId → cannot attribute
+    // to a menu item.  Count in rowsSkipped and emit a note to the job log.
+    if (line.quantity < 0 && !line.externalVariationId) {
+      rowsSkipped++;
+      console.log(
+        `[POS Ingest] Skipping custom-dollar refund on order ${line.externalOrderId}` +
+        ` (no catalog_object_id — cannot map to menu item)`,
+      );
+      continue;
+    }
+
+    // Positive qty with no variationId → unrecognised item type, skip
     const mapping = line.externalVariationId
       ? byVariation.get(line.externalVariationId)
       : undefined;
 
     if (!mapping?.menuItemId) {
-      rowsSkipped++; // unmapped item — count it and skip
+      rowsSkipped++;
       continue;
     }
 
-    const key = mapping.menuItemId;
-    if (!aggregated.has(key)) {
-      aggregated.set(key, { menuItemId: mapping.menuItemId, qtySold: 0, netSales: 0 });
-    }
-    const agg = aggregated.get(key)!;
-    agg.qtySold += line.quantity;
-    // Convert from cents to dollars
-    agg.netSales += line.netSalesMoney / 100;
+    salesRecords.push({
+      companyId,
+      storeId,
+      menuItemId: mapping.menuItemId,
+      salesDate,
+      daypartId: null,
+      qtySold: line.quantity,          // negative for refund lines
+      netSales: line.netSalesMoney / 100, // negative for refund lines
+      sourceBatchId: batchRecord.id,
+      connectionId,
+      externalOrderId: line.externalOrderId,
+      externalLineItemId: line.externalLineId,
+    });
   }
 
-  if (aggregated.size === 0) {
+  if (salesRecords.length === 0) {
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "completed", new Date(), 0);
     return { rowsIngested: 0, rowsSkipped };
   }
 
-  // 5. Write daily_menu_item_sales rows
-  const salesRecords = await storage.createDailyMenuItemSales(
-    Array.from(aggregated.values()).map((a) => ({
-      companyId,
-      storeId,
-      menuItemId: a.menuItemId,
-      salesDate,
-      daypartId: null,
-      qtySold: a.qtySold,
-      netSales: a.netSales,
-      sourceBatchId: batchRecord.id,
-    })),
-  );
+  // 5. Upsert — ON CONFLICT (connectionId, externalOrderId, externalLineItemId) DO UPDATE
+  //    Re-ingesting the same order overwrites the existing row; refund rows get their own
+  //    unique (orderId, return-line-uid) key so they never collide with the original sale.
+  const upserted = await storage.upsertPosDailyMenuItemSales(salesRecords);
 
   // 6. Trigger theoretical usage calculation
-  if (salesRecords.length > 0) {
+  if (upserted.length > 0) {
     const tuService = new TheoreticalUsageService();
     try {
       await tuService.calculateTheoreticalUsage({
@@ -116,14 +134,14 @@ export async function ingestSalesBatch(
         storeId,
         salesDate,
         sourceBatchId: batchRecord.id,
-        salesData: salesRecords,
+        salesData: upserted,
       });
       await storage.updateSalesUploadBatchStatus(
         batchRecord.id,
         companyId,
         "completed",
         new Date(),
-        salesRecords.length,
+        upserted.length,
       );
     } catch (err: any) {
       console.error("[POS Ingest] TFC calculation error:", err.message);
@@ -133,7 +151,7 @@ export async function ingestSalesBatch(
         "failed",
         new Date(),
         0,
-        salesRecords.length,
+        upserted.length,
         err.message,
       );
     }
@@ -141,5 +159,5 @@ export async function ingestSalesBatch(
     await storage.updateSalesUploadBatchStatus(batchRecord.id, companyId, "failed");
   }
 
-  return { rowsIngested: salesRecords.length, rowsSkipped };
+  return { rowsIngested: upserted.length, rowsSkipped };
 }
