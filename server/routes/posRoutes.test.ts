@@ -456,6 +456,48 @@ describe("OAuth callback route — connection upsert behaviour", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
+  // ── (d) Cross-company attack — state.companyId !== connection.companyId ──────
+
+  it("(d) cross-company reconnect token is rejected with connection_not_found and no DB writes", async () => {
+    // The attacker embeds company-evil's companyId in the state token but passes
+    // company-abc's connectionId. The callback must detect the mismatch at the
+    // companyId check (line 171 of posRoutes.ts) and bail out before any write.
+    const existingConnection = {
+      id: "conn-existing",
+      companyId: "company-abc",       // legitimate owner
+      merchantId: "merchant-ABC",
+      accessToken: "old-tok",
+      refreshToken: "old-refresh",
+      tokenExpiresAt: new Date(),
+      status: "active",
+    };
+    mockGetById.mockResolvedValue(existingConnection);
+
+    // State is signed with a *different* companyId — the cross-company payload
+    const attackerState = createSignedState({
+      companyId: "company-evil",      // attacker's company, not the connection's
+      userId: "user-attacker",
+      connectionId: "conn-existing",  // victim's connection id
+      nonce: `nonce-${Math.random()}`,
+      timestamp: Date.now(),
+    });
+
+    const addr = server.address() as { port: number };
+
+    const res = await request(`http://127.0.0.1:${addr.port}`)
+      .get("/api/pos/oauth/square/callback")
+      .query({ code: "any-code", state: attackerState })
+      .redirects(0);
+
+    // Must redirect to connection_not_found — not a 200 or 500
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/pos_error=connection_not_found/);
+
+    // Neither create nor update must ever be called
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   // ── Edge: missing code/state params redirect without any DB writes ─────────
 
   it("missing code param redirects to error without any DB writes", async () => {
