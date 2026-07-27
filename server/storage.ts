@@ -659,7 +659,7 @@ export interface IStorage {
 
   // POS Location Mappings
   getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]>;
-  upsertPosLocationMappings(connectionId: string, companyId: string, mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null }>): Promise<PosLocationMapping[]>;
+  upsertPosLocationMappings(connectionId: string, companyId: string, mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null; externalTimezone?: string | null }>): Promise<PosLocationMapping[]>;
 
   // POS Item Mappings
   getPosItemMappings(connectionId: string): Promise<PosItemMapping[]>;
@@ -4920,7 +4920,7 @@ export class DatabaseStorage implements IStorage {
   async upsertPosLocationMappings(
     connectionId: string,
     companyId: string,
-    mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null }>,
+    mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null; externalTimezone?: string | null }>,
   ): Promise<PosLocationMapping[]> {
     const results: PosLocationMapping[] = [];
     for (const m of mappings) {
@@ -4934,9 +4934,18 @@ export class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (existing.length > 0) {
+        // Always update name and storeId; only overwrite timezone when caller provides one
+        // (the user-facing mapping form doesn't send timezone, so we preserve the seeded value).
+        const updatePayload: Partial<typeof posLocationMappings.$inferSelect> = {
+          storeId: m.storeId,
+          externalLocationName: m.externalLocationName,
+        };
+        if (m.externalTimezone !== undefined) {
+          updatePayload.externalTimezone = m.externalTimezone;
+        }
         const [updated] = await db
           .update(posLocationMappings)
-          .set({ storeId: m.storeId, externalLocationName: m.externalLocationName })
+          .set(updatePayload)
           .where(eq(posLocationMappings.id, existing[0].id))
           .returning();
         results.push(updated);

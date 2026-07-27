@@ -2035,6 +2035,9 @@ export const posLocationMappings = pgTable("pos_location_mappings", {
   externalLocationId: text("external_location_id").notNull(),
   externalLocationName: text("external_location_name").notNull(),
   storeId: varchar("store_id"), // nullable until mapped
+  // IANA timezone string reported by the POS provider (e.g. "America/Los_Angeles").
+  // Used by the hourly nightly-sync scheduler to fire each connection at 4 AM local time.
+  externalTimezone: text("external_timezone"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   uniqueConnLocation: unique().on(table.connectionId, table.externalLocationId),

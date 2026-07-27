@@ -221,6 +221,7 @@ export function registerPosRoutes(app: Express): void {
               externalLocationId: loc.externalId,
               externalLocationName: loc.name,
               storeId: null,
+              externalTimezone: loc.timezone ?? null,
             })),
           );
         }

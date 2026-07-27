@@ -892,6 +892,8 @@ async function runStartupMigrations() {
         created_at timestamp NOT NULL DEFAULT now()
       )
     `);
+    // Task #544: store the IANA timezone reported by the POS for each location
+    await db.execute(sql`ALTER TABLE pos_location_mappings ADD COLUMN IF NOT EXISTS external_timezone text`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS pos_item_mappings (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1078,9 +1080,9 @@ async function runStartupMigrations() {
     log(`🔄 QuickBooks token refresh job scheduled (every ${QB_REFRESH_INTERVAL_MS / 1000 / 60} minutes ±${QB_JITTER_MS / 1000 / 60}min)`);
   }
 
-  // POS nightly incremental sync — runs at 4 AM UTC (after most restaurants close)
-  const POS_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const { runAllIncrementalSyncs, refreshAllPosTokens } = await import("./services/posSyncJobs");
+  // POS nightly incremental sync — hourly pass; fires each connection at 4 AM local time
+  const POS_SYNC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  const { runTimezoneAwareIncrementalSyncs, refreshAllPosTokens } = await import("./services/posSyncJobs");
 
   // POS token refresh job — runs daily to stay inside Square's 7-day renewal window.
   // Runs independently of the nightly sync so disconnected accounts still get refreshed.
@@ -1108,21 +1110,31 @@ async function runStartupMigrations() {
     `🔄 POS token refresh job scheduled (every ${POS_TOKEN_REFRESH_INTERVAL_MS / 1000 / 60 / 60}h ` +
     `±${POS_TOKEN_REFRESH_JITTER_MS / 1000 / 60}min, first run in 5min)`,
   );
-  const schedulePosSync = () => {
+  // Hourly pass fires at the top of each hour.  The handler checks which
+  // connections have a location in the 4 AM window (timezone-aware) and
+  // runs incremental sync only for those.  Connections with no timezone
+  // data fall back to UTC 4 AM so they always get a nightly sync.
+  const scheduleHourlyPosSync = () => {
     const now = new Date();
-    const nextRun = new Date(now);
-    nextRun.setUTCHours(4, 0, 0, 0); // 4:00 AM UTC
-    if (nextRun <= now) nextRun.setUTCDate(nextRun.getUTCDate() + 1);
-    const msUntilFirst = nextRun.getTime() - now.getTime();
+    const nextHour = new Date(now);
+    nextHour.setUTCMinutes(0, 0, 0);
+    nextHour.setUTCHours(nextHour.getUTCHours() + 1); // top of next UTC hour
+    const msUntilFirst = nextHour.getTime() - now.getTime();
+
     setTimeout(() => {
-      runAllIncrementalSyncs().catch((e: any) => console.error("❌ POS nightly sync error:", e));
+      runTimezoneAwareIncrementalSyncs().catch((e: any) =>
+        console.error("❌ POS hourly sync error:", e),
+      );
       setInterval(() => {
-        runAllIncrementalSyncs().catch((e: any) => console.error("❌ POS nightly sync error:", e));
+        runTimezoneAwareIncrementalSyncs().catch((e: any) =>
+          console.error("❌ POS hourly sync error:", e),
+        );
       }, POS_SYNC_INTERVAL_MS);
     }, msUntilFirst);
-    log(`🔄 POS nightly sync scheduled (first run at ${nextRun.toISOString()})`);
+
+    log(`🔄 POS hourly sync pass scheduled (first run at ${nextHour.toISOString()})`);
   };
-  schedulePosSync();
+  scheduleHourlyPosSync();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

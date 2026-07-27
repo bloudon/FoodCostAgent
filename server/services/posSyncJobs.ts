@@ -344,3 +344,89 @@ export async function runAllIncrementalSyncs(): Promise<void> {
 
   console.log("[POS Nightly] Incremental sync complete");
 }
+
+/**
+ * Return the current local hour (0–23) in the given IANA timezone.
+ * Returns -1 if the timezone string is invalid or unsupported.
+ */
+function localHour(timezone: string): number {
+  try {
+    const hourStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    }).format(new Date());
+    // Intl can return "24" for midnight in some locales — normalise
+    const h = parseInt(hourStr, 10);
+    return isNaN(h) ? -1 : h % 24;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Returns true when the supplied IANA timezone string is currently in the
+ * 4:00–4:59 AM window (i.e. local hour === 4).
+ */
+export function isInNightlySyncWindow(timezone: string): boolean {
+  return localHour(timezone) === 4;
+}
+
+/**
+ * Hourly pass — called every hour by the scheduler.
+ * Syncs only the connections whose mapped Square locations' local time is
+ * currently 4:00–4:59 AM.  Connections with no timezone data fall back to
+ * the UTC hour so they fire at 4 AM UTC (safe default).
+ */
+export async function runTimezoneAwareIncrementalSyncs(): Promise<void> {
+  const connections = await storage.getAllActivePosConnections();
+  const utcHour = new Date().getUTCHours();
+
+  const eligible: typeof connections = [];
+
+  for (const conn of connections) {
+    const locationMappings = await storage.getPosLocationMappings(conn.id);
+
+    // Collect distinct timezones from mapped locations
+    const timezones = [
+      ...new Set(locationMappings.map((m) => m.externalTimezone).filter(Boolean) as string[]),
+    ];
+
+    if (timezones.length === 0) {
+      // No timezone data — fall back to UTC 4 AM
+      if (utcHour === 4) {
+        eligible.push(conn);
+      }
+      continue;
+    }
+
+    // Eligible if ANY mapped location's local time is in the 4 AM window
+    const inWindow = timezones.some((tz) => isInNightlySyncWindow(tz));
+    if (inWindow) {
+      eligible.push(conn);
+    }
+  }
+
+  if (eligible.length === 0) {
+    console.log(`[POS Hourly] No connections in 4 AM window at UTC ${utcHour}:xx — skipping`);
+    return;
+  }
+
+  console.log(
+    `[POS Hourly] ${eligible.length} of ${connections.length} connection(s) in 4 AM window — syncing`,
+  );
+
+  for (const conn of eligible) {
+    try {
+      const result = await runIncrementalSync(conn.id);
+      console.log(
+        `[POS Hourly] Connection ${conn.id}: ${result.rowsIngested} rows ingested` +
+        `${result.error ? ` (error: ${result.error})` : ""}`,
+      );
+    } catch (err: any) {
+      console.error(`[POS Hourly] Unhandled error for connection ${conn.id}:`, err.message);
+    }
+  }
+
+  console.log("[POS Hourly] Timezone-aware sync pass complete");
+}
