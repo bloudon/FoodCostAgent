@@ -21,6 +21,7 @@ vi.mock("../storage", () => ({
     tryAcquirePosSyncLock: vi.fn(),
     updatePosSyncJob: vi.fn(),
     updatePosConnection: vi.fn(),
+    getAllActivePosConnections: vi.fn(),
   },
 }));
 
@@ -50,7 +51,7 @@ vi.mock("./posIngestion", () => ({
 
 // ── Imports (resolved after mocks are hoisted) ────────────────────────────────
 
-import { runIncrementalSync, runBackfill } from "./posSyncJobs";
+import { runIncrementalSync, runBackfill, refreshAllPosTokens } from "./posSyncJobs";
 import { storage } from "../storage";
 import { squarePosConnector, SquareTokenRevokedError } from "../integrations/pos/square";
 import { ingestSalesBatch } from "./posIngestion";
@@ -421,5 +422,140 @@ describe("runBackfill — SquareTokenRevokedError from retrieveSales", () => {
 
     // The [REDACTED] sentinel must be present in its place
     expect(storedError).toContain("[REDACTED]");
+  });
+});
+
+// ── Tests: refreshAllPosTokens — nightly token refresh loop ──────────────────
+
+/**
+ * Stale connection fixture reused across refreshAllPosTokens tests.
+ * tokenRefreshedAt > 7 days ago so the refresh guard fires.
+ */
+const STALE_CONN_A = {
+  id: "conn-stale-a",
+  companyId: "co-refresh",
+  status: "active",
+  accessToken: "old-access-token-a",
+  refreshToken: "refresh-token-a",
+  connectedByUserId: "user-refresh",
+  merchantId: "merchant-a",
+  tokenRefreshedAt: new Date(Date.now() - 8 * 86_400_000), // 8 days ago → stale
+  tokenExpiresAt: new Date(Date.now() + 20 * 86_400_000),
+};
+
+const STALE_CONN_B = {
+  id: "conn-stale-b",
+  companyId: "co-refresh",
+  status: "active",
+  accessToken: "old-access-token-b",
+  refreshToken: "refresh-token-b",
+  connectedByUserId: "user-refresh",
+  merchantId: "merchant-b",
+  tokenRefreshedAt: new Date(Date.now() - 9 * 86_400_000), // 9 days ago → stale
+  tokenExpiresAt: new Date(Date.now() + 18 * 86_400_000),
+};
+
+const REFRESHED_CREDS = {
+  accessToken: "new-access-token",
+  tokenExpiresAt: new Date(Date.now() + 30 * 86_400_000),
+};
+
+describe("refreshAllPosTokens — nightly token refresh loop", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+  });
+
+  it("(a) revoked connection is marked disconnected and healthy connection is updated — both processed", async () => {
+    // conn-stale-a has revoked token; conn-stale-b is healthy
+    mockStorage.getAllActivePosConnections.mockResolvedValue([STALE_CONN_A, STALE_CONN_B]);
+
+    mockSquare.refreshCredentials
+      .mockRejectedValueOnce(new SquareTokenRevokedError("token revoked"))  // conn-a revoked
+      .mockResolvedValueOnce(REFRESHED_CREDS);                              // conn-b healthy
+
+    const result = await refreshAllPosTokens();
+
+    // Both connections were attempted
+    expect(mockSquare.refreshCredentials).toHaveBeenCalledTimes(2);
+
+    // Revoked connection must be marked disconnected
+    const disconnectCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "conn-stale-a" && args[2]?.status === "disconnected",
+    );
+    expect(disconnectCall).toBeDefined();
+
+    // Healthy connection must be updated with new token (not marked disconnected)
+    const updateCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "conn-stale-b" && args[2]?.accessToken === REFRESHED_CREDS.accessToken,
+    );
+    expect(updateCall).toBeDefined();
+
+    // Healthy connection must NOT be marked disconnected
+    const falseDisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "conn-stale-b" && args[2]?.status === "disconnected",
+    );
+    expect(falseDisconnect).toBeUndefined();
+  });
+
+  it("(b) non-auth refresh error does NOT mark the connection disconnected — loop continues to next connection", async () => {
+    // conn-stale-a has a transient network error; conn-stale-b succeeds
+    mockStorage.getAllActivePosConnections.mockResolvedValue([STALE_CONN_A, STALE_CONN_B]);
+
+    mockSquare.refreshCredentials
+      .mockRejectedValueOnce(new Error("Network timeout"))  // transient error — not revocation
+      .mockResolvedValueOnce(REFRESHED_CREDS);             // conn-b succeeds
+
+    await refreshAllPosTokens();
+
+    // Both connections were attempted — loop was not aborted by the first error
+    expect(mockSquare.refreshCredentials).toHaveBeenCalledTimes(2);
+
+    // conn-a must NOT be marked disconnected (non-auth error)
+    const falseDisconnect = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "conn-stale-a" && args[2]?.status === "disconnected",
+    );
+    expect(falseDisconnect).toBeUndefined();
+
+    // conn-b was still processed and its token was updated
+    const updateCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[0] === "conn-stale-b" && args[2]?.accessToken === REFRESHED_CREDS.accessToken,
+    );
+    expect(updateCall).toBeDefined();
+  });
+
+  it("(c) success and failed counts are accurate across mixed outcomes", async () => {
+    // Three connections: one succeeds, one revoked, one non-auth error
+    const STALE_CONN_C = {
+      ...STALE_CONN_A,
+      id: "conn-stale-c",
+      refreshToken: "refresh-token-c",
+      accessToken: "old-access-token-c",
+    };
+
+    mockStorage.getAllActivePosConnections.mockResolvedValue([
+      STALE_CONN_A,   // will succeed
+      STALE_CONN_B,   // will be revoked
+      STALE_CONN_C,   // will hit non-auth error
+    ]);
+
+    mockSquare.refreshCredentials
+      .mockResolvedValueOnce(REFRESHED_CREDS)                               // conn-a: success
+      .mockRejectedValueOnce(new SquareTokenRevokedError("token revoked"))  // conn-b: revoked
+      .mockRejectedValueOnce(new Error("Internal Server Error"));           // conn-c: non-auth
+
+    const result = await refreshAllPosTokens();
+
+    // 1 success, 2 failures (revoked + non-auth both count as failed)
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(2);
+
+    // All three connections were attempted
+    expect(mockSquare.refreshCredentials).toHaveBeenCalledTimes(3);
   });
 });
