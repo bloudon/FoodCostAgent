@@ -18,6 +18,7 @@ interface CatalogVariation {
   externalVariationName: string;
   menuItemId: string | null;
   isMapped: boolean;
+  isModifier: boolean;
 }
 
 interface MenuItem {
@@ -131,7 +132,14 @@ export default function PosItemMapping() {
               <Card key={v.externalVariationId} className={mapped ? "border-green-200 dark:border-green-900" : ""}>
                 <CardContent className="flex items-center gap-3 py-3">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{v.externalItemName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-medium text-sm truncate">{v.externalItemName}</p>
+                      {v.isModifier && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+                          Modifier
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">{v.externalVariationName}</p>
                   </div>
                   <div className="w-60 shrink-0">

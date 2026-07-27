@@ -16,6 +16,8 @@ export interface PosCatalogVariation {
   itemName: string;
   variationName: string;
   priceMoney?: number; // in smallest currency unit
+  /** True when this entry comes from a Square MODIFIER_LIST rather than an ITEM variation */
+  isModifier?: boolean;
 }
 
 export interface PosSalesLine {

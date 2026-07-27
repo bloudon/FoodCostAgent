@@ -202,47 +202,87 @@ export const squarePosConnector: PosConnector = {
 
   async retrieveCatalog(accessToken: string): Promise<PosCatalogVariation[]> {
     const variations: PosCatalogVariation[] = [];
-    let cursor: string | undefined;
 
-    // First pass: collect ITEM_VARIATION objects and their parent ITEM names
-    const itemNames = new Map<string, string>(); // item ID → item name
-    const rawVariations: any[] = [];
+    // ── Pass 1: ITEM objects → item variations ───────────────────────────────
+    {
+      const rawVariations: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const body: any = {
+          object_types: ["ITEM"],
+          include_related_objects: false,
+        };
+        if (cursor) body.cursor = cursor;
 
-    do {
-      const body: any = {
-        object_types: ["ITEM"],
-        include_related_objects: false,
-      };
-      if (cursor) body.cursor = cursor;
+        const data = await squareFetch("/v2/catalog/search-catalog-objects", accessToken, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
 
-      const data = await squareFetch("/v2/catalog/search-catalog-objects", accessToken, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-
-      const objects: any[] = data.catalog_objects || [];
-      for (const obj of objects) {
-        if (obj.type === "ITEM" && obj.item_data) {
-          const itemName = obj.item_data.name || "Unknown Item";
-          itemNames.set(obj.id, itemName);
-          for (const v of obj.item_data.variations || []) {
-            rawVariations.push({ parentId: obj.id, parentName: itemName, variation: v });
+        const objects: any[] = data.catalog_objects || [];
+        for (const obj of objects) {
+          if (obj.type === "ITEM" && obj.item_data) {
+            const itemName = obj.item_data.name || "Unknown Item";
+            for (const v of obj.item_data.variations || []) {
+              rawVariations.push({ parentId: obj.id, parentName: itemName, variation: v });
+            }
           }
         }
-      }
-      cursor = data.cursor;
-    } while (cursor);
+        cursor = data.cursor;
+      } while (cursor);
 
-    for (const { parentId, parentName, variation } of rawVariations) {
-      const v = variation;
-      if (!v.item_variation_data) continue;
-      variations.push({
-        externalItemId: parentId,
-        externalVariationId: v.id,
-        itemName: parentName,
-        variationName: v.item_variation_data.name || "Regular",
-        priceMoney: v.item_variation_data.price_money?.amount,
-      });
+      for (const { parentId, parentName, variation } of rawVariations) {
+        const v = variation;
+        if (!v.item_variation_data) continue;
+        variations.push({
+          externalItemId: parentId,
+          externalVariationId: v.id,
+          itemName: parentName,
+          variationName: v.item_variation_data.name || "Regular",
+          priceMoney: v.item_variation_data.price_money?.amount,
+        });
+      }
+    }
+
+    // ── Pass 2: MODIFIER_LIST objects → individual modifier entries ──────────
+    // Square stores add-on modifiers in MODIFIER_LIST catalog objects.  Each
+    // modifier within the list gets its own PosCatalogVariation so operators
+    // can link it to an FnB menu item in the mapping UI.
+    //   externalItemId      = MODIFIER_LIST id  (the "set")
+    //   externalVariationId = modifier id       (the specific add-on)
+    {
+      let cursor: string | undefined;
+      do {
+        const body: any = {
+          object_types: ["MODIFIER_LIST"],
+          include_related_objects: false,
+        };
+        if (cursor) body.cursor = cursor;
+
+        const data = await squareFetch("/v2/catalog/search-catalog-objects", accessToken, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+
+        const objects: any[] = data.catalog_objects || [];
+        for (const obj of objects) {
+          if (obj.type === "MODIFIER_LIST" && obj.modifier_list_data) {
+            const listName = obj.modifier_list_data.name || "Modifier";
+            for (const mod of obj.modifier_list_data.modifiers || []) {
+              if (!mod.id) continue;
+              variations.push({
+                externalItemId: obj.id,
+                externalVariationId: mod.id,
+                itemName: listName,
+                variationName: mod.modifier_data?.name || "Modifier",
+                priceMoney: mod.modifier_data?.price_money?.amount,
+                isModifier: true,
+              });
+            }
+          }
+        }
+        cursor = data.cursor;
+      } while (cursor);
     }
 
     return variations;

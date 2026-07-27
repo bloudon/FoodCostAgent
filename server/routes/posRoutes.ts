@@ -355,6 +355,7 @@ export function registerPosRoutes(app: Express): void {
           externalVariationName: v.variationName,
           menuItemId: existing?.menuItemId ?? suggestMenuItemId(v.itemName, v.variationName),
           isMapped: !!existing?.menuItemId,
+          isModifier: v.isModifier ?? false,
         };
       });
 

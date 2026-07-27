@@ -378,3 +378,141 @@ describe("retrieveSales modifier handling", () => {
   });
 });
 
+// ── retrieveCatalog modifier support ─────────────────────────────────────────
+
+describe("retrieveCatalog MODIFIER_LIST support", () => {
+  it("returns PosCatalogVariation entries for each modifier in a MODIFIER_LIST object", async () => {
+    // First fetch call returns ITEM page (no items for simplicity), second returns MODIFIER_LIST page.
+    stubFetch(
+      // Pass 1: ITEM search — empty
+      makeResponse(200, { catalog_objects: [] }),
+      // Pass 2: MODIFIER_LIST search — one list with two modifiers
+      makeResponse(200, {
+        catalog_objects: [
+          {
+            id: "mod-list-seasonings",
+            type: "MODIFIER_LIST",
+            modifier_list_data: {
+              name: "Seasonings",
+              modifiers: [
+                {
+                  id: "mod-garlic-salt",
+                  modifier_data: { name: "Garlic Salt", price_money: { amount: 50 } },
+                },
+                {
+                  id: "mod-lemon-pepper",
+                  modifier_data: { name: "Lemon Pepper", price_money: { amount: 75 } },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    const catalog = await squarePosConnector.retrieveCatalog("tok-abc");
+
+    // Both modifiers should appear as PosCatalogVariation entries
+    expect(catalog).toHaveLength(2);
+
+    const garlic = catalog.find((v) => v.externalVariationId === "mod-garlic-salt");
+    expect(garlic).toBeDefined();
+    expect(garlic!.externalItemId).toBe("mod-list-seasonings"); // modifier set ID
+    expect(garlic!.itemName).toBe("Seasonings");
+    expect(garlic!.variationName).toBe("Garlic Salt");
+    expect(garlic!.priceMoney).toBe(50);
+    expect(garlic!.isModifier).toBe(true);
+
+    const lemon = catalog.find((v) => v.externalVariationId === "mod-lemon-pepper");
+    expect(lemon).toBeDefined();
+    expect(lemon!.isModifier).toBe(true);
+  });
+
+  it("returns ITEM variations alongside modifiers when both are present", async () => {
+    stubFetch(
+      // Pass 1: ITEM search — one item with one variation
+      makeResponse(200, {
+        catalog_objects: [
+          {
+            id: "item-burger",
+            type: "ITEM",
+            item_data: {
+              name: "Burger",
+              variations: [
+                {
+                  id: "var-burger-regular",
+                  item_variation_data: { name: "Regular", price_money: { amount: 1200 } },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      // Pass 2: MODIFIER_LIST search — one list with one modifier
+      makeResponse(200, {
+        catalog_objects: [
+          {
+            id: "mod-list-toppings",
+            type: "MODIFIER_LIST",
+            modifier_list_data: {
+              name: "Extra Toppings",
+              modifiers: [
+                {
+                  id: "mod-extra-cheese",
+                  modifier_data: { name: "Extra Cheese", price_money: { amount: 150 } },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    const catalog = await squarePosConnector.retrieveCatalog("tok-abc");
+
+    // One item variation + one modifier = 2 entries total
+    expect(catalog).toHaveLength(2);
+
+    const itemVar = catalog.find((v) => v.externalVariationId === "var-burger-regular");
+    expect(itemVar).toBeDefined();
+    expect(itemVar!.isModifier).toBeUndefined(); // item variations have no isModifier flag
+
+    const modVar = catalog.find((v) => v.externalVariationId === "mod-extra-cheese");
+    expect(modVar).toBeDefined();
+    expect(modVar!.externalItemId).toBe("mod-list-toppings");
+    expect(modVar!.isModifier).toBe(true);
+  });
+
+  it("excludes modifier entries when MODIFIER_LIST search returns an empty page", async () => {
+    stubFetch(
+      // Pass 1: ITEM search — one item variation
+      makeResponse(200, {
+        catalog_objects: [
+          {
+            id: "item-pizza",
+            type: "ITEM",
+            item_data: {
+              name: "Pizza",
+              variations: [
+                {
+                  id: "var-pizza-sm",
+                  item_variation_data: { name: "Small", price_money: { amount: 900 } },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      // Pass 2: MODIFIER_LIST search — empty (merchant has no modifiers)
+      makeResponse(200, { catalog_objects: [] }),
+    );
+
+    const catalog = await squarePosConnector.retrieveCatalog("tok-abc");
+
+    // Only the item variation — no modifier entries
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].externalVariationId).toBe("var-pizza-sm");
+    expect(catalog[0].isModifier).toBeUndefined();
+  });
+});
+
