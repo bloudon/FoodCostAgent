@@ -17216,6 +17216,12 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
           const totalSales = salesData.reduce((sum, sale) => sum + sale.netSales, 0);
 
+          // Compute refund volume for the significance flag shown on summary cards
+          const totalGrossSalesSummary = salesData.reduce((sum, sale) => sum + (sale.netSales > 0 ? sale.netSales : 0), 0);
+          const totalRefundNetSalesSummary = salesData.reduce((sum, sale) => sum + (sale.qtySold < 0 ? Math.abs(sale.netSales) : 0), 0);
+          const refundPct = totalGrossSalesSummary > 0 ? (totalRefundNetSalesSummary / totalGrossSalesSummary) * 100 : 0;
+          const hasHighRefunds = refundPct >= 2;
+
           // Get theoretical usage from stored runs
           const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
           
@@ -17300,6 +17306,8 @@ Return format: ["ingredient1", "ingredient2", ...]`;
             daySpan: Math.ceil(
               (new Date(currentCount.countDate).getTime() - new Date(previousCount.countDate).getTime()) / (1000 * 60 * 60 * 24)
             ),
+            refundPct,
+            hasHighRefunds,
           };
         })
       );
@@ -17518,6 +17526,34 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       // Calculate sales totals
       const totalItemsSold = salesData.reduce((sum, sale) => sum + sale.qtySold, 0);
       const totalNetSales = salesData.reduce((sum, sale) => sum + sale.netSales, 0);
+
+      // Compute refund-volume summary for the food-cost % inflation warning
+      const refundSaleRows = salesData.filter(sale => sale.qtySold < 0);
+      const grossSalesVariance = salesData.reduce((sum, sale) => sum + (sale.netSales > 0 ? sale.netSales : 0), 0);
+      const totalRefundNetSales = refundSaleRows.reduce((sum, sale) => sum + Math.abs(sale.netSales), 0);
+      const refundPctVariance = grossSalesVariance > 0 ? (totalRefundNetSales / grossSalesVariance) * 100 : 0;
+      const refundIsSignificant = refundPctVariance >= 2;
+
+      // Aggregate refund value per menu item for top-items list
+      const refundByMenuItemId = new Map<string, number>();
+      for (const sale of refundSaleRows) {
+        refundByMenuItemId.set(
+          sale.menuItemId,
+          (refundByMenuItemId.get(sale.menuItemId) || 0) + Math.abs(sale.netSales)
+        );
+      }
+      const topRefundMenuItemIds = Array.from(refundByMenuItemId.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([id]) => id);
+      const topRefundMenuItemRecords = await Promise.all(
+        topRefundMenuItemIds.map(id => storage.getMenuItem(id))
+      );
+      const topRefundedItems = topRefundMenuItemIds.map((id, i) => ({
+        menuItemId: id,
+        menuItemName: topRefundMenuItemRecords[i]?.name ?? 'Unknown Item',
+        refundNetSales: refundByMenuItemId.get(id) ?? 0,
+      }));
 
       // Get theoretical usage from stored runs (already converted to inventory item units)
       const theoreticalUsageMap = new Map<string, { qty: number; cost: number }>();
@@ -17821,6 +17857,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         salesSummary: {
           totalItemsSold,
           totalNetSales,
+        },
+        refundSummary: {
+          totalRefundNetSales,
+          totalGrossSales: grossSalesVariance,
+          refundPct: refundPctVariance,
+          isSignificant: refundIsSignificant,
+          topRefundedItems,
         },
       });
 

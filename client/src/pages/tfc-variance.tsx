@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -42,6 +42,8 @@ type VarianceSummary = {
   totalVarianceCost: number;
   totalVariancePercent: number;
   daySpan: number;
+  refundPct?: number;
+  hasHighRefunds?: boolean;
 };
 
 type VarianceItem = {
@@ -76,6 +78,18 @@ type LocationGroup = {
   varianceCost: number;
 };
 
+type RefundSummary = {
+  totalRefundNetSales: number;
+  totalGrossSales: number;
+  refundPct: number;
+  isSignificant: boolean;
+  topRefundedItems: Array<{
+    menuItemId: string;
+    menuItemName: string;
+    refundNetSales: number;
+  }>;
+};
+
 type VarianceResponse = {
   previousCountId: string;
   currentCountId: string;
@@ -101,6 +115,7 @@ type VarianceResponse = {
     totalItemsSold: number;
     totalNetSales: number;
   };
+  refundSummary?: RefundSummary;
 };
 
 import { TierGate } from "@/components/tier-gate";
@@ -118,6 +133,7 @@ function TfcVarianceContent() {
   const [selectedItemName, setSelectedItemName] = useState<string>("");
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState<string | null>(null);
+  const [refundWarningExpanded, setRefundWarningExpanded] = useState(false);
 
   const { sortField: vSortField, sortDirection: vSortDir, handleSort: vHandleSort } = useTableSort("varianceCost", "desc");
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
@@ -294,14 +310,27 @@ function TfcVarianceContent() {
                 data-testid={`card-summary-${summary.currentCountId}`}
               >
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center justify-between flex-wrap gap-2">
                     <span data-testid={`text-inventory-date-${summary.currentCountId}`}>
                       {formatDate(summary.inventoryDate)}
                     </span>
-                    <Badge variant={summary.totalVarianceCost > 0 ? "destructive" : "default"} data-testid={`badge-variance-${summary.currentCountId}`}>
-                      {summary.totalVariancePercent > 0 ? "+" : ""}
-                      {formatNumber(summary.totalVariancePercent, 1)}%
-                    </Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {summary.hasHighRefunds && (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 gap-1"
+                          data-testid={`badge-high-refunds-${summary.currentCountId}`}
+                          title={`Refund volume is ${formatNumber(summary.refundPct ?? 0, 1)}% of gross sales — may inflate food-cost %`}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          High Refunds
+                        </Badge>
+                      )}
+                      <Badge variant={summary.totalVarianceCost > 0 ? "destructive" : "default"} data-testid={`badge-variance-${summary.currentCountId}`}>
+                        {summary.totalVariancePercent > 0 ? "+" : ""}
+                        {formatNumber(summary.totalVariancePercent, 1)}%
+                      </Badge>
+                    </div>
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
                     {summary.daySpan} {summary.daySpan === 1 ? "day" : "days"}
@@ -460,21 +489,64 @@ function TfcVarianceContent() {
             </Card>
           </div>
 
-          {/* Refund note */}
-          <div
-            className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 mb-6 text-sm text-muted-foreground"
-            data-testid="note-refund-cost-behaviour"
-          >
-            <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-            <span>
-              <strong className="text-foreground">Refunded modifiers:</strong>{" "}
-              When a modifier is sold and then refunded on the same day, the refund reduces net
-              sales (the revenue denominator) but the ingredient cost of the original sale is
-              retained — the kitchen already consumed the food. On days with high refund
-              activity this may cause food-cost&nbsp;% to appear slightly elevated compared to a
-              period without refunds.
-            </span>
-          </div>
+          {/* Refund note — elevated to warning when refund volume is significant */}
+          {varianceData.refundSummary?.isSignificant ? (
+            <div
+              className="rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 mb-6 text-sm"
+              data-testid="note-refund-cost-behaviour"
+            >
+              <button
+                className="flex items-start gap-2 w-full text-left"
+                onClick={() => setRefundWarningExpanded(prev => !prev)}
+                aria-expanded={refundWarningExpanded}
+                data-testid="button-refund-warning-toggle"
+              >
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span className="flex-1 text-amber-800 dark:text-amber-200">
+                  <strong>Refund volume may be inflating food-cost %.</strong>{" "}
+                  Refunds in this period total{" "}
+                  <strong>{formatCurrency(varianceData.refundSummary.totalRefundNetSales)}</strong>
+                  {" "}({formatNumber(varianceData.refundSummary.refundPct, 1)}% of gross sales).
+                  Refunds reduce net-sales revenue but do not reverse ingredient cost, which raises food-cost&nbsp;%.
+                </span>
+                <span className="ml-auto pl-2 text-amber-600 dark:text-amber-400 shrink-0">
+                  {refundWarningExpanded
+                    ? <ChevronDown className="h-4 w-4" />
+                    : <ChevronRight className="h-4 w-4" />}
+                </span>
+              </button>
+              {refundWarningExpanded && varianceData.refundSummary.topRefundedItems.length > 0 && (
+                <div className="mt-3 ml-6 space-y-1" data-testid="list-top-refunded-items">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-2">
+                    Top refunded items this period
+                  </p>
+                  {varianceData.refundSummary.topRefundedItems.map((item) => (
+                    <div key={item.menuItemId} className="flex items-center justify-between text-sm text-amber-800 dark:text-amber-200">
+                      <span data-testid={`text-refund-item-name-${item.menuItemId}`}>{item.menuItemName}</span>
+                      <span className="font-mono font-medium ml-4" data-testid={`text-refund-item-amount-${item.menuItemId}`}>
+                        {formatCurrency(item.refundNetSales)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 mb-6 text-sm text-muted-foreground"
+              data-testid="note-refund-cost-behaviour"
+            >
+              <Info className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+              <span>
+                <strong className="text-foreground">Refunded modifiers:</strong>{" "}
+                When a modifier is sold and then refunded on the same day, the refund reduces net
+                sales (the revenue denominator) but the ingredient cost of the original sale is
+                retained — the kitchen already consumed the food. On days with high refund
+                activity this may cause food-cost&nbsp;% to appear slightly elevated compared to a
+                period without refunds.
+              </span>
+            </div>
+          )}
 
           {/* Variance Summary Section */}
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6">
