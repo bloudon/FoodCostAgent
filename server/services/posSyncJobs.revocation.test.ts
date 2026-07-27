@@ -425,6 +425,87 @@ describe("runBackfill — SquareTokenRevokedError from retrieveSales", () => {
   });
 });
 
+// ── Tests: runBackfill with preCreatedJob — lock-release on revocation ────────
+
+describe("runBackfill — preCreatedJob path: lock released when SquareTokenRevokedError fires before lock is acquired internally", () => {
+  const PRE_CREATED_JOB = { id: "job-pre-created", status: "running" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStorage.updatePosSyncJob.mockResolvedValue(undefined);
+    mockStorage.updatePosConnection.mockResolvedValue(undefined);
+    mockIngest.mockResolvedValue({ rowsIngested: 0, rowsSkipped: 0, adhocItems: [] });
+  });
+
+  it("marks the pre-created job 'failed' and connection 'disconnected' — no job row left running", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(ACTIVE_CONN_NO_REFRESH);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_ONE]);
+    mockSquare.retrieveSales.mockRejectedValue(new SquareTokenRevokedError("unauthorized"));
+
+    const result = await runBackfill("conn-revoke-test", 30, PRE_CREATED_JOB);
+
+    // Result signals failure
+    expect(result.rowsIngested).toBe(0);
+    expect(result.error).toBeDefined();
+
+    // The pre-created job row must be marked failed — no row left in 'running'
+    const failedCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === PRE_CREATED_JOB.id && args[1]?.status === "failed",
+    );
+    expect(failedCall).toBeDefined();
+
+    // No updatePosSyncJob call should leave status === 'running'
+    const runningCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[1]?.status === "running",
+    );
+    expect(runningCall).toBeUndefined();
+
+    // Connection must be marked disconnected
+    const disconnectCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[2]?.status === "disconnected",
+    );
+    expect(disconnectCall).toBeDefined();
+
+    // Lock acquisition was skipped — tryAcquirePosSyncLock must NOT have been called
+    expect(mockStorage.tryAcquirePosSyncLock).not.toHaveBeenCalled();
+  });
+
+  it("pre-created job retains partial rowsIngested when revocation fires on the second location", async () => {
+    mockStorage.getPosConnectionById.mockResolvedValue(ACTIVE_CONN_NO_REFRESH);
+    mockStorage.getPosLocationMappings.mockResolvedValue([LOC_ONE, LOC_TWO]);
+
+    // Location 1 succeeds; location 2 triggers revocation
+    mockSquare.retrieveSales
+      .mockResolvedValueOnce([{ locationId: "loc-east", businessDate: "2026-07-26", lines: [{}] }])
+      .mockRejectedValueOnce(new SquareTokenRevokedError("unauthorized"));
+
+    mockIngest.mockResolvedValue({ rowsIngested: 5, rowsSkipped: 0, adhocItems: [] });
+
+    const result = await runBackfill("conn-revoke-test", 30, PRE_CREATED_JOB);
+
+    // Partial rows from location 1 are preserved
+    expect(result.rowsIngested).toBe(5);
+
+    // The pre-created job must be marked failed with the partial row count
+    const failedCall = findCallWithShape(
+      mockStorage.updatePosSyncJob,
+      (args) => args[0] === PRE_CREATED_JOB.id && args[1]?.status === "failed",
+    );
+    expect(failedCall).toBeDefined();
+    expect(failedCall![1].rowsIngested).toBe(5);
+
+    // Connection must be marked disconnected
+    const disconnectCall = findCallWithShape(
+      mockStorage.updatePosConnection,
+      (args) => args[2]?.status === "disconnected",
+    );
+    expect(disconnectCall).toBeDefined();
+  });
+});
+
 // ── Tests: refreshAllPosTokens — nightly token refresh loop ──────────────────
 
 /**
