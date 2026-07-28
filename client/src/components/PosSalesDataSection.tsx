@@ -413,6 +413,11 @@ export function PosSalesDataSection({ selectedCompanyId, company, onDirtyChange 
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && (data as any).code === "retained_pos_connection") {
+          setSaveError(null);
+          setShowBlockedDialog(true);
+          return;
+        }
         setSaveError(
           (data as any).error ||
             `Could not save configuration before connecting (${res.status})`,
