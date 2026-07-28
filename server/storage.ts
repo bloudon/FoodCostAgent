@@ -720,6 +720,7 @@ export interface IStorage {
   deleteMenu(id: string, companyId: string): Promise<void>;
   transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined>;
   duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu>;
+  computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport>;
 
   // Menu Sections
   getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]>;
@@ -5338,14 +5339,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined> {
-    const valid = ["draft", "live", "retired"];
+    const valid = ["draft", "ready", "live", "retired"];
     if (!valid.includes(status)) throw new Error(`Invalid status: ${status}`);
     const current = await this.getMenu(id, companyId);
     if (!current) return undefined;
 
-    // Allowed transitions: draft→live, live→retired, retired→draft
+    // Allowed transitions: draft→ready, ready→live, ready→draft, live→retired, retired→draft
     const transitions: Record<string, string[]> = {
-      draft:   ["live"],
+      draft:   ["ready"],
+      ready:   ["live", "draft"],
       live:    ["retired"],
       retired: ["draft"],
     };
@@ -5410,6 +5412,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     return newMenu;
+  }
+
+  async computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport> {
+    const { computeMenuReadinessImpl } = await import("./services/menuReadinessService");
+    return computeMenuReadinessImpl(menuId, companyId);
   }
 
   // Menu Sections

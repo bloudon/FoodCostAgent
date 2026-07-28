@@ -12,6 +12,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../auth";
+import type { ReadinessReport } from "../services/menuReadinessService";
 
 export function registerMenuRoutes(app: Express): void {
 
@@ -104,16 +105,52 @@ export function registerMenuRoutes(app: Express): void {
     }
   });
 
-  /** Transition menu status: draft → live, live → retired, retired → draft. */
+  /** Readiness report for a menu — blockers + warnings per entry. */
+  app.get("/api/menus/:id/readiness", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company selected" });
+      // Confirm menu exists and belongs to this company
+      const menu = await storage.getMenu(req.params.id, companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      const report = await storage.computeMenuReadiness(req.params.id, companyId);
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * Transition menu status.
+   *
+   * Allowed transitions (enforced at storage layer):
+   *   draft → ready  (readiness check run first — 422 if blockers present)
+   *   ready → live   (readiness check run first — 422 if blockers present)
+   *   ready → draft
+   *   live  → retired
+   *   retired → draft
+   */
   app.post("/api/menus/:id/status", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const userId    = (req as any).user?.id;
       const { status } = req.body;
-      const allowed = ["draft", "live", "retired"];
+      const allowed = ["draft", "ready", "live", "retired"];
       if (!status || !allowed.includes(status)) {
         return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
       }
+
+      // Gate transitions that target a published state with a readiness check.
+      if (status === "ready" || status === "live") {
+        const report = await storage.computeMenuReadiness(req.params.id, companyId);
+        if (!report.canTransitionToReady) {
+          return res.status(422).json({
+            error: "Menu has blockers that must be resolved before it can be published",
+            report,
+          });
+        }
+      }
+
       const menu = await storage.transitionMenuStatus(req.params.id, companyId, status, userId);
       if (!menu) return res.status(404).json({ error: "Menu not found" });
       res.json(menu);

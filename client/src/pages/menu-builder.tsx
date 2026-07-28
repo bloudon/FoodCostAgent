@@ -40,10 +40,13 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
   Layers,
   Tag,
   TrendingUp,
   Hash,
+  ExternalLink,
 } from "lucide-react";
 import {
   DndContext,
@@ -96,7 +99,7 @@ interface MenuDetail {
   companyId: string;
   name: string;
   menuType: string | null;
-  status: "draft" | "live" | "retired";
+  status: "draft" | "ready" | "live" | "retired";
   description: string | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
@@ -104,6 +107,25 @@ interface MenuDetail {
   updatedAt: string;
   sections: MenuSection[];
   entries: MenuEntry[];
+}
+
+interface ReadinessIssue {
+  type: "blocker" | "warning";
+  code: string;
+  entryId: string;
+  menuItemId: string;
+  itemName: string;
+  message: string;
+  navigationHref: string;
+}
+
+interface ReadinessReport {
+  menuId: string;
+  totalEntries: number;
+  blockerCount: number;
+  warningCount: number;
+  canTransitionToReady: boolean;
+  issues: ReadinessIssue[];
 }
 
 interface CanonicalMenuItem {
@@ -126,8 +148,111 @@ interface CanonicalMenuItem {
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "live")    return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
+  if (status === "ready")   return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
   if (status === "retired") return <Badge variant="secondary">Retired</Badge>;
   return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-0">Draft</Badge>;
+}
+
+// ── Readiness panel ───────────────────────────────────────────────────────────
+
+function ReadinessPanel({ report, onMarkReady, isTransitioning }: {
+  report: ReadinessReport | undefined | null;
+  onMarkReady: () => void;
+  isTransitioning: boolean;
+}) {
+  const [open, setOpen] = useState(true);
+
+  if (!report) return null;
+
+  const blockers = report.issues.filter((i) => i.type === "blocker");
+  const warnings = report.issues.filter((i) => i.type === "warning");
+  const isClean  = report.blockerCount === 0;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors
+          ${isClean
+            ? "bg-green-50 hover:bg-green-100 dark:bg-green-950/30 dark:hover:bg-green-950/50 text-green-800 dark:text-green-300"
+            : "bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-800 dark:text-red-300"
+          }`}>
+          <div className="flex items-center gap-2">
+            {isClean
+              ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+              : <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+            }
+            <span>Readiness Check</span>
+            {report.blockerCount > 0 && (
+              <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border-0 text-xs font-normal ml-1">
+                {report.blockerCount} blocker{report.blockerCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {report.warningCount > 0 && (
+              <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0 text-xs font-normal">
+                {report.warningCount} warning{report.warningCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {isClean && report.warningCount === 0 && (
+              <span className="text-xs font-normal ml-1 opacity-70">All checks passed</span>
+            )}
+          </div>
+          {open ? <ChevronUp className="h-3.5 w-3.5 opacity-60" /> : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
+        </button>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div className="mt-2 rounded-md border overflow-hidden">
+          {blockers.length === 0 && warnings.length === 0 && (
+            <p className="px-3 py-2.5 text-sm text-muted-foreground">
+              No issues — this menu is ready to be marked as Ready.
+            </p>
+          )}
+
+          {blockers.length > 0 && (
+            <div className="divide-y">
+              {blockers.map((issue) => (
+                <div key={`${issue.entryId}-${issue.code}`} className="flex items-start gap-2.5 px-3 py-2.5 bg-red-50/50 dark:bg-red-950/20">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 text-red-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{issue.itemName}</p>
+                    <p className="text-xs text-muted-foreground">{issue.message}</p>
+                  </div>
+                  <a
+                    href={issue.navigationHref}
+                    className="shrink-0 text-xs text-primary flex items-center gap-0.5 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Fix <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {warnings.length > 0 && (
+            <div className="divide-y border-t">
+              {warnings.map((issue) => (
+                <div key={`${issue.entryId}-${issue.code}`} className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-50/50 dark:bg-amber-950/20">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 text-amber-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{issue.itemName}</p>
+                    <p className="text-xs text-muted-foreground">{issue.message}</p>
+                  </div>
+                  <a
+                    href={issue.navigationHref}
+                    className="shrink-0 text-xs text-primary flex items-center gap-0.5 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Review <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 function fmtPct(n: number) { return `${n.toFixed(1)}%`; }
@@ -779,6 +904,16 @@ export default function MenuBuilderPage() {
     },
   });
 
+  const { data: readinessReport, refetch: refetchReadiness } = useQuery<ReadinessReport>({
+    queryKey: [`/api/menus/${id}/readiness`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/menus/${id}/readiness`);
+      return res.json();
+    },
+    enabled: !!id && (menu?.status === "draft" || menu?.status === "ready"),
+    staleTime: 0,
+  });
+
   // Local section order for optimistic DnD.
   // Always re-sync from the server after any refetch so renames, creates, and
   // deletes are never masked by stale shadow state.
@@ -807,13 +942,36 @@ export default function MenuBuilderPage() {
   const transitionMutation = useMutation({
     mutationFn: async (status: string) => {
       const res = await apiRequest("POST", `/api/menus/${id}/status`, { status });
+      if (res.status === 422) {
+        const body = await res.json();
+        throw Object.assign(new Error(body.error ?? "Blockers must be resolved first"), { report: body.report, status: 422 });
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Status change failed");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/menus/${id}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/menus"] });
+      refetchReadiness();
     },
-    onError: (err: any) => toast({ title: err.message || "Status change failed", variant: "destructive" }),
+    onError: (err: any) => {
+      if (err.status === 422) {
+        // Refresh the readiness panel so the user sees current blockers
+        refetchReadiness();
+        toast({
+          title: `${err.message}`,
+          description: err.report?.blockerCount
+            ? `${err.report.blockerCount} blocker${err.report.blockerCount !== 1 ? "s" : ""} found — see the Readiness Check panel below.`
+            : undefined,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: err.message || "Status change failed", variant: "destructive" });
+      }
+    },
   });
 
   const duplicateMutation = useMutation({
@@ -991,13 +1149,34 @@ export default function MenuBuilderPage() {
           {menu.status === "draft" && (
             <Button
               size="sm"
-              onClick={() => transitionMutation.mutate("live")}
+              onClick={() => transitionMutation.mutate("ready")}
               disabled={transitionMutation.isPending}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              <BookOpen className="h-3.5 w-3.5 mr-1.5" />
-              Publish
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+              Mark as Ready
             </Button>
+          )}
+          {menu.status === "ready" && (
+            <>
+              <Button
+                size="sm"
+                onClick={() => transitionMutation.mutate("live")}
+                disabled={transitionMutation.isPending}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+                Publish
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => transitionMutation.mutate("draft")}
+                disabled={transitionMutation.isPending}
+              >
+                Revert to Draft
+              </Button>
+            </>
           )}
           {menu.status === "live" && (
             <Button
@@ -1127,6 +1306,15 @@ export default function MenuBuilderPage() {
         {/* Right: Entry list */}
         <main className="flex-1 overflow-y-auto flex flex-col min-w-0">
           <div className="p-4 space-y-3">
+            {/* Readiness check — shown for draft and ready menus */}
+            {(menu.status === "draft" || menu.status === "ready") && (
+              <ReadinessPanel
+                report={readinessReport}
+                onMarkReady={() => transitionMutation.mutate("ready")}
+                isTransitioning={transitionMutation.isPending}
+              />
+            )}
+
             {/* Financial summary */}
             <FinancialSummary entries={entries} items={allCanonicalItems} />
 

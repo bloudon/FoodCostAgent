@@ -853,7 +853,7 @@ export const menus = pgTable("menus", {
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   menuType: text("menu_type"), // dinner | lunch | brunch | catering | event | other | null
-  status: text("status").notNull().default("draft"), // draft | live | retired
+  status: text("status").notNull().default("draft"), // draft | ready | live | retired
   description: text("description"),
   effectiveStart: timestamp("effective_start"),
   effectiveEnd: timestamp("effective_end"),

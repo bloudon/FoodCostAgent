@@ -31,23 +31,24 @@ vi.mock("../auth", () => ({
 // Minimal storage mock — declare with vi.hoisted so the factory closure can
 // reference it (vi.mock factories are hoisted to before const declarations).
 const mockStorage = vi.hoisted(() => ({
-  getMenusByCompany:    vi.fn(),
-  getMenusWithStats:    vi.fn(),
-  getMenu:              vi.fn(),
-  createMenu:           vi.fn(),
-  updateMenu:           vi.fn(),
-  deleteMenu:           vi.fn(),
-  transitionMenuStatus: vi.fn(),
-  duplicateMenu:        vi.fn(),
-  getMenuSections:      vi.fn(),
-  getMenuSection:       vi.fn(),
-  createMenuSection:    vi.fn(),
-  updateMenuSection:    vi.fn(),
-  deleteMenuSection:    vi.fn(),
-  reorderMenuSections:  vi.fn(),
-  getMenuEntries:       vi.fn(),
-  getMenuEntry:         vi.fn(),
-  createMenuEntry:      vi.fn(),
+  getMenusByCompany:      vi.fn(),
+  getMenusWithStats:      vi.fn(),
+  getMenu:                vi.fn(),
+  createMenu:             vi.fn(),
+  updateMenu:             vi.fn(),
+  deleteMenu:             vi.fn(),
+  transitionMenuStatus:   vi.fn(),
+  duplicateMenu:          vi.fn(),
+  computeMenuReadiness:   vi.fn(),
+  getMenuSections:        vi.fn(),
+  getMenuSection:         vi.fn(),
+  createMenuSection:      vi.fn(),
+  updateMenuSection:      vi.fn(),
+  deleteMenuSection:      vi.fn(),
+  reorderMenuSections:    vi.fn(),
+  getMenuEntries:         vi.fn(),
+  getMenuEntry:           vi.fn(),
+  createMenuEntry:        vi.fn(),
   updateMenuEntry:      vi.fn(),
   deleteMenuEntry:      vi.fn(),
   reorderMenuEntries:   vi.fn(),
@@ -130,8 +131,16 @@ beforeEach(() => {
   mockStorage.createMenu.mockResolvedValue(MENU_A);
   mockStorage.updateMenu.mockResolvedValue(MENU_A);
   mockStorage.deleteMenu.mockResolvedValue(undefined);
-  mockStorage.transitionMenuStatus.mockResolvedValue({ ...MENU_A, status: "live" });
+  mockStorage.transitionMenuStatus.mockResolvedValue({ ...MENU_A, status: "ready" });
   mockStorage.duplicateMenu.mockResolvedValue({ ...MENU_A, id: "menu-copy", name: "Dinner Menu (copy)", status: "draft" });
+  mockStorage.computeMenuReadiness.mockResolvedValue({
+    menuId: "menu-1",
+    totalEntries: 1,
+    blockerCount: 0,
+    warningCount: 0,
+    canTransitionToReady: true,
+    issues: [],
+  });
   mockStorage.getMenuSections.mockResolvedValue([SECTION_A]);
   mockStorage.createMenuSection.mockResolvedValue(SECTION_A);
   mockStorage.updateMenuSection.mockResolvedValue(SECTION_A);
@@ -244,13 +253,109 @@ describe("DELETE /api/menus/:id", () => {
   });
 });
 
+describe("GET /api/menus/:id/readiness", () => {
+  it("returns the readiness report for an existing menu", async () => {
+    const res = await request(makeApp()).get("/api/menus/menu-1/readiness");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      menuId: "menu-1",
+      blockerCount: 0,
+      warningCount: 0,
+      canTransitionToReady: true,
+    });
+    expect(mockStorage.computeMenuReadiness).toHaveBeenCalledWith("menu-1", "co-A");
+  });
+
+  it("returns 404 when menu not found", async () => {
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp()).get("/api/menus/no-such/readiness");
+    expect(res.status).toBe(404);
+    expect(mockStorage.computeMenuReadiness).not.toHaveBeenCalled();
+  });
+
+  it("returns blocker and warning counts", async () => {
+    mockStorage.computeMenuReadiness.mockResolvedValueOnce({
+      menuId: "menu-1",
+      totalEntries: 2,
+      blockerCount: 1,
+      warningCount: 1,
+      canTransitionToReady: false,
+      issues: [
+        { type: "blocker", code: "NO_PRICE", entryId: "entry-1", menuItemId: "item-1", itemName: "Caesar Salad", message: "No selling price set", navigationHref: "/menu-items/item-1" },
+        { type: "warning", code: "MISSING_DESCRIPTION", entryId: "entry-1", menuItemId: "item-1", itemName: "Caesar Salad", message: "No description", navigationHref: "/menu-items/item-1" },
+      ],
+    });
+    const res = await request(makeApp()).get("/api/menus/menu-1/readiness");
+    expect(res.status).toBe(200);
+    expect(res.body.blockerCount).toBe(1);
+    expect(res.body.warningCount).toBe(1);
+    expect(res.body.canTransitionToReady).toBe(false);
+    expect(res.body.issues).toHaveLength(2);
+  });
+});
+
 describe("POST /api/menus/:id/status", () => {
-  it("transitions draft → live", async () => {
+  it("transitions draft → ready when no blockers", async () => {
+    mockStorage.transitionMenuStatus.mockResolvedValueOnce({ ...MENU_A, status: "ready" });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "ready" });
+    expect(res.status).toBe(200);
+    expect(mockStorage.computeMenuReadiness).toHaveBeenCalledWith("menu-1", "co-A");
+    expect(mockStorage.transitionMenuStatus).toHaveBeenCalledWith("menu-1", "co-A", "ready", "user-1");
+  });
+
+  it("rejects draft → ready with 422 when blockers present", async () => {
+    mockStorage.computeMenuReadiness.mockResolvedValueOnce({
+      menuId: "menu-1",
+      totalEntries: 1,
+      blockerCount: 1,
+      warningCount: 0,
+      canTransitionToReady: false,
+      issues: [{ type: "blocker", code: "NO_PRICE", entryId: "e1", menuItemId: "item-1", itemName: "Caesar Salad", message: "No selling price set", navigationHref: "/menu-items/item-1" }],
+    });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "ready" });
+    expect(res.status).toBe(422);
+    expect(res.body.report.blockerCount).toBe(1);
+    expect(mockStorage.transitionMenuStatus).not.toHaveBeenCalled();
+  });
+
+  it("transitions ready → live when no blockers", async () => {
+    mockStorage.transitionMenuStatus.mockResolvedValueOnce({ ...MENU_A, status: "live" });
     const res = await request(makeApp())
       .post("/api/menus/menu-1/status")
       .send({ status: "live" });
     expect(res.status).toBe(200);
+    expect(mockStorage.computeMenuReadiness).toHaveBeenCalledWith("menu-1", "co-A");
     expect(mockStorage.transitionMenuStatus).toHaveBeenCalledWith("menu-1", "co-A", "live", "user-1");
+  });
+
+  it("rejects ready → live with 422 when blockers present", async () => {
+    mockStorage.computeMenuReadiness.mockResolvedValueOnce({
+      menuId: "menu-1",
+      totalEntries: 1,
+      blockerCount: 1,
+      warningCount: 0,
+      canTransitionToReady: false,
+      issues: [{ type: "blocker", code: "NO_RECIPE", entryId: "e1", menuItemId: "item-1", itemName: "Burger", message: "No recipe linked", navigationHref: "/menu-items/item-1" }],
+    });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "live" });
+    expect(res.status).toBe(422);
+    expect(res.body.report.issues[0].code).toBe("NO_RECIPE");
+    expect(mockStorage.transitionMenuStatus).not.toHaveBeenCalled();
+  });
+
+  it("transitions retired → draft without running readiness check", async () => {
+    mockStorage.transitionMenuStatus.mockResolvedValueOnce({ ...MENU_A, status: "draft" });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "draft" });
+    expect(res.status).toBe(200);
+    expect(mockStorage.computeMenuReadiness).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid status value", async () => {
@@ -515,15 +620,25 @@ describe("transitionMenuStatus — storage-layer logic (unit)", async () => {
   /**
    * These tests exercise the allowed-transition table directly through the mock,
    * verifying the route surfaces the right HTTP status code.
+   *
+   * Note: transitions TO "ready" or "live" also run a readiness gate in the route.
+   * The default mock has canTransitionToReady: true so the gate passes unless
+   * overridden. We test gate failures separately above.
    */
 
   const transitions: Array<{ from: string; to: string; ok: boolean }> = [
-    { from: "draft",   to: "live",    ok: true  },
+    // valid storage transitions
+    { from: "draft",   to: "ready",   ok: true  },
+    { from: "ready",   to: "live",    ok: true  },
+    { from: "ready",   to: "draft",   ok: true  },
     { from: "live",    to: "retired", ok: true  },
     { from: "retired", to: "draft",   ok: true  },
+    // invalid storage transitions
+    { from: "draft",   to: "live",    ok: false },
     { from: "draft",   to: "retired", ok: false },
     { from: "live",    to: "draft",   ok: false },
     { from: "retired", to: "live",    ok: false },
+    { from: "retired", to: "ready",   ok: false },
   ];
 
   for (const { from, to, ok } of transitions) {

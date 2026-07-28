@@ -23,6 +23,8 @@ import {
   BookOpen,
   CalendarDays,
   Tag,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -33,7 +35,7 @@ interface MenuWithStats {
   companyId: string;
   name: string;
   menuType: string | null;
-  status: "draft" | "live" | "retired";
+  status: "draft" | "ready" | "live" | "retired";
   description: string | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
@@ -59,6 +61,7 @@ const MENU_TYPES = [
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "live")     return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
+  if (status === "ready")    return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
   if (status === "retired")  return <Badge variant="secondary">Retired</Badge>;
   return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-0">Draft</Badge>;
 }
@@ -212,7 +215,7 @@ function MenuCard({ menu }: { menu: MenuWithStats }) {
   const { toast } = useToast();
   const [dupeOpen, setDupeOpen] = useState(false);
 
-  const transitionMutation = useMutation({
+  const transitionMutation = useMutation<MenuWithStats, Error, string>({
     mutationFn: async (status: string) => {
       const res = await apiRequest("POST", `/api/menus/${menu.id}/status`, { status });
       return res.json();
@@ -271,9 +274,21 @@ function MenuCard({ menu }: { menu: MenuWithStats }) {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {menu.status === "draft" && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("ready")}>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Mark as Ready
+                    </DropdownMenuItem>
+                  )}
+                  {menu.status === "ready" && (
                     <DropdownMenuItem onClick={() => transitionMutation.mutate("live")}>
                       <BookOpen className="h-4 w-4 mr-2" />
-                      Publish (Draft → Live)
+                      Publish (Ready → Live)
+                    </DropdownMenuItem>
+                  )}
+                  {menu.status === "ready" && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("draft")}>
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      Revert to Draft
                     </DropdownMenuItem>
                   )}
                   {menu.status === "live" && (
@@ -385,9 +400,10 @@ export default function MenusPage() {
     },
   });
 
-  const liveMenus     = menus.filter((m) => m.status === "live");
-  const draftMenus    = menus.filter((m) => m.status === "draft");
-  const retiredMenus  = menus.filter((m) => m.status === "retired");
+  const liveMenus    = menus.filter((m) => m.status === "live");
+  const readyMenus   = menus.filter((m) => m.status === "ready");
+  const draftMenus   = menus.filter((m) => m.status === "draft");
+  const retiredMenus = menus.filter((m) => m.status === "retired");
 
   return (
     <div className="flex flex-col h-full">
@@ -427,6 +443,16 @@ export default function MenusPage() {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {liveMenus.map((m) => <MenuCard key={m.id} menu={m} />)}
+                </div>
+              </section>
+            )}
+            {readyMenus.length > 0 && (
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                  Ready to Publish ({readyMenus.length})
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {readyMenus.map((m) => <MenuCard key={m.id} menu={m} />)}
                 </div>
               </section>
             )}
