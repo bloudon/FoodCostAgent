@@ -862,7 +862,7 @@ export default function Settings() {
 
       {/* Unsaved POS changes guard dialog */}
       <Dialog open={pendingTab !== null} onOpenChange={(open) => { if (!open) setPendingTab(null); }}>
-        <DialogContent>
+        <DialogContent data-testid="dialog-unsaved-tab-changes">
           <DialogHeader>
             <DialogTitle>Unsaved Changes</DialogTitle>
             <DialogDescription>
@@ -870,10 +870,10 @@ export default function Settings() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={handleStayOnTab}>
+            <Button variant="outline" onClick={handleStayOnTab} data-testid="button-stay-on-tab">
               Stay and Save
             </Button>
-            <Button variant="destructive" onClick={handleLeaveTab}>
+            <Button variant="destructive" onClick={handleLeaveTab} data-testid="button-leave-tab">
               Leave and Discard
             </Button>
           </DialogFooter>
