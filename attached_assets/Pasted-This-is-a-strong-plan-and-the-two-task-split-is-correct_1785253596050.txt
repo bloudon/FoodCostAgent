@@ -1,0 +1,383 @@
+This is a strong plan and the two-task split is correct. I would approve it **after tightening a few backend rules** so the new fields actually control behavior instead of becoming another layer of descriptive metadata.
+
+The main gap is that `primary_sales_method` is currently being added and displayed, but the plan does not yet say what it changes operationally.
+
+## Required adjustments to #612
+
+### 1. Enforce valid provider/method combinations server-side
+
+The UI should not be the only thing preventing this:
+
+```text
+Provider: HungerRush
+Primary method: pos_connector
+```
+
+The company PATCH handler should enforce:
+
+```text
+posProvider = null
+→ primarySalesMethod must be null
+
+primarySalesMethod = pos_connector
+→ selected provider must exist in the registry
+→ provider must support salesRetrieval
+→ provider must have a registered connector adapter
+
+primarySalesMethod = manual_upload
+→ allowed for any recognized provider, including other
+```
+
+Return a structured `422` response for invalid combinations.
+
+### 2. Make the primary method operational
+
+Define what it actually controls:
+
+```text
+primary_sales_method = pos_connector
+→ scheduled POS synchronization is enabled
+
+primary_sales_method = manual_upload
+→ scheduled POS synchronization is disabled
+→ existing connection and mappings may remain retained
+→ manual upload remains the primary source
+```
+
+`runAllIncrementalSyncs()` should only include companies where:
+
+```text
+primary_sales_method = pos_connector
+```
+
+and the connection provider matches the company’s selected `posProvider`.
+
+Otherwise, a company could select manual upload while Square continues importing sales every night.
+
+### 3. Enforce one usable POS connection per company
+
+The MVP assumption is one provider and one primary connection per company. The backend should enforce that.
+
+At minimum:
+
+* Do not permit two active POS connections for the same company.
+* OAuth callback must not create a duplicate Square connection.
+* Reauthorization updates the existing connection.
+* `setup-status` must never arbitrarily select one of several records.
+
+A service-level guard is required. A database constraint or partial unique index would be even safer if it fits the current status model.
+
+### 4. Tighten the provider-change guard
+
+“Active connection” needs a precise definition.
+
+A Square connection that has a revoked token and status `disconnected` is still a retained configured connection. Allowing the provider to change at that point could orphan its mappings.
+
+Block provider changes while any connection exists that has not been **explicitly disconnected, archived, or removed by the user**.
+
+Distinguish:
+
+```text
+Disconnected because credentials failed
+```
+
+from:
+
+```text
+Intentionally disconnected and released for provider change
+```
+
+Those are different lifecycle states.
+
+### 5. Define setup-status counts precisely
+
+`itemsMapped N/total` can become misleading unless the denominator and ignored records are defined.
+
+I recommend returning:
+
+```typescript
+interface PosSetupStatus {
+  providerSelected: boolean;
+  primaryMethodSelected: boolean;
+  connectorAvailable: boolean;
+
+  connectionStatus:
+    | "not_configured"
+    | "not_connected"
+    | "connected"
+    | "disconnected"
+    | "error";
+
+  locations: {
+    total: number;
+    mapped: number;
+    ignored: number;
+    unresolved: number;
+  };
+
+  items: {
+    total: number;
+    mapped: number;
+    ignored: number;
+    unresolved: number;
+  };
+
+  lastSuccessfulSyncAt: string | null;
+  lastAttemptedSyncAt: string | null;
+  latestSyncStatus: string | null;
+  warningCount: number;
+}
+```
+
+A deliberately ignored POS item should count as **resolved**, but not as mapped:
+
+```text
+resolved = mapped + ignored
+```
+
+Do not merge ignored, skipped and unresolved into one ambiguous count.
+
+### 6. Use a constrained database value
+
+Rather than an unrestricted text field, use either:
+
+* A Postgres enum, consistent with the current schema conventions, or
+* A `CHECK` constraint permitting only `pos_connector`, `manual_upload`, or `NULL`.
+
+Application validation alone is not enough for a field that controls scheduled ingestion.
+
+## Registry refinement
+
+The registry design is right. One small distinction:
+
+```typescript
+getConnector(providerKey)
+```
+
+should throw or return a typed result such as:
+
+```text
+unknown_provider
+connector_unavailable
+connector_available
+```
+
+Toast and HungerRush may appear in public provider metadata but have no adapter. They should not look like registry lookup failures.
+
+Conceptually:
+
+```typescript
+interface PosProviderDefinition {
+  providerKey: string;
+  displayName: string;
+  availability: "available" | "manual_only" | "coming_later";
+  capabilities: PosCapabilities;
+  connector?: PosConnector;
+}
+```
+
+The public metadata excludes `connector`, while the server can still distinguish a recognized manual-only provider from an invalid key.
+
+For existing Square-specific OAuth routes, it is acceptable to preserve the current URLs. Internally, however, connection-based sync and mapping operations should resolve the adapter from the connection/provider record rather than repeatedly calling:
+
+```typescript
+getConnector("square")
+```
+
+Square-specific connect and callback routes can remain compatibility endpoints for now.
+
+## Adjustments to #613
+
+The UI plan is well scoped. I would add four rules.
+
+### Save configuration before beginning OAuth
+
+When the user chooses:
+
+```text
+Provider: Square
+Method: Connected POS
+```
+
+save those settings successfully before opening Square OAuth.
+
+The OAuth initiation endpoint should then verify:
+
+* Company provider is `square`
+* Primary method is `pos_connector`
+* Square is available in the registry
+* No conflicting provider connection exists
+
+Do not rely only on the button being hidden or shown correctly.
+
+### Save provider and method atomically
+
+Do not make two independent requests that temporarily leave the company in an invalid combination.
+
+Use one PATCH payload:
+
+```json
+{
+  "posProvider": "square",
+  "primarySalesMethod": "pos_connector"
+}
+```
+
+and validate the complete intended state server-side.
+
+### Explain what changing the method does
+
+When changing from Connected POS to Manual Report Upload:
+
+```text
+Automatic Square synchronization will stop.
+Your Square connection, mappings and previous sales will be retained.
+You can switch back to Connected POS later.
+```
+
+This is different from changing the provider, which should require explicit disconnection first.
+
+### Show merchant identity, not only merchant ID
+
+The user-facing card should preferably display:
+
+```text
+Square account: Brian's Pizza
+Merchant ID: ABC123...
+```
+
+The raw merchant ID is useful for support, but it should not be the primary identity shown to restaurant managers.
+
+## Revised feedback to send Replit
+
+```markdown
+The two-task split is approved. The backend foundation and unified Settings UI are the correct next work.
+
+Please add the following requirements before beginning.
+
+# Additions to #612
+
+## Validate provider and method combinations
+
+The server must validate the complete company POS configuration.
+
+Rules:
+
+- If `posProvider` is null, `primarySalesMethod` must be null.
+- `primarySalesMethod = pos_connector` is allowed only when:
+  - The provider is recognized by the registry.
+  - A connector adapter is registered.
+  - The provider supports sales retrieval.
+- `primarySalesMethod = manual_upload` is allowed for any recognized provider, including `other`.
+
+Return a structured 422 response for invalid combinations.
+
+## Make primarySalesMethod operational
+
+The field must control scheduled ingestion.
+
+- `pos_connector` enables scheduled POS synchronization.
+- `manual_upload` disables scheduled POS synchronization while retaining any existing connection, mappings and history.
+- Manual report upload remains available regardless of the selected primary method.
+
+`runAllIncrementalSyncs()` must only process companies whose primary method is `pos_connector`, whose selected provider matches the connection provider, and whose connection is eligible to sync.
+
+## Enforce the MVP connection model
+
+For the MVP, one company may have only one usable POS connection.
+
+Prevent duplicate active/configured connections.
+
+- Initial authorization creates the connection only when none exists.
+- Reauthorization updates the existing connection.
+- Setup status must not arbitrarily select among multiple connections.
+
+Use a service-level guard and a database constraint where practical.
+
+## Provider-change lifecycle
+
+Do not treat token revocation as intentional disconnection.
+
+Changing providers must remain blocked while a retained configured connection exists, including a connection whose credentials are currently revoked.
+
+A provider may change only after the user explicitly disconnects/releases the existing provider connection.
+
+## Setup-status shape
+
+Return separate mapped, ignored and unresolved counts.
+
+Suggested structure:
+
+- locations.total
+- locations.mapped
+- locations.ignored
+- locations.unresolved
+- items.total
+- items.mapped
+- items.ignored
+- items.unresolved
+- lastSuccessfulSyncAt
+- lastAttemptedSyncAt
+- latestSyncStatus
+- warningCount
+
+Intentionally ignored records count as resolved but not mapped.
+
+## Database constraint
+
+Protect `primary_sales_method` with either a Postgres enum or CHECK constraint allowing only:
+
+- `pos_connector`
+- `manual_upload`
+- null
+
+## Registry availability
+
+Recognized providers without adapters must be distinguishable from invalid provider keys.
+
+Provider definitions should include an availability state such as:
+
+- available
+- manual_only
+- coming_later
+
+Public metadata excludes the adapter reference.
+
+Connection-based operations should resolve the adapter from the stored provider key. Existing Square-specific OAuth URLs may remain for compatibility.
+
+# Additions to #613
+
+## Save before OAuth
+
+Save the selected provider and primary method before starting OAuth.
+
+The backend OAuth initiation endpoint must independently verify that:
+
+- The company provider is Square.
+- The primary method is `pos_connector`.
+- Square is available in the registry.
+- No conflicting connection exists.
+
+## Atomic configuration save
+
+Save `posProvider` and `primarySalesMethod` in one company PATCH request and validate the complete resulting state.
+
+## Method-change messaging
+
+Changing from Connected POS to Manual Report Upload should explain:
+
+- Automatic synchronization will stop.
+- The Square connection and mappings will be retained.
+- Historical sales remain.
+- The company can switch back later.
+
+Changing the POS provider remains blocked until the existing connection is explicitly disconnected.
+
+## Merchant identity
+
+Show the Square merchant/business name as the primary account identity, with merchant ID available as secondary support information.
+
+All other scope boundaries in #612 and #613 are approved.
+```
+
+With those additions, the plan builds a real universal framework rather than merely reorganizing the Square UI.
