@@ -16026,6 +16026,118 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
+  // PATCH /api/companies/:id/pos-config — update posProvider + primarySalesMethod atomically.
+  // Allowed for owner/company_admin (own company) or global_admin.
+  // The generic PATCH /api/companies/:id is global_admin-only; this scoped endpoint lets
+  // company admins and owners configure their POS integration without broader admin access.
+  app.patch("/api/companies/:id/pos-config", requireAuth, async (req, res) => {
+    const user = (req as any).user;
+    const isAdminRole =
+      user?.role === "global_admin" ||
+      user?.role === "company_admin" ||
+      user?.role === "owner";
+    if (!isAdminRole) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    if (user?.role !== "global_admin" && user?.companyId !== req.params.id) {
+      return res.status(403).json({ error: "Can only update your own company" });
+    }
+
+    try {
+      const body = z.object({
+        posProvider: z
+          .enum(["square", "thrive", "toast", "hungerrush", "clover", "spoton", "other", "none"])
+          .nullable()
+          .optional(),
+        primarySalesMethod: z
+          .enum(["pos_connector", "manual_upload"])
+          .nullable()
+          .optional(),
+      }).parse(req.body);
+
+      const currentCompany = await storage.getCompany(req.params.id);
+      if (!currentCompany) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const resultingProvider =
+        "posProvider" in body ? body.posProvider : currentCompany.posProvider;
+      const resultingMethod =
+        "primarySalesMethod" in body
+          ? body.primarySalesMethod
+          : (currentCompany as any).primarySalesMethod ?? null;
+
+      // Rule 1: null/none provider requires null method.
+      if (!resultingProvider || resultingProvider === "none") {
+        if (resultingMethod) {
+          return res.status(422).json({
+            code: "invalid_pos_configuration",
+            error: "primarySalesMethod must be null when no POS provider is selected.",
+          });
+        }
+      }
+
+      // Rule 2: pos_connector requires a registry-available adapter with salesRetrieval.
+      if (resultingMethod === "pos_connector") {
+        if (!resultingProvider || !providerSupportsElectronic(resultingProvider)) {
+          return res.status(422).json({
+            code: "invalid_pos_configuration",
+            error:
+              `The selected POS provider (${resultingProvider ?? "none"}) does not support an electronic connection. ` +
+              "Choose a provider with an available connector, or set primarySalesMethod to manual_upload.",
+          });
+        }
+      }
+
+      // Rule 3: manual_upload allowed for any recognised provider.
+      if (resultingMethod === "manual_upload") {
+        if (
+          resultingProvider &&
+          resultingProvider !== "none" &&
+          !isKnownProvider(resultingProvider)
+        ) {
+          return res.status(422).json({
+            code: "invalid_pos_configuration",
+            error: `Unknown POS provider: ${resultingProvider}.`,
+          });
+        }
+      }
+
+      // Rule 4: provider-change guard — block if any retained connection exists.
+      if ("posProvider" in body && body.posProvider !== currentCompany.posProvider) {
+        const retained = await storage.getRetainedPosConnectionForCompany(req.params.id);
+        if (retained) {
+          return res.status(409).json({
+            code: "retained_pos_connection",
+            error:
+              "Cannot change POS provider while a connection exists. Disconnect the current connection first.",
+            provider: retained.provider,
+            connectionId: retained.id,
+            connectionStatus: retained.status,
+          });
+        }
+      }
+
+      const updatePayload: Record<string, any> = {};
+      if ("posProvider" in body) {
+        updatePayload.posProvider =
+          !body.posProvider || body.posProvider === "none" ? null : body.posProvider;
+      }
+      if ("primarySalesMethod" in body) {
+        updatePayload.primarySalesMethod = body.primarySalesMethod ?? null;
+      }
+
+      const updated = await storage.updateCompany(req.params.id, updatePayload);
+      if (!updated) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // PATCH /api/companies/:id/costing-method — set company costing method (Last Cost vs WAC)
   // Allowed for owner/company_admin (own company) or global_admin. Triggers full recipe recalculation.
   app.patch("/api/companies/:id/costing-method", requireAuth, async (req, res) => {

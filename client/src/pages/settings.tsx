@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useLocation as useWouterLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +46,7 @@ import { UsersManagement } from "@/components/UsersManagement";
 import { useAuth } from "@/lib/auth-context";
 import { hasFeature } from "@shared/tier-config";
 import { useTier } from "@/hooks/use-tier";
+import { PosSalesDataSection } from "@/components/PosSalesDataSection";
 
 function QbIntegrationCard({
   qbStatus,
@@ -269,7 +269,6 @@ export default function Settings() {
   const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
   const [isVendorSyncDialogOpen, setIsVendorSyncDialogOpen] = useState(false);
   const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
-  const [posProvider, setPosProvider] = useState<string>("none");
   // Global admins switch companies via /companies (writes localStorage).
   // Regular users (owner / company_admin / staff) implicitly operate on their
   // own company, so fall back to their session companyId when localStorage
@@ -303,10 +302,6 @@ export default function Settings() {
     queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
     enabled: !!selectedCompanyId,
   });
-
-  useEffect(() => {
-    setPosProvider(company?.posProvider ?? "none");
-  }, [company?.posProvider]);
 
   const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
 
@@ -611,7 +606,6 @@ export default function Settings() {
       postalCode: formData.get("company-zip") as string,
       phone: phoneValue,
       contactEmail: formData.get("company-email") as string,
-      posProvider: posProvider as Company["posProvider"],
     };
     
     updateCompanyMutation.mutate(companyData);
@@ -720,7 +714,7 @@ export default function Settings() {
           </TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">
             <Plug className="h-4 w-4 mr-2" />
-            Data Connections
+            POS &amp; Sales
           </TabsTrigger>
           <TabsTrigger value="preferences" data-testid="tab-preferences">
             <SettingsIcon className="h-4 w-4 mr-2" />
@@ -847,24 +841,6 @@ export default function Settings() {
                     defaultValue={company?.contactEmail || ""}
                     data-testid="input-company-email"
                   />
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <Label htmlFor="company-pos-provider">POS Provider</Label>
-                  <Select value={posProvider} onValueChange={setPosProvider}>
-                    <SelectTrigger data-testid="select-pos-provider">
-                      <SelectValue placeholder="Select POS provider..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="toast">Toast</SelectItem>
-                      <SelectItem value="hungerrush">HungerRush</SelectItem>
-                      <SelectItem value="clover">Clover</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <Separator />
@@ -1471,7 +1447,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="connections" className="space-y-6">
-          <SquarePosCard selectedCompanyId={selectedCompanyId} />
+          <PosSalesDataSection selectedCompanyId={selectedCompanyId} company={company} />
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
@@ -1888,392 +1864,6 @@ function MaintenanceTab() {
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ── Square POS Card ───────────────────────────────────────────────────────────
-
-function SquarePosCard({ selectedCompanyId }: { selectedCompanyId: string | null }) {
-  const { toast } = useToast();
-  const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [pollingId, setPollingId] = useState<string | null>(null);
-  const [location] = useWouterLocation();
-
-  // Show toasts for OAuth redirect outcomes (pos_reconnected, pos_error)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const reconnected = params.get("pos_reconnected");
-    const posError = params.get("pos_error");
-    if (reconnected === "1") {
-      toast({ title: "Square reconnected", description: "Your connection is active again. You can run a sync now." });
-      params.delete("pos_reconnected");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    } else if (posError === "merchant_mismatch") {
-      toast({
-        title: "Different Square account",
-        description: "The account that authorized is not the same merchant as this connection. Existing connection unchanged.",
-        variant: "destructive",
-      });
-      params.delete("pos_error");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    } else if (posError === "state_replayed") {
-      toast({
-        title: "Link already used",
-        description: "This reconnect link was already used or expired. Start a fresh reconnect from the connection banner.",
-        variant: "destructive",
-      });
-      params.delete("pos_error");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    } else if (posError === "state_expired") {
-      toast({
-        title: "Reconnect link expired",
-        description: "The reconnect session expired (60 min limit). Please try again.",
-        variant: "destructive",
-      });
-      params.delete("pos_error");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    } else if (posError === "access_denied") {
-      toast({
-        title: "Square access denied",
-        description: "You cancelled the Square authorization. No changes were made.",
-        variant: "destructive",
-      });
-      params.delete("pos_error");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    } else if (posError) {
-      // Catch-all for any other error codes (reconnect_failed, state_invalid,
-      // connection_not_found, missing_params, etc.) so the user always gets
-      // actionable feedback rather than a silent return to the disconnected state.
-      toast({
-        title: "Square connection error",
-        description: "Something went wrong during authorization. Please try reconnecting from the connection card.",
-        variant: "destructive",
-      });
-      params.delete("pos_error");
-      window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
-
-  const { data: connections = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/pos/connections"],
-    enabled: !!selectedCompanyId,
-    retry: false,
-  });
-
-  const { data: syncJobs = [] } = useQuery<any[]>({
-    queryKey: expandedId ? [`/api/pos/connections/${expandedId}/sync-jobs`] : [],
-    enabled: !!expandedId,
-    retry: false,
-  });
-
-  // Poll sync jobs for the connection being monitored to detect running → done transitions
-  const { data: polledJobs = [] } = useQuery<any[]>({
-    queryKey: pollingId ? [`/api/pos/connections/${pollingId}/sync-jobs`] : [],
-    enabled: !!pollingId,
-    retry: false,
-    refetchInterval: (query) => {
-      const data = query.state.data as any[] | undefined;
-      return data?.[0]?.status === "running" ? 3000 : false;
-    },
-  });
-
-  // Derived: is a job actively running for this connection?
-  const isJobRunning = (connId: string): boolean => {
-    if (connId !== pollingId) return false;
-    return polledJobs[0]?.status === "running";
-  };
-
-  // When polling detects the job has finished, clear the syncing indicator
-  useEffect(() => {
-    if (!pollingId) return;
-    if (polledJobs.length > 0 && polledJobs[0].status !== "running") {
-      setSyncingId(null);
-      setPollingId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
-      if (expandedId === pollingId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/pos/connections/${pollingId}/sync-jobs`] });
-      }
-    }
-  }, [polledJobs, pollingId, expandedId]);
-
-  const disconnectMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/pos/connections/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pos/connections"] });
-      toast({ title: "Disconnected", description: "Square connection removed." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const syncNow = async (id: string, type: "incremental" | "backfill" = "incremental") => {
-    setSyncingId(id);
-    try {
-      // Use raw fetch so we can inspect the HTTP status code directly — apiRequest
-      // normalises non-2xx errors to just the `error` string, stripping the status.
-      const res = await fetch(`/api/pos/connections/${id}/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ type }),
-      });
-
-      if (res.status === 409) {
-        // Another sync is already running — start polling so the button stays disabled
-        setPollingId(id);
-        toast({
-          title: "Sync already in progress",
-          description: "A sync job is already running for this connection.",
-        });
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as any).error || `Sync request failed (${res.status})`);
-      }
-
-      // Start polling so the button stays disabled until the job finishes
-      setPollingId(id);
-      toast({ title: "Sync started", description: "Sales data is being imported in the background." });
-    } catch (err: any) {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
-      setSyncingId(null);
-    }
-  };
-
-  const jobStatusBadge = (status: string) => {
-    if (status === "completed") return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400">Done</Badge>;
-    if (status === "failed") return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400">Failed</Badge>;
-    if (status === "running") return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400">Running</Badge>;
-    return <Badge variant="outline">{status}</Badge>;
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-yellow-500" />
-              Square POS
-            </CardTitle>
-            <CardDescription className="mt-1">
-              Connect Square to automatically import daily sales and calculate theoretical usage.
-            </CardDescription>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => { window.location.href = "/api/pos/connect/square"; }}
-            data-testid="button-square-connect"
-          >
-            <LinkIcon className="h-4 w-4 mr-2" />
-            Connect Square
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading connections...
-          </div>
-        ) : connections.length === 0 ? (
-          <div className="border border-dashed rounded-lg py-10 text-center text-muted-foreground">
-            <Zap className="h-8 w-8 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No Square connections yet.</p>
-            <p className="text-xs mt-1">Click "Connect Square" to start the OAuth flow.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {connections.map((conn: any) => (
-              <div key={conn.id} className="border rounded-lg p-4 space-y-3">
-                {conn.status === "disconnected" && (
-                  <Alert variant="destructive" className="py-2.5">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
-                      <span>
-                        <span className="font-medium">Connection disconnected.</span>{" "}
-                        Square revoked access — your nightly sync is paused.
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 border-destructive/40 hover:bg-destructive/10"
-                        onClick={() => { window.location.href = `/api/pos/connect/square/reconnect/${conn.id}`; }}
-                        data-testid={`button-square-reconnect-${conn.id}`}
-                      >
-                        <LinkIcon className="h-3 w-3 mr-1.5" />
-                        Reconnect Square
-                      </Button>
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    {conn.status === "disconnected" ? (
-                      <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                    )}
-                    <div>
-                      <p className="font-medium text-sm">Square · {conn.merchantId}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {conn.lastSyncedAt
-                          ? `Last synced ${new Date(conn.lastSyncedAt).toLocaleString()}`
-                          : "Never synced"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => syncNow(conn.id)}
-                      disabled={syncingId === conn.id || isJobRunning(conn.id) || conn.status === "disconnected"}
-                      data-testid={`button-square-sync-${conn.id}`}
-                    >
-                      {(syncingId === conn.id || isJobRunning(conn.id)) ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                          Sync in progress…
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          Sync Now
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setExpandedId(expandedId === conn.id ? null : conn.id)}
-                    >
-                      {expandedId === conn.id ? "Hide" : "Details"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => disconnectMutation.mutate(conn.id)}
-                      disabled={disconnectMutation.isPending}
-                      data-testid={`button-square-disconnect-${conn.id}`}
-                    >
-                      Disconnect
-                    </Button>
-                  </div>
-                </div>
-
-                {expandedId === conn.id && (
-                  <div className="border-t pt-3 space-y-3">
-                    <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={`/pos/location-mapping/${conn.id}`}>Edit Location Mapping</a>
-                      </Button>
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={`/pos/item-mapping/${conn.id}`}>Edit Item Mapping</a>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => syncNow(conn.id, "backfill")}
-                        disabled={syncingId === conn.id || isJobRunning(conn.id)}
-                      >
-                        {(syncingId === conn.id || isJobRunning(conn.id)) ? (
-                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                        ) : null}
-                        Backfill 30 Days
-                      </Button>
-                    </div>
-
-                    {syncJobs.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Recent Syncs</p>
-                        {syncJobs.slice(0, 5).map((job: any) => (
-                          <div key={job.id} className="flex items-center justify-between text-xs py-1.5 border-b last:border-0">
-                            <div className="flex items-center gap-2">
-                              {jobStatusBadge(job.status)}
-                              <span className="capitalize">{job.jobType}</span>
-                              {job.rowsIngested > 0 && (
-                                <span className="text-muted-foreground">· {job.rowsIngested} rows</span>
-                              )}
-                              {job.rowsSkipped > 0 && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="flex items-center gap-0.5 text-amber-600 dark:text-amber-400 cursor-default">
-                                        <TriangleAlert className="h-3 w-3" />
-                                        {job.rowsSkipped} skipped
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-[220px] text-center">
-                                      {job.rowsSkipped} item{job.rowsSkipped === 1 ? "" : "s"} had no menu item mapping — edit item mapping to capture them
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                              {Array.isArray(job.adhocItems) && job.adhocItems.length > 0 && (() => {
-                                // The last entry may be an overflow sentinel written by the server
-                                // when more than 200 ad hoc items were accumulated.
-                                const lastEntry: any = job.adhocItems[job.adhocItems.length - 1];
-                                const overflowTotal: number | undefined = lastEntry?._overflow ? lastEntry.total : undefined;
-                                const visibleItems = overflowTotal !== undefined
-                                  ? job.adhocItems.slice(0, -1)   // exclude sentinel
-                                  : job.adhocItems;
-                                const displayCount = overflowTotal ?? visibleItems.length;
-                                return (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400 cursor-default">
-                                          <AlertCircle className="h-3 w-3" />
-                                          {displayCount}{overflowTotal !== undefined ? "+" : ""} ad hoc
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top" className="max-w-[240px] text-left">
-                                        <p className="font-medium mb-1">{displayCount}{overflowTotal !== undefined ? "+" : ""} item{displayCount === 1 ? "" : "s"} sold without a catalog entry:</p>
-                                        <ul className="space-y-0.5 max-h-[120px] overflow-y-auto">
-                                          {(visibleItems as any[]).slice(0, 8).map((item: any, i: number) => (
-                                            <li key={i} className="text-xs text-muted-foreground truncate">
-                                              · {item.name} (qty {item.quantity})
-                                            </li>
-                                          ))}
-                                          {overflowTotal !== undefined ? (
-                                            <li className="text-xs text-muted-foreground">…and {overflowTotal - visibleItems.length} more</li>
-                                          ) : visibleItems.length > 8 ? (
-                                            <li className="text-xs text-muted-foreground">…and {visibleItems.length - 8} more</li>
-                                          ) : null}
-                                        </ul>
-                                        <p className="text-xs mt-1 text-muted-foreground">Add these to your Square catalog to track them.</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                );
-                              })()}
-                            </div>
-                            <span className="text-muted-foreground">
-                              {new Date(job.createdAt).toLocaleString()}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
