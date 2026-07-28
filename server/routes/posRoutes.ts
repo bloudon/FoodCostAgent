@@ -160,6 +160,13 @@ async function buildPosSetupStatus(companyId: string): Promise<PosSetupStatus> {
 
 export function registerPosRoutes(app: Express): void {
 
+  // Log the computed Square callback URI at startup so VPS operators know exactly
+  // what must be registered in the Square Developer Dashboard.
+  console.info(
+    `[POS] Square OAuth callback URI: ${buildSquareRedirectUri()}` +
+    (process.env.APP_BASE_URL ? "" : " (set APP_BASE_URL in production)"),
+  );
+
   // ── Provider registry (public) ────────────────────────────────────────────
 
   /** List all known POS providers with their availability and capabilities. */

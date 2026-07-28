@@ -40,6 +40,7 @@ vi.mock("../integrations/pos/square", () => ({
     listLocations: vi.fn(),
   },
   buildSquareAuthUrl: vi.fn(() => "https://connect.squareup.com/oauth2/authorize?fake=1"),
+  buildSquareRedirectUri: vi.fn(() => "https://app.fnbcostpro.com/api/pos/oauth/square/callback"),
 }));
 
 vi.mock("../services/posSyncJobs", () => ({
