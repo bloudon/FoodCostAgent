@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -266,6 +266,13 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("company");
   const [posIsDirty, setPosIsDirty] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  // Keep a ref so the pushState closure always sees the latest dirty flag.
+  const posIsDirtyRef = useRef(false);
+  // Set to true for exactly one pushState call to let the confirmed navigation through.
+  const allowNextNavigationRef = useRef(false);
+  // Set to true to skip the synthetic popstate we dispatch after a confirmed leave.
+  const skipNextPopStateRef = useRef(false);
   const [isVendorMappingDialogOpen, setIsVendorMappingDialogOpen] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
@@ -632,6 +639,124 @@ export default function Settings() {
     setPendingTab(null);
   };
 
+  // ── Page-level navigation guard ───────────────────────────────────────────
+
+  /** True when a URL string points to /settings (or a sub-path). */
+  const isSettingsPath = useCallback((urlStr: string): boolean => {
+    try {
+      const pathname = new URL(urlStr, window.location.origin).pathname;
+      return pathname === "/settings" || pathname.startsWith("/settings/");
+    } catch {
+      // Relative path fallback
+      return urlStr === "/settings" || urlStr.startsWith("/settings/") ||
+             urlStr.startsWith("/settings?") || urlStr.startsWith("/settings#");
+    }
+  }, []);
+
+  // Keep the ref in sync so closures always see the latest dirty flag.
+  useEffect(() => {
+    posIsDirtyRef.current = posIsDirty;
+  }, [posIsDirty]);
+
+  // 1. Browser beforeunload (refresh, close tab, hard external link)
+  useEffect(() => {
+    if (!posIsDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers require returnValue to be set to trigger the dialog.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [posIsDirty]);
+
+  // 2. In-app SPA navigation via pushState (wouter sidebar links).
+  //    Intercept pushState while dirty; if the destination is outside /settings,
+  //    capture it as pendingNavigation and abort the push.
+  useEffect(() => {
+    if (!posIsDirty) return;
+
+    const originalPushState = window.history.pushState.bind(window.history);
+
+    window.history.pushState = (
+      state: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) => {
+      // User confirmed leaving — let this one push through and reset the flag.
+      if (allowNextNavigationRef.current) {
+        allowNextNavigationRef.current = false;
+        originalPushState(state, unused, url);
+        return;
+      }
+      if (!posIsDirtyRef.current) {
+        originalPushState(state, unused, url);
+        return;
+      }
+      const target = url ? String(url) : null;
+      // Allow navigation within /settings (tab changes, query-string updates).
+      if (!target || isSettingsPath(target)) {
+        originalPushState(state, unused, url);
+        return;
+      }
+      // Destination is outside /settings → intercept and show modal.
+      setPendingNavigation(target);
+    };
+
+    return () => {
+      window.history.pushState = originalPushState;
+    };
+  }, [posIsDirty, isSettingsPath]);
+
+  // 3. Browser Back/Forward (popstate) guard.
+  //    When the user presses Back and lands outside /settings, immediately push
+  //    /settings back so the URL is restored, then show the confirmation modal.
+  useEffect(() => {
+    if (!posIsDirty) return;
+
+    const handlePopState = () => {
+      // Skip the one synthetic popstate we fire ourselves after a confirmed leave.
+      if (skipNextPopStateRef.current) {
+        skipNextPopStateRef.current = false;
+        return;
+      }
+      if (!posIsDirtyRef.current) return;
+      const destination = window.location.pathname + window.location.search;
+      if (isSettingsPath(destination)) return; // still on settings — fine
+      // Capture where they were trying to go.
+      const intended = destination;
+      // Restore the URL to /settings without adding a new history entry.
+      window.history.replaceState(null, "", "/settings");
+      // Notify wouter that we're back on /settings.
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      // Show the confirmation modal.
+      setPendingNavigation(intended);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [posIsDirty, isSettingsPath]);
+
+  const handleConfirmLeaveSettings = () => {
+    if (pendingNavigation) {
+      const target = pendingNavigation;
+      setPendingNavigation(null);
+      // Allow exactly one pushState call through the guard so we don't loop.
+      allowNextNavigationRef.current = true;
+      // Skip the synthetic popstate we're about to fire, so the popstate guard
+      // doesn't see the non-settings URL and re-intercept this navigation.
+      skipNextPopStateRef.current = true;
+      // Navigate for real now that the user confirmed.
+      window.history.pushState(null, "", target);
+      // Dispatch a popstate event so wouter picks up the location change.
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    }
+  };
+
+  const handleCancelLeaveSettings = () => {
+    setPendingNavigation(null);
+  };
+
   const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -714,6 +839,26 @@ export default function Settings() {
           Manage your company information, user profile, and system preferences
         </p>
       </div>
+
+      {/* Unsaved POS changes guard — navigating away from /settings entirely */}
+      <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeaveSettings(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes to your POS &amp; Sales configuration. If you leave now, your changes will be discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCancelLeaveSettings}>
+              Stay and Save
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmLeaveSettings}>
+              Leave and Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Unsaved POS changes guard dialog */}
       <Dialog open={pendingTab !== null} onOpenChange={(open) => { if (!open) setPendingTab(null); }}>
