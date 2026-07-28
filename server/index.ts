@@ -1015,6 +1015,12 @@ async function runStartupMigrations() {
         ON pos_connections (company_id) WHERE status = 'active'
     `);
 
+    // Task #632: ignored flag on item mappings (reconciliation experience)
+    await db.execute(sql`
+      ALTER TABLE pos_item_mappings
+        ADD COLUMN IF NOT EXISTS ignored INTEGER NOT NULL DEFAULT 0
+    `);
+
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {
       const { encryptToken, isEncryptedToken } = await import("./utils/tokenCrypto");

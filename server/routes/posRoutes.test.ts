@@ -26,6 +26,8 @@ vi.mock("../storage", () => ({
     upsertPosLocationMapping: vi.fn(),
     getPosItemMappings: vi.fn(),
     upsertPosItemMappings: vi.fn(),
+    updatePosItemMapping: vi.fn(),
+    createMenuItem: vi.fn(),
     getPosSyncAuditRows: vi.fn(),
     // Framework guard — returns undefined (no existing connection) by default.
     // Override per-test for the retained-connection path.
@@ -41,6 +43,17 @@ vi.mock("../integrations/pos/square", () => ({
   },
   buildSquareAuthUrl: vi.fn(() => "https://connect.squareup.com/oauth2/authorize?fake=1"),
   buildSquareRedirectUri: vi.fn(() => "https://app.fnbcostpro.com/api/pos/oauth/square/callback"),
+}));
+
+// Stub requireAuth so route-level tests can inject an authenticated identity
+// without a real session.  Individual tests can override req.companyId via the
+// TEST_COMPANY_ID env-like variable or by replacing the mock per-suite.
+vi.mock("../auth", () => ({
+  requireAuth: vi.fn((req: any, _res: any, next: any) => {
+    req.user = { id: "user-test", role: "company_admin", companyId: "company-test" };
+    req.companyId = "company-test";
+    next();
+  }),
 }));
 
 vi.mock("../services/posSyncJobs", () => ({
@@ -517,5 +530,249 @@ describe("OAuth callback route — connection upsert behaviour", () => {
     expect(res.headers.location).toMatch(/pos_error=missing_params/);
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ── PATCH /api/pos/connections/:id/item-mappings/:variationId ─────────────────
+//
+// Covers: ignore existing row, unignore existing row, relink existing row,
+//         first-time ignore when no row exists yet (upsert path),
+//         missing external names on first-time upsert (400),
+//         connection-not-found guard (404).
+
+describe("PATCH /api/pos/connections/:id/item-mappings/:variationId", () => {
+  let app: ReturnType<typeof express>;
+  let server: Server;
+
+  const mockGetById       = storage.getPosConnectionById as ReturnType<typeof vi.fn>;
+  const mockUpdateMapping = storage.updatePosItemMapping  as ReturnType<typeof vi.fn>;
+  const mockUpsertMappings = storage.upsertPosItemMappings as ReturnType<typeof vi.fn>;
+
+  const CONN_ID  = "conn-patch-test";
+  const VAR_ID   = "var-abc123";
+  const COMPANY  = "company-test"; // must match requireAuth stub above
+
+  const fakeConn = { id: CONN_ID, companyId: COMPANY, status: "active" };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    registerPosRoutes(app);
+    await new Promise<void>((resolve) => { server = app.listen(0, () => resolve()); });
+  });
+
+  afterAll(async () => {
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function url(variationId = VAR_ID) {
+    return `/api/pos/connections/${CONN_ID}/item-mappings/${encodeURIComponent(variationId)}`;
+  }
+  function addr() { return (server.address() as { port: number }).port; }
+
+  it("sets ignored=1 on an existing mapping row", async () => {
+    const savedRow = { id: "map-1", connectionId: CONN_ID, externalVariationId: VAR_ID, ignored: 1 };
+    mockGetById.mockResolvedValue(fakeConn);
+    mockUpdateMapping.mockResolvedValue(savedRow);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({ ignored: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(1);
+    expect(mockUpdateMapping).toHaveBeenCalledWith(CONN_ID, VAR_ID, { ignored: true });
+    // Should NOT fall through to upsert when UPDATE returned a row
+    expect(mockUpsertMappings).not.toHaveBeenCalled();
+  });
+
+  it("clears ignored (unignore) on an existing row", async () => {
+    const savedRow = { id: "map-1", connectionId: CONN_ID, externalVariationId: VAR_ID, ignored: 0 };
+    mockGetById.mockResolvedValue(fakeConn);
+    mockUpdateMapping.mockResolvedValue(savedRow);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({ ignored: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(0);
+    expect(mockUpdateMapping).toHaveBeenCalledWith(CONN_ID, VAR_ID, { ignored: false });
+  });
+
+  it("relinks menuItemId on an existing row", async () => {
+    const savedRow = { id: "map-1", menuItemId: "mi-new" };
+    mockGetById.mockResolvedValue(fakeConn);
+    mockUpdateMapping.mockResolvedValue(savedRow);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({ menuItemId: "mi-new" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.menuItemId).toBe("mi-new");
+    expect(mockUpdateMapping).toHaveBeenCalledWith(CONN_ID, VAR_ID, { menuItemId: "mi-new" });
+  });
+
+  it("upserts (creates) the row when it does not exist yet — first-time ignore", async () => {
+    // updatePosItemMapping returns undefined → row not found → fall through to upsert
+    const newRow = { id: "map-new", connectionId: CONN_ID, externalVariationId: VAR_ID, ignored: 1 };
+    mockGetById.mockResolvedValue(fakeConn);
+    mockUpdateMapping.mockResolvedValue(undefined);
+    mockUpsertMappings.mockResolvedValue([newRow]);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({
+        ignored: true,
+        externalItemId: "item-xyz",
+        externalItemName: "Margherita Pizza",
+        externalVariationName: "Large",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(1);
+    expect(mockUpsertMappings).toHaveBeenCalledWith(
+      CONN_ID,
+      COMPANY,
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalVariationId: VAR_ID,
+          externalItemId: "item-xyz",
+          externalItemName: "Margherita Pizza",
+          externalVariationName: "Large",
+          ignored: true,
+        }),
+      ]),
+    );
+  });
+
+  it("returns 400 when no row exists and external names are missing", async () => {
+    mockGetById.mockResolvedValue(fakeConn);
+    mockUpdateMapping.mockResolvedValue(undefined); // no row
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({ ignored: true }); // no externalItemId / names
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/externalItemId/);
+  });
+
+  it("returns 404 when the connection belongs to a different company", async () => {
+    mockGetById.mockResolvedValue({ ...fakeConn, companyId: "other-company" });
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .patch(url())
+      .send({ ignored: true });
+
+    expect(res.status).toBe(404);
+    expect(mockUpdateMapping).not.toHaveBeenCalled();
+  });
+});
+
+// ── POST /api/pos/connections/:id/item-mappings/create-and-link ───────────────
+//
+// Covers: happy-path creates a menu item + mapping, missing required fields (400),
+//         duplicate pluSku (409), connection-not-found guard (404).
+
+describe("POST /api/pos/connections/:id/item-mappings/create-and-link", () => {
+  let app: ReturnType<typeof express>;
+  let server: Server;
+
+  const mockGetById        = storage.getPosConnectionById  as ReturnType<typeof vi.fn>;
+  const mockCreateMenuItem = storage.createMenuItem         as ReturnType<typeof vi.fn>;
+  const mockUpsertMappings  = storage.upsertPosItemMappings  as ReturnType<typeof vi.fn>;
+
+  const CONN_ID = "conn-cal-test";
+  const COMPANY = "company-test";
+  const fakeConn = { id: CONN_ID, companyId: COMPANY, status: "active" };
+
+  const goodBody = {
+    externalVariationId: "var-zzz",
+    externalItemId: "item-zzz",
+    externalItemName: "Margherita",
+    externalVariationName: "Large",
+    menuItemName: "Margherita Pizza Large",
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    registerPosRoutes(app);
+    await new Promise<void>((resolve) => { server = app.listen(0, () => resolve()); });
+  });
+
+  afterAll(async () => {
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function url() { return `/api/pos/connections/${CONN_ID}/item-mappings/create-and-link`; }
+  function addr() { return (server.address() as { port: number }).port; }
+
+  it("creates a menu item and links it — returns both in the response", async () => {
+    const newItem    = { id: "mi-created", name: "Margherita Pizza Large", pluSku: "SQ-var-zzz" };
+    const newMapping = { id: "map-created", menuItemId: "mi-created", ignored: 0 };
+    mockGetById.mockResolvedValue(fakeConn);
+    mockCreateMenuItem.mockResolvedValue(newItem);
+    mockUpsertMappings.mockResolvedValue([newMapping]);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .post(url())
+      .send(goodBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.menuItem.id).toBe("mi-created");
+    expect(res.body.mapping.menuItemId).toBe("mi-created");
+    expect(mockCreateMenuItem).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: COMPANY, name: "Margherita Pizza Large" }),
+    );
+    expect(mockUpsertMappings).toHaveBeenCalledWith(
+      CONN_ID,
+      COMPANY,
+      expect.arrayContaining([
+        expect.objectContaining({
+          externalVariationId: "var-zzz",
+          menuItemId: "mi-created",
+          ignored: false,
+        }),
+      ]),
+    );
+  });
+
+  it("returns 400 when externalVariationId or menuItemName is missing", async () => {
+    mockGetById.mockResolvedValue(fakeConn);
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .post(url())
+      .send({ menuItemName: "Test" }); // missing externalVariationId
+
+    expect(res.status).toBe(400);
+    expect(mockCreateMenuItem).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when createMenuItem throws a unique-constraint error", async () => {
+    mockGetById.mockResolvedValue(fakeConn);
+    mockCreateMenuItem.mockRejectedValue(new Error("duplicate key value violates unique constraint"));
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .post(url())
+      .send(goodBody);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already exists/);
+  });
+
+  it("returns 404 when the connection belongs to a different company", async () => {
+    mockGetById.mockResolvedValue({ ...fakeConn, companyId: "other-company" });
+
+    const res = await request(`http://127.0.0.1:${addr()}`)
+      .post(url())
+      .send(goodBody);
+
+    expect(res.status).toBe(404);
+    expect(mockCreateMenuItem).not.toHaveBeenCalled();
   });
 });

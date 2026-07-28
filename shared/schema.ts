@@ -2059,6 +2059,7 @@ export const posItemMappings = pgTable("pos_item_mappings", {
   externalItemName: text("external_item_name").notNull(),
   externalVariationName: text("external_variation_name").notNull(),
   menuItemId: varchar("menu_item_id"), // nullable until mapped
+  ignored: integer("ignored").notNull().default(0), // 1 = user explicitly ignored (modifier, discount, etc.)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

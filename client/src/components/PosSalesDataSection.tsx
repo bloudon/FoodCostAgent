@@ -927,6 +927,27 @@ export function PosSalesDataSection({ selectedCompanyId, company, onDirtyChange 
                         </div>
                       )}
 
+                    {/* Reconciliation callout — shown when actionable item gaps remain */}
+                    {setupStatus && setupStatus.items.unresolved > 0 && conn?.status === "active" && (
+                      <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 py-3">
+                        <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
+                          <span className="text-amber-800 dark:text-amber-300 text-sm">
+                            <strong>{setupStatus.items.unresolved}</strong> Square item
+                            {setupStatus.items.unresolved === 1 ? "" : "s"} still need
+                            to be matched to your menu before food cost data flows through.
+                          </span>
+                          <a
+                            href={`/pos/item-mapping/${conn.id}`}
+                            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300 hover:underline"
+                          >
+                            Reconcile now
+                            <ArrowRight className="h-3 w-3" />
+                          </a>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
                     {/* Sync timeline + warning summary */}
                     {setupStatus?.lastSuccessfulSyncAt && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">

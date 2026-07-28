@@ -675,7 +675,8 @@ export interface IStorage {
 
   // POS Item Mappings
   getPosItemMappings(connectionId: string): Promise<PosItemMapping[]>;
-  upsertPosItemMappings(connectionId: string, companyId: string, mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null }>): Promise<PosItemMapping[]>;
+  upsertPosItemMappings(connectionId: string, companyId: string, mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null; ignored?: boolean }>): Promise<PosItemMapping[]>;
+  updatePosItemMapping(connectionId: string, externalVariationId: string, updates: { menuItemId?: string | null; ignored?: boolean }): Promise<PosItemMapping | undefined>;
 
   // POS Sync Jobs
   createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob>;
@@ -5054,7 +5055,7 @@ export class DatabaseStorage implements IStorage {
   async upsertPosItemMappings(
     connectionId: string,
     companyId: string,
-    mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null }>,
+    mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null; ignored?: boolean }>,
   ): Promise<PosItemMapping[]> {
     const results: PosItemMapping[] = [];
     for (const m of mappings) {
@@ -5068,24 +5069,47 @@ export class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (existing.length > 0) {
-        // Only update menuItemId and updatedAt — never overwrite the name snapshot
+        // Only update menuItemId, ignored, and updatedAt — never overwrite the name snapshot
         // captured at mapping-creation time. This ensures that renaming or deleting
         // a variation in Square does not break the display of historical mappings.
         const [updated] = await db
           .update(posItemMappings)
-          .set({ menuItemId: m.menuItemId, updatedAt: new Date() })
+          .set({
+            menuItemId: m.menuItemId,
+            ignored: m.ignored ? 1 : 0,
+            updatedAt: new Date(),
+          })
           .where(eq(posItemMappings.id, existing[0].id))
           .returning();
         results.push(updated);
       } else {
         const [created] = await db
           .insert(posItemMappings)
-          .values({ connectionId, companyId, ...m })
+          .values({ connectionId, companyId, ...m, ignored: m.ignored ? 1 : 0 })
           .returning();
         results.push(created);
       }
     }
     return results;
+  }
+
+  async updatePosItemMapping(
+    connectionId: string,
+    externalVariationId: string,
+    updates: { menuItemId?: string | null; ignored?: boolean },
+  ): Promise<PosItemMapping | undefined> {
+    const set: Partial<typeof posItemMappings.$inferSelect> = { updatedAt: new Date() };
+    if (updates.menuItemId !== undefined) set.menuItemId = updates.menuItemId;
+    if (updates.ignored !== undefined) set.ignored = updates.ignored ? 1 : 0;
+    const [row] = await db
+      .update(posItemMappings)
+      .set(set)
+      .where(and(
+        eq(posItemMappings.connectionId, connectionId),
+        eq(posItemMappings.externalVariationId, externalVariationId),
+      ))
+      .returning();
+    return row;
   }
 
   // ===== POS Sync Jobs =====

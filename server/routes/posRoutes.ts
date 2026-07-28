@@ -122,8 +122,10 @@ async function buildPosSetupStatus(companyId: string): Promise<PosSetupStatus> {
 
     const itemMappings = await storage.getPosItemMappings(conn.id);
     const iTotal = itemMappings.length;
-    const iMapped = itemMappings.filter((m) => !!m.menuItemId).length;
-    items = { total: iTotal, mapped: iMapped, ignored: 0, unresolved: iTotal - iMapped };
+    const iMapped = itemMappings.filter((m) => !!m.menuItemId && !m.ignored).length;
+    const iIgnored = itemMappings.filter((m) => !!m.ignored).length;
+    // unresolved = neither mapped nor ignored — items the user has not acted on
+    items = { total: iTotal, mapped: iMapped, ignored: iIgnored, unresolved: iTotal - iMapped - iIgnored };
 
     const recentJobs = await storage.getPosSyncJobs(conn.id, 20);
     if (recentJobs.length > 0) {
@@ -136,11 +138,17 @@ async function buildPosSetupStatus(companyId: string): Promise<PosSetupStatus> {
       lastSuccessfulSyncAt = successJob?.completedAt?.toISOString() ?? null;
 
       // Warning count — jobs with errorMessage or non-empty adhocItems (last 20)
-      warningCount = recentJobs.filter((j) => {
+      // plus any actionable mapping gaps (unresolved items that are neither
+      // mapped nor ignored).  Drops to zero once all variations are resolved.
+      const jobWarnings = recentJobs.filter((j) => {
         if (j.errorMessage) return true;
         const adhoc = j.adhocItems as any;
         return Array.isArray(adhoc) && adhoc.length > 0;
       }).length;
+      // items.unresolved is computed above; referencing it here closes the loop:
+      // once all items are mapped or ignored, mapping gaps no longer contribute.
+      const mappingGapWarnings = items.unresolved > 0 ? 1 : 0;
+      warningCount = jobWarnings + mappingGapWarnings;
     }
   }
 
@@ -484,13 +492,15 @@ export function registerPosRoutes(app: Express): void {
 
       const enriched = variations.map((v) => {
         const existing = mappingByVariation.get(v.externalVariationId);
+        const isIgnored = !!existing?.ignored;
         return {
           externalItemId: v.externalItemId,
           externalVariationId: v.externalVariationId,
           externalItemName: v.itemName,
           externalVariationName: v.variationName,
-          menuItemId: existing?.menuItemId ?? suggestMenuItemId(v.itemName, v.variationName),
-          isMapped: !!existing?.menuItemId,
+          menuItemId: existing?.menuItemId ?? (isIgnored ? null : suggestMenuItemId(v.itemName, v.variationName)),
+          isMapped: !!existing?.menuItemId && !isIgnored,
+          isIgnored,
           isModifier: v.isModifier ?? false,
         };
       });
@@ -515,6 +525,118 @@ export function registerPosRoutes(app: Express): void {
       const result = await storage.upsertPosItemMappings(req.params.id, companyId, mappings);
       res.json(result);
     } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Update a single item mapping — link to menu item, ignore, or unignore.
+   *
+   * Upsert semantics: if no mapping row exists yet for this variation (common
+   * during first-pass reconciliation), one is created on the spot.  Callers
+   * must supply the external name fields in the body so the INSERT is valid.
+   */
+  app.patch("/api/pos/connections/:id/item-mappings/:variationId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const connection = await storage.getPosConnectionById(req.params.id);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+      const {
+        menuItemId,
+        ignored,
+        // External name fields required for upsert when no row exists yet
+        externalItemId,
+        externalItemName,
+        externalVariationName,
+      } = req.body;
+      const updates: { menuItemId?: string | null; ignored?: boolean } = {};
+      if (menuItemId !== undefined) updates.menuItemId = menuItemId;
+      if (ignored !== undefined) updates.ignored = !!ignored;
+
+      // Try a simple UPDATE first (existing row path)
+      const existing = await storage.updatePosItemMapping(
+        req.params.id,
+        req.params.variationId,
+        updates,
+      );
+      if (existing) return res.json(existing);
+
+      // No row yet — upsert requires the external name fields from the client
+      if (!externalItemId || !externalItemName || externalVariationName === undefined) {
+        return res.status(400).json({
+          error:
+            "Mapping row does not exist yet. Supply externalItemId, externalItemName, and externalVariationName to create it.",
+        });
+      }
+      const [created] = await storage.upsertPosItemMappings(req.params.id, companyId, [{
+        externalItemId,
+        externalVariationId: req.params.variationId,
+        externalItemName,
+        externalVariationName,
+        menuItemId: updates.menuItemId !== undefined ? updates.menuItemId : null,
+        ignored: updates.ignored,
+      }]);
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * Create a new FnB menu item from Square catalog data and immediately link it
+   * to the given variation.  Returns the created menu item and the updated mapping row.
+   */
+  app.post("/api/pos/connections/:id/item-mappings/create-and-link", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const connection = await storage.getPosConnectionById(req.params.id);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ error: "Connection not found" });
+      }
+      const {
+        externalVariationId,
+        externalItemId,
+        externalItemName,
+        externalVariationName,
+        menuItemName,
+      } = req.body;
+      if (!externalVariationId || !menuItemName) {
+        return res.status(400).json({ error: "externalVariationId and menuItemName are required" });
+      }
+
+      // Build a unique pluSku from the external variation ID (truncated + prefixed)
+      const pluSku = `SQ-${externalVariationId.slice(0, 20)}`;
+
+      // Create the FnB menu item
+      const menuItem = await storage.createMenuItem({
+        companyId,
+        name: menuItemName,
+        pluSku,
+        isRecipeItem: 1,
+        active: 1,
+        sortOrder: 0,
+      });
+
+      // Upsert the item mapping to link variation → new menu item
+      const [mapping] = await storage.upsertPosItemMappings(req.params.id, companyId, [{
+        externalItemId: externalItemId ?? "",
+        externalVariationId,
+        externalItemName: externalItemName ?? menuItemName,
+        externalVariationName: externalVariationName ?? "",
+        menuItemId: menuItem.id,
+        ignored: false,
+      }]);
+
+      res.json({ menuItem, mapping });
+    } catch (error: any) {
+      // Duplicate pluSku is the most likely error — surface it cleanly
+      if (error.message?.includes("unique") || error.message?.includes("duplicate")) {
+        return res.status(409).json({
+          error: "A menu item with a matching SKU already exists. Choose a different name or link to the existing item.",
+        });
+      }
       res.status(500).json({ error: error.message });
     }
   });
