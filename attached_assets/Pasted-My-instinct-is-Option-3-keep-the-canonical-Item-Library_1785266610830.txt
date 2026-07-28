@@ -1,0 +1,452 @@
+My instinct is **Option 3: keep the canonical Item Library and add a separate Menus portfolio**.
+
+That best supports the premium culinary workflow:
+
+* **Item Library** is where chefs develop recipes, cost dishes, and maintain reusable sellable items.
+* **Menus** is where those items are assembled, priced, evaluated, scheduled, and eventually activated.
+
+An item should be allowed to exist before it belongs to a menu. That matters for R&D, seasonal planning, chef specials, and recipes that are still being tested.
+
+## Where I agree with Replit
+
+The two-wave approach is sensible. The schema foundation and builder should stabilize before adding readiness gates, scheduling, and advanced financial intelligence.
+
+I would not, however, characterize Wave 1 as merely a database migration. It must produce a usable menu-building workflow. Otherwise, we risk adding foundational tables without validating that the model works for chefs.
+
+## Price migration: use a controlled hybrid
+
+I would not choose only Option A or Option B. Use both in a deliberate transition.
+
+### Preserve `menu_items.price`
+
+Redefine it conceptually as the item’s:
+
+```text
+Default selling price
+```
+
+It remains useful when:
+
+* Developing an item in the Library
+* Adding an item to a new menu
+* Suggesting a starting price
+* Importing/scanning items before a menu exists
+
+### Create a Main Menu during migration
+
+For each existing company:
+
+1. Create a default `Main Menu`.
+2. Add its existing menu items as `menu_entries`.
+3. Copy each current `menu_items.price` into the entry price.
+4. Preserve the original item price as the default for future placements.
+
+That gives every existing company a valid menu container immediately.
+
+### New behavior
+
+When an item is added to a menu:
+
+```text
+menu_items.price
+        ↓ copied as initial value
+menu_entries.price
+```
+
+After placement, the entry price is independent.
+
+Do **not** make menu-entry pricing a live fallback to the item price. A chef changing the default item price should not unexpectedly alter a scheduled banquet or holiday menu.
+
+Longer term, the database field could be renamed to `default_price`, but that is not necessary in the first migration.
+
+## `store_menu_items` and menu locations are not actually duplicates
+
+They represent two different questions:
+
+### Menu location assignment
+
+> Which stores offer this menu?
+
+```text
+Sunday Brunch
+→ Downtown
+→ Lakeside
+```
+
+### Item-level store assignment
+
+> Can this particular item be used or sold at this store?
+
+```text
+Lobster Benedict
+→ Downtown only
+```
+
+Both are useful.
+
+The eventual availability rule becomes:
+
+```text
+Menu is assigned to the store
+AND
+Item is allowed at the store
+```
+
+So I would **keep `store_menu_items`** as item-level availability or an exception layer. Do not deprecate it merely because menu-level location assignment is introduced.
+
+Menu location assignments can remain Wave 2, avoiding any immediate conflict.
+
+## Departments versus sections
+
+Keep both, but establish distinct meanings:
+
+* **Item Category** — company-level taxonomy currently represented by `menuDepartments`
+* **Menu Section** — presentation and ordering inside one specific menu
+
+Example:
+
+```text
+Canonical item category:
+Entrées
+
+Dinner menu section:
+From the Grill
+
+Banquet menu section:
+Choice of Entrée
+```
+
+I would gradually change the user-facing label from **Department** to **Item Category** where practical. There is no need to rename the database table now.
+
+Existing categories can be offered as suggestions when creating sections, but a menu section must remain independent.
+
+## Important pushback on “projected menu food cost”
+
+An unweighted average of item food-cost percentages is **not projected menu food cost**.
+
+For example, averaging the percentage on a $9 side dish and a $48 steak treats them as equally important, regardless of how many are expected to sell.
+
+Wave 1 can honestly show:
+
+* Average item food-cost percentage
+* Median item food-cost percentage
+* Number of items above target
+* Number of fully costed items
+* Gross margin by item
+* Costing coverage
+
+But the premium metric:
+
+```text
+Projected Menu Food Cost
+```
+
+requires a forecasted sales mix.
+
+That can eventually come from:
+
+* Manual expected mix percentages
+* Expected quantities
+* Similar historical POS items
+* A previous version of the same menu
+* Actual POS performance after launch
+
+I would protect the credibility of the product by not labeling an unweighted average as projected performance.
+
+## Recommended waves
+
+### Wave 1 — Menu foundation and builder
+
+This should include:
+
+* `menus`
+* `menu_sections`
+* `menu_entries`
+* Automatic Main Menu migration
+* Default item price copied to entry price
+* Draft, Live, and Retired states
+* Menu portfolio
+* Item Library retained
+* Create, edit, duplicate, and retire menus
+* Ordered sections
+* Add/remove existing items
+* Create a new canonical item while building a menu
+* Menu-specific price, display name, and description
+* Basic honest cost rollups
+* Tenant isolation and migration tests
+
+Wave 1 proves the model.
+
+### Wave 2 — Premium menu management
+
+Then add:
+
+* Ready state
+* Hard blockers versus warnings
+* Scheduled state
+* Effective dates and recurring service windows
+* Menu-to-location assignment
+* Readiness dashboard
+* POS-mapping readiness
+* Menu scan into a selected menu
+* Forecasted sales mix
+* Projected weighted food cost
+* Comparison against target food cost
+* Future-menu and current-menu comparisons
+
+## Readiness should distinguish blockers and warnings
+
+Not every issue should prevent a menu from becoming Ready.
+
+### Likely blockers
+
+* Missing selling price
+* Missing or incomplete recipe
+* No calculable item cost
+* Unresolved POS mapping when connected POS is the primary source and the item is expected to sell
+* No menu entries
+* Invalid schedule once scheduling exists
+
+### Likely warnings
+
+* Stale vendor pricing
+* Item above target food cost
+* Missing description
+* Unusually low margin
+* Item unavailable at one assigned store
+
+That lets chefs make informed decisions without the software becoming bureaucratic.
+
+## Recommended tasks
+
+I would break this into four tasks rather than one large feature.
+
+### Task 1 — Multiple Menus Domain Foundation
+
+```markdown
+# Multiple Menus — Domain Foundation and Migration
+
+Create the foundational multi-menu data model while preserving all current menu-item, recipe, POS, and sales behavior.
+
+## Schema
+
+Add:
+
+- `menus`
+- `menu_sections`
+- `menu_entries`
+
+Menus initially support:
+
+- Draft
+- Live
+- Retired
+
+Menu entries reference canonical `menu_items`.
+
+Entry-level fields include:
+
+- Menu section
+- Display order
+- Selling price
+- Optional display-name override
+- Optional description override
+- Featured/special flag
+- Active state
+
+## Existing price behavior
+
+Keep `menu_items.price` as the canonical item's default selling price.
+
+When an item is placed onto a menu, copy that default into `menu_entries.price`.
+
+After creation, the entry price is independent and must not automatically change when the item default price changes.
+
+## Migration
+
+For every existing company:
+
+- Create one `Main Menu`.
+- Create appropriate sections from current data where practical.
+- Add all existing menu items as entries.
+- Copy existing item prices into their entries.
+- Mark the Main Menu Live.
+- Preserve all existing items, recipes, POS mappings, sales history, and store assignments.
+
+The migration must be idempotent.
+
+## Existing relationships
+
+- POS mappings remain on canonical menu items.
+- Recipes remain on canonical menu items.
+- `store_menu_items` remains the item-level store-availability model.
+- `menuDepartments` remains company-level item taxonomy.
+- Menu sections are a new menu-specific presentation concept.
+
+## APIs and tests
+
+Add tenant-safe CRUD for menus, sections, and entries.
+
+Test:
+
+- Migration of existing companies
+- Duplicate migration execution
+- Tenant isolation
+- Entry-price independence
+- Canonical item references
+- Status transitions
+- Duplicate menu behavior
+```
+
+### Task 2 — Menu Portfolio and Builder
+
+```markdown
+# Menu Portfolio and Builder
+
+Create a new Menus experience while preserving the existing canonical Item Library.
+
+## Information architecture
+
+Use a hybrid model:
+
+- Menus — portfolio and menu-building workspace
+- Item Library — all canonical menu items
+
+Items may exist without belonging to a menu.
+
+## Menu portfolio
+
+Show:
+
+- Menu name
+- Status
+- Item count
+- Fully costed count
+- Basic food-cost summary
+- Last updated
+- Duplicate
+- Retire
+
+## Menu builder
+
+Support:
+
+- Create and rename sections
+- Reorder sections
+- Add existing library items
+- Create a new canonical item while building
+- Remove an item from a menu without deleting the canonical item
+- Reorder entries
+- Set menu-specific price
+- Set optional display-name and description overrides
+- Duplicate the menu
+
+Duplicating a menu copies sections, entries, ordering, and menu-specific presentation/pricing.
+
+It does not duplicate canonical items or recipes.
+
+## Basic financial summary
+
+Show clearly labeled metrics such as:
+
+- Fully costed items
+- Items missing prices
+- Items missing recipes
+- Average item food-cost percentage
+- Median item food-cost percentage
+- Items above company target
+
+Do not label an unweighted average as `Projected Menu Food Cost`.
+```
+
+### Task 3 — Menu Readiness and Financial Intelligence
+
+```markdown
+# Menu Readiness and Financial Intelligence
+
+Add the premium readiness layer after the menu foundation and builder are stable.
+
+## Lifecycle
+
+Add `Ready` between Draft and Scheduled/Live.
+
+Readiness is derived from real menu, recipe, cost, pricing, POS, and mapping data.
+
+## Checks
+
+Separate:
+
+- Blocking issues
+- Warnings
+
+Blockers may include missing prices, incomplete recipes, uncosted entries, and required unresolved POS mappings.
+
+Warnings may include stale vendor prices, items above target cost, and location-specific availability concerns.
+
+## Dashboard
+
+Show:
+
+- Entries total
+- Fully costed
+- Missing prices
+- Incomplete recipes
+- Unresolved required POS mappings
+- Items above target
+- Average and median item cost
+- Readiness blockers
+- Readiness warnings
+
+Do not add a projected weighted menu-food-cost metric until forecast mix data exists.
+```
+
+### Task 4 — Scheduling, Locations, and Forecasting
+
+```markdown
+# Menu Scheduling, Locations, and Forecasting
+
+Add future activation and planned financial performance.
+
+## Scheduling
+
+Support:
+
+- Scheduled state
+- Effective start and end dates
+- Simple recurring weekday/time windows
+- Manual activation and retirement
+
+## Location assignment
+
+Add menu-level store assignments.
+
+Retain `store_menu_items` as item-level store availability.
+
+An item is available when:
+
+- The menu is assigned to the store
+- The item is allowed at the store
+
+## Forecast mix
+
+Allow expected item quantities or mix percentages.
+
+Use forecast mix to calculate a genuinely weighted:
+
+- Projected menu food cost
+- Projected revenue
+- Projected food cost dollars
+- Projected gross margin
+
+Later, allow POS history to suggest or replace manual forecast weights.
+```
+
+## Product-manager call
+
+Approve the hybrid Library + Menus model.
+
+Build Tasks 1 and 2 as Wave 1. Do not bundle readiness, scheduling, location assignment, scan integration, and weighted forecasting into the same migration release.
+
+The premium story is not simply “multiple menus.” It is:
+
+> **Develop dishes once, place them across multiple menus, and financially validate each menu before it reaches the guest.**
