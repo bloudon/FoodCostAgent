@@ -26,6 +26,7 @@ import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPr
 import { Router } from "express";
 import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
 import { registerPosRoutes } from "./routes/posRoutes";
+import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
@@ -883,7 +884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: z.string().email(),
         password: z.string().min(6, "Password must be at least 6 characters"),
         company: insertCompanySchema.omit({ id: true, tccAccountId: true }).extend({
-          posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+          posProvider: z.enum(['square', 'thrive', 'toast', 'hungerrush', 'clover', 'spoton', 'other', 'none']).optional(),
           tccAccountId: z.string().optional(),
         }).refine(
           (data) => {
@@ -1536,7 +1537,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         city: z.string().optional(),
         state: z.string().optional(),
         postalCode: z.string().optional(),
-        posProvider: z.enum(["thrive", "toast", "hungerrush", "clover", "other", "none"]).optional(),
+        posProvider: z.enum(["square", "thrive", "toast", "hungerrush", "clover", "spoton", "other", "none"]).optional(),
         tccAccountId: z.string().optional(),
       });
 
@@ -15953,6 +15954,66 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
     try {
       const data = insertCompanySchema.partial().parse(req.body);
+
+      // ── POS provider/method validation ──────────────────────────────────────
+      const isPosChange = "posProvider" in data || "primarySalesMethod" in data;
+      if (isPosChange) {
+        const currentCompany = await storage.getCompany(req.params.id);
+        if (!currentCompany) {
+          return res.status(404).json({ error: "Company not found" });
+        }
+        const resultingProvider = "posProvider" in data ? data.posProvider : currentCompany.posProvider;
+        const resultingMethod = "primarySalesMethod" in data
+          ? (data as any).primarySalesMethod
+          : (currentCompany as any).primarySalesMethod;
+
+        // Rule 1: null/none provider requires null method.
+        if (!resultingProvider || resultingProvider === "none") {
+          if (resultingMethod) {
+            return res.status(422).json({
+              code: "invalid_pos_configuration",
+              error: "primarySalesMethod must be null when no POS provider is selected.",
+            });
+          }
+        }
+
+        // Rule 2: pos_connector requires a registry-available adapter with salesRetrieval.
+        if (resultingMethod === "pos_connector") {
+          if (!resultingProvider || !providerSupportsElectronic(resultingProvider)) {
+            return res.status(422).json({
+              code: "invalid_pos_configuration",
+              error: `The selected POS provider (${resultingProvider ?? "none"}) does not support an electronic connection. ` +
+                "Choose a provider with an available connector, or set primarySalesMethod to manual_upload.",
+            });
+          }
+        }
+
+        // Rule 3: manual_upload allowed for any recognised provider (including "other").
+        if (resultingMethod === "manual_upload") {
+          if (resultingProvider && resultingProvider !== "none" && !isKnownProvider(resultingProvider)) {
+            return res.status(422).json({
+              code: "invalid_pos_configuration",
+              error: `Unknown POS provider: ${resultingProvider}.`,
+            });
+          }
+        }
+
+        // Rule 4: provider-change guard — block if any retained connection exists.
+        if ("posProvider" in data && data.posProvider !== currentCompany.posProvider) {
+          const retained = await storage.getRetainedPosConnectionForCompany(req.params.id);
+          if (retained) {
+            return res.status(409).json({
+              code: "retained_pos_connection",
+              error: "Cannot change POS provider while a connection exists. Disconnect the current connection first.",
+              provider: retained.provider,
+              connectionId: retained.id,
+              connectionStatus: retained.status,
+            });
+          }
+        }
+      }
+      // ── End POS validation ──────────────────────────────────────────────────
+
       const company = await storage.updateCompany(req.params.id, data);
       
       if (!company) {

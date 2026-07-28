@@ -18,7 +18,8 @@ export const companies = pgTable("companies", {
   country: text("country").notNull().default("US"),
   timezone: text("timezone").notNull().default("America/New_York"),
   logoImagePath: text("logo_image_path"), // Company logo image path
-  posProvider: text("pos_provider"), // POS provider: thrive, toast, hungerrush, clover, other, none
+  posProvider: text("pos_provider"), // POS provider: square, thrive, toast, hungerrush, clover, spoton, other, none
+  primarySalesMethod: text("primary_sales_method"), // pos_connector | manual_upload | null — DB CHECK enforced in startup migration
   tccAccountId: text("tcc_account_id"), // The Chef's Companion (Thrive POS) account ID - only required for Thrive POS users
   preferredUnitSystem: text("preferred_unit_system").notNull().default("imperial"), // imperial, metric, or both
   costingMethod: text("costing_method").notNull().default("last_cost"), // last_cost or weighted_average
@@ -39,7 +40,8 @@ export const companies = pgTable("companies", {
 export const insertCompanySchema = createInsertSchema(companies)
   .omit({ id: true, createdAt: true })
   .extend({
-    posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+    posProvider: z.enum(['square', 'thrive', 'toast', 'hungerrush', 'clover', 'spoton', 'other', 'none']).optional(),
+    primarySalesMethod: z.enum(['pos_connector', 'manual_upload']).nullish(),
     tccAccountId: z.string().uuid("TCC Account ID must be a valid UUID").optional(), // Only required if posProvider is 'thrive'
   });
 export type InsertCompany = z.infer<typeof insertCompanySchema>;

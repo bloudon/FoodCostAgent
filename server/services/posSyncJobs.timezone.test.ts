@@ -10,6 +10,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../storage", () => ({
   storage: {
+    // Task #612: runTimezoneAwareIncrementalSyncs now calls getPosConnectionsEligibleForSync
+    // (filters to companies with primary_sales_method = 'pos_connector')
+    getPosConnectionsEligibleForSync: vi.fn(),
+    // getAllActivePosConnections is still used by refreshAllPosTokens and backfill
     getAllActivePosConnections: vi.fn(),
     getPosConnectionById: vi.fn(),
     getPosLocationMappings: vi.fn(),
@@ -77,7 +81,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("syncs a connection when its location timezone is in the 4 AM window", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-1", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
@@ -98,7 +102,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("skips a connection when its location timezone is NOT in the 4 AM window", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-2", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
@@ -115,7 +119,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("syncs a connection with no timezone data when UTC hour is 4 (fallback)", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-3", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     // NULL timezone — legacy connection backfill not yet run
@@ -133,7 +137,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("skips a connection with no timezone data when UTC hour is NOT 4", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-4", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
@@ -147,7 +151,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("syncs a connection once even when multiple locations share the same timezone", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-5", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([
@@ -166,7 +170,7 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("syncs only the in-window connection when two connections are in different timezones", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-east", companyId: "co-1", status: "active", refreshToken: null },
       { id: "conn-west", companyId: "co-1", status: "active", refreshToken: null },
     ]);
@@ -192,13 +196,13 @@ describe("runTimezoneAwareIncrementalSyncs", () => {
   });
 
   it("handles zero active connections without error", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([]);
     await expect(runTimezoneAwareIncrementalSyncs({ utcHour: 4 })).resolves.toBeUndefined();
     expect(mockStorage.getPosLocationMappings).not.toHaveBeenCalled();
   });
 
   it("handles connections with no location mappings without error", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([
       { id: "conn-6", companyId: "co-1", status: "active", refreshToken: null },
     ]);
     mockStorage.getPosLocationMappings.mockResolvedValue([]);

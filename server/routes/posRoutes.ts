@@ -1,6 +1,7 @@
 /**
  * POS Connector Routes
- * Handles Square OAuth, connection CRUD, location/item mapping, and sync triggers.
+ * Handles Square OAuth, connection CRUD, location/item mapping, sync triggers,
+ * provider registry metadata, and setup-status.
  */
 import type { Express } from "express";
 import crypto from "crypto";
@@ -8,6 +9,13 @@ import { storage } from "../storage";
 import { requireAuth } from "../auth";
 import { squarePosConnector, buildSquareAuthUrl, buildSquareRedirectUri } from "../integrations/pos/square";
 import { runBackfill, runIncrementalSync } from "../services/posSyncJobs";
+import {
+  getConnector,
+  getProviderMetadata,
+  providerSupportsElectronic,
+  isKnownProvider,
+  type PosProviderPublicMetadata,
+} from "../integrations/pos/registry";
 
 // ── HMAC-signed state helpers (mirrors QB OAuth pattern) ─────────────────────
 export function createSignedState(data: any): string {
@@ -58,7 +66,121 @@ function generateNonce(): string {
   return crypto.randomBytes(16).toString("hex");
 }
 
+// ── PosSetupStatus builder ──────────────────────────────────────────────────
+
+interface PosSetupStatus {
+  providerSelected: boolean;
+  primaryMethodSelected: boolean;
+  connectorAvailable: boolean;
+  connectionStatus: "not_configured" | "not_connected" | "connected" | "disconnected" | "error";
+  locations: { total: number; mapped: number; ignored: number; unresolved: number };
+  items: { total: number; mapped: number; ignored: number; unresolved: number };
+  lastSuccessfulSyncAt: string | null;
+  lastAttemptedSyncAt: string | null;
+  latestSyncStatus: string | null;
+  warningCount: number;
+}
+
+async function buildPosSetupStatus(companyId: string): Promise<PosSetupStatus> {
+  const company = await storage.getCompany(companyId);
+
+  const posProvider = company?.posProvider ?? null;
+  const primarySalesMethod = (company as any)?.primarySalesMethod ?? null;
+
+  const providerSelected = !!posProvider && posProvider !== "none" && posProvider !== null;
+  const primaryMethodSelected = !!primarySalesMethod;
+  const connectorAvailable = providerSelected ? providerSupportsElectronic(posProvider!) : false;
+
+  // Find any retained (non-released) connection
+  const conn = await storage.getRetainedPosConnectionForCompany(companyId);
+
+  let connectionStatus: PosSetupStatus["connectionStatus"] = "not_configured";
+  if (conn) {
+    if (conn.status === "active") connectionStatus = "connected";
+    else if (conn.status === "disconnected") connectionStatus = "disconnected";
+    else if (conn.status === "error") connectionStatus = "error";
+    else connectionStatus = "not_connected"; // released or unknown
+  } else if (primarySalesMethod === "pos_connector") {
+    connectionStatus = "not_connected";
+  }
+
+  // Location counts
+  let locations = { total: 0, mapped: 0, ignored: 0, unresolved: 0 };
+  let items = { total: 0, mapped: 0, ignored: 0, unresolved: 0 };
+  let lastSuccessfulSyncAt: string | null = null;
+  let lastAttemptedSyncAt: string | null = null;
+  let latestSyncStatus: string | null = null;
+  let warningCount = 0;
+
+  if (conn && conn.status !== "released") {
+    const locationMappings = await storage.getPosLocationMappings(conn.id);
+    const total = locationMappings.length;
+    const mapped = locationMappings.filter((m) => !!m.storeId).length;
+    // "ignored" requires an explicit ignore flag not yet in the schema — 0 for now.
+    // unresolved = rows the user has not acted on at all (neither mapped nor ignored)
+    locations = { total, mapped, ignored: 0, unresolved: total - mapped };
+
+    const itemMappings = await storage.getPosItemMappings(conn.id);
+    const iTotal = itemMappings.length;
+    const iMapped = itemMappings.filter((m) => !!m.menuItemId).length;
+    items = { total: iTotal, mapped: iMapped, ignored: 0, unresolved: iTotal - iMapped };
+
+    const recentJobs = await storage.getPosSyncJobs(conn.id, 20);
+    if (recentJobs.length > 0) {
+      // Most-recently-attempted (any status)
+      lastAttemptedSyncAt = recentJobs[0].completedAt?.toISOString() ?? recentJobs[0].createdAt?.toISOString() ?? null;
+      latestSyncStatus = recentJobs[0].status;
+
+      // Last successful
+      const successJob = recentJobs.find((j) => j.status === "completed");
+      lastSuccessfulSyncAt = successJob?.completedAt?.toISOString() ?? null;
+
+      // Warning count — jobs with errorMessage or non-empty adhocItems (last 20)
+      warningCount = recentJobs.filter((j) => {
+        if (j.errorMessage) return true;
+        const adhoc = j.adhocItems as any;
+        return Array.isArray(adhoc) && adhoc.length > 0;
+      }).length;
+    }
+  }
+
+  return {
+    providerSelected,
+    primaryMethodSelected,
+    connectorAvailable,
+    connectionStatus,
+    locations,
+    items,
+    lastSuccessfulSyncAt,
+    lastAttemptedSyncAt,
+    latestSyncStatus,
+    warningCount,
+  };
+}
+
 export function registerPosRoutes(app: Express): void {
+
+  // ── Provider registry (public) ────────────────────────────────────────────
+
+  /** List all known POS providers with their availability and capabilities. */
+  app.get("/api/pos/providers", (_req, res) => {
+    res.json(getProviderMetadata());
+  });
+
+  // ── Setup status ──────────────────────────────────────────────────────────
+
+  /** Full POS setup status for the active company. */
+  app.get("/api/pos/setup-status", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company selected" });
+      const status = await buildPosSetupStatus(companyId);
+      res.json(status);
+    } catch (error: any) {
+      console.error("[POS] Setup status error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // ── OAuth ─────────────────────────────────────────────────────────────────
 
@@ -197,6 +319,19 @@ export function registerPosRoutes(app: Express): void {
       }
 
       // ── New connection path ────────────────────────────────────────────────
+      // One-connection-per-company guard: if a retained (non-released) connection
+      // already exists, redirect to the reconnect flow instead of creating a duplicate.
+      const existingConn = await storage.getRetainedPosConnectionForCompany(companyId);
+      if (existingConn) {
+        console.warn(
+          `[POS] Company ${companyId} already has a retained connection ${existingConn.id} ` +
+          `(status: ${existingConn.status}) — redirecting to reconnect`,
+        );
+        return res.redirect(
+          `/settings?tab=connections&pos_error=connection_already_exists`,
+        );
+      }
+
       const tokens = await squarePosConnector.exchangeCode(code);
 
       const connection = await storage.createPosConnection({
@@ -311,8 +446,12 @@ export function registerPosRoutes(app: Express): void {
         return res.status(404).json({ error: "Connection not found" });
       }
 
-      // Fetch Square catalog
-      const variations = await squarePosConnector.retrieveCatalog(connection.accessToken);
+      // Fetch catalog via the registry — works for any provider, not just Square
+      const connectorResult = getConnector(connection.provider);
+      if (connectorResult.kind !== "available") {
+        return res.status(400).json({ error: `No electronic connector available for provider: ${connection.provider}` });
+      }
+      const variations = await connectorResult.connector.retrieveCatalog(connection.accessToken);
 
       // Load existing mappings and FnB menu items for auto-matching
       const existingMappings = await storage.getPosItemMappings(req.params.id);

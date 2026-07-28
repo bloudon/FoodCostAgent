@@ -473,10 +473,13 @@ export async function refreshAllPosTokens(): Promise<{ success: number; failed: 
   return { success, failed };
 }
 
-/** Called nightly — runs incremental sync for all active connections */
+/** Called nightly — runs incremental sync for connections eligible for scheduled sync.
+ * Only processes companies whose primary_sales_method = 'pos_connector' and
+ * whose connection provider matches the company's selected posProvider.
+ */
 export async function runAllIncrementalSyncs(): Promise<void> {
-  const connections = await storage.getAllActivePosConnections();
-  console.log(`[POS Nightly] Running incremental sync for ${connections.length} active connection(s)`);
+  const connections = await storage.getPosConnectionsEligibleForSync();
+  console.log(`[POS Nightly] Running incremental sync for ${connections.length} eligible connection(s)`);
 
   for (const conn of connections) {
     try {
@@ -545,7 +548,9 @@ export interface TimezoneAwareSyncOpts {
 export async function runTimezoneAwareIncrementalSyncs(
   opts: TimezoneAwareSyncOpts = {},
 ): Promise<void> {
-  const connections = await storage.getAllActivePosConnections();
+  // Only sync connections whose company has primary_sales_method = 'pos_connector'
+  // and whose provider matches the company's posProvider.
+  const connections = await storage.getPosConnectionsEligibleForSync();
   const currentUtcHour = opts.utcHour ?? new Date().getUTCHours();
   const getHour = opts.getLocalHour ?? localHour;
 

@@ -656,6 +656,18 @@ export interface IStorage {
   updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined>;
   deletePosConnection(id: string, companyId: string): Promise<void>;
   getAllActivePosConnections(): Promise<PosConnection[]>;
+  /**
+   * Returns connections eligible for scheduled sync:
+   *   - status = 'active'
+   *   - company.primary_sales_method = 'pos_connector'
+   *   - connection.provider matches company.pos_provider
+   */
+  getPosConnectionsEligibleForSync(): Promise<PosConnection[]>;
+  /**
+   * Returns the first retained (non-released) connection for a company, if any.
+   * Used by the provider-change guard and OAuth new-connection gate.
+   */
+  getRetainedPosConnectionForCompany(companyId: string): Promise<PosConnection | undefined>;
 
   // POS Location Mappings
   getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]>;
@@ -4908,15 +4920,68 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePosConnection(id: string, companyId: string): Promise<void> {
+    // "released" = intentionally disconnected by the user.
+    // Distinct from "disconnected" (token revocation) so the provider-change
+    // guard can tell the difference and only release the block on user intent.
     await db
       .update(posConnections)
-      .set({ status: "disconnected", updatedAt: new Date() })
+      .set({ status: "released", updatedAt: new Date() })
       .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)));
   }
 
   async getAllActivePosConnections(): Promise<PosConnection[]> {
     const rows = await db.select().from(posConnections).where(eq(posConnections.status, "active"));
     return rows.map(decryptPosConnectionTokens);
+  }
+
+  async getPosConnectionsEligibleForSync(): Promise<PosConnection[]> {
+    // Returns connections whose company has opted into pos_connector as primary
+    // method AND whose provider matches the company's selected posProvider.
+    // Uses a raw join so we can filter in one query rather than N+1 fetches.
+    const result = await db.execute(sql`
+      SELECT pc.*
+      FROM pos_connections pc
+      JOIN companies c ON pc.company_id = c.id
+      WHERE pc.status = 'active'
+        AND c.primary_sales_method = 'pos_connector'
+        AND c.pos_provider = pc.provider
+    `);
+    const rows = (result as any).rows ?? [];
+    // Map raw snake_case DB rows to camelCase PosConnection shape then decrypt
+    return rows.map((row: any) => decryptPosConnectionTokens({
+      id: row.id,
+      companyId: row.company_id,
+      provider: row.provider,
+      merchantId: row.merchant_id,
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      tokenExpiresAt: row.token_expires_at,
+      tokenKeyVersion: row.token_key_version ?? 0,
+      tokenRefreshedAt: row.token_refreshed_at,
+      syncCursor: row.sync_cursor,
+      lastSyncedAt: row.last_synced_at,
+      status: row.status,
+      connectedByUserId: row.connected_by_user_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    } as PosConnection));
+  }
+
+  async getRetainedPosConnectionForCompany(companyId: string): Promise<PosConnection | undefined> {
+    // A "retained" connection is one that has not been explicitly released by the
+    // user. Both "active" and "disconnected" (token revoked) connections are retained.
+    const [row] = await db
+      .select()
+      .from(posConnections)
+      .where(
+        and(
+          eq(posConnections.companyId, companyId),
+          sql`${posConnections.status} <> 'released'`,
+        ),
+      )
+      .orderBy(desc(posConnections.createdAt))
+      .limit(1);
+    return row ? decryptPosConnectionTokens(row) : undefined;
   }
 
   // ===== POS Location Mappings =====

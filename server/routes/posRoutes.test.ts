@@ -27,6 +27,10 @@ vi.mock("../storage", () => ({
     getPosItemMappings: vi.fn(),
     upsertPosItemMappings: vi.fn(),
     getPosSyncAuditRows: vi.fn(),
+    // Framework guard — returns undefined (no existing connection) by default.
+    // Override per-test for the retained-connection path.
+    getRetainedPosConnectionForCompany: vi.fn().mockResolvedValue(undefined),
+    getCompany: vi.fn().mockResolvedValue(null),
   },
 }));
 

@@ -22,6 +22,8 @@ vi.mock("../storage", () => ({
     updatePosSyncJob: vi.fn(),
     updatePosConnection: vi.fn(),
     getAllActivePosConnections: vi.fn(),
+    // Task #612: scheduler now calls getPosConnectionsEligibleForSync (gates on primarySalesMethod)
+    getPosConnectionsEligibleForSync: vi.fn(),
   },
 }));
 
@@ -684,7 +686,7 @@ describe("runAllIncrementalSyncs — revocation on one connection does not affec
 
   it("connection 2 completes its sync and ingests rows even when connection 1 is revoked", async () => {
     // Scheduler fetches two active connections
-    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
 
     // --- conn-a (revoked) ---
     mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_A);
@@ -747,7 +749,7 @@ describe("runAllIncrementalSyncs — revocation on one connection does not affec
   it("connection 1 status is 'disconnected' and connection 2 status is unchanged after the scheduler run", async () => {
     // Variant: verify that updatePosConnection is called with the correct
     // connection IDs and that no cross-contamination occurs between connections.
-    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([SCHED_CONN_A, SCHED_CONN_B]);
 
     // conn-a: revoked immediately on retrieveSales
     mockStorage.getPosConnectionById.mockResolvedValueOnce(SCHED_CONN_A);
@@ -836,7 +838,7 @@ describe("runTimezoneAwareIncrementalSyncs — revocation on one connection does
 
   it("connection B completes its sync and ingests rows even when connection A is revoked in the 4 AM window", async () => {
     // Both connections are eligible (same UTC offset injected → both at local 4 AM)
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
 
     // Window-check pass: getPosLocationMappings called once per connection
     mockStorage.getPosLocationMappings
@@ -907,7 +909,7 @@ describe("runTimezoneAwareIncrementalSyncs — revocation on one connection does
 
   it("connection A is marked disconnected and connection B status is unchanged after the timezone-aware scheduler run", async () => {
     // Variant: verify correct connection IDs and no cross-contamination.
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_A, TZ_CONN_B]);
 
     // Window-check pass
     mockStorage.getPosLocationMappings
@@ -1021,7 +1023,7 @@ describe("runTimezoneAwareIncrementalSyncs — all connections in window are rev
   });
 
   it("resolves without throwing when every connection in the window is revoked", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
 
     // Window-check pass: each connection has a location in the 4 AM window
     mockStorage.getPosLocationMappings
@@ -1058,7 +1060,7 @@ describe("runTimezoneAwareIncrementalSyncs — all connections in window are rev
   });
 
   it("marks every connection disconnected when all are revoked", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_TZ_C])
@@ -1098,7 +1100,7 @@ describe("runTimezoneAwareIncrementalSyncs — all connections in window are rev
   });
 
   it("leaves no job in running state when all connections are revoked", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_C, TZ_CONN_D, TZ_CONN_E]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_TZ_C])
@@ -1207,7 +1209,7 @@ describe("runTimezoneAwareIncrementalSyncs — unexpected generic Error after lo
   });
 
   it("scheduler resolves without throwing when a generic Error crashes conn-a after lock acquisition", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
 
     // Window-check pass: getPosLocationMappings called once per connection to determine eligibility
     mockStorage.getPosLocationMappings
@@ -1237,7 +1239,7 @@ describe("runTimezoneAwareIncrementalSyncs — unexpected generic Error after lo
   });
 
   it("the failing connection's job is left in a non-running terminal state (failed) after the crash", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_CRASH_A])
@@ -1276,7 +1278,7 @@ describe("runTimezoneAwareIncrementalSyncs — unexpected generic Error after lo
   });
 
   it("the healthy connection completes its sync and ingests rows even after conn-a crashes", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([CRASH_CONN_A, CRASH_CONN_B]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_CRASH_A])
@@ -1359,7 +1361,7 @@ describe("runAllIncrementalSyncs — unexpected generic Error after lock acquisi
   });
 
   it("scheduler resolves without throwing when conn-a crashes with a generic Error after lock acquisition", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
 
     // conn-a: getPosConnectionById succeeds, lock acquired, then getPosLocationMappings crashes
     mockStorage.getPosConnectionById
@@ -1383,7 +1385,7 @@ describe("runAllIncrementalSyncs — unexpected generic Error after lock acquisi
   });
 
   it("conn-a job is left in a non-running terminal state and conn-b completes its sync", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([SCHED_CRASH_A, SCHED_CRASH_B]);
 
     mockStorage.getPosConnectionById
       .mockResolvedValueOnce(SCHED_CRASH_A)
@@ -1484,7 +1486,7 @@ describe("runTimezoneAwareIncrementalSyncs — zero connections in 4 AM window",
   });
 
   it("resolves without throwing when no connections fall in the 4 AM window", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
 
     // Both locations report local hour 10 — neither is in the nightly window
     mockStorage.getPosLocationMappings
@@ -1497,7 +1499,7 @@ describe("runTimezoneAwareIncrementalSyncs — zero connections in 4 AM window",
   });
 
   it("never calls updatePosConnection when no connections are eligible", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_TZ_F])
@@ -1509,7 +1511,7 @@ describe("runTimezoneAwareIncrementalSyncs — zero connections in 4 AM window",
   });
 
   it("never calls updatePosSyncJob when no connections are eligible", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([TZ_CONN_F, TZ_CONN_G]);
 
     mockStorage.getPosLocationMappings
       .mockResolvedValueOnce([LOC_TZ_F])
@@ -1598,7 +1600,7 @@ describe("runIncrementalSync — double-fault: updatePosSyncJob throws inside th
   });
 
   it("runTimezoneAwareIncrementalSyncs resolves without throwing when both retrieveSales and updatePosSyncJob fail", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([DF_CONN]);
 
     // Window-check pass
     mockStorage.getPosLocationMappings
@@ -1621,7 +1623,7 @@ describe("runIncrementalSync — double-fault: updatePosSyncJob throws inside th
   });
 
   it("runAllIncrementalSyncs resolves without throwing when both retrieveSales and updatePosSyncJob fail", async () => {
-    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([DF_CONN]);
     mockStorage.getPosConnectionById.mockResolvedValue(DF_CONN);
     mockStorage.getPosLocationMappings.mockResolvedValue([LOC_DF]);
     mockStorage.tryAcquirePosSyncLock.mockResolvedValue({ acquired: true, job: JOB_DF });
@@ -1646,7 +1648,7 @@ describe("runIncrementalSync — double-fault: updatePosSyncJob throws inside th
     const JOB_DF_B = { id: "job-df-b", status: "running" };
     const LOC_DF_B = { externalLocationId: "loc-df-b", storeId: "store-df-b", externalTimezone: "America/Denver" };
 
-    mockStorage.getAllActivePosConnections.mockResolvedValue([DF_CONN, DF_CONN_B]);
+    mockStorage.getPosConnectionsEligibleForSync.mockResolvedValue([DF_CONN, DF_CONN_B]);
 
     // conn-a: lock acquired, retrieveSales throws, then updatePosSyncJob also throws
     mockStorage.getPosConnectionById

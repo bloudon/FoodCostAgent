@@ -2561,3 +2561,40 @@ DO $$ BEGIN
       VALUES ('v065', 'Extension Pilot: capture completeness + captureWarning fields');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v066 — POS Connector Framework: primary_sales_method on companies +
+--        one-active-connection-per-company index.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v066') THEN
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS primary_sales_method text
+        CHECK (primary_sales_method IN ('pos_connector', 'manual_upload'));
+
+    -- Deduplicate any companies that somehow ended up with multiple active
+    -- connections (e.g. from the old new-connection path that lacked the guard).
+    -- Keep the newest active row per company; mark older duplicates 'disconnected'.
+    UPDATE pos_connections
+       SET status = 'disconnected', updated_at = NOW()
+     WHERE id IN (
+       SELECT id FROM (
+         SELECT id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY company_id
+                  ORDER BY created_at DESC
+                ) AS rn
+         FROM pos_connections
+         WHERE status = 'active'
+       ) ranked
+       WHERE rn > 1
+     );
+
+    -- Now it is safe to create the unique index — no duplicates remain.
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_connections_one_active_per_company
+      ON pos_connections (company_id) WHERE status = 'active';
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v066', 'POS Framework: primary_sales_method on companies, one-active-connection index');
+  END IF;
+END $$;

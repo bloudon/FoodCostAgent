@@ -984,6 +984,37 @@ async function runStartupMigrations() {
           AND external_line_item_id IS NOT NULL
     `);
 
+    // Task #612: primary_sales_method on companies (CHECK enforced in v066 migration above)
+    await db.execute(sql`
+      ALTER TABLE companies
+        ADD COLUMN IF NOT EXISTS primary_sales_method text
+          CHECK (primary_sales_method IN ('pos_connector', 'manual_upload'))
+    `);
+    // Task #612: deduplicate before creating the unique index.
+    // If a company somehow has multiple active connections (old OAuth path had no guard),
+    // keep the newest and mark the rest 'disconnected' — never fail startup on duplicates.
+    await db.execute(sql`
+      UPDATE pos_connections
+         SET status = 'disconnected', updated_at = NOW()
+       WHERE id IN (
+         SELECT id FROM (
+           SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY company_id
+                    ORDER BY created_at DESC
+                  ) AS rn
+           FROM pos_connections
+           WHERE status = 'active'
+         ) ranked
+         WHERE rn > 1
+       )
+    `);
+    // Now safe to create the unique index — duplicates are resolved above.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS pos_connections_one_active_per_company
+        ON pos_connections (company_id) WHERE status = 'active'
+    `);
+
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {
       const { encryptToken, isEncryptedToken } = await import("./utils/tokenCrypto");
