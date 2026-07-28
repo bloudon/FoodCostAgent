@@ -84,11 +84,12 @@ interface PosSetupStatus {
 interface Props {
   selectedCompanyId: string | null;
   company: Company | undefined;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function PosSalesDataSection({ selectedCompanyId, company }: Props) {
+export function PosSalesDataSection({ selectedCompanyId, company, onDirtyChange }: Props) {
   const { toast } = useToast();
   const [location] = useWouterLocation();
 
@@ -117,6 +118,11 @@ export function PosSalesDataSection({ selectedCompanyId, company }: Props) {
     setMethodChangeNote(null);
     setSaveError(null);
   }, [company?.posProvider, (company as any)?.primarySalesMethod]);
+
+  // ── Notify parent of dirty state ───────────────────────────────────────────
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   // ── OAuth return-code handler ──────────────────────────────────────────────
   useEffect(() => {

@@ -264,6 +264,8 @@ function QbSyncHistoryCard() {
 export default function Settings() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("company");
+  const [posIsDirty, setPosIsDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [isVendorMappingDialogOpen, setIsVendorMappingDialogOpen] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
@@ -611,6 +613,25 @@ export default function Settings() {
     updateCompanyMutation.mutate(companyData);
   };
 
+  const handleTabChange = (tab: string) => {
+    if (posIsDirty && activeTab === "connections" && tab !== "connections") {
+      setPendingTab(tab);
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleLeaveTab = () => {
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
+  };
+
+  const handleStayOnTab = () => {
+    setPendingTab(null);
+  };
+
   const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -694,7 +715,27 @@ export default function Settings() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      {/* Unsaved POS changes guard dialog */}
+      <Dialog open={pendingTab !== null} onOpenChange={(open) => { if (!open) setPendingTab(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes to your POS &amp; Sales configuration. If you leave now, your changes will be discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleStayOnTab}>
+              Stay and Save
+            </Button>
+            <Button variant="destructive" onClick={handleLeaveTab}>
+              Leave and Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="grid w-full grid-cols-7 max-w-6xl">
           <TabsTrigger value="company" data-testid="tab-company">
             <Building2 className="h-4 w-4 mr-2" />
@@ -1447,7 +1488,7 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="connections" className="space-y-6">
-          <PosSalesDataSection selectedCompanyId={selectedCompanyId} company={company} />
+          <PosSalesDataSection selectedCompanyId={selectedCompanyId} company={company} onDirtyChange={setPosIsDirty} />
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-6">
