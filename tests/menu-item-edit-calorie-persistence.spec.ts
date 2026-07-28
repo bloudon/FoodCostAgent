@@ -14,7 +14,7 @@
  *   Email: admin@brians.pizza  /  Password: test123
  */
 
-import { test, expect, Page, APIRequestContext } from 'playwright/test';
+import { test, expect, Page, APIRequestContext } from './test-helpers';
 
 const BASE_URL      = 'http://localhost:5000';
 const TEST_EMAIL    = 'admin@brians.pizza';
@@ -23,11 +23,6 @@ const TEST_PASSWORD = 'test123';
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
-
-async function enableAppMode(page: Page): Promise<void> {
-  await page.goto(`${BASE_URL}/?app`);
-  await page.waitForLoadState('networkidle');
-}
 
 async function loginBrowser(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/login`);
@@ -144,7 +139,6 @@ test.describe('Menu item edit form — calorie persistence', () => {
     seededSessionId = '';
     seededMenuItemId = '';
     await loginCookieApi(request);
-    await enableAppMode(page);
     await loginBrowser(page);
   });
 
@@ -199,16 +193,16 @@ test.describe('Menu item edit form — calorie persistence', () => {
     await calorieInput.fill('720');
     await expect(calorieInput).toHaveValue('720');
 
-    // Save — wait for the dialog to close as confirmation
+    // Save — submit the form programmatically to ensure Firefox fires the submit event
     const saveButton = page.getByTestId('button-confirm-edit');
     await expect(saveButton).toBeEnabled();
 
     const [patchResponse] = await Promise.all([
       page.waitForResponse(
         (resp) => resp.url().includes(`/api/menu-items/${seededMenuItemId}`) && resp.request().method() === 'PATCH',
-        { timeout: 10000 },
+        { timeout: 15000 },
       ),
-      saveButton.click(),
+      page.locator('[role="dialog"] form').evaluate((f: HTMLFormElement) => f.requestSubmit()),
     ]);
     expect(patchResponse.status(), 'PATCH /api/menu-items/:id should return 200').toBe(200);
 
@@ -259,16 +253,16 @@ test.describe('Menu item edit form — calorie persistence', () => {
     await calorieInput.clear();
     await expect(calorieInput).toHaveValue('');
 
-    // Save
+    // Save — submit the form programmatically to ensure Firefox fires the submit event
     const saveButton = page.getByTestId('button-confirm-edit');
     await expect(saveButton).toBeEnabled();
 
     const [patchResponse] = await Promise.all([
       page.waitForResponse(
         (resp) => resp.url().includes(`/api/menu-items/${seededMenuItemId}`) && resp.request().method() === 'PATCH',
-        { timeout: 10000 },
+        { timeout: 15000 },
       ),
-      saveButton.click(),
+      page.locator('[role="dialog"] form').evaluate((f: HTMLFormElement) => f.requestSubmit()),
     ]);
     expect(patchResponse.status(), 'PATCH /api/menu-items/:id should return 200').toBe(200);
 

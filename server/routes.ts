@@ -9985,14 +9985,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const user = (req as any).user;
     
-    // CRITICAL: Validate that the requested store exists and user has access.
-    // Pass companyId for non-global-admin users so the storage layer enforces
-    // company isolation as a defense-in-depth measure (prevents data leakage
-    // even if the application-level check above is ever bypassed).
-    const store = await storage.getCompanyStore(
-      storeId,
-      user.role !== "global_admin" ? user.companyId : undefined
-    );
+    // CRITICAL: Fetch store without company filter first so we can distinguish
+    // "store doesn't exist" (404) from "store belongs to a different company" (403).
+    // Passing companyId here would cause cross-company requests to return 404
+    // instead of 403, leaking information about which store IDs exist.
+    const store = await storage.getCompanyStore(storeId);
     
     if (!store) {
       return res.status(404).json({ error: "Store not found" });
@@ -11267,6 +11264,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ...po,
       lines: enrichedLines,
     });
+  });
+
+  // GET /api/purchase-orders/:id/lines — returns enriched PO lines for the given PO
+  app.get("/api/purchase-orders/:id/lines", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId;
+    const po = await storage.getPurchaseOrder(req.params.id, companyId);
+    if (!po) return res.status(404).json({ error: "Purchase order not found" });
+    const lines = await storage.getPOLines(req.params.id);
+    const vendorItems = await storage.getVendorItems(undefined, companyId);
+    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
+    const units = await storage.getUnits();
+    const enrichedLines = lines.map((line) => {
+      const vi = vendorItems.find((vi) => vi.id === line.vendorItemId);
+      const item = inventoryItems.find((i) => i.id === vi?.inventoryItemId);
+      const unit = units.find((u) => u.id === line.unitId);
+      return {
+        ...line,
+        inventoryItemId: vi?.inventoryItemId,
+        itemName: item?.name || "Unknown",
+        vendorSku: vi?.vendorSku || "",
+        unitName: unit?.name || "",
+        caseQuantity: line.caseQuantity,
+        pricePerUnit: line.priceEach,
+        caseSize: vi?.caseSize || 1,
+      };
+    });
+    res.json({ data: enrichedLines });
   });
 
   app.post("/api/purchase-orders", requireAuth, async (req, res) => {

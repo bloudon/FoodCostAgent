@@ -1098,7 +1098,12 @@ export default function MenuItemsPage() {
   const handleUpdateMenuItem = (data: EditMenuItemForm) => {
     if (!editingItem) return;
     
-    if (selectedStoresForEdit.length === 0) {
+    // Use existing store assignments as fallback if the selector wasn't interacted with
+    const effectiveStoreIds =
+      selectedStoresForEdit.length > 0
+        ? selectedStoresForEdit
+        : (editingItem.storeIds && editingItem.storeIds.length > 0 ? editingItem.storeIds : []);
+    if (effectiveStoreIds.length === 0) {
       toast({
         title: "Validation Error",
         description: "Please select at least one store",
@@ -1126,7 +1131,7 @@ export default function MenuItemsPage() {
       price: data.price ?? undefined,
       calorieCount: data.calorieCount ?? null,
     };
-    updateItemMutation.mutate({ id: editingItem.id, data: payload, storeIds: selectedStoresForEdit });
+    updateItemMutation.mutate({ id: editingItem.id, data: payload, storeIds: effectiveStoreIds });
   };
 
   const handleAddVariant = (parentItem: MenuItem) => {
@@ -1913,7 +1918,7 @@ export default function MenuItemsPage() {
                 </DialogDescription>
               </DialogHeader>
               <Form {...editForm}>
-                <form onSubmit={editForm.handleSubmit(handleUpdateMenuItem)} className="space-y-4 py-4">
+                <form onSubmit={editForm.handleSubmit(handleUpdateMenuItem, (errors) => console.error('[edit-form] validation errors:', JSON.stringify(errors)))} className="space-y-4 py-4">
                   <FormField
                     control={editForm.control}
                     name="name"
