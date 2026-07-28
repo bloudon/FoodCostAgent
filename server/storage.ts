@@ -4919,10 +4919,14 @@ export class DatabaseStorage implements IStorage {
     return row ? decryptPosConnectionTokens(row) : undefined;
   }
 
+  // See docs/pos-connection-lifecycle.md for a full description of what the
+  // "released" status means, what data is retained, and how reconnection works.
   async deletePosConnection(id: string, companyId: string): Promise<void> {
     // "released" = intentionally disconnected by the user.
     // Distinct from "disconnected" (token revocation) so the provider-change
     // guard can tell the difference and only release the block on user intent.
+    // Tokens are left encrypted-but-inactive; mappings and sync history are
+    // preserved on the connection row and linked tables.
     await db
       .update(posConnections)
       .set({ status: "released", updatedAt: new Date() })
