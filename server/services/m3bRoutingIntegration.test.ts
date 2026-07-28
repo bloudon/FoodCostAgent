@@ -19,7 +19,7 @@
  * state.  All test rows use the "inttest-m3b-" prefix and are removed in afterEach.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq, and, inArray } from "drizzle-orm";
 import express, { type Express } from "express";
 import request from "supertest";
@@ -189,7 +189,11 @@ async function insertBaseFixtures() {
 }
 
 async function deleteAllFixtures() {
-  await db.delete(poRoutingAudit).where(eq(poRoutingAudit.id, AUDIT_ROW_ID));
+  // Delete by sourcePOLineId (the compound-key anchor), not just by id.
+  // Rows from a previous run that used the real routing service get a generated
+  // UUID as id (not AUDIT_ROW_ID), so deleting by id alone leaves them behind
+  // and causes ON CONFLICT DO NOTHING to silently skip subsequent inserts.
+  await db.delete(poRoutingAudit).where(eq(poRoutingAudit.sourcePOLineId, PO_LINE_ID));
   await db.delete(poLines).where(eq(poLines.id, PO_LINE_ID));
   await db.delete(purchaseOrders).where(eq(purchaseOrders.id, PO_A_ID));
   await db.delete(purchaseOrders).where(eq(purchaseOrders.id, PO_B_ID));
@@ -239,6 +243,7 @@ async function insertAuditRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("DB integration — tenant isolation (routing 403 gate)", () => {
+  beforeEach(deleteAllFixtures);
   afterEach(deleteAllFixtures);
 
   it("storage.getPurchaseOrder returns undefined for wrong companyId (cross-company request)", async () => {
@@ -308,6 +313,7 @@ describe("DB integration — tenant isolation (routing 403 gate)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("DB integration — idempotency (second routing call returns prior audit)", () => {
+  beforeEach(deleteAllFixtures);
   afterEach(deleteAllFixtures);
 
   it("querying audit by sourcePOLineId+companyId finds the existing row", async () => {
@@ -428,6 +434,7 @@ describe("DB integration — idempotency (second routing call returns prior audi
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("DB integration — savings snapshot persisted in audit row", () => {
+  beforeEach(deleteAllFixtures);
   afterEach(deleteAllFixtures);
 
   it("projectedSavingsPerCase is stored as (fromUnitPrice - toUnitPrice) × toCaseSize", async () => {
@@ -585,6 +592,7 @@ describe("HTTP integration — guard error propagation (DB failure → next(err)
 });
 
 describe("HTTP integration — tenant isolation via createRoutingPOGuard (supertest)", () => {
+  beforeEach(deleteAllFixtures);
   afterEach(deleteAllFixtures);
 
   it("POST /api/purchase-orders/:id/route-lines as company B returns 403 for company A PO", async () => {
