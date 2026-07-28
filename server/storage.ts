@@ -77,6 +77,9 @@ import {
   posLocationMappings, type PosLocationMapping, type InsertPosLocationMapping,
   posItemMappings, type PosItemMapping, type InsertPosItemMapping,
   posSyncJobs, type PosSyncJob, type InsertPosSyncJob,
+  menus, type Menu, type InsertMenu,
+  menuSections, type MenuSection, type InsertMenuSection,
+  menuEntries, type MenuEntry, type InsertMenuEntry,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -706,6 +709,32 @@ export interface IStorage {
     { acquired: true; job: PosSyncJob } |
     { acquired: false; existingJobId: string; existingStartedAt: Date }
   >;
+
+  // ── Menu Portfolio ─────────────────────────────────────────────────────────
+  // Menus
+  getMenusByCompany(companyId: string): Promise<Menu[]>;
+  getMenu(id: string, companyId: string): Promise<Menu | undefined>;
+  createMenu(menu: InsertMenu): Promise<Menu>;
+  updateMenu(id: string, companyId: string, updates: Partial<Menu>): Promise<Menu | undefined>;
+  deleteMenu(id: string, companyId: string): Promise<void>;
+  transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined>;
+  duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu>;
+
+  // Menu Sections
+  getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]>;
+  getMenuSection(id: string, companyId: string): Promise<MenuSection | undefined>;
+  createMenuSection(section: InsertMenuSection): Promise<MenuSection>;
+  updateMenuSection(id: string, companyId: string, updates: Partial<MenuSection>): Promise<MenuSection | undefined>;
+  deleteMenuSection(id: string, companyId: string): Promise<void>;
+  reorderMenuSections(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void>;
+
+  // Menu Entries
+  getMenuEntries(menuId: string, companyId: string): Promise<MenuEntry[]>;
+  getMenuEntry(id: string, companyId: string): Promise<MenuEntry | undefined>;
+  createMenuEntry(entry: InsertMenuEntry): Promise<MenuEntry>;
+  updateMenuEntry(id: string, companyId: string, updates: Partial<MenuEntry>): Promise<MenuEntry | undefined>;
+  deleteMenuEntry(id: string, companyId: string): Promise<void>;
+  reorderMenuEntries(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void>;
 }
 
 // ── POS token encryption helpers (module-level, used by DatabaseStorage) ──────
@@ -5230,6 +5259,203 @@ export class DatabaseStorage implements IStorage {
       });
       console.warn(`[POS Lock] Stale lock released for connection ${data.connectionId} (job ${running.id})`);
       // Next loop iteration retries the INSERT
+    }
+  }
+
+  // ── Menu Portfolio ─────────────────────────────────────────────────────────
+
+  async getMenusByCompany(companyId: string): Promise<Menu[]> {
+    return db.select().from(menus)
+      .where(eq(menus.companyId, companyId))
+      .orderBy(asc(menus.createdAt));
+  }
+
+  async getMenu(id: string, companyId: string): Promise<Menu | undefined> {
+    const [menu] = await db.select().from(menus)
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)));
+    return menu;
+  }
+
+  async createMenu(menu: InsertMenu): Promise<Menu> {
+    const [row] = await db.insert(menus).values(menu).returning();
+    return row;
+  }
+
+  async updateMenu(id: string, companyId: string, updates: Partial<Menu>): Promise<Menu | undefined> {
+    const [row] = await db.update(menus)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenu(id: string, companyId: string): Promise<void> {
+    await db.delete(menus)
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)));
+  }
+
+  async transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined> {
+    const valid = ["draft", "live", "retired"];
+    if (!valid.includes(status)) throw new Error(`Invalid status: ${status}`);
+    const current = await this.getMenu(id, companyId);
+    if (!current) return undefined;
+
+    // Allowed transitions: draft→live, live→retired, retired→draft
+    const transitions: Record<string, string[]> = {
+      draft:   ["live"],
+      live:    ["retired"],
+      retired: ["draft"],
+    };
+    if (!transitions[current.status]?.includes(status)) {
+      throw new Error(`Invalid transition from '${current.status}' to '${status}'`);
+    }
+
+    const [row] = await db.update(menus)
+      .set({ status, updatedBy: updatedBy ?? null, updatedAt: new Date() })
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu> {
+    const source = await this.getMenu(id, companyId);
+    if (!source) throw new Error("Menu not found");
+
+    const name = newName?.trim() || `${source.name} (copy)`;
+
+    // Create the new menu (always starts as draft)
+    const [newMenu] = await db.insert(menus).values({
+      companyId,
+      name,
+      menuType: source.menuType,
+      status: "draft",
+      description: source.description,
+      effectiveStart: source.effectiveStart,
+      effectiveEnd: source.effectiveEnd,
+      createdBy: userId ?? null,
+      updatedBy: userId ?? null,
+    }).returning();
+
+    // Copy sections
+    const sourceSections = await this.getMenuSections(id, companyId);
+    const sectionIdMap = new Map<string, string>(); // old → new
+    for (const sec of sourceSections) {
+      const [newSec] = await db.insert(menuSections).values({
+        menuId: newMenu.id,
+        companyId,
+        name: sec.name,
+        displayOrder: sec.displayOrder,
+      }).returning();
+      sectionIdMap.set(sec.id, newSec.id);
+    }
+
+    // Copy entries
+    const sourceEntries = await this.getMenuEntries(id, companyId);
+    for (const ent of sourceEntries) {
+      await db.insert(menuEntries).values({
+        menuId: newMenu.id,
+        menuSectionId: ent.menuSectionId ? (sectionIdMap.get(ent.menuSectionId) ?? null) : null,
+        menuItemId: ent.menuItemId,
+        companyId,
+        displayOrder: ent.displayOrder,
+        price: ent.price,
+        displayNameOverride: ent.displayNameOverride,
+        descriptionOverride: ent.descriptionOverride,
+        featured: ent.featured,
+        active: ent.active,
+      });
+    }
+
+    return newMenu;
+  }
+
+  // Menu Sections
+  async getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]> {
+    return db.select().from(menuSections)
+      .where(and(eq(menuSections.menuId, menuId), eq(menuSections.companyId, companyId)))
+      .orderBy(asc(menuSections.displayOrder));
+  }
+
+  async getMenuSection(id: string, companyId: string): Promise<MenuSection | undefined> {
+    const [sec] = await db.select().from(menuSections)
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)));
+    return sec;
+  }
+
+  async createMenuSection(section: InsertMenuSection): Promise<MenuSection> {
+    const [row] = await db.insert(menuSections).values(section).returning();
+    return row;
+  }
+
+  async updateMenuSection(id: string, companyId: string, updates: Partial<MenuSection>): Promise<MenuSection | undefined> {
+    const [row] = await db.update(menuSections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenuSection(id: string, companyId: string): Promise<void> {
+    // Nullify entries that referenced this section (entries become unsectioned)
+    await db.update(menuEntries)
+      .set({ menuSectionId: null })
+      .where(and(eq(menuEntries.menuSectionId, id), eq(menuEntries.companyId, companyId)));
+    await db.delete(menuSections)
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)));
+  }
+
+  async reorderMenuSections(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const { id, displayOrder } of orders) {
+      await db.update(menuSections)
+        .set({ displayOrder, updatedAt: new Date() })
+        .where(and(
+          eq(menuSections.id, id),
+          eq(menuSections.menuId, menuId),
+          eq(menuSections.companyId, companyId),
+        ));
+    }
+  }
+
+  // Menu Entries
+  async getMenuEntries(menuId: string, companyId: string): Promise<MenuEntry[]> {
+    return db.select().from(menuEntries)
+      .where(and(eq(menuEntries.menuId, menuId), eq(menuEntries.companyId, companyId)))
+      .orderBy(asc(menuEntries.displayOrder));
+  }
+
+  async getMenuEntry(id: string, companyId: string): Promise<MenuEntry | undefined> {
+    const [entry] = await db.select().from(menuEntries)
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)));
+    return entry;
+  }
+
+  async createMenuEntry(entry: InsertMenuEntry): Promise<MenuEntry> {
+    const [row] = await db.insert(menuEntries).values(entry).returning();
+    return row;
+  }
+
+  async updateMenuEntry(id: string, companyId: string, updates: Partial<MenuEntry>): Promise<MenuEntry | undefined> {
+    const [row] = await db.update(menuEntries)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenuEntry(id: string, companyId: string): Promise<void> {
+    await db.delete(menuEntries)
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)));
+  }
+
+  async reorderMenuEntries(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const { id, displayOrder } of orders) {
+      await db.update(menuEntries)
+        .set({ displayOrder, updatedAt: new Date() })
+        .where(and(
+          eq(menuEntries.id, id),
+          eq(menuEntries.menuId, menuId),
+          eq(menuEntries.companyId, companyId),
+        ));
     }
   }
 }

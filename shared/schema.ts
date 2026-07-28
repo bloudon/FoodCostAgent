@@ -836,6 +836,80 @@ export type MenuItemSize = typeof menuItemSizes.$inferSelect;
 // Menu Items - Hierarchical structure: Parent menu items can have size variants (children)
 // Single-sized items: parentMenuItemId = null, size = null (or a default size)
 // Multi-sized items: Parent has parentMenuItemId = null, children have parentMenuItemId pointing to parent
+// ── Multi-Menu Portfolio ──────────────────────────────────────────────────────
+//
+// Three-layer model:
+//   Menu          — business container (Dinner, Brunch, Holiday 2026, etc.)
+//   MenuSection   — ordered presentation sections within one menu
+//   MenuEntry     — placement of a canonical menu_item inside a specific menu
+//
+// Canonical menu_items, recipes, POS mappings, and store_menu_items are unchanged.
+// menu_items.price is preserved as the item's default selling price.
+// menu_entries.price is copied from menu_items.price at placement time and is
+// subsequently independent — changing the item default never alters a live entry.
+
+export const menus = pgTable("menus", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  menuType: text("menu_type"), // dinner | lunch | brunch | catering | event | other | null
+  status: text("status").notNull().default("draft"), // draft | live | retired
+  description: text("description"),
+  effectiveStart: timestamp("effective_start"),
+  effectiveEnd: timestamp("effective_end"),
+  createdBy: varchar("created_by"),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("menus_company_idx").on(table.companyId),
+}));
+
+export const insertMenuSchema = createInsertSchema(menus).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMenu = z.infer<typeof insertMenuSchema>;
+export type Menu = typeof menus.$inferSelect;
+
+export const menuSections = pgTable("menu_sections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  menuId: varchar("menu_id").notNull(), // FK → menus.id (CASCADE enforced via startup migration)
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  menuIdx: index("menu_sections_menu_idx").on(table.menuId),
+}));
+
+export const insertMenuSectionSchema = createInsertSchema(menuSections).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMenuSection = z.infer<typeof insertMenuSectionSchema>;
+export type MenuSection = typeof menuSections.$inferSelect;
+
+export const menuEntries = pgTable("menu_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  menuId: varchar("menu_id").notNull().references(() => menus.id, { onDelete: "cascade" }),
+  menuSectionId: varchar("menu_section_id").references(() => menuSections.id, { onDelete: "set null" }),
+  menuItemId: varchar("menu_item_id").notNull().references(() => menuItems.id, { onDelete: "cascade" }), // canonical — entries are removed if the item is deleted
+  companyId: varchar("company_id").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  price: real("price"),                       // entry-specific price, independent after placement
+  displayNameOverride: text("display_name_override"),
+  descriptionOverride: text("description_override"),
+  featured: integer("featured").notNull().default(0), // 1 = featured / special
+  active: integer("active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // An item may appear on multiple menus but only once per menu
+  uniqueMenuItem: unique().on(table.menuId, table.menuItemId),
+  menuIdx: index("menu_entries_menu_idx").on(table.menuId),
+  sectionIdx: index("menu_entries_section_idx").on(table.menuSectionId),
+}));
+
+export const insertMenuEntrySchema = createInsertSchema(menuEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMenuEntry = z.infer<typeof insertMenuEntrySchema>;
+export type MenuEntry = typeof menuEntries.$inferSelect;
+
 // Menu Departments (company-level menu section taxonomy)
 // Note: uniqueness is enforced case-insensitively at DB level via
 // UNIQUE INDEX menu_departments_company_lower_name_idx ON (company_id, lower(name)).

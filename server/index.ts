@@ -1021,6 +1021,158 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS ignored INTEGER NOT NULL DEFAULT 0
     `);
 
+    // Task #635: Menu Portfolio — menus, menu_sections, menu_entries tables
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS menus (
+        id         varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id varchar NOT NULL,
+        name       text    NOT NULL,
+        menu_type  text,
+        status     text    NOT NULL DEFAULT 'draft',
+        description text,
+        effective_start timestamp,
+        effective_end   timestamp,
+        created_by varchar,
+        updated_by varchar,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS menus_company_idx ON menus (company_id)
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS menu_sections (
+        id           varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        menu_id      varchar NOT NULL REFERENCES menus(id) ON DELETE CASCADE,
+        company_id   varchar NOT NULL,
+        name         text    NOT NULL,
+        display_order integer NOT NULL DEFAULT 0,
+        created_at   timestamp NOT NULL DEFAULT now(),
+        updated_at   timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS menu_sections_menu_idx ON menu_sections (menu_id)
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS menu_entries (
+        id                   varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        menu_id              varchar NOT NULL REFERENCES menus(id) ON DELETE CASCADE,
+        menu_section_id      varchar REFERENCES menu_sections(id) ON DELETE SET NULL,
+        menu_item_id         varchar NOT NULL,
+        company_id           varchar NOT NULL,
+        display_order        integer NOT NULL DEFAULT 0,
+        price                real,
+        display_name_override text,
+        description_override  text,
+        featured             integer NOT NULL DEFAULT 0,
+        active               integer NOT NULL DEFAULT 1,
+        created_at           timestamp NOT NULL DEFAULT now(),
+        updated_at           timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS menu_entries_menu_item_uniq
+        ON menu_entries (menu_id, menu_item_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS menu_entries_menu_idx    ON menu_entries (menu_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS menu_entries_section_idx ON menu_entries (menu_section_id)
+    `);
+    // Idempotent FK: menu_entries.menu_item_id → menu_items.id
+    // ON DELETE CASCADE so removing a canonical item also removes its menu placements.
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TABLE menu_entries
+          ADD CONSTRAINT menu_entries_menu_item_id_fk
+          FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE CASCADE;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
+    `);
+
+    // Task #635: Main Menu seed — for every company that has no menus yet,
+    // create one "Main Menu" (live) mirroring the company's existing menu-item catalogue.
+    // This is idempotent: companies that already have at least one menu are skipped entirely.
+    try {
+      // Collect company IDs that have menu items but no menus yet
+      const seedRows = await db.execute(sql`
+        SELECT DISTINCT mi.company_id
+        FROM   menu_items mi
+        WHERE  NOT EXISTS (
+          SELECT 1 FROM menus m WHERE m.company_id = mi.company_id
+        )
+      `);
+      const companiesNeedingSeeds: string[] = ((seedRows as any).rows ?? []).map((r: any) => r.company_id);
+
+      for (const companyId of companiesNeedingSeeds) {
+        // 1. Create Main Menu (live)
+        const menuRows = await db.execute(sql`
+          INSERT INTO menus (company_id, name, status)
+          VALUES (${companyId}, 'Main Menu', 'live')
+          RETURNING id
+        `);
+        const menuId: string = ((menuRows as any).rows ?? [])[0]?.id;
+        if (!menuId) continue;
+
+        // 2. Create sections from company's menu_departments (sorted by sort_order)
+        const deptRows = await db.execute(sql`
+          SELECT id, name, sort_order
+          FROM   menu_departments
+          WHERE  company_id = ${companyId}
+          ORDER  BY sort_order ASC, name ASC
+        `);
+        const departments: { id: string; name: string; sort_order: number }[] =
+          (deptRows as any).rows ?? [];
+        const deptSectionMap = new Map<string, string>(); // deptId → sectionId
+
+        for (let i = 0; i < departments.length; i++) {
+          const dept = departments[i];
+          const secRows = await db.execute(sql`
+            INSERT INTO menu_sections (menu_id, company_id, name, display_order)
+            VALUES (${menuId}, ${companyId}, ${dept.name}, ${i})
+            RETURNING id
+          `);
+          const secId: string = ((secRows as any).rows ?? [])[0]?.id;
+          if (secId) deptSectionMap.set(dept.id, secId);
+        }
+
+        // 3. Add all active menu items as entries (top-level items only; variants skipped)
+        const itemRows = await db.execute(sql`
+          SELECT id, menu_department_id, price, sort_order
+          FROM   menu_items
+          WHERE  company_id        = ${companyId}
+            AND  active            = 1
+            AND  parent_menu_item_id IS NULL
+          ORDER  BY sort_order ASC, name ASC
+        `);
+        const items: { id: string; menu_department_id: string | null; price: number | null; sort_order: number }[] =
+          (itemRows as any).rows ?? [];
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const sectionId = item.menu_department_id ? (deptSectionMap.get(item.menu_department_id) ?? null) : null;
+          try {
+            await db.execute(sql`
+              INSERT INTO menu_entries
+                (menu_id, menu_section_id, menu_item_id, company_id, display_order, price)
+              VALUES
+                (${menuId}, ${sectionId}, ${item.id}, ${companyId}, ${i}, ${item.price ?? null})
+              ON CONFLICT (menu_id, menu_item_id) DO NOTHING
+            `);
+          } catch {
+            // ignore per-row errors; entire seed continues
+          }
+        }
+
+        log(`🍽️  Main Menu seeded for company ${companyId}: ${items.length} item(s), ${departments.length} section(s)`);
+      }
+    } catch (seedErr) {
+      console.warn('⚠️ Main Menu seed skipped (non-fatal):', seedErr);
+    }
+
     // Task #540: Re-encrypt any existing plain-text tokens when the key is available
     if (process.env.POS_TOKEN_ENCRYPTION_KEY) {
       const { encryptToken, isEncryptedToken } = await import("./utils/tokenCrypto");

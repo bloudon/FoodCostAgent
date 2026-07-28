@@ -26,6 +26,7 @@ import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPr
 import { Router } from "express";
 import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
 import { registerPosRoutes } from "./routes/posRoutes";
+import { registerMenuRoutes } from "./routes/menuRoutes";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
@@ -164,6 +165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const extensionRouter = Router();
   registerExtensionRoutes(extensionRouter);
   registerPosRoutes(app);
+  registerMenuRoutes(app);
   app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
