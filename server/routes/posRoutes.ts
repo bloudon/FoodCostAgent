@@ -578,7 +578,36 @@ export function registerPosRoutes(app: Express): void {
         return res.status(404).json({ error: "Connection not found" });
       }
       const jobs = await storage.getPosSyncJobs(req.params.id, 10);
-      res.json(jobs);
+
+      // Derive a plain-English error category for each failed job so the UI
+      // can surface specific guidance (reconnect vs fix mappings).
+      const enriched = jobs.map((job) => {
+        let errorCategory: "token_expired" | "mapping_gap" | "unknown" | null = null;
+        if (job.status === "failed") {
+          const msg = (job.errorMessage ?? "").toLowerCase();
+          if (
+            msg.includes("revoked") ||
+            msg.includes("access_token") ||
+            msg.includes("unauthorized") ||
+            msg.includes("token expired") ||
+            msg.includes("401")
+          ) {
+            errorCategory = "token_expired";
+          } else if (
+            (job.rowsSkipped ?? 0) > 0 ||
+            msg.includes("no menu item") ||
+            msg.includes("no mapped location") ||
+            msg.includes("mapping")
+          ) {
+            errorCategory = "mapping_gap";
+          } else {
+            errorCategory = "unknown";
+          }
+        }
+        return { ...job, errorCategory };
+      });
+
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

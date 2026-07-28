@@ -984,8 +984,9 @@ export function PosSalesDataSection({ selectedCompanyId, company, onDirtyChange 
                             {syncJobs.slice(0, 5).map((job: any) => (
                               <div
                                 key={job.id}
-                                className="flex items-center justify-between text-xs py-1.5 border-b last:border-0"
+                                className="text-xs py-1.5 border-b last:border-0 space-y-1.5"
                               >
+                                <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {jobStatusBadge(job.status)}
                                   <span className="capitalize">
@@ -1104,6 +1105,52 @@ export function PosSalesDataSection({ selectedCompanyId, company, onDirtyChange 
                                 <span className="text-muted-foreground shrink-0">
                                   {new Date(job.createdAt).toLocaleString()}
                                 </span>
+                                </div>
+
+                                {/* ── Error category guidance ───────────── */}
+                                {job.status === "failed" && job.errorCategory === "token_expired" && (
+                                  <div className="flex items-center justify-between gap-2 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-2.5 py-1.5">
+                                    <span className="text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                                      <XCircle className="h-3 w-3 shrink-0" />
+                                      Square access was revoked — nightly sync is paused until you reconnect.
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-2 text-xs shrink-0 border-red-300 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/40"
+                                      onClick={() => {
+                                        window.location.href = `/api/pos/connect/square/reconnect/${conn!.id}`;
+                                      }}
+                                    >
+                                      <LinkIcon className="h-3 w-3 mr-1" />
+                                      Reconnect Square
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {job.status === "failed" && job.errorCategory === "mapping_gap" && (
+                                  <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2.5 py-1.5">
+                                    <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                                      <TriangleAlert className="h-3 w-3 shrink-0" />
+                                      {job.rowsSkipped > 0
+                                        ? `${job.rowsSkipped} item${job.rowsSkipped === 1 ? "" : "s"} had no menu item mapping — add them to capture all sales.`
+                                        : "Some sales couldn't be matched — check your item mappings."}
+                                    </span>
+                                    <a
+                                      href={`/pos/item-mapping/${conn!.id}`}
+                                      className="text-xs text-amber-700 dark:text-amber-400 hover:underline shrink-0 flex items-center gap-0.5"
+                                    >
+                                      Fix mappings <ArrowRight className="h-3 w-3" />
+                                    </a>
+                                  </div>
+                                )}
+
+                                {job.status === "failed" && job.errorCategory === "unknown" && job.errorMessage && (
+                                  <div className="rounded-md bg-muted/50 border px-2.5 py-1.5 text-muted-foreground flex items-start gap-1.5">
+                                    <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                                    <span className="break-all">{job.errorMessage}</span>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
