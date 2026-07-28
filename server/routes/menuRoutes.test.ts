@@ -32,6 +32,7 @@ vi.mock("../auth", () => ({
 // reference it (vi.mock factories are hoisted to before const declarations).
 const mockStorage = vi.hoisted(() => ({
   getMenusByCompany:    vi.fn(),
+  getMenusWithStats:    vi.fn(),
   getMenu:              vi.fn(),
   createMenu:           vi.fn(),
   updateMenu:           vi.fn(),
@@ -121,6 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Sensible defaults so routes don't crash unless a test overrides them
   mockStorage.getMenusByCompany.mockResolvedValue([MENU_A]);
+  mockStorage.getMenusWithStats.mockResolvedValue([{ ...MENU_A, totalItems: 2, pricedItems: 2 }]);
   mockStorage.getMenu.mockImplementation((_id: string, _companyId: string) => {
     if (_id === "menu-1" && _companyId === "co-A") return Promise.resolve(MENU_A);
     return Promise.resolve(undefined);
@@ -151,7 +153,7 @@ describe("GET /api/menus", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].id).toBe("menu-1");
-    expect(mockStorage.getMenusByCompany).toHaveBeenCalledWith("co-A");
+    expect(mockStorage.getMenusWithStats).toHaveBeenCalledWith("co-A");
   });
 });
 

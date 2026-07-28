@@ -17,12 +17,12 @@ export function registerMenuRoutes(app: Express): void {
 
   // ── Menus ─────────────────────────────────────────────────────────────────
 
-  /** List all menus for the active company. */
+  /** List all menus for the active company, with entry counts included. */
   app.get("/api/menus", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       if (!companyId) return res.status(400).json({ error: "No company selected" });
-      const menus = await storage.getMenusByCompany(companyId);
+      const menus = await storage.getMenusWithStats(companyId);
       res.json(menus);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

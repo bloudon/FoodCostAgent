@@ -713,6 +713,7 @@ export interface IStorage {
   // ── Menu Portfolio ─────────────────────────────────────────────────────────
   // Menus
   getMenusByCompany(companyId: string): Promise<Menu[]>;
+  getMenusWithStats(companyId: string): Promise<Array<Menu & { totalItems: number; pricedItems: number }>>;
   getMenu(id: string, companyId: string): Promise<Menu | undefined>;
   createMenu(menu: InsertMenu): Promise<Menu>;
   updateMenu(id: string, companyId: string, updates: Partial<Menu>): Promise<Menu | undefined>;
@@ -5268,6 +5269,48 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(menus)
       .where(eq(menus.companyId, companyId))
       .orderBy(asc(menus.createdAt));
+  }
+
+  /** Returns menus enriched with entry counts — used by the portfolio page. */
+  async getMenusWithStats(companyId: string): Promise<Array<Menu & { totalItems: number; pricedItems: number }>> {
+    const result = await db.execute(sql`
+      SELECT m.id,
+             m.company_id,
+             m.name,
+             m.menu_type,
+             m.status,
+             m.description,
+             m.effective_start,
+             m.effective_end,
+             m.created_by,
+             m.updated_by,
+             m.created_at,
+             m.updated_at,
+             COUNT(DISTINCT me.id)::int                                                   AS total_items,
+             COUNT(DISTINCT CASE WHEN me.price IS NOT NULL THEN me.id END)::int           AS priced_items
+      FROM   menus m
+      LEFT   JOIN menu_entries me ON me.menu_id = m.id
+      WHERE  m.company_id = ${companyId}
+      GROUP  BY m.id
+      ORDER  BY m.created_at ASC
+    `);
+    const raw: any[] = (result as any).rows ?? [];
+    return raw.map((r) => ({
+      id:             r.id,
+      companyId:      r.company_id,
+      name:           r.name,
+      menuType:       r.menu_type,
+      status:         r.status,
+      description:    r.description,
+      effectiveStart: r.effective_start,
+      effectiveEnd:   r.effective_end,
+      createdBy:      r.created_by,
+      updatedBy:      r.updated_by,
+      createdAt:      r.created_at,
+      updatedAt:      r.updated_at,
+      totalItems:     r.total_items  ?? 0,
+      pricedItems:    r.priced_items ?? 0,
+    })) as Array<Menu & { totalItems: number; pricedItems: number }>;
   }
 
   async getMenu(id: string, companyId: string): Promise<Menu | undefined> {

@@ -92,6 +92,8 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/menu-insights")
   ) return "analyze";
 
+  if (loc === "/menus" || loc.startsWith("/menus/")) return "more";
+
   return "more";
 }
 

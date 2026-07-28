@@ -17,6 +17,7 @@ import {
   Image,
   ChevronRight,
   BarChart3,
+  Layers,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -108,10 +109,17 @@ export default function MoreLanding() {
 
   const menuRecipes: NavItem[] = [
     {
+      href: "/menus",
+      icon: Layers,
+      label: "Menus",
+      description: "Build and manage your menu portfolio",
+      testId: "more-nav-menus",
+    },
+    {
       href: "/menu-items",
       icon: Utensils,
-      label: "Menu Items",
-      description: "Manage your menu and selling prices",
+      label: "Item Library",
+      description: "Canonical items, sizes, and selling prices",
       testId: "more-nav-menu-items",
     },
     {

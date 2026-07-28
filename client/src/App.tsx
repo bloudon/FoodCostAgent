@@ -31,6 +31,8 @@ import InventoryItemDetail from "@/pages/inventory-item-detail";
 import InventoryItemCreate from "@/pages/inventory-item-create";
 import MenuItems from "@/pages/menu-items";
 import MenuImport from "@/pages/menu-import";
+import MenusPage from "@/pages/menus";
+import MenuBuilderPage from "@/pages/menu-builder";
 import MenuScanTool from "@/pages/menu-scan-tool";
 import Recipes from "@/pages/recipes";
 import RecipeBuilder from "@/pages/recipe-builder";
@@ -385,6 +387,8 @@ function ProtectedLayoutContent() {
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
               <Route path="/menu-items" component={MenuItems} />
+              <Route path="/menus/:id" component={MenuBuilderPage} />
+              <Route path="/menus" component={MenusPage} />
               <Route path="/menu-scan" component={MenuScanTool} />
               <Route path="/menu-import"><Redirect to="/menu-scan" /></Route>
               <Route path="/inventory-sessions" component={InventorySessions} />
