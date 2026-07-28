@@ -74,13 +74,17 @@ export function registerMenuRoutes(app: Express): void {
     try {
       const companyId = (req as any).companyId;
       const userId    = (req as any).user?.id;
-      const { name, menuType, description, effectiveStart, effectiveEnd } = req.body;
+      const { name, menuType, description, effectiveStart, effectiveEnd,
+              recurrenceDays, recurrenceTimeStart, recurrenceTimeEnd } = req.body;
       const updates: Record<string, any> = { updatedBy: userId ?? null, updatedAt: new Date() };
-      if (name !== undefined)          updates.name = name.trim();
-      if (menuType !== undefined)      updates.menuType = menuType;
-      if (description !== undefined)   updates.description = description;
-      if (effectiveStart !== undefined) updates.effectiveStart = effectiveStart ? new Date(effectiveStart) : null;
-      if (effectiveEnd !== undefined)  updates.effectiveEnd = effectiveEnd ? new Date(effectiveEnd) : null;
+      if (name !== undefined)                updates.name = name.trim();
+      if (menuType !== undefined)            updates.menuType = menuType;
+      if (description !== undefined)         updates.description = description;
+      if (effectiveStart !== undefined)      updates.effectiveStart = effectiveStart ? new Date(effectiveStart) : null;
+      if (effectiveEnd !== undefined)        updates.effectiveEnd = effectiveEnd ? new Date(effectiveEnd) : null;
+      if (recurrenceDays !== undefined)      updates.recurrenceDays = Array.isArray(recurrenceDays) ? recurrenceDays : null;
+      if (recurrenceTimeStart !== undefined) updates.recurrenceTimeStart = recurrenceTimeStart ?? null;
+      if (recurrenceTimeEnd !== undefined)   updates.recurrenceTimeEnd = recurrenceTimeEnd ?? null;
       const menu = await storage.updateMenu(req.params.id, companyId, updates);
       if (!menu) return res.status(404).json({ error: "Menu not found" });
       res.json(menu);
@@ -135,13 +139,23 @@ export function registerMenuRoutes(app: Express): void {
       const companyId = (req as any).companyId;
       const userId    = (req as any).user?.id;
       const { status } = req.body;
-      const allowed = ["draft", "ready", "live", "retired"];
+      const allowed = ["draft", "ready", "scheduled", "live", "retired"];
       if (!status || !allowed.includes(status)) {
         return res.status(400).json({ error: `status must be one of: ${allowed.join(", ")}` });
       }
 
-      // Gate transitions that target a published state with a readiness check.
-      if (status === "ready" || status === "live") {
+      // Validate that effectiveStart is set before scheduling
+      if (status === "scheduled") {
+        const currentMenu = await storage.getMenu(req.params.id, companyId);
+        if (!currentMenu?.effectiveStart) {
+          return res.status(400).json({
+            error: "effectiveStart is required to schedule a menu. Set it via PUT /api/menus/:id first.",
+          });
+        }
+      }
+
+      // Gate transitions targeting a published state with a readiness check.
+      if (status === "ready" || status === "scheduled" || status === "live") {
         const report = await storage.computeMenuReadiness(req.params.id, companyId);
         if (!report.canTransitionToReady) {
           return res.status(422).json({
@@ -314,7 +328,7 @@ export function registerMenuRoutes(app: Express): void {
   app.put("/api/menus/:id/entries/:entryId", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const allowed = ["price", "displayNameOverride", "descriptionOverride", "menuSectionId", "displayOrder", "featured", "active"];
+      const allowed = ["price", "displayNameOverride", "descriptionOverride", "menuSectionId", "displayOrder", "featured", "active", "forecastQty", "forecastPct"];
       const updates: Record<string, any> = { updatedAt: new Date() };
       for (const key of allowed) {
         if (req.body[key] !== undefined) {
@@ -350,6 +364,72 @@ export function registerMenuRoutes(app: Express): void {
       if (!Array.isArray(orders)) return res.status(400).json({ error: "orders must be an array" });
       await storage.reorderMenuEntries(req.params.id, companyId, orders);
       res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Menu Location Assignments ─────────────────────────────────────────────
+
+  /** List store locations assigned to a menu. */
+  app.get("/api/menus/:id/locations", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company selected" });
+      const menu = await storage.getMenu(req.params.id, companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      const assignments = await storage.getMenuLocationAssignments(req.params.id, companyId);
+      res.json(assignments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /** Assign a store location to a menu. Body: { storeId } */
+  app.post("/api/menus/:id/locations", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { storeId } = req.body;
+      if (!storeId) return res.status(400).json({ error: "storeId is required" });
+      const menu = await storage.getMenu(req.params.id, companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      const assignment = await storage.addMenuLocationAssignment(req.params.id, storeId, companyId);
+      res.status(201).json(assignment);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /** Remove a store location from a menu. */
+  app.delete("/api/menus/:id/locations/:storeId", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const menu = await storage.getMenu(req.params.id, companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      await storage.removeMenuLocationAssignment(req.params.id, req.params.storeId, companyId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Menu Forecast ─────────────────────────────────────────────────────────
+
+  /**
+   * Weighted forecast for a menu: projected revenue, food cost, gross margin,
+   * and per-entry POS history suggestions.
+   *
+   * Requires at least one entry to have a forecastQty; otherwise returns an
+   * empty report indicating no forecast data has been entered yet.
+   */
+  app.get("/api/menus/:id/forecast", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company selected" });
+      const menu = await storage.getMenu(req.params.id, companyId);
+      if (!menu) return res.status(404).json({ error: "Menu not found" });
+      const report = await storage.computeMenuForecast(req.params.id, companyId);
+      res.json(report);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

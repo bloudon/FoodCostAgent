@@ -63,6 +63,7 @@ import {
   qbReconciliations, type QbReconciliation, type InsertQbReconciliation,
   onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
   menuItemSizes, type MenuItemSize, type InsertMenuItemSize,
+  menuLocationAssignments, type MenuLocationAssignment, type InsertMenuLocationAssignment,
   stations, type Station, type InsertStation,
   prepItems, type PrepItem, type InsertPrepItem,
   prepItemIngredients, type PrepItemIngredient, type InsertPrepItemIngredient,
@@ -721,6 +722,14 @@ export interface IStorage {
   transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined>;
   duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu>;
   computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport>;
+
+  // Menu Location Assignments
+  getMenuLocationAssignments(menuId: string, companyId: string): Promise<MenuLocationAssignment[]>;
+  addMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<MenuLocationAssignment>;
+  removeMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<void>;
+
+  // Menu Forecast
+  computeMenuForecast(menuId: string, companyId: string): Promise<import("./services/menuForecastService").ForecastReport>;
 
   // Menu Sections
   getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]>;
@@ -5283,6 +5292,9 @@ export class DatabaseStorage implements IStorage {
              m.description,
              m.effective_start,
              m.effective_end,
+             m.recurrence_days,
+             m.recurrence_time_start,
+             m.recurrence_time_end,
              m.created_by,
              m.updated_by,
              m.created_at,
@@ -5303,9 +5315,12 @@ export class DatabaseStorage implements IStorage {
       menuType:       r.menu_type,
       status:         r.status,
       description:    r.description,
-      effectiveStart: r.effective_start,
-      effectiveEnd:   r.effective_end,
-      createdBy:      r.created_by,
+      effectiveStart:      r.effective_start,
+      effectiveEnd:        r.effective_end,
+      recurrenceDays:      r.recurrence_days ?? null,
+      recurrenceTimeStart: r.recurrence_time_start ?? null,
+      recurrenceTimeEnd:   r.recurrence_time_end ?? null,
+      createdBy:           r.created_by,
       updatedBy:      r.updated_by,
       createdAt:      r.created_at,
       updatedAt:      r.updated_at,
@@ -5339,17 +5354,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined> {
-    const valid = ["draft", "ready", "live", "retired"];
+    const valid = ["draft", "ready", "scheduled", "live", "retired"];
     if (!valid.includes(status)) throw new Error(`Invalid status: ${status}`);
     const current = await this.getMenu(id, companyId);
     if (!current) return undefined;
 
-    // Allowed transitions: draft→ready, ready→live, ready→draft, live→retired, retired→draft
+    // Allowed transitions:
+    //   draft → ready
+    //   ready → scheduled | live | draft
+    //   scheduled → live | ready | draft
+    //   live → retired
+    //   retired → draft
     const transitions: Record<string, string[]> = {
-      draft:   ["ready"],
-      ready:   ["live", "draft"],
-      live:    ["retired"],
-      retired: ["draft"],
+      draft:     ["ready"],
+      ready:     ["scheduled", "live", "draft"],
+      scheduled: ["live", "ready", "draft"],
+      live:      ["retired"],
+      retired:   ["draft"],
     };
     if (!transitions[current.status]?.includes(status)) {
       throw new Error(`Invalid transition from '${current.status}' to '${status}'`);
@@ -5368,7 +5389,7 @@ export class DatabaseStorage implements IStorage {
 
     const name = newName?.trim() || `${source.name} (copy)`;
 
-    // Create the new menu (always starts as draft)
+    // Create the new menu (always starts as draft, copies recurrence schedule)
     const [newMenu] = await db.insert(menus).values({
       companyId,
       name,
@@ -5377,6 +5398,9 @@ export class DatabaseStorage implements IStorage {
       description: source.description,
       effectiveStart: source.effectiveStart,
       effectiveEnd: source.effectiveEnd,
+      recurrenceDays: source.recurrenceDays,
+      recurrenceTimeStart: source.recurrenceTimeStart,
+      recurrenceTimeEnd: source.recurrenceTimeEnd,
       createdBy: userId ?? null,
       updatedBy: userId ?? null,
     }).returning();
@@ -5417,6 +5441,39 @@ export class DatabaseStorage implements IStorage {
   async computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport> {
     const { computeMenuReadinessImpl } = await import("./services/menuReadinessService");
     return computeMenuReadinessImpl(menuId, companyId);
+  }
+
+  // Menu Location Assignments
+  async getMenuLocationAssignments(menuId: string, companyId: string): Promise<MenuLocationAssignment[]> {
+    return db.select().from(menuLocationAssignments)
+      .where(and(eq(menuLocationAssignments.menuId, menuId), eq(menuLocationAssignments.companyId, companyId)))
+      .orderBy(asc(menuLocationAssignments.createdAt));
+  }
+
+  async addMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<MenuLocationAssignment> {
+    // On conflict (duplicate), return the existing row
+    const [row] = await db.insert(menuLocationAssignments)
+      .values({ menuId, storeId, companyId })
+      .onConflictDoNothing()
+      .returning();
+    if (row) return row;
+    const [existing] = await db.select().from(menuLocationAssignments)
+      .where(and(eq(menuLocationAssignments.menuId, menuId), eq(menuLocationAssignments.storeId, storeId)));
+    return existing;
+  }
+
+  async removeMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<void> {
+    await db.delete(menuLocationAssignments)
+      .where(and(
+        eq(menuLocationAssignments.menuId, menuId),
+        eq(menuLocationAssignments.storeId, storeId),
+        eq(menuLocationAssignments.companyId, companyId),
+      ));
+  }
+
+  async computeMenuForecast(menuId: string, companyId: string): Promise<import("./services/menuForecastService").ForecastReport> {
+    const { computeMenuForecastImpl } = await import("./services/menuForecastService");
+    return computeMenuForecastImpl(menuId, companyId);
   }
 
   // Menu Sections

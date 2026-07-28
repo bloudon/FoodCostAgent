@@ -853,10 +853,13 @@ export const menus = pgTable("menus", {
   companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
   menuType: text("menu_type"), // dinner | lunch | brunch | catering | event | other | null
-  status: text("status").notNull().default("draft"), // draft | ready | live | retired
+  status: text("status").notNull().default("draft"), // draft | ready | scheduled | live | retired
   description: text("description"),
   effectiveStart: timestamp("effective_start"),
   effectiveEnd: timestamp("effective_end"),
+  recurrenceDays: text("recurrence_days").array(),    // e.g. ["Sunday","Saturday"]
+  recurrenceTimeStart: text("recurrence_time_start"), // e.g. "09:00"
+  recurrenceTimeEnd:   text("recurrence_time_end"),   // e.g. "14:00"
   createdBy: varchar("created_by"),
   updatedBy: varchar("updated_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -897,6 +900,8 @@ export const menuEntries = pgTable("menu_entries", {
   descriptionOverride: text("description_override"),
   featured: integer("featured").notNull().default(0), // 1 = featured / special
   active: integer("active").notNull().default(1),
+  forecastQty: real("forecast_qty"),  // operator-entered expected covers per service period
+  forecastPct: real("forecast_pct"),  // mix % derived from forecastQty / total; stored for overrides
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
@@ -909,6 +914,23 @@ export const menuEntries = pgTable("menu_entries", {
 export const insertMenuEntrySchema = createInsertSchema(menuEntries).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertMenuEntry = z.infer<typeof insertMenuEntrySchema>;
 export type MenuEntry = typeof menuEntries.$inferSelect;
+
+// Menu Location Assignments — maps a menu to specific store locations
+export const menuLocationAssignments = pgTable("menu_location_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  menuId: varchar("menu_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueMenuStore: unique().on(table.menuId, table.storeId),
+  menuIdx: index("menu_location_assignments_menu_idx").on(table.menuId),
+  companyIdx: index("menu_location_assignments_company_idx").on(table.companyId),
+}));
+
+export const insertMenuLocationAssignmentSchema = createInsertSchema(menuLocationAssignments).omit({ id: true, createdAt: true });
+export type InsertMenuLocationAssignment = z.infer<typeof insertMenuLocationAssignmentSchema>;
+export type MenuLocationAssignment = typeof menuLocationAssignments.$inferSelect;
 
 // Menu Departments (company-level menu section taxonomy)
 // Note: uniqueness is enforced case-insensitively at DB level via

@@ -25,6 +25,7 @@ import {
   Tag,
   CheckCircle2,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -35,7 +36,7 @@ interface MenuWithStats {
   companyId: string;
   name: string;
   menuType: string | null;
-  status: "draft" | "ready" | "live" | "retired";
+  status: "draft" | "ready" | "scheduled" | "live" | "retired";
   description: string | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
@@ -60,9 +61,10 @@ const MENU_TYPES = [
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "live")     return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
-  if (status === "ready")    return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
-  if (status === "retired")  return <Badge variant="secondary">Retired</Badge>;
+  if (status === "live")       return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
+  if (status === "ready")      return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
+  if (status === "scheduled")  return <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-0">Scheduled</Badge>;
+  if (status === "retired")    return <Badge variant="secondary">Retired</Badge>;
   return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-0">Draft</Badge>;
 }
 
@@ -279,6 +281,12 @@ function MenuCard({ menu }: { menu: MenuWithStats }) {
                       Mark as Ready
                     </DropdownMenuItem>
                   )}
+                  {menu.status === "ready" && menu.effectiveStart && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("scheduled")}>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Schedule
+                    </DropdownMenuItem>
+                  )}
                   {menu.status === "ready" && (
                     <DropdownMenuItem onClick={() => transitionMutation.mutate("live")}>
                       <BookOpen className="h-4 w-4 mr-2" />
@@ -286,6 +294,24 @@ function MenuCard({ menu }: { menu: MenuWithStats }) {
                     </DropdownMenuItem>
                   )}
                   {menu.status === "ready" && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("draft")}>
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      Revert to Draft
+                    </DropdownMenuItem>
+                  )}
+                  {menu.status === "scheduled" && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("live")}>
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Publish Now
+                    </DropdownMenuItem>
+                  )}
+                  {menu.status === "scheduled" && (
+                    <DropdownMenuItem onClick={() => transitionMutation.mutate("ready")}>
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Revert to Ready
+                    </DropdownMenuItem>
+                  )}
+                  {menu.status === "scheduled" && (
                     <DropdownMenuItem onClick={() => transitionMutation.mutate("draft")}>
                       <AlertCircle className="h-4 w-4 mr-2" />
                       Revert to Draft
@@ -400,10 +426,11 @@ export default function MenusPage() {
     },
   });
 
-  const liveMenus    = menus.filter((m) => m.status === "live");
-  const readyMenus   = menus.filter((m) => m.status === "ready");
-  const draftMenus   = menus.filter((m) => m.status === "draft");
-  const retiredMenus = menus.filter((m) => m.status === "retired");
+  const liveMenus      = menus.filter((m) => m.status === "live");
+  const scheduledMenus = menus.filter((m) => m.status === "scheduled");
+  const readyMenus     = menus.filter((m) => m.status === "ready");
+  const draftMenus     = menus.filter((m) => m.status === "draft");
+  const retiredMenus   = menus.filter((m) => m.status === "retired");
 
   return (
     <div className="flex flex-col h-full">
@@ -443,6 +470,16 @@ export default function MenusPage() {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {liveMenus.map((m) => <MenuCard key={m.id} menu={m} />)}
+                </div>
+              </section>
+            )}
+            {scheduledMenus.length > 0 && (
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                  Scheduled ({scheduledMenus.length})
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {scheduledMenus.map((m) => <MenuCard key={m.id} menu={m} />)}
                 </div>
               </section>
             )}

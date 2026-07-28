@@ -1200,6 +1200,25 @@ async function runStartupMigrations() {
       }
     }
 
+    // Task #638: Menu scheduling, locations, and forecasting
+    await db.execute(sql`ALTER TABLE menus ADD COLUMN IF NOT EXISTS recurrence_days text[]`);
+    await db.execute(sql`ALTER TABLE menus ADD COLUMN IF NOT EXISTS recurrence_time_start text`);
+    await db.execute(sql`ALTER TABLE menus ADD COLUMN IF NOT EXISTS recurrence_time_end text`);
+    await db.execute(sql`ALTER TABLE menu_entries ADD COLUMN IF NOT EXISTS forecast_qty real`);
+    await db.execute(sql`ALTER TABLE menu_entries ADD COLUMN IF NOT EXISTS forecast_pct real`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS menu_location_assignments (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        menu_id varchar NOT NULL,
+        store_id varchar NOT NULL,
+        company_id varchar NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT menu_location_assignments_menu_store_uniq UNIQUE (menu_id, store_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS menu_location_assignments_menu_idx ON menu_location_assignments (menu_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS menu_location_assignments_company_idx ON menu_location_assignments (company_id)`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
@@ -1335,6 +1354,25 @@ async function runStartupMigrations() {
     log(`🔄 POS hourly sync pass scheduled (first run at ${nextHour.toISOString()})`);
   };
   scheduleHourlyPosSync();
+
+  // Menu scheduled → live activation — runs every 5 minutes
+  // Promotes menus whose effectiveStart has passed from 'scheduled' to 'live'
+  const MENU_SCHEDULER_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  const activateScheduledMenusJob = async () => {
+    try {
+      const { activateScheduledMenus } = await import("./services/menuForecastService");
+      const count = await activateScheduledMenus();
+      if (count > 0) {
+        log(`📅 Menu scheduler: activated ${count} scheduled menu(s) to live`);
+      }
+    } catch (error) {
+      console.error("❌ Menu scheduler error:", error);
+    }
+  };
+  // First run 2 minutes after startup, then every 5 minutes
+  setTimeout(activateScheduledMenusJob, 2 * 60 * 1000);
+  setInterval(activateScheduledMenusJob, MENU_SCHEDULER_INTERVAL_MS);
+  log(`🔄 Menu scheduler job scheduled (every ${MENU_SCHEDULER_INTERVAL_MS / 1000 / 60} minutes, first run in 2min)`);
 
   // POS stuck-job auto-cleanup — runs every 15 minutes, expires running jobs > 60 min old.
   // This is a safety net for the double-fault case where a job gets stuck in running state

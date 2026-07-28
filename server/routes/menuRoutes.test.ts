@@ -31,28 +31,36 @@ vi.mock("../auth", () => ({
 // Minimal storage mock — declare with vi.hoisted so the factory closure can
 // reference it (vi.mock factories are hoisted to before const declarations).
 const mockStorage = vi.hoisted(() => ({
-  getMenusByCompany:      vi.fn(),
-  getMenusWithStats:      vi.fn(),
-  getMenu:                vi.fn(),
-  createMenu:             vi.fn(),
-  updateMenu:             vi.fn(),
-  deleteMenu:             vi.fn(),
-  transitionMenuStatus:   vi.fn(),
-  duplicateMenu:          vi.fn(),
-  computeMenuReadiness:   vi.fn(),
-  getMenuSections:        vi.fn(),
-  getMenuSection:         vi.fn(),
-  createMenuSection:      vi.fn(),
-  updateMenuSection:      vi.fn(),
-  deleteMenuSection:      vi.fn(),
-  reorderMenuSections:    vi.fn(),
-  getMenuEntries:         vi.fn(),
-  getMenuEntry:           vi.fn(),
-  createMenuEntry:        vi.fn(),
-  updateMenuEntry:      vi.fn(),
-  deleteMenuEntry:      vi.fn(),
-  reorderMenuEntries:   vi.fn(),
-  getMenuItem:          vi.fn(),
+  getMenusByCompany:             vi.fn(),
+  getMenusWithStats:             vi.fn(),
+  getMenu:                       vi.fn(),
+  createMenu:                    vi.fn(),
+  updateMenu:                    vi.fn(),
+  deleteMenu:                    vi.fn(),
+  transitionMenuStatus:          vi.fn(),
+  duplicateMenu:                 vi.fn(),
+  computeMenuReadiness:          vi.fn(),
+  // Location assignments
+  getMenuLocationAssignments:    vi.fn(),
+  addMenuLocationAssignment:     vi.fn(),
+  removeMenuLocationAssignment:  vi.fn(),
+  // Forecast
+  computeMenuForecast:           vi.fn(),
+  // Sections
+  getMenuSections:               vi.fn(),
+  getMenuSection:                vi.fn(),
+  createMenuSection:             vi.fn(),
+  updateMenuSection:             vi.fn(),
+  deleteMenuSection:             vi.fn(),
+  reorderMenuSections:           vi.fn(),
+  // Entries
+  getMenuEntries:                vi.fn(),
+  getMenuEntry:                  vi.fn(),
+  createMenuEntry:               vi.fn(),
+  updateMenuEntry:               vi.fn(),
+  deleteMenuEntry:               vi.fn(),
+  reorderMenuEntries:            vi.fn(),
+  getMenuItem:                   vi.fn(),
 }));
 
 vi.mock("../storage", () => ({ storage: mockStorage }));
@@ -152,6 +160,27 @@ beforeEach(() => {
   mockStorage.deleteMenuEntry.mockResolvedValue(undefined);
   mockStorage.reorderMenuEntries.mockResolvedValue(undefined);
   mockStorage.getMenuItem.mockResolvedValue(CANONICAL_ITEM);
+  // Location assignments
+  mockStorage.getMenuLocationAssignments.mockResolvedValue([]);
+  mockStorage.addMenuLocationAssignment.mockResolvedValue({
+    id: "loc-1", menuId: "menu-1", storeId: "store-1", companyId: "co-A",
+    createdAt: new Date().toISOString(),
+  });
+  mockStorage.removeMenuLocationAssignment.mockResolvedValue(undefined);
+  // Forecast
+  mockStorage.computeMenuForecast.mockResolvedValue({
+    menuId: "menu-1",
+    totalForecastQty: 0,
+    entriesWithForecast: 0,
+    totalEntries: 0,
+    projectedRevenue: null,
+    projectedFoodCost: null,
+    projectedFoodCostPct: null,
+    projectedGrossMargin: null,
+    projectedGrossMarginPct: null,
+    isPartialForecast: false,
+    entries: [],
+  });
 });
 
 // ── Tests: Menus ──────────────────────────────────────────────────────────────
@@ -611,6 +640,241 @@ describe("POST /api/menus/:id/entries/reorder", () => {
       .post("/api/menus/menu-1/entries/reorder")
       .send({ orders: 42 });
     expect(res.status).toBe(400);
+  });
+});
+
+// ── Tests: Location assignments ───────────────────────────────────────────────
+
+describe("GET /api/menus/:id/locations", () => {
+  it("returns location assignments for an existing menu", async () => {
+    const assignment = { id: "loc-1", menuId: "menu-1", storeId: "store-1", companyId: "co-A", createdAt: new Date().toISOString() };
+    mockStorage.getMenuLocationAssignments.mockResolvedValueOnce([assignment]);
+    const res = await request(makeApp()).get("/api/menus/menu-1/locations");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].storeId).toBe("store-1");
+    expect(mockStorage.getMenuLocationAssignments).toHaveBeenCalledWith("menu-1", "co-A");
+  });
+
+  it("returns 404 when menu not found", async () => {
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp()).get("/api/menus/no-such/locations");
+    expect(res.status).toBe(404);
+    expect(mockStorage.getMenuLocationAssignments).not.toHaveBeenCalled();
+  });
+
+  it("tenant isolation — company-B cannot read company-A locations", async () => {
+    const { requireAuth } = await import("../auth");
+    vi.mocked(requireAuth).mockImplementationOnce((req: any, _res: any, next: any) => {
+      req.user = { id: "user-B", companyId: "co-B" };
+      req.companyId = "co-B";
+      next();
+    });
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp()).get("/api/menus/menu-1/locations");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns empty array when no locations are assigned", async () => {
+    const res = await request(makeApp()).get("/api/menus/menu-1/locations");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+});
+
+describe("POST /api/menus/:id/locations", () => {
+  it("assigns a store location and returns 201", async () => {
+    const assignment = { id: "loc-1", menuId: "menu-1", storeId: "store-1", companyId: "co-A", createdAt: new Date().toISOString() };
+    mockStorage.addMenuLocationAssignment.mockResolvedValueOnce(assignment);
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/locations")
+      .send({ storeId: "store-1" });
+    expect(res.status).toBe(201);
+    expect(res.body.storeId).toBe("store-1");
+    expect(mockStorage.addMenuLocationAssignment).toHaveBeenCalledWith("menu-1", "store-1", "co-A");
+  });
+
+  it("returns 400 when storeId is missing", async () => {
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/locations")
+      .send({});
+    expect(res.status).toBe(400);
+    expect(mockStorage.addMenuLocationAssignment).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when menu not found", async () => {
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp())
+      .post("/api/menus/no-such/locations")
+      .send({ storeId: "store-1" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/menus/:id/locations/:storeId", () => {
+  it("removes a location assignment and returns 200", async () => {
+    const res = await request(makeApp())
+      .delete("/api/menus/menu-1/locations/store-1");
+    expect(res.status).toBe(200);
+    expect(mockStorage.removeMenuLocationAssignment).toHaveBeenCalledWith("menu-1", "store-1", "co-A");
+  });
+
+  it("returns 404 when menu not found", async () => {
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp())
+      .delete("/api/menus/no-such/locations/store-1");
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── Tests: Forecast ───────────────────────────────────────────────────────────
+
+describe("GET /api/menus/:id/forecast", () => {
+  it("returns a forecast report for an existing menu", async () => {
+    const report = {
+      menuId: "menu-1",
+      totalForecastQty: 100,
+      entriesWithForecast: 1,
+      totalEntries: 1,
+      projectedRevenue: 1250,
+      projectedFoodCost: 400,
+      projectedFoodCostPct: 32,
+      projectedGrossMargin: 850,
+      projectedGrossMarginPct: 68,
+      isPartialForecast: false,
+      entries: [{ entryId: "entry-1", menuItemId: "item-1", itemName: "Caesar Salad", price: 12.5, recipeCost: 4.0, forecastQty: 100, forecastPct: 100, projectedRevenue: 1250, projectedFoodCost: 400, suggestedQty: null }],
+    };
+    mockStorage.computeMenuForecast.mockResolvedValueOnce(report);
+    const res = await request(makeApp()).get("/api/menus/menu-1/forecast");
+    expect(res.status).toBe(200);
+    expect(res.body.menuId).toBe("menu-1");
+    expect(res.body.projectedRevenue).toBe(1250);
+    expect(res.body.projectedFoodCostPct).toBe(32);
+    expect(res.body.entriesWithForecast).toBe(1);
+    expect(mockStorage.computeMenuForecast).toHaveBeenCalledWith("menu-1", "co-A");
+  });
+
+  it("returns an empty report when no forecast data is entered yet", async () => {
+    const res = await request(makeApp()).get("/api/menus/menu-1/forecast");
+    expect(res.status).toBe(200);
+    expect(res.body.entriesWithForecast).toBe(0);
+    expect(res.body.projectedRevenue).toBeNull();
+  });
+
+  it("returns 404 when menu not found", async () => {
+    mockStorage.getMenu.mockResolvedValueOnce(undefined);
+    const res = await request(makeApp()).get("/api/menus/no-such/forecast");
+    expect(res.status).toBe(404);
+    expect(mockStorage.computeMenuForecast).not.toHaveBeenCalled();
+  });
+});
+
+// ── Tests: Scheduled status transitions ──────────────────────────────────────
+
+describe("POST /api/menus/:id/status — scheduled transitions", () => {
+  const MENU_WITH_START: any = {
+    ...{
+      id: "menu-1", companyId: "co-A", name: "Dinner Menu", menuType: "dinner",
+      status: "ready", description: null, createdBy: "user-1", updatedBy: "user-1",
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    effectiveStart: new Date("2026-09-01").toISOString(),
+    effectiveEnd: null,
+  };
+
+  it("transitions ready → scheduled when effectiveStart is set and no blockers", async () => {
+    mockStorage.getMenu.mockImplementation((_id: string, _companyId: string) => {
+      if (_id === "menu-1" && _companyId === "co-A") return Promise.resolve(MENU_WITH_START);
+      return Promise.resolve(undefined);
+    });
+    mockStorage.transitionMenuStatus.mockResolvedValueOnce({ ...MENU_WITH_START, status: "scheduled" });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "scheduled" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("scheduled");
+    expect(mockStorage.transitionMenuStatus).toHaveBeenCalledWith("menu-1", "co-A", "scheduled", "user-1");
+    expect(mockStorage.computeMenuReadiness).toHaveBeenCalledWith("menu-1", "co-A");
+  });
+
+  it("returns 400 when transitioning to scheduled without effectiveStart", async () => {
+    // Default MENU_A has effectiveStart = null
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "scheduled" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/effectiveStart/i);
+    expect(mockStorage.transitionMenuStatus).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when blockers exist on ready → scheduled", async () => {
+    mockStorage.getMenu.mockImplementation((_id: string, _companyId: string) => {
+      if (_id === "menu-1" && _companyId === "co-A") return Promise.resolve(MENU_WITH_START);
+      return Promise.resolve(undefined);
+    });
+    mockStorage.computeMenuReadiness.mockResolvedValueOnce({
+      menuId: "menu-1", totalEntries: 1, blockerCount: 1, warningCount: 0,
+      canTransitionToReady: false,
+      issues: [{ type: "blocker", code: "NO_PRICE", entryId: "e1", menuItemId: "item-1", itemName: "Caesar Salad", message: "No price", navigationHref: "/" }],
+    });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "scheduled" });
+    expect(res.status).toBe(422);
+    expect(mockStorage.transitionMenuStatus).not.toHaveBeenCalled();
+  });
+
+  it("transitions scheduled → live when no blockers", async () => {
+    const MENU_SCHEDULED: any = { ...MENU_WITH_START, status: "scheduled" };
+    mockStorage.getMenu.mockResolvedValue(MENU_SCHEDULED);
+    mockStorage.transitionMenuStatus.mockResolvedValueOnce({ ...MENU_SCHEDULED, status: "live" });
+    const res = await request(makeApp())
+      .post("/api/menus/menu-1/status")
+      .send({ status: "live" });
+    expect(res.status).toBe(200);
+    expect(mockStorage.computeMenuReadiness).toHaveBeenCalledWith("menu-1", "co-A");
+    expect(mockStorage.transitionMenuStatus).toHaveBeenCalledWith("menu-1", "co-A", "live", "user-1");
+  });
+});
+
+describe("PUT /api/menus/:id — recurrence fields round-trip", () => {
+  it("saves recurrenceDays, recurrenceTimeStart, recurrenceTimeEnd", async () => {
+    const updated = {
+      ...{
+        id: "menu-1", companyId: "co-A", name: "Dinner Menu", menuType: "dinner",
+        status: "ready", description: null, effectiveStart: null, effectiveEnd: null,
+        createdBy: "user-1", updatedBy: "user-1",
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      },
+      recurrenceDays: ["Friday", "Saturday"],
+      recurrenceTimeStart: "18:00",
+      recurrenceTimeEnd: "23:00",
+    };
+    mockStorage.updateMenu.mockResolvedValueOnce(updated);
+    const res = await request(makeApp())
+      .put("/api/menus/menu-1")
+      .send({ recurrenceDays: ["Friday", "Saturday"], recurrenceTimeStart: "18:00", recurrenceTimeEnd: "23:00" });
+    expect(res.status).toBe(200);
+    expect(mockStorage.updateMenu).toHaveBeenCalledWith(
+      "menu-1", "co-A",
+      expect.objectContaining({ recurrenceDays: ["Friday", "Saturday"], recurrenceTimeStart: "18:00", recurrenceTimeEnd: "23:00" }),
+    );
+  });
+
+  it("accepts forecastQty on entry update", async () => {
+    mockStorage.updateMenuEntry.mockResolvedValueOnce({ ...{
+      id: "entry-1", menuId: "menu-1", menuSectionId: "sec-1", menuItemId: "item-1",
+      companyId: "co-A", displayOrder: 0, price: 12.5, displayNameOverride: null,
+      descriptionOverride: null, featured: 0, active: 1, forecastQty: 50, forecastPct: null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    }});
+    const res = await request(makeApp())
+      .put("/api/menus/menu-1/entries/entry-1")
+      .send({ forecastQty: 50 });
+    expect(res.status).toBe(200);
+    expect(mockStorage.updateMenuEntry).toHaveBeenCalledWith(
+      "entry-1", "co-A", expect.objectContaining({ forecastQty: 50 }),
+    );
   });
 });
 

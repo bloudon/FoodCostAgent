@@ -47,7 +47,11 @@ import {
   TrendingUp,
   Hash,
   ExternalLink,
+  Clock,
+  MapPin,
+  BarChart3,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DndContext,
   closestCenter,
@@ -90,6 +94,8 @@ interface MenuEntry {
   descriptionOverride: string | null;
   featured: number;
   active: number;
+  forecastQty: number | null;
+  forecastPct: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,14 +105,32 @@ interface MenuDetail {
   companyId: string;
   name: string;
   menuType: string | null;
-  status: "draft" | "ready" | "live" | "retired";
+  status: "draft" | "ready" | "scheduled" | "live" | "retired";
   description: string | null;
   effectiveStart: string | null;
   effectiveEnd: string | null;
+  recurrenceDays: string[] | null;
+  recurrenceTimeStart: string | null;
+  recurrenceTimeEnd: string | null;
   createdAt: string;
   updatedAt: string;
   sections: MenuSection[];
   entries: MenuEntry[];
+}
+
+interface CompanyStore {
+  id: string;
+  name: string;
+  code: string | null;
+  companyId: string;
+}
+
+interface MenuLocationAssignment {
+  id: string;
+  menuId: string;
+  storeId: string;
+  companyId: string;
+  createdAt: string;
 }
 
 interface ReadinessIssue {
@@ -147,11 +171,20 @@ interface CanonicalMenuItem {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "live")    return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
-  if (status === "ready")   return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
-  if (status === "retired") return <Badge variant="secondary">Retired</Badge>;
+  if (status === "live")       return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-0">Live</Badge>;
+  if (status === "ready")      return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-0">Ready</Badge>;
+  if (status === "scheduled")  return <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-0">Scheduled</Badge>;
+  if (status === "retired")    return <Badge variant="secondary">Retired</Badge>;
   return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-0">Draft</Badge>;
 }
+
+// ── Scheduling constants ───────────────────────────────────────────────────────
+
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_ABBR: Record<string, string> = {
+  Monday: "Mo", Tuesday: "Tu", Wednesday: "We", Thursday: "Th",
+  Friday: "Fr", Saturday: "Sa", Sunday: "Su",
+};
 
 // ── Readiness panel ───────────────────────────────────────────────────────────
 
@@ -350,6 +383,387 @@ function StatCell({ icon: Icon, label, value, warn, warnText }: { icon: React.El
         {warn && warnText && <span className="text-xs font-normal ml-1 opacity-70">({warnText})</span>}
       </p>
     </div>
+  );
+}
+
+// ── Schedule Panel ────────────────────────────────────────────────────────────
+
+function SchedulePanel({ menu, onSaved }: {
+  menu: MenuDetail;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [effectiveStart, setEffectiveStart] = useState(menu.effectiveStart?.slice(0, 10) ?? "");
+  const [effectiveEnd, setEffectiveEnd] = useState(menu.effectiveEnd?.slice(0, 10) ?? "");
+  const [recurrenceDays, setRecurrenceDays] = useState<string[]>(menu.recurrenceDays ?? []);
+  const [timeStart, setTimeStart] = useState(menu.recurrenceTimeStart ?? "");
+  const [timeEnd, setTimeEnd] = useState(menu.recurrenceTimeEnd ?? "");
+
+  useEffect(() => {
+    setEffectiveStart(menu.effectiveStart?.slice(0, 10) ?? "");
+    setEffectiveEnd(menu.effectiveEnd?.slice(0, 10) ?? "");
+    setRecurrenceDays(menu.recurrenceDays ?? []);
+    setTimeStart(menu.recurrenceTimeStart ?? "");
+    setTimeEnd(menu.recurrenceTimeEnd ?? "");
+  }, [menu.effectiveStart, menu.effectiveEnd, menu.recurrenceDays, menu.recurrenceTimeStart, menu.recurrenceTimeEnd]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", `/api/menus/${menu.id}`, {
+        effectiveStart: effectiveStart || null,
+        effectiveEnd: effectiveEnd || null,
+        recurrenceDays: recurrenceDays.length > 0 ? recurrenceDays : null,
+        recurrenceTimeStart: timeStart || null,
+        recurrenceTimeEnd: timeEnd || null,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to save");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/menus/${menu.id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menus"] });
+      onSaved();
+      toast({ title: "Schedule saved" });
+    },
+    onError: (err: any) => toast({ title: err.message || "Failed to save schedule", variant: "destructive" }),
+  });
+
+  const toggleDay = (day: string) => {
+    setRecurrenceDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    );
+  };
+
+  const isDirty = (
+    (effectiveStart || null) !== (menu.effectiveStart?.slice(0, 10) ?? null) ||
+    (effectiveEnd || null) !== (menu.effectiveEnd?.slice(0, 10) ?? null) ||
+    JSON.stringify([...recurrenceDays].sort()) !== JSON.stringify([...(menu.recurrenceDays ?? [])].sort()) ||
+    (timeStart || null) !== (menu.recurrenceTimeStart ?? null) ||
+    (timeEnd || null) !== (menu.recurrenceTimeEnd ?? null)
+  );
+
+  const hasSchedule = !!(menu.effectiveStart || (menu.recurrenceDays && menu.recurrenceDays.length > 0));
+  const isReadOnly = menu.status === "live" || menu.status === "retired";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="py-3 px-4 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Schedule</CardTitle>
+                {hasSchedule && <Badge variant="outline" className="text-xs">Set</Badge>}
+              </div>
+              {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="px-4 pb-4 pt-0 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">
+                  Effective start
+                  {menu.status === "ready" && <span className="text-muted-foreground ml-1">(required to schedule)</span>}
+                </Label>
+                <Input type="date" value={effectiveStart} onChange={(e) => setEffectiveStart(e.target.value)} disabled={isReadOnly} className="text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Effective end <span className="text-muted-foreground">(optional)</span></Label>
+                <Input type="date" value={effectiveEnd} onChange={(e) => setEffectiveEnd(e.target.value)} disabled={isReadOnly} className="text-sm" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Recurrence <span className="text-muted-foreground">(days this menu is served)</span></Label>
+              <div className="flex flex-wrap gap-1">
+                {DAYS_OF_WEEK.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    disabled={isReadOnly}
+                    onClick={() => toggleDay(day)}
+                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors
+                      ${recurrenceDays.includes(day)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border text-muted-foreground hover:border-primary/60"}
+                      disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {DAY_ABBR[day]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {recurrenceDays.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Service start time</Label>
+                  <Input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} disabled={isReadOnly} className="text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Service end time</Label>
+                  <Input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} disabled={isReadOnly} className="text-sm" />
+                </div>
+              </div>
+            )}
+
+            {!isReadOnly && (
+              <div className="flex justify-end pt-1">
+                <Button size="sm" disabled={!isDirty || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+                  {saveMutation.isPending ? "Saving…" : "Save Schedule"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// ── Location Panel ────────────────────────────────────────────────────────────
+
+function LocationPanel({ menuId }: { menuId: string }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+
+  const { data: assignments = [] } = useQuery<MenuLocationAssignment[]>({
+    queryKey: [`/api/menus/${menuId}/locations`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/menus/${menuId}/locations`);
+      return res.json();
+    },
+    enabled: !!menuId,
+  });
+
+  const { data: stores = [] } = useQuery<CompanyStore[]>({
+    queryKey: ["/api/stores/accessible"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/stores/accessible");
+      return res.json();
+    },
+  });
+
+  const assignedStoreIds = new Set(assignments.map((a) => a.storeId));
+  const unassignedStores = stores.filter((s) => !assignedStoreIds.has(s.id));
+  const assignedStores = stores.filter((s) => assignedStoreIds.has(s.id));
+
+  const addMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      const res = await apiRequest("POST", `/api/menus/${menuId}/locations`, { storeId });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error ?? "Failed to add"); }
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/menus/${menuId}/locations`] }),
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      await apiRequest("DELETE", `/api/menus/${menuId}/locations/${storeId}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/menus/${menuId}/locations`] }),
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="py-3 px-4 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Locations</CardTitle>
+                {assignments.length > 0
+                  ? <Badge variant="outline" className="text-xs">{assignments.length}</Badge>
+                  : <span className="text-xs text-muted-foreground">All</span>}
+              </div>
+              {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="px-4 pb-4 pt-0 space-y-2">
+            {assignments.length === 0 && (
+              <p className="text-xs text-muted-foreground py-1">No locations assigned — applies to all locations.</p>
+            )}
+            {assignedStores.map((store) => (
+              <div key={store.id} className="flex items-center justify-between py-1 px-2 rounded-md bg-muted/50">
+                <span className="text-sm">{store.name}</span>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeMutation.mutate(store.id)} disabled={removeMutation.isPending}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {unassignedStores.length > 0 && (
+              <Select onValueChange={(storeId) => addMutation.mutate(storeId)} disabled={addMutation.isPending}>
+                <SelectTrigger className="text-sm h-8">
+                  <SelectValue placeholder="Add a location…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unassignedStores.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// ── Forecast Panel ────────────────────────────────────────────────────────────
+
+function ForecastPanel({ entries, allItems, menuId, onEntryUpdate }: {
+  entries: MenuEntry[];
+  allItems: CanonicalMenuItem[];
+  menuId: string;
+  onEntryUpdate: (entryId: string, updates: Partial<MenuEntry>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const { data: forecastReport } = useQuery<any>({
+    queryKey: [`/api/menus/${menuId}/forecast`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/menus/${menuId}/forecast`);
+      return res.json();
+    },
+    enabled: !!menuId && open,
+    staleTime: 60_000,
+  });
+
+  const itemMap = useMemo(() => new Map(allItems.map((i) => [i.id, i])), [allItems]);
+
+  const suggestionsMap = useMemo(() => {
+    const m = new Map<string, number>();
+    if (forecastReport?.entries) {
+      for (const e of forecastReport.entries as any[]) {
+        if (e.suggestedQty != null) m.set(e.entryId, e.suggestedQty as number);
+      }
+    }
+    return m;
+  }, [forecastReport]);
+
+  const totals = useMemo(() => {
+    let totalQty = 0, totalRevenue = 0, totalCost = 0;
+    let hasAllRevenue = true, hasAllCost = true, entriesWithQty = 0;
+
+    for (const e of entries) {
+      const qty = e.forecastQty ?? 0;
+      if (qty > 0) {
+        totalQty += qty;
+        entriesWithQty++;
+        const item = itemMap.get(e.menuItemId);
+        const price = e.price ?? item?.price ?? null;
+        const cost = item?.recipe?.computedCost ?? null;
+        if (price != null) totalRevenue += price * qty; else hasAllRevenue = false;
+        if (cost != null) totalCost += cost * qty; else hasAllCost = false;
+      }
+    }
+
+    const projRevenue   = hasAllRevenue && entriesWithQty > 0 ? totalRevenue : null;
+    const projCost      = hasAllCost && entriesWithQty > 0 ? totalCost : null;
+    const projFcPct     = projRevenue != null && projRevenue > 0 && projCost != null ? (projCost / projRevenue) * 100 : null;
+    const projGM        = projRevenue != null && projCost != null ? projRevenue - projCost : null;
+
+    return { totalQty, entriesWithQty, projRevenue, projCost, projFcPct, projGM };
+  }, [entries, itemMap]);
+
+  const anyForecast = entries.some((e) => (e.forecastQty ?? 0) > 0);
+
+  const fmtMoney = (v: number | null) => v != null ? `$${v.toFixed(2)}` : "—";
+  const fmtPct   = (v: number | null) => v != null ? `${v.toFixed(1)}%` : "—";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="py-3 px-4 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Forecast</CardTitle>
+                {anyForecast && (
+                  <Badge variant="outline" className="text-xs">{totals.entriesWithQty} item{totals.entriesWithQty !== 1 ? "s" : ""}</Badge>
+                )}
+              </div>
+              {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="px-4 pb-4 pt-0 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Enter expected covers per item to project revenue, food cost %, and gross margin.
+            </p>
+
+            {anyForecast && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-lg bg-muted/40">
+                <div><p className="text-xs text-muted-foreground">Projected Revenue</p><p className="text-sm font-medium">{fmtMoney(totals.projRevenue)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Food Cost $</p><p className="text-sm font-medium">{fmtMoney(totals.projCost)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Food Cost %</p><p className="text-sm font-medium">{fmtPct(totals.projFcPct)}</p></div>
+                <div><p className="text-xs text-muted-foreground">Gross Margin</p><p className="text-sm font-medium">{fmtMoney(totals.projGM)}</p></div>
+              </div>
+            )}
+
+            {entries.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No items on this menu yet.</p>
+            ) : (
+              <div className="space-y-0.5">
+                <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-2 pb-1 text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                  <span>Item</span><span className="w-20 text-right">Price</span><span className="w-24 text-right">Forecast Qty</span>
+                </div>
+                {entries.map((entry) => {
+                  const item = itemMap.get(entry.menuItemId);
+                  const price = entry.price ?? item?.price ?? null;
+                  const suggestedQty = suggestionsMap.get(entry.id);
+                  return (
+                    <div key={entry.id} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center px-2 py-0.5 rounded hover:bg-muted/30">
+                      <div className="min-w-0">
+                        <p className="text-sm truncate">{item?.name ?? entry.menuItemId}</p>
+                        {suggestedQty != null && (
+                          <button
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                            onClick={() => onEntryUpdate(entry.id, { forecastQty: suggestedQty })}
+                          >
+                            POS avg: {suggestedQty}/day — apply
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground w-20 text-right">
+                        {price != null ? `$${price.toFixed(2)}` : "—"}
+                      </span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={entry.forecastQty ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value === "" ? null : Number(e.target.value);
+                          onEntryUpdate(entry.id, { forecastQty: v });
+                        }}
+                        className="h-7 w-24 text-sm text-right"
+                        placeholder="0"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 
@@ -910,7 +1324,7 @@ export default function MenuBuilderPage() {
       const res = await apiRequest("GET", `/api/menus/${id}/readiness`);
       return res.json();
     },
-    enabled: !!id && (menu?.status === "draft" || menu?.status === "ready"),
+    enabled: !!id && (menu?.status === "draft" || menu?.status === "ready" || menu?.status === "scheduled"),
     staleTime: 0,
   });
 
@@ -1159,6 +1573,17 @@ export default function MenuBuilderPage() {
           )}
           {menu.status === "ready" && (
             <>
+              {menu.effectiveStart && (
+                <Button
+                  size="sm"
+                  onClick={() => transitionMutation.mutate("scheduled")}
+                  disabled={transitionMutation.isPending}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  <Clock className="h-3.5 w-3.5 mr-1.5" />
+                  Schedule
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={() => transitionMutation.mutate("live")}
@@ -1175,6 +1600,27 @@ export default function MenuBuilderPage() {
                 disabled={transitionMutation.isPending}
               >
                 Revert to Draft
+              </Button>
+            </>
+          )}
+          {menu.status === "scheduled" && (
+            <>
+              <Button
+                size="sm"
+                onClick={() => transitionMutation.mutate("live")}
+                disabled={transitionMutation.isPending}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <BookOpen className="h-3.5 w-3.5 mr-1.5" />
+                Publish Now
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => transitionMutation.mutate("ready")}
+                disabled={transitionMutation.isPending}
+              >
+                Unschedule
               </Button>
             </>
           )}
@@ -1306,8 +1752,8 @@ export default function MenuBuilderPage() {
         {/* Right: Entry list */}
         <main className="flex-1 overflow-y-auto flex flex-col min-w-0">
           <div className="p-4 space-y-3">
-            {/* Readiness check — shown for draft and ready menus */}
-            {(menu.status === "draft" || menu.status === "ready") && (
+            {/* Readiness check — shown for draft, ready, and scheduled menus */}
+            {(menu.status === "draft" || menu.status === "ready" || menu.status === "scheduled") && (
               <ReadinessPanel
                 report={readinessReport}
                 onMarkReady={() => transitionMutation.mutate("ready")}
@@ -1315,8 +1761,24 @@ export default function MenuBuilderPage() {
               />
             )}
 
+            {/* Schedule panel — shown for draft, ready, and scheduled */}
+            {(menu.status === "draft" || menu.status === "ready" || menu.status === "scheduled") && (
+              <SchedulePanel menu={menu} onSaved={refetchMenu} />
+            )}
+
+            {/* Location assignments */}
+            <LocationPanel menuId={id!} />
+
             {/* Financial summary */}
             <FinancialSummary entries={entries} items={allCanonicalItems} />
+
+            {/* Forecast panel */}
+            <ForecastPanel
+              entries={entries}
+              allItems={allCanonicalItems}
+              menuId={id!}
+              onEntryUpdate={(entryId, updates) => updateEntryMutation.mutate({ entryId, updates })}
+            />
 
             {/* Entry list header */}
             <div className="flex items-center justify-between">
