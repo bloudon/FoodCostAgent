@@ -1,0 +1,116 @@
+This is a **successful completion of the POS framework and settings consolidation**. The original architectural problem is fixed:
+
+> Provider selection, sales method, connector availability, connection state, mappings, and sync behavior now operate as one system.
+
+The implementation also stayed appropriately reusable. Square is the first working adapter, while additional providers can move from `manual_only` to connected without redesigning Settings.
+
+## What I would sign off as complete
+
+* Server-authoritative provider registry
+* Square routed through the common framework
+* Provider and primary method saved atomically
+* Scheduled sync governed by `primarySalesMethod`
+* One active connection enforced per company
+* Intentional release distinguished from credential failure
+* Unified POS & Sales settings experience
+* Manual import preserved as fallback
+* Provider-change protection
+* Tenant and role enforcement
+* Mapping and sync exceptions exposed in the UI
+* Unsaved-change protection
+* Strong test coverage
+
+Tasks **#612 and #613 can be closed**.
+
+## A few details worth documenting
+
+### `released` connection behavior
+
+Document exactly what remains after a connection is released:
+
+* OAuth credentials revoked or removed
+* Location mappings retained or archived
+* Item mappings retained or archived
+* Sync history retained
+* Reconnection behavior
+* Whether the partial unique index permits a new connection
+
+The desired behavior is probably:
+
+```text
+released connection
+→ no further synchronization
+→ credentials unusable
+→ history retained
+→ mappings may be reused only when reconnecting the same provider/account
+→ does not block a new provider connection
+```
+
+### Provider registry terminology
+
+The recap says several providers are “manual-only, ready to be promoted.” That is good, but use capability data rather than one broad flag.
+
+For example:
+
+```typescript
+availability: "connected" | "manual_only"
+
+capabilities: {
+  oauth: false,
+  catalogRetrieval: false,
+  salesRetrieval: false,
+  locationMapping: false,
+  itemMapping: false,
+  backfill: false
+}
+```
+
+That lets a future provider support file-based catalog retrieval or API sales retrieval without assuming every capability arrives at once.
+
+### Setup-status ownership
+
+Continue treating `GET /api/pos/setup-status` as the reusable truth for both Settings and future onboarding. Do not create separate onboarding completion flags later.
+
+## Remaining Square pilot-readiness gate
+
+The recap completes the framework, but it does not confirm several earlier Square-specific hardening items. Before connecting the first real restaurant, I would verify these explicitly:
+
+1. **OAuth tokens are encrypted at rest** and never returned or logged.
+2. **Reconnect Square** updates the existing connection and preserves mappings.
+3. OAuth cancellation and callback failures show clear user-facing guidance.
+4. The production callback URI works after VPS deployment.
+5. Running the same sync twice does not duplicate sales or theoretical usage.
+6. Refunds and modified prior-day orders update previously imported results correctly.
+7. A manual sync cannot overlap a backfill or scheduled sync for the same connection.
+8. Nightly timing works sensibly for the restaurant’s local timezone.
+9. Token-refresh and revocation tests cover actual refresh failure, not only a pre-sync status check.
+10. Square merchant identity is verified during reconnection so another Square account cannot silently replace the original one.
+
+Some may already be implemented; they simply are not confirmed in this delivery summary.
+
+## Recommended next move
+
+Do **not** start Clover yet.
+
+Run a complete Square Sandbox acceptance cycle:
+
+```text
+Select Square
+→ choose Connected POS
+→ authorize
+→ map locations
+→ reconcile menu variations
+→ create test sales
+→ sync
+→ verify daily sales and theoretical usage
+→ refund an item
+→ sync again
+→ rerun unchanged data
+→ confirm no duplication
+→ disconnect/reconnect
+→ verify mappings remain
+```
+
+Then deploy the same code to the VPS with Square Sandbox credentials and repeat the flow through the real FnB domain.
+
+Once that passes, the next functional work should be the **POS catalog-to-scanned-menu reconciliation experience**. That is the piece that turns a technically connected POS into a usable restaurant onboarding and food-cost workflow.
