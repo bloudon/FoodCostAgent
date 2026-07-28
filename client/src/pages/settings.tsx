@@ -842,7 +842,7 @@ export default function Settings() {
 
       {/* Unsaved POS changes guard — navigating away from /settings entirely */}
       <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeaveSettings(); }}>
-        <DialogContent>
+        <DialogContent data-testid="dialog-unsaved-nav-changes">
           <DialogHeader>
             <DialogTitle>Unsaved Changes</DialogTitle>
             <DialogDescription>
@@ -850,10 +850,10 @@ export default function Settings() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={handleCancelLeaveSettings}>
+            <Button variant="outline" onClick={handleCancelLeaveSettings} data-testid="button-cancel-leave-settings">
               Stay and Save
             </Button>
-            <Button variant="destructive" onClick={handleConfirmLeaveSettings}>
+            <Button variant="destructive" onClick={handleConfirmLeaveSettings} data-testid="button-confirm-leave-settings">
               Leave and Discard
             </Button>
           </DialogFooter>

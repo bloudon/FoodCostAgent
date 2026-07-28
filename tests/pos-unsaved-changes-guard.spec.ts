@@ -255,7 +255,112 @@ test.describe('POS unsaved-changes guard — dialog visibility', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 2: "Leave and Discard" path
+// Suite 2: Page-level navigation guard (sidebar links away from /settings)
+// ---------------------------------------------------------------------------
+
+test.describe('POS unsaved-changes guard — sidebar / page navigation', () => {
+  /**
+   * Simulate a sidebar link push by evaluating pushState directly in the
+   * browser (the same mechanism wouter uses for <Link> clicks).
+   */
+  async function pushToPath(page: Page, path: string): Promise<void> {
+    await page.evaluate((p) => {
+      window.history.pushState({}, '', p);
+    }, path);
+  }
+
+  test('shows page-leave dialog when sidebar pushState targets a non-settings path', async ({ page }) => {
+    await mockSettingsPage(page);
+    await openPosTabAndMakeDirty(page);
+
+    // Simulate a sidebar link click that navigates to /dashboard
+    await pushToPath(page, '/');
+
+    const dialog = page.getByTestId('dialog-unsaved-nav-changes');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog).toContainText('Unsaved Changes');
+  });
+
+  test('page-leave dialog has "Stay and Save" and "Leave and Discard" buttons', async ({ page }) => {
+    await mockSettingsPage(page);
+    await openPosTabAndMakeDirty(page);
+
+    await pushToPath(page, '/analyze');
+
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByTestId('button-cancel-leave-settings')).toBeVisible();
+    await expect(page.getByTestId('button-confirm-leave-settings')).toBeVisible();
+  });
+
+  test('no page-leave dialog when navigating within /settings', async ({ page }) => {
+    await mockSettingsPage(page);
+    await openPosTabAndMakeDirty(page);
+
+    // A push that stays within /settings should NOT trigger the guard
+    await pushToPath(page, '/settings?tab=company');
+
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).not.toBeVisible();
+  });
+
+  test('"Leave and Discard" completes navigation and URL changes away from /settings', async ({ page }) => {
+    await mockSettingsPage(page);
+    // Stub the home route so the SPA doesn't make failing API calls after redirect
+    await page.route('**/api/onboarding/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ dismissed: true, milestones: [] }) }),
+    );
+    await page.route('**/api/inventory-sessions**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await openPosTabAndMakeDirty(page);
+
+    await pushToPath(page, '/');
+
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).toBeVisible({ timeout: 5000 });
+
+    await page.getByTestId('button-confirm-leave-settings').click();
+
+    // Dialog must close
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).not.toBeVisible({ timeout: 5000 });
+
+    // URL must have left /settings (SPA pushState changed it to '/')
+    await expect(page).not.toHaveURL(/\/settings/, { timeout: 5000 });
+  });
+
+  test('"Stay and Save" closes the dialog and keeps the URL on /settings', async ({ page }) => {
+    await mockSettingsPage(page);
+    await openPosTabAndMakeDirty(page);
+
+    await pushToPath(page, '/');
+
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).toBeVisible({ timeout: 5000 });
+
+    await page.getByTestId('button-cancel-leave-settings').click();
+
+    // Dialog must close
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).not.toBeVisible({ timeout: 5000 });
+
+    // URL must still be /settings
+    await expect(page).toHaveURL(/\/settings/, { timeout: 5000 });
+  });
+
+  test('"Stay and Save" preserves dirty state — POS save button still visible', async ({ page }) => {
+    await mockSettingsPage(page);
+    await openPosTabAndMakeDirty(page);
+
+    await pushToPath(page, '/');
+
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).toBeVisible({ timeout: 5000 });
+
+    await page.getByTestId('button-cancel-leave-settings').click();
+    await expect(page.getByTestId('dialog-unsaved-nav-changes')).not.toBeVisible({ timeout: 5000 });
+
+    // Unsaved changes must still be present
+    await expect(page.getByTestId('button-save-pos-config-inline')).toBeVisible({ timeout: 5000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 3: "Leave and Discard" path (tab guard)
 // ---------------------------------------------------------------------------
 
 test.describe('POS unsaved-changes guard — Leave and Discard', () => {
