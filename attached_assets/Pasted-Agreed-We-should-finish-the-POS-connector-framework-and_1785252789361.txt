@@ -1,0 +1,345 @@
+Agreed. We should **finish the POS connector framework and company setup correctly first**, while making it reusable enough to drop into the existing onboarding process later. We do not need to decide which onboarding step owns it yet.
+
+Here is the revised feedback for Replit:
+
+````markdown
+# Complete the Universal POS Setup Framework
+
+The scope split is approved, with one clarification:
+
+Do not redesign or modify the existing eight-step onboarding process in this task.
+
+POS setup will eventually be included within onboarding, but we should first build the connector and company configuration correctly as a self-contained, reusable workflow. We can decide where it fits into onboarding after the workflow is proven.
+
+## Product model
+
+Treat the following as one coherent company configuration:
+
+1. POS provider
+2. Primary sales data method
+3. Connector status and setup progress
+
+Example:
+
+- Provider: Square
+- Primary method: Connected POS
+- Status: Connected
+- Locations mapped: 2 of 2
+- Menu items mapped: 84 of 91
+- Last successful sync: Today
+
+Square is the first provider adapter inside a universal POS connector framework. It should not appear as a standalone feature unrelated to the company’s POS selection.
+
+---
+
+## 1. Primary sales method
+
+Add a company-level field:
+
+```text
+primary_sales_method
+````
+
+Allowed values:
+
+```text
+manual_upload
+pos_connector
+null
+```
+
+Use `pos_connector` rather than `electronic`, because it clearly identifies the source.
+
+This field represents the company’s primary method. It must not disable manual upload completely.
+
+Manual sales upload remains available as:
+
+* A fallback when the connector is unavailable
+* A historical-import option
+* A recovery tool after sync problems
+* A temporary option while mappings are incomplete
+
+For the MVP, assume one primary POS provider and one primary sales method per company.
+
+Store-level mixed-POS support is deferred.
+
+---
+
+## 2. Server-authoritative connector registry
+
+Formalize the universal POS connector registry.
+
+Do not make the browser the sole authority for provider capabilities or adapter selection.
+
+The server or a shared server-safe module should own something conceptually similar to:
+
+```typescript
+interface PosConnectorDefinition {
+  providerKey: string;
+  displayName: string;
+  capabilities: {
+    oauth: boolean;
+    catalogRetrieval: boolean;
+    salesRetrieval: boolean;
+    locationMapping: boolean;
+    itemMapping: boolean;
+    backfill: boolean;
+  };
+  connector: PosConnector;
+}
+```
+
+Initial registry:
+
+```typescript
+square: {
+  providerKey: "square",
+  displayName: "Square",
+  capabilities: {
+    oauth: true,
+    catalogRetrieval: true,
+    salesRetrieval: true,
+    locationMapping: true,
+    itemMapping: true,
+    backfill: true
+  },
+  connector: squareConnector
+}
+```
+
+The frontend may consume safe provider metadata through:
+
+* A shared public metadata module, or
+* An endpoint such as `GET /api/pos/providers`
+
+Do not maintain separate hardcoded provider lists in the frontend and backend.
+
+---
+
+## 3. Unified POS & Sales Data settings
+
+Create one unified company settings section called:
+
+```text
+POS & Sales Data
+```
+
+Move the existing POS Provider selection and Square connection controls into this section.
+
+Do not leave the POS Provider dropdown on one tab and the Square connection card on another unrelated tab.
+
+The section should show:
+
+### Configuration
+
+* POS provider
+* Primary sales method
+* Connector availability for the selected provider
+* Manual-upload availability
+
+### Connected POS status
+
+When a connector exists:
+
+* Connection status
+* Merchant/account identity
+* Connected date
+* Last successful sync
+* Last attempted sync
+* Location mapping progress
+* Item mapping progress
+* Unmapped or skipped item warnings
+* Recent sync errors
+
+### Actions
+
+As appropriate:
+
+* Connect POS
+* Reconnect POS
+* Disconnect
+* Manage Locations
+* Manage Menu Mappings
+* Sync Now
+* Run Backfill
+* View Sync History
+* Upload Sales Report
+
+Reuse the existing Square OAuth, mapping, sync and backfill components rather than rebuilding them.
+
+---
+
+## 4. Provider-driven behavior
+
+The selected POS provider should determine available options through the connector registry.
+
+### Square example
+
+```text
+POS Provider
+Square
+
+Primary Sales Method
+Connected POS
+
+Electronic connection available
+[Connect Square]
+
+Manual report upload also available
+[Upload Sales Report]
+```
+
+### Unsupported-provider example
+
+```text
+POS Provider
+HungerRush
+
+Primary Sales Method
+Manual Report Upload
+
+A direct connector is not currently available for this provider.
+[Upload Sales Report]
+```
+
+Do not build a Request Integration workflow yet.
+
+---
+
+## 5. Connector lifecycle
+
+Complete the Square connection lifecycle before pilot use:
+
+* Initial authorization
+* OAuth cancellation/error messaging
+* Location retrieval and mapping
+* Catalog retrieval and menu-item mapping
+* Initial backfill
+* Incremental sync
+* Token refresh
+* Revoked-token detection
+* Disconnected state
+* Reauthorization of the existing connection
+* Sync warnings and skipped-item visibility
+
+Reauthorization must:
+
+* Update the existing `pos_connections` record
+* Preserve location mappings
+* Preserve item mappings
+* Preserve sync history
+* Reject a different Square merchant unless explicitly handled
+* Avoid creating a duplicate connection
+
+---
+
+## 6. Provider changes
+
+Do not allow the POS provider to change silently while an active connection exists.
+
+For the MVP, require the user to disconnect the current provider before changing it.
+
+Show a warning explaining:
+
+* Automated sales sync will stop
+* Historical sales remain
+* Existing mappings and connection records are retained unless intentionally deleted
+* Manual upload will remain available
+
+Do not automatically delete credentials, mappings or historical records merely because the selected provider changes.
+
+---
+
+## 7. Manual import relationship
+
+The existing manual sales-report import remains part of the POS framework.
+
+It is not a separate legacy workflow that should disappear after Square is connected.
+
+The POS & Sales Data section should make the current source clear:
+
+```text
+Primary sales source: Square connector
+Fallback available: Manual report upload
+```
+
+or:
+
+```text
+Primary sales source: Manual report upload
+No direct connector currently configured
+```
+
+---
+
+## 8. Reusable setup status
+
+Although onboarding changes are out of scope, expose a reusable status model that onboarding can consume later.
+
+Conceptually:
+
+```typescript
+interface PosSetupStatus {
+  providerSelected: boolean;
+  primaryMethodSelected: boolean;
+  connectorAvailable: boolean;
+  connected: boolean;
+  locationsMapped: number;
+  locationsTotal: number;
+  itemsMapped: number;
+  itemsTotal: number;
+  unresolvedItems: number;
+  initialSalesImportCompleted: boolean;
+}
+```
+
+This should be derived from real configuration and connection data.
+
+Do not create onboarding-specific duplicate state or checkbox flags in this task.
+
+When POS setup is later inserted into onboarding, the onboarding UI should reuse this workflow and status rather than recreating it.
+
+---
+
+## Current scope
+
+### Do now
+
+* Add `primary_sales_method`
+* Formalize the server-authoritative connector registry
+* Refactor settings into one POS & Sales Data section
+* Connect provider selection to connector availability
+* Integrate the existing Square card and workflows
+* Complete Square connection and reauthorization handling
+* Keep manual upload available
+* Add provider-change safeguards
+* Expose reusable POS setup status
+* Add tests for tenant isolation, provider routing and connection lifecycle
+
+### Defer
+
+* Changes to the current eight-step onboarding process
+* Deciding which onboarding step contains POS setup
+* Building new onboarding screens
+* Request-an-integration workflow
+* Connector marketplace
+* Store-level mixed-POS support
+* Adding Toast, Clover or other adapters
+* Rebuilding the current Square mapping pages
+
+## Done looks like
+
+* POS provider, sales method and connector status appear as one coherent setup
+* Square is routed through the universal connector registry
+* The frontend does not hardcode Square-specific routing throughout the settings page
+* Unsupported providers cleanly use manual upload
+* Manual upload remains available after a POS is connected
+* A disconnected Square account can be reauthorized without losing mappings
+* Provider changes cannot silently orphan an active connection
+* POS setup exposes a reusable completion/status model
+* No changes are made to the existing onboarding flow
+
+```
+
+This keeps the immediate goal clear: **build a complete, reusable POS setup system first; decide later how the existing onboarding process presents it.**
+```
