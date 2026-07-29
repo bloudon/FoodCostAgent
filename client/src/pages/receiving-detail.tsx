@@ -755,7 +755,7 @@ export default function ReceivingDetail() {
               </Select>
             </div>
 
-            <Table wrapperClassName="rounded-md border overflow-hidden max-h-[calc(100vh-480px)]">
+            <Table wrapperClassName="rounded-md border max-h-[calc(100vh-480px)]">
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
                     <TableHead>Item</TableHead>
