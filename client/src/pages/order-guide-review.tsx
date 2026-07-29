@@ -1031,7 +1031,7 @@ function OrderGuideTable({
 
   return (
     <div className="rounded-md border" ref={containerRef}>
-      <Table wrapperClassName="overflow-x-auto">
+      <Table wrapperClassName="max-h-[calc(100vh-420px)]">
         <TableHeader className="sticky top-0 z-10 bg-card">
           <TableRow>
             <TableHead className="w-12"></TableHead>
