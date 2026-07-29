@@ -1,0 +1,544 @@
+The plan has the correct strategic idea: **do not force a multi-vendor Orderly inventory export through a single-vendor order-guide importer.** A dedicated ingestion path is warranted.
+
+But I would not approve #676 as written. A few decisions could permanently damage item identity and throw away the most valuable onboarding data in the file.
+
+# My PM verdict
+
+**Approve the importer concept. Revise the data model and scope before implementation.**
+
+The biggest issues are:
+
+1. Deduping by Item Code is unsafe for this export.
+2. Storage locations should not be flattened into a text tag.
+3. The description-cleaning rule is too aggressive.
+4. Multi-tier pack/count geometry should be preserved even if it is not fully activated.
+5. The inventory snapshot should not simply be discarded.
+6. Reusing the order-guide creation function risks importing Orderly data with the wrong semantics.
+7. Import approval should be idempotent and traceable.
+
+# 1. Do not dedupe by Item Code first
+
+The plan says:
+
+> “De-duplicates items by Item Code (prefer) then cleaned name.”
+
+That is unsafe based on the Bay Hill file.
+
+We already found a large number of rows where Orderly appears to use the same placeholder value—such as `54`—for Item Code, Supplier, Par Target, and other fields. If the importer treats `54` as a valid item identity, it could collapse many unrelated products into one item.
+
+The importer needs to identify obviously invalid or non-unique codes.
+
+## Recommended identity strategy
+
+Preserve several identities separately:
+
+* `sourceSystem = ORDERLY`
+* `sourceItemCode`
+* normalized item description
+* normalized pack size
+* supplier
+* storage location
+* import batch ID
+
+Then build the match hierarchy:
+
+1. Existing source mapping from a previous Orderly import
+2. Valid and unique Orderly Item Code
+3. Normalized description + compatible pack geometry
+4. Possible fuzzy match requiring review
+5. New inventory item
+
+A code should only be treated as authoritative when it passes validation:
+
+* Not blank
+* Not a known placeholder
+* Not reused across clearly unrelated descriptions
+* Consistent across the workbook
+* Not duplicated with incompatible pack sizes
+
+## Important distinction
+
+Two rows can represent:
+
+* The same inventory item stored in two locations
+* The same ingredient purchased from two vendors
+* Two different products with similar names
+* The same product in different package sizes
+
+Those are not all duplicates.
+
+The preview needs to distinguish:
+
+* **Item match**
+* **Vendor-item match**
+* **Location assignment**
+* **Duplicate source row**
+* **Ambiguous match**
+
+A single `duplicate` status is not enough.
+
+# 2. Storage location cannot be merely a text tag
+
+The plan proposes:
+
+> “Storage location tags per inventory item (simple text label, not a new entity).”
+
+I strongly disagree with this decision.
+
+Orderly is giving you 26 actual physical count locations. These are operationally meaningful:
+
+* Main Walk-in
+* Main Freezer
+* Dry Storeroom
+* Produce Walk-in
+* Bay Window
+* Wine Cellar
+* Liquor Cage
+* Member Lounge
+
+A tag cannot properly support:
+
+* Inventory counts by location
+* Transfers between locations
+* Location-specific pars
+* Location-specific quantity on hand
+* Predictive replenishment by outlet
+* Count-sheet generation
+* Variance analysis
+* Access permissions
+* Multiple storage assignments for the same item
+
+At minimum, use or introduce:
+
+```text
+inventory_locations
+company_id
+name
+normalized_name
+location_type
+active
+source_system
+source_external_id
+```
+
+Then create an assignment:
+
+```text
+inventory_item_locations
+inventory_item_id
+location_id
+count_enabled
+par_target
+source_system
+source_row_reference
+```
+
+Even if the first UI only displays locations as labels, the database should preserve them as entities.
+
+Flattening them now would force a migration later, precisely when Bay Hill begins testing inventory counts.
+
+# 3. Do not blindly strip supplier names from descriptions
+
+The plan says:
+
+> “The Supplier column value appears verbatim at the end of the description—truncate there.”
+
+That may work for many Bay Hill rows, but it is too brittle as a general parser rule.
+
+Potential failures:
+
+* Supplier name is part of the legitimate product name.
+* Supplier appears more than once in the description.
+* The suffix differs slightly in punctuation or abbreviation.
+* Supplier is a placeholder like `54`.
+* The description does not actually contain a supplier suffix.
+* A legitimate brand and supplier have the same name.
+
+## Better approach
+
+Preserve both:
+
+* `rawDescription`
+* `cleanedDescription`
+
+Only remove the suffix when:
+
+* Supplier is a valid textual supplier name.
+* Description ends with that exact supplier value after normalized whitespace.
+* Removal leaves a meaningful product description.
+* The user can see both values in preview.
+
+The importer should never permanently discard the raw source string.
+
+# 4. Preserve the three-tier count geometry
+
+The plan puts multi-tier counting units out of scope:
+
+> “We store a single base unit + case size; the three-level counting structure is not imported.”
+
+It may be reasonable not to fully operationalize it in #676, but it should not be discarded.
+
+Orderly appears to support counting an item at multiple levels, such as:
+
+* Cases
+* Packs
+* Eaches or base units
+
+That data is extremely valuable for Bay Hill because it reflects how their team actually counts inventory.
+
+For example:
+
+```text
+1 case = 6 packs
+1 pack = 4 each
+```
+
+Flattening that to one base unit plus a case size may lose the middle level and make imported counts or future mobile counting less intuitive.
+
+## Recommended compromise
+
+For #676:
+
+* Parse the full geometry.
+* Store the raw source values.
+* Normalize what can be safely normalized.
+* Create the current single case/base conversion when valid.
+* Mark tier-two counting support as pending.
+* Warn when the geometry cannot be represented losslessly.
+
+Add something like:
+
+```text
+sourcePackText
+caseQuantity
+innerPackQuantity
+baseUnitQuantity
+caseUnit
+innerUnit
+baseUnit
+packParseStatus
+```
+
+This makes #676 forward-compatible without requiring the full counting UI immediately.
+
+# 5. Do not throw away the May/June inventory snapshot
+
+The plan explicitly excludes:
+
+> “Importing the Count / Total Cost columns as an inventory count session.”
+
+I agree that a full automated count-session import can be a separate feature. But the importer should still preserve the source snapshot.
+
+This file is not just an item catalog. It is a month-end inventory valuation with:
+
+* Current counts
+* Previous counts
+* Current value
+* Previous value
+* Package price
+* Location
+* Recent purchase date
+
+That is potentially the most useful pilot data in the workbook.
+
+## Better scope boundary
+
+Do not post the values directly into live on-hand inventory during #676.
+
+Instead:
+
+* Save the source snapshot rows in an import staging table.
+* Associate them with their inventory date.
+* Show the snapshot totals in preview.
+* Allow a later action to convert an approved batch into a historical count session.
+* Preserve current and previous count values for analysis.
+
+This lets you build #677 later without asking Bay Hill to upload the same file again.
+
+A suitable model could be:
+
+```text
+inventory_import_batches
+inventory_import_rows
+source_inventory_date
+source_previous_inventory_date
+raw_count_values
+raw_total_units
+raw_inventory_value
+raw_previous_value
+```
+
+# 6. Be cautious reusing `createNewInventoryAndVendorItem`
+
+The proposal says:
+
+> “Reuse createNewInventoryAndVendorItem from orderGuideProcessor.ts.”
+
+Reusing lower-level creation services is good. Reusing an order-guide-specific orchestration function may not be.
+
+An order guide generally means:
+
+* One vendor
+* Vendor catalog item
+* SKU and purchase price
+* Potential inventory-item creation
+
+The Orderly export means:
+
+* Multiple vendors
+* Physical inventory locations
+* Current valuation
+* Possibly incomplete supplier information
+* Multiple count-unit levels
+* Existing operational item master
+
+Those have different source semantics.
+
+## Better design
+
+Extract shared domain commands such as:
+
+* `resolveOrCreateInventoryItem`
+* `resolveOrCreateVendor`
+* `resolveOrCreateVendorItem`
+* `resolveOrCreateInventoryLocation`
+* `assignItemToLocation`
+* `recordExternalItemMapping`
+
+Then let both importers call those services independently.
+
+This avoids coupling the new importer to assumptions hidden in the order-guide workflow.
+
+# 7. Vendor creation needs stronger controls
+
+The plan creates vendors for every unmatched Supplier value.
+
+That could create junk vendors such as:
+
+* `54`
+* blanks
+* generic placeholders
+* misspellings
+* duplicate naming variants
+* distributor location names
+* brands mistakenly used as suppliers
+
+Vendor statuses should include:
+
+* Existing match
+* Confident normalized match
+* New valid vendor
+* Invalid placeholder
+* Ambiguous match
+* Missing supplier
+
+Do not automatically create a vendor from every unique nonblank cell.
+
+New vendor creation should require at least:
+
+* A plausible supplier name
+* No match to known placeholders
+* No ambiguous near-match
+* User approval in preview
+
+# 8. The import must be idempotent
+
+The plan does not clearly define what happens if the same file is approved twice.
+
+That is a critical onboarding requirement.
+
+The batch should store:
+
+* File hash
+* Import source
+* Company
+* Original filename
+* Inventory date
+* Created by
+* Approved by
+* Import status
+* Row counts
+* Created and matched entity counts
+
+On a repeat upload, the system should warn:
+
+> “This file appears to have already been imported on July 29, 2026.”
+
+Approving it again must not duplicate items, vendor items, vendors, or location assignments.
+
+# 9. Inventory date needs to be captured
+
+The report represents a specific inventory snapshot. The proposed ticket does not mention detecting or asking for the inventory date.
+
+The upload process should:
+
+* Attempt to read the inventory date from the workbook.
+* Show the inferred date in preview.
+* Require confirmation if it cannot be determined.
+* Distinguish file upload date from inventory effective date.
+
+This becomes essential when importing both May and June.
+
+# 10. The user should resolve ambiguous matches before approval
+
+Allowing users to deselect rows is useful, but insufficient.
+
+For ambiguous rows, the preview should let the user choose:
+
+* Match to an existing item
+* Create a new item
+* Ignore this row
+* Mark as unresolved
+* Apply this choice to similar rows
+
+The preview should include separate counts:
+
+* New inventory items
+* Existing inventory items matched
+* New vendor items
+* New vendors
+* New locations
+* Item-location assignments
+* Ambiguous rows
+* Invalid supplier rows
+* Pack-size warnings
+* Duplicate source rows
+
+“X items, Y vendors, Z locations” is too shallow for a 5,000-row import.
+
+# 11. Preserve category and GL data
+
+It is reasonable to exclude full GL mapping, but do not discard either field.
+
+Store them as external metadata:
+
+* Orderly category
+* Orderly GL code
+* Original GL label, when available
+
+The category can likely help initialize FnB Cost Pro’s inventory categories.
+
+The GL code can later support accounting export and mapping. It is also useful for distinguishing food, bar, and direct operating costs.
+
+A safe first implementation would:
+
+* Auto-match obvious internal categories
+* Show category mappings in preview
+* Preserve the raw category and GL code
+* Avoid creating accounting records automatically
+
+# 12. Par target should be preserved
+
+The plan excludes Par Order Target. Again, it may be premature to activate it directly, but it should be staged.
+
+Par values are highly relevant to predictive ordering. Bay Hill’s existing pars also provide an excellent comparison point:
+
+> Orderly par versus FnB Cost Pro predicted requirement.
+
+Store the raw value and its source location. Do not activate it without validating its meaning and unit.
+
+# Revised “done looks like”
+
+I would rewrite the acceptance criteria as follows:
+
+## Import setup
+
+* An **Import from Orderly** option is available during onboarding and from the inventory import area.
+* User uploads an `.xlsx` Orderly inventory export.
+* System detects the inventory date or asks the user to confirm it.
+* System stores an immutable import batch and source-row staging records.
+
+## Preview
+
+Preview shows:
+
+* Inventory item matches and new items
+* Vendor-item matches and new vendor items
+* Valid, invalid, and ambiguous suppliers
+* Physical storage locations
+* Item-to-location assignments
+* Category mapping
+* Pack-geometry parsing
+* Count and valuation snapshot totals
+* Duplicate and placeholder source identifiers
+* Rows requiring user resolution
+
+## Approval
+
+Approval creates or updates:
+
+* Inventory items
+* Valid vendors
+* Vendor items
+* Inventory locations
+* Item-location assignments
+* External Orderly mappings
+* Source metadata, including category, GL code, and raw pack geometry
+
+Approval does **not** automatically alter live on-hand inventory.
+
+The count and valuation data remain staged for later conversion into a historical inventory session.
+
+## Safety
+
+* Import is idempotent.
+* Raw source values are always retained.
+* Placeholder item codes and suppliers are never used as authoritative identities.
+* Ambiguous matches cannot be silently merged.
+* The importer produces an audit summary of everything created, matched, skipped, and warned.
+
+# Recommended delivery split
+
+I would split this into three tickets rather than one oversized #676.
+
+## #676A — Orderly parser and staging
+
+* File detection
+* Workbook parser
+* Raw row storage
+* Inventory-date detection
+* Pack-geometry parser
+* Placeholder detection
+* Preview API
+
+## #676B — Entity resolution and approval
+
+* Inventory item matching
+* Vendor matching
+* Vendor-item creation
+* Location entities and assignments
+* Category mapping
+* Idempotent approval
+* Audit summary
+
+## #677 — Historical count-session conversion
+
+* Convert an approved Orderly snapshot into a historical inventory count
+* Import multi-tier counts
+* Preserve valuation
+* Compare May versus June
+* Support beginning inventory + purchases − ending inventory
+* Enable actual-versus-theoretical usage
+
+# Pilot-specific recommendation
+
+For Bay Hill, I would import **both May and June through the same staging system**, even if only June seeds the current catalog.
+
+That lets you immediately test:
+
+* Stable item matching across consecutive exports
+* Price changes
+* Location movement
+* Added and removed items
+* Count geometry consistency
+* Item-code reliability
+* Supplier changes
+* Whether the same product receives the same internal identity across both months
+
+That is the real acceptance test for this importer.
+
+The key product principle should be:
+
+> **Orderly import is not merely a shortcut for creating inventory items. It is a migration bridge from an incumbent inventory system into FnB Cost Pro.**
+
+Treating it as a migration/import source makes the architecture substantially more valuable for future Orderly customers—and protects the premium positioning far better than a disposable onboarding parser.
