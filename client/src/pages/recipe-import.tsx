@@ -142,7 +142,7 @@ function UnitSelect({
   );
 }
 
-function InventoryCombobox({
+export function InventoryCombobox({
   value,
   items,
   onChange,
