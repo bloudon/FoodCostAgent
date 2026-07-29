@@ -91,8 +91,8 @@ export default function Receiving() {
   const receivedOrders = sortedOrders.filter(o => o.status === "received");
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-receiving-title">
@@ -140,7 +140,9 @@ export default function Receiving() {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      <div className="flex-1 overflow-auto px-6 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading orders...</div>
@@ -152,11 +154,10 @@ export default function Receiving() {
               <Card>
                 <CardContent className="pt-6">
                   <h2 className="text-lg font-semibold mb-4">Pending Orders</h2>
-                  <div className="border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>PO #</TableHead>
+                  <Table wrapperClassName="rounded-md border max-h-[400px]">
+                    <TableHeader className="sticky top-0 z-10 bg-card">
+                      <TableRow>
+                        <TableHead>PO #</TableHead>
                           <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
                           <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Ordered</SortableTableHead>
                           <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected</SortableTableHead>
@@ -200,7 +201,6 @@ export default function Receiving() {
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
                 </CardContent>
               </Card>
             )}
@@ -210,11 +210,10 @@ export default function Receiving() {
               <Card>
                 <CardContent className="pt-6">
                   <h2 className="text-lg font-semibold mb-4">Received Orders</h2>
-                  <div className="border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>PO #</TableHead>
+                  <Table wrapperClassName="rounded-md border max-h-[400px]">
+                    <TableHeader className="sticky top-0 z-10 bg-card">
+                      <TableRow>
+                        <TableHead>PO #</TableHead>
                           <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
                           <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Ordered</SortableTableHead>
                           <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected</SortableTableHead>
@@ -258,7 +257,6 @@ export default function Receiving() {
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
                 </CardContent>
               </Card>
             )}

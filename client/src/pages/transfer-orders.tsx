@@ -149,8 +149,8 @@ function TransferOrdersContent() {
   }, [filteredOrders, sortField, sortDirection]);
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold">Transfer Orders</h1>
@@ -202,7 +202,9 @@ function TransferOrdersContent() {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      <div className="flex-1 overflow-auto px-6 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading transfer orders...</div>
@@ -218,10 +220,9 @@ function TransferOrdersContent() {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-290px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow>
                   <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected Date</SortableTableHead>
                   <SortableTableHead field="fromStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>From Store</SortableTableHead>
                   <SortableTableHead field="toStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>To Store</SortableTableHead>
@@ -285,8 +286,7 @@ function TransferOrdersContent() {
                   );
                 })}
               </TableBody>
-            </Table>
-          </div>
+          </Table>
         )}
       </div>
 

@@ -755,10 +755,9 @@ export default function ReceivingDetail() {
               </Select>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
+            <Table wrapperClassName="rounded-md border overflow-hidden max-h-[calc(100vh-480px)]">
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead>SKU</TableHead>
                     {!receiveByUnit && <TableHead className="text-right">Cases Ordered</TableHead>}
@@ -900,7 +899,6 @@ export default function ReceivingDetail() {
                   )}
                 </TableBody>
               </Table>
-            </div>
 
             <div className="flex justify-end mt-6 gap-2">
               {isReadOnly ? (

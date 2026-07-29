@@ -120,8 +120,8 @@ export default function PurchaseOrders() {
   );
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4 space-y-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold">Purchase Orders</h1>
@@ -173,7 +173,9 @@ export default function PurchaseOrders() {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      <div className="flex-1 overflow-auto px-6 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading purchase orders...</div>
@@ -189,10 +191,9 @@ export default function PurchaseOrders() {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-290px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow>
                   <TableHead className="w-[150px]">PO Number</TableHead>
                   <SortableTableHead field="vendor" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Vendor</SortableTableHead>
                   <SortableTableHead field="createdAt" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Created</SortableTableHead>
@@ -273,8 +274,7 @@ export default function PurchaseOrders() {
                   );
                 })}
               </TableBody>
-            </Table>
-          </div>
+          </Table>
         )}
       </div>
 

@@ -391,9 +391,8 @@ export default function InventoryItems() {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg overflow-x-auto">
-            <Table>
-              <TableHeader className="sticky top-0 z-10 bg-card">
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-320px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
                   <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="min-w-[180px]">Item</SortableTableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
@@ -605,8 +604,7 @@ export default function InventoryItems() {
                   );
                 })}
               </TableBody>
-            </Table>
-          </div>
+          </Table>
         )}
 
         <div className="flex items-center justify-between flex-wrap gap-4">

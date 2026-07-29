@@ -255,8 +255,8 @@ export default function Orders() {
   }) || [];
 
   return (
-    <div className="h-full overflow-auto">
-      <div className="p-6 space-y-6">
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-orders-title">Orders</h1>
@@ -271,7 +271,9 @@ export default function Orders() {
             </Link>
           </Button>
         </div>
+      </div>
 
+      <div className="flex-1 overflow-auto px-6 py-6 space-y-6">
         {/* QuickBooks Export Queue — Pro + QB connected only */}
         {isQbPro && pendingQbOrders.length > 0 && (
           <Card data-testid="card-qb-export-queue">
@@ -468,10 +470,9 @@ export default function Orders() {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow>
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-280px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow>
                   <TableHead className="w-[100px]">Number</TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
                   <TableHead>Details</TableHead>
@@ -637,7 +638,6 @@ export default function Orders() {
                 })}
               </TableBody>
             </Table>
-          </div>
         )}
       </div>
 
