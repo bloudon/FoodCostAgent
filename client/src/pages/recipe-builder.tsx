@@ -1604,13 +1604,12 @@ function RecipeBuilderContent() {
 
     const result = new Map<string, Unit>();
 
-    // The inventory/yield unit itself is always convertible (trivial case).
+    // The inventory/yield unit itself is always included.
     result.set(baseUnit.id, baseUnit);
 
-    // Whitelisted per-item Recipe Units come first, in the user-defined
-    // sortOrder, so the dropdown surfaces the user's preferred unit at the
-    // top of its kind group (Map preserves insertion order). Only rows with
-    // a positive qtyPerInventoryUnit can actually be converted.
+    // Whitelisted per-item Recipe Units — only rows with a positive
+    // qtyPerInventoryUnit can actually be converted.
+    let hasWhitelist = false;
     if (inventoryItemId && companyRecipeUnits) {
       const orderedWhitelist = companyRecipeUnits
         .filter(
@@ -1625,10 +1624,17 @@ function RecipeBuilderContent() {
         const u = units.find((x) => x.id === row.unitId);
         if (u) result.set(u.id, u);
       }
+      hasWhitelist = orderedWhitelist.length > 0;
     }
 
-    // Fill in remaining same-kind units — only the ones the toBaseRatio path
-    // can actually convert (both sides > 0).
+    // When the item has explicit recipe units, stop here — don't auto-fill
+    // same-kind or cross-kind units. The "Show all" toggle is the escape hatch.
+    if (hasWhitelist) {
+      return Array.from(result.values());
+    }
+
+    // No recipe units configured — fill in remaining same-kind units so the
+    // dropdown is never empty for items that haven't been set up yet.
     if (baseUnit.toBaseRatio > 0) {
       for (const u of units) {
         if (

@@ -3952,23 +3952,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     // Per-item Recipe Unit whitelist: when an inventoryItemId is supplied,
-    // surface the whitelisted units first in the user-defined sortOrder, then
-    // the rest of the same-kind compatible units. Imperial/metric and count
-    // units mingle freely here — that's the whole point of per-item factors.
+    // check whether the item has explicitly configured recipe units.
     if (inventoryItemId && typeof inventoryItemId === 'string') {
       const item = await storage.getInventoryItem(inventoryItemId);
       if (item && item.companyId === companyId) {
         // storage.getInventoryItemUnits already orders by isIssueUnit then sortOrder.
         const perItem = await storage.getInventoryItemUnits(inventoryItemId);
-        const recipeWhitelist = perItem.filter((u) => u.isIssueUnit === 0);
         const unitById = new Map(units.map((u) => [u.id, u] as const));
+
+        // Active recipe units: non-issue rows with a positive conversion factor.
+        const activeRecipeRows = perItem.filter(
+          (u) => u.isIssueUnit === 0 && u.qtyPerInventoryUnit > 0
+        );
+
+        if (activeRecipeRows.length > 0) {
+          // Restrict to base unit + explicitly configured recipe units only.
+          // The "Show all" toggle in the UI is the escape hatch for anything else.
+          const result = new Map<string, typeof units[number]>();
+          const baseUnit = units.find(u => u.id === unitId);
+          if (baseUnit) result.set(baseUnit.id, baseUnit);
+          for (const row of activeRecipeRows) {
+            const u = unitById.get(row.unitId);
+            if (u) result.set(u.id, u);
+          }
+          return res.json(Array.from(result.values()));
+        }
+
+        // No active recipe units — fall back to full same-kind list with any
+        // incomplete whitelist rows surfaced first (original behaviour).
+        const recipeWhitelist = perItem.filter((u) => u.isIssueUnit === 0);
         const orderedWhitelistUnits = recipeWhitelist
           .map((row) => unitById.get(row.unitId))
           .filter((u): u is typeof units[number] => Boolean(u));
         const whitelistedIds = new Set(orderedWhitelistUnits.map((u) => u.id));
         const remaining = compatibleUnits.filter((u) => !whitelistedIds.has(u.id));
-        const result = [...orderedWhitelistUnits, ...remaining];
-        return res.json(result);
+        return res.json([...orderedWhitelistUnits, ...remaining]);
       }
     }
 
