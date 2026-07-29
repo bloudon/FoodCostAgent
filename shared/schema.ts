@@ -1412,6 +1412,7 @@ export const orderGuideLines = pgTable("order_guide_lines", {
   userDecision: text("user_decision"), // approved, rejected, create_new, null=pending
   createdInventoryItemId: varchar("created_inventory_item_id"), // If new inventory item was created from this line
   isVariableWeight: integer("is_variable_weight").notNull().default(0), // 1 = catch weight item from vendor
+  isSuspectedCatchWeight: integer("is_suspected_catch_weight").notNull().default(0), // 1 = heuristically suspected catch-weight (protein + LB pack or weight-range name)
 }, (table) => ({
   orderGuideIdx: index("order_guide_lines_guide_idx").on(table.orderGuideId),
   matchedItemIdx: index("order_guide_lines_matched_idx").on(table.matchedInventoryItemId),

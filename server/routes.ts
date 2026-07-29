@@ -5809,6 +5809,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         unitOverrides: z.record(z.string()).optional(),
         /** Per-line count overrides: lineId → count extracted from product name */
         countOverrides: z.record(z.number()).optional(),
+        /** Per-line price-source overrides: lineId → 'unit' | 'case' (catch-weight reviewer toggle) */
+        priceSourceOverrides: z.record(z.enum(['unit', 'case'])).optional(),
       }).refine(
         (data) => data.importAll === true || (data.selectedLineIds && data.selectedLineIds.length > 0),
         { message: 'Either importAll must be true or selectedLineIds must be a non-empty array' }
@@ -5822,7 +5824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const { importAll, selectedLineIds, targetStoreIds, unitOverrides, countOverrides } = validation.data;
+      const { importAll, selectedLineIds, targetStoreIds, unitOverrides, countOverrides, priceSourceOverrides } = validation.data;
 
       // Determine target stores - use provided array, session store, or all company stores
       let storeIdsToAssign: string[] = [];
@@ -5868,6 +5870,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         selectedLineIds: selectedLineIds || [],
         unitOverrides: unitOverrides || {},
         countOverrides: countOverrides || {},
+        priceSourceOverrides: priceSourceOverrides || {},
       });
 
       res.json(result);

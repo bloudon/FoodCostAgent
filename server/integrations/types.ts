@@ -88,6 +88,7 @@ export interface VendorProduct {
   upc?: string;
   lastUpdated?: string;
   isVariableWeight?: boolean;  // True if vendor marks item as variable/catch weight
+  isSuspectedCatchWeight?: boolean; // True if heuristically detected as catch-weight (protein + LB pack or weight range in name)
   /**
    * Per-each weight in LB, derived when the vendor CSV provides both an EA count
    * column and a separate case-weight column (e.g. 24 EA + 18 LB → 0.75 LB/each).

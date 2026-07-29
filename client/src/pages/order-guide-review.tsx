@@ -45,6 +45,7 @@ import {
   AlertTriangle,
   Hash,
   X,
+  Scale,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -86,6 +87,10 @@ interface OrderGuideLine {
   storedInnerPackSize: number | null;
   /** Count extracted from the product name (e.g. 16 from "Cheesecake 16 Slices"). Null when no hint found. */
   nameCount?: number | null;
+  /** 1 = confirmed catch-weight / variable-weight item from vendor data */
+  isVariableWeight?: number | null;
+  /** 1 = heuristically suspected catch-weight (protein + LB pack or weight-range name) */
+  isSuspectedCatchWeight?: number | null;
 }
 
 interface ReviewData {
@@ -266,7 +271,21 @@ export default function OrderGuideReview() {
 
   const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
   const [countOverrides, setCountOverrides] = useState<Record<string, number>>({});
+  const [priceSourceOverrides, setPriceSourceOverrides] = useState<Record<string, 'unit' | 'case'>>({});
   const sessionKey = orderGuideId ? `nameCountDismissed:${orderGuideId}` : null;
+
+  const toggleCatchWeightOverride = (lineId: string, currentOverride: 'unit' | 'case' | undefined, linePriceSource: string | undefined) => {
+    setPriceSourceOverrides(prev => {
+      const next = { ...prev };
+      // If already confirmed as unit-price, revert to case; otherwise confirm as unit-price
+      if (currentOverride === 'unit' || (!currentOverride && linePriceSource === 'unit')) {
+        next[lineId] = 'case';
+      } else {
+        next[lineId] = 'unit';
+      }
+      return next;
+    });
+  };
 
   const [dismissedNameCountHints, setDismissedNameCountHints] = useState<Set<string>>(() => {
     if (!orderGuideId) return new Set<string>();
@@ -322,6 +341,9 @@ export default function OrderGuideReview() {
       }
       if (Object.keys(countOverrides).length > 0) {
         payload.countOverrides = countOverrides;
+      }
+      if (Object.keys(priceSourceOverrides).length > 0) {
+        payload.priceSourceOverrides = priceSourceOverrides;
       }
       return apiRequest('POST', `/api/order-guides/${orderGuideId}/approve`, payload);
     },
@@ -751,7 +773,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -807,7 +829,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={sortedAmbiguousLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
+              <OrderGuideTable lines={sortedAmbiguousLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -845,7 +867,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={sortedNewLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef} />
+              <OrderGuideTable lines={sortedNewLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -941,8 +963,22 @@ const UNIT_OPTIONS: { value: string; label: string }[] = [
  * When overrideUnitName is provided it takes highest priority over all other sources.
  * When countOverride is provided it is used as the outer count divisor (for the "each" family).
  */
-function deriveDisplayUnitPrice(line: OrderGuideLine, overrideUnitName?: string, countOverride?: number): { unitPrice: number; unitLabel: string } | null {
+function deriveDisplayUnitPrice(
+  line: OrderGuideLine,
+  overrideUnitName?: string,
+  countOverride?: number,
+  isUnitPriceOverride?: boolean,
+): { unitPrice: number; unitLabel: string } | null {
   if (!line.price || line.price <= 0) return null;
+
+  // When the reviewer (or scan pipeline) flagged this as a per-unit price, return it directly.
+  const isUnitPrice = isUnitPriceOverride ?? (line.priceSource === 'unit');
+  if (isUnitPrice) {
+    const rawUnit = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? line.uom ?? 'lb').toLowerCase().trim();
+    const unitLabel = ['lb', 'lbs', 'pound', 'pounds'].includes(rawUnit) ? 'lb' : rawUnit || 'unit';
+    return { unitPrice: line.price, unitLabel };
+  }
+
   const outerCount = countOverride && countOverride > 0 ? countOverride : Math.max(line.caseSize ?? 1, 1);
   const innerSize  = Math.max(line.innerPack ?? 1, 1);
   const packUom    = (line.uom ?? '').toLowerCase().trim();
@@ -1004,6 +1040,8 @@ function OrderGuideTable({
   onCountOverride,
   dismissedNameCountHints,
   onDismissNameCountHint,
+  priceSourceOverrides,
+  onPriceSourceToggle,
 }: {
   lines: OrderGuideLine[];
   selectedLineIds: Set<string>;
@@ -1017,6 +1055,8 @@ function OrderGuideTable({
   onCountOverride?: (lineId: string, count: number | null) => void;
   dismissedNameCountHints?: Set<string>;
   onDismissNameCountHint?: (lineId: string) => void;
+  priceSourceOverrides?: Record<string, 'unit' | 'case'>;
+  onPriceSourceToggle?: (lineId: string, currentOverride: 'unit' | 'case' | undefined, linePriceSource: string | undefined) => void;
 }) {
   const [expandedCounts, setExpandedCounts] = useState<Set<string>>(new Set());
 
@@ -1062,8 +1102,18 @@ function OrderGuideTable({
             const overrideUnit = canOverrideUnit ? (unitOverrides?.[line.id] ?? UNIT_AUTO_SENTINEL) : undefined;
             const effectiveOverride = (overrideUnit && overrideUnit !== UNIT_AUTO_SENTINEL) ? overrideUnit : undefined;
             const activeCountOverride = countOverrides?.[line.id];
-            const derived = deriveDisplayUnitPrice(line, effectiveOverride, activeCountOverride);
+            const activePriceSourceOverride = priceSourceOverrides?.[line.id];
+            const effectiveIsUnitPrice = activePriceSourceOverride === 'unit'
+              || (!activePriceSourceOverride && line.priceSource === 'unit');
+            const derived = deriveDisplayUnitPrice(line, effectiveOverride, activeCountOverride, effectiveIsUnitPrice);
             const isUnusual = derived ? (derived.unitPrice < 0.05 || derived.unitPrice > 200) : false;
+
+            // Catch-weight: confirmed (isVariableWeight) or suspected (isSuspectedCatchWeight)
+            const isCatchWeightConfirmed = line.isVariableWeight === 1;
+            const isCatchWeightSuspected = !isCatchWeightConfirmed && line.isSuspectedCatchWeight === 1;
+            const showCatchWeightBadge = isCatchWeightConfirmed || isCatchWeightSuspected;
+            // True when reviewer has toggled this line to "price is $/lb"
+            const catchWeightActive = effectiveIsUnitPrice && showCatchWeightBadge;
 
             // Name count hint: show when the product name suggests a count that differs from caseSize
             // and the reviewer has not already accepted or dismissed it
@@ -1103,7 +1153,40 @@ function OrderGuideTable({
                   />
                 </TableCell>
                 <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
-                <TableCell>{line.productName}</TableCell>
+                <TableCell>
+                  <div className="flex items-start gap-1.5">
+                    <span>{line.productName}</span>
+                    {showCatchWeightBadge && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            className={`mt-0.5 shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium transition-colors ${
+                              catchWeightActive
+                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                                : isCatchWeightConfirmed
+                                  ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-700'
+                                  : 'bg-muted text-muted-foreground border border-border hover:bg-orange-50 hover:text-orange-700 dark:hover:bg-orange-900/20 dark:hover:text-orange-300'
+                            }`}
+                            onClick={() => onPriceSourceToggle?.(line.id, activePriceSourceOverride, line.priceSource)}
+                            data-testid={`button-catch-weight-toggle-${line.id}`}
+                            aria-label={catchWeightActive ? 'Price treated as $/lb — click to revert' : 'Mark price as $/lb (catch weight)'}
+                          >
+                            <Scale className="h-2.5 w-2.5" />
+                            <span>{catchWeightActive ? '$/lb ✓' : isCatchWeightConfirmed ? '$/lb' : '$/lb?'}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[220px]">
+                          {catchWeightActive
+                            ? <p>Price treated as per-lb. Click to revert to case price.</p>
+                            : isCatchWeightConfirmed
+                              ? <p>Vendor flagged as catch-weight — price is per lb. Click to confirm.</p>
+                              : <p>Suspected catch-weight (protein + weight pack). Click to treat price as $/lb.</p>
+                          }
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell data-testid={`text-packsize-${line.id}`}>
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">{formatPackSize(line)}</span>

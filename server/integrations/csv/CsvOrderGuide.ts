@@ -381,7 +381,7 @@ export class CsvOrderGuide {
       const priceRaw = this.getValue(row, mapping.price);
       const isVariableWeight = this.detectVariableWeight(variableWeightValue, productName, descriptionValue)
         || /\/lb/i.test(priceRaw);
-      
+
       // Use correctly parsed case count (first number from compound string like "6/5 LB" → 6)
       const caseSize = parsedCasePack ? parsedCasePack.caseSize : this.parseNumber(caseSizeRaw);
 
@@ -425,6 +425,12 @@ export class CsvOrderGuide {
       }
       // ──────────────────────────────────────────────────────────────────────
 
+      // Suspected catch-weight: heuristic based on protein keyword + LB pack or low per-unit price.
+      // Evaluated after finalUnit/finalInnerPack/caseSize are all resolved.
+      const parsedPrice = this.parsePrice(this.getValue(row, mapping.price));
+      const isSuspectedCatchWeight = !isVariableWeight
+        && CsvOrderGuide.detectSuspectedCatchWeight(productName, finalUnit ?? unit ?? '', caseSize, finalInnerPack ?? innerPack, parsedPrice);
+
       const product: VendorProduct = {
         vendorSku: this.getValue(row, mapping.vendorSku),
         vendorProductName: productName,
@@ -440,6 +446,7 @@ export class CsvOrderGuide {
         upc: this.getValue(row, mapping.upc),
         lastUpdated: new Date().toISOString(),
         isVariableWeight,
+        isSuspectedCatchWeight,
         eaPerCase,
       };
 
@@ -584,7 +591,8 @@ export class CsvOrderGuide {
   }
 
   /**
-   * Detect if an item is variable/catch weight from column value or text indicators
+   * Detect if an item is variable/catch weight from column value or text indicators.
+   * Also catches weight-range patterns in product names like "8-11 Pound" or "6-9 LB".
    */
   private static detectVariableWeight(columnValue: string, productName: string, description: string): boolean {
     // Check explicit column value first
@@ -595,7 +603,7 @@ export class CsvOrderGuide {
         return true;
       }
     }
-    
+
     // Check for variable weight indicators in product name or description
     const textToSearch = `${productName} ${description}`.toLowerCase();
     const variableWeightPatterns = [
@@ -608,13 +616,57 @@ export class CsvOrderGuide {
       'approx weight',
       'approximate weight',
     ];
-    
+
     for (const pattern of variableWeightPatterns) {
       if (textToSearch.includes(pattern)) {
         return true;
       }
     }
-    
+
+    // Weight-range in name: "8-11 Pound", "6-9 LB", "10-14#" — unambiguous catch-weight signal
+    if (/\d+\s*[-–to]+\s*\d+\s*(lb|lbs|pound|pounds|#)\b/i.test(textToSearch)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Heuristically detect suspected catch-weight items that were not explicitly flagged.
+   * Criteria: protein keyword in name AND (pack unit is weight-based OR per-unit price < $1.50).
+   * These are flagged for reviewer confirmation — not auto-treated as catch-weight.
+   */
+  static detectSuspectedCatchWeight(
+    productName: string,
+    uom: string,
+    caseSize: number | null | undefined,
+    innerPack: number | null | undefined,
+    price: number | null | undefined,
+  ): boolean {
+    if (!price || price <= 0) return false;
+
+    const name = productName.toLowerCase();
+    const PROTEIN_KEYWORDS = [
+      'beef', 'chicken', 'turkey', 'pork', 'ham', 'veal', 'lamb', 'duck',
+      'goose', 'bison', 'venison', 'salmon', 'tuna', 'tilapia', 'cod',
+      'halibut', 'shrimp', 'lobster', 'crab', 'clam', 'oyster', 'scallop',
+      'mahi', 'swordfish', 'bass', 'trout', 'catfish', 'steak', 'loin',
+      'tenderloin', 'brisket', 'ribeye', 'sirloin', 'chuck', 'breast',
+      'thigh', 'wing', 'drumstick', 'filet', 'fillet',
+    ];
+    const hasProtein = PROTEIN_KEYWORDS.some(kw => name.includes(kw));
+    if (!hasProtein) return false;
+
+    // Signal 1: pack unit is a weight unit (lb, lbs)
+    const uomLower = uom.toLowerCase().trim();
+    if (['lb', 'lbs', 'pound', 'pounds'].includes(uomLower)) return true;
+
+    // Signal 2: per-unit price looks implausibly low for a protein
+    // (vendor priced per lb, so case price / count gives e.g. $0.46/piece for turkey)
+    const outerCount = Math.max(caseSize ?? 1, 1);
+    const perUnit = price / outerCount;
+    if (perUnit < 1.50) return true;
+
     return false;
   }
 

@@ -2599,3 +2599,18 @@ DO $$ BEGIN
       VALUES ('v066', 'POS Framework: primary_sales_method on companies, one-active-connection index');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v067 — Catch-weight detection: is_suspected_catch_weight on order_guide_lines
+-- Stores the heuristic catch-weight flag (protein + LB pack or weight-range name)
+-- so the review UI can surface a "$/lb?" toggle per row.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v067') THEN
+    ALTER TABLE order_guide_lines
+      ADD COLUMN IF NOT EXISTS is_suspected_catch_weight integer NOT NULL DEFAULT 0;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v067', 'Add is_suspected_catch_weight column to order_guide_lines');
+  END IF;
+END $$;

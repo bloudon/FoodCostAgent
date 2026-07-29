@@ -312,6 +312,7 @@ export class OrderGuideProcessor {
         matchedInventoryItemId: match.inventoryItemId,
         matchConfidence: matchConfidenceScore,
         isVariableWeight: product.isVariableWeight ? 1 : 0,
+        isSuspectedCatchWeight: product.isSuspectedCatchWeight ? 1 : 0,
       };
 
       lines.push(line);
@@ -410,6 +411,8 @@ export class OrderGuideProcessor {
         storedCaseSize: storedPackSize?.caseSize ?? null,
         storedInnerPackSize: storedPackSize?.innerPackSize ?? null,
         nameCount: extractNameCount(l.productName),
+        isVariableWeight: l.isVariableWeight,
+        isSuspectedCatchWeight: l.isSuspectedCatchWeight,
       };
     });
 
@@ -451,12 +454,14 @@ export class OrderGuideProcessor {
     unitOverrides?: Record<string, string>;
     /** Per-line count overrides: lineId → count (use this number as caseSize instead of the CSV value) */
     countOverrides?: Record<string, number>;
+    /** Per-line price-source overrides: lineId → 'unit' | 'case' (reviewer correction for catch-weight items) */
+    priceSourceOverrides?: Record<string, 'unit' | 'case'>;
   }): Promise<{
     vendorItemsCreated: number;
     inventoryItemsCreated: number;
     storeAssignmentsCreated: number;
   }> {
-    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {}, unitOverrides = {}, countOverrides = {} } = params;
+    const { orderGuideId, companyId, targetStoreIds, importAll = false, selectedLineIds = [], lineOverrides = {}, vendorOverrides = {}, unitOverrides = {}, countOverrides = {}, priceSourceOverrides = {} } = params;
 
     // Get order guide and lines
     const guide = await this.storage.getOrderGuide(orderGuideId);
@@ -547,6 +552,17 @@ export class OrderGuideProcessor {
       if (countOverride && countOverride > 0) {
         effectiveLine = { ...effectiveLine, caseSize: countOverride };
         console.log(`[OrderGuide] Count override applied for "${effectiveLine.productName}": caseSize ${line.caseSize} → ${countOverride}`);
+      }
+
+      // Apply reviewer's price-source override (catch-weight toggle).
+      // When a reviewer marks a line as "price is per lb/unit", set priceSource to 'unit'
+      // so the approve flow stores price directly as the unit price instead of dividing by pack size.
+      const priceSourceOverride = priceSourceOverrides[line.id];
+      if (priceSourceOverride) {
+        effectiveLine = { ...effectiveLine, priceSource: priceSourceOverride } as any;
+        if (priceSourceOverride === 'unit') {
+          console.log(`[OrderGuide] Price-source override: "${effectiveLine.productName}" → per-unit (catch-weight)`);
+        }
       }
 
       // Per-row vendor override: user may assign a different vendor for this specific row
