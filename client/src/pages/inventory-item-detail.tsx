@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useStoreContext } from "@/hooks/use-store-context";
-import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2, History } from "lucide-react";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2, History, ArrowLeftRight } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -54,6 +54,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
+import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
 import React, { useState, useEffect, useRef } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
@@ -894,6 +895,7 @@ export default function InventoryItemDetail() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { selectedStoreId } = useStoreContext();
+  const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [selectedStores, setSelectedStores] = useState<string[]>([]);
@@ -1510,9 +1512,21 @@ export default function InventoryItemDetail() {
               {item.manufacturer && <span>{item.manufacturer} | </span>}PLU/SKU: {item.pluSku}
             </p>
           </div>
-          <Badge variant={item.active ? "outline" : "secondary"}>
-            {item.active ? "Active" : "Inactive"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={item.active ? "outline" : "secondary"}>
+              {item.active ? "Active" : "Inactive"}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkReplaceOpen(true)}
+              data-testid="button-bulk-replace"
+              title="Replace this item across all recipes"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5">Replace in recipes</span>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -2869,6 +2883,20 @@ export default function InventoryItemDetail() {
         </AlertDialogContent>
       </AlertDialog>
       <SetupProgressBanner currentMilestoneId="inventory" hasEntries={true} />
+
+      {/* Bulk replace dialog */}
+      {item && (
+        <BulkReplaceDialog
+          open={bulkReplaceOpen}
+          onOpenChange={setBulkReplaceOpen}
+          fromType="inventory_item"
+          fromId={item.id}
+          fromName={item.name}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+          }}
+        />
+      )}
     </div>
   );
 }

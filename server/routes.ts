@@ -36,7 +36,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -9463,6 +9463,242 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ BULK INGREDIENT REPLACEMENT ============
+
+  // Preview: scan all recipe_components and return impact info before committing
+  app.post("/api/recipes/replace-component/preview", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      const { fromType, fromId, toType, toId } = req.body;
+
+      if (!fromType || !fromId || !toType || !toId) {
+        return res.status(400).json({ error: "fromType, fromId, toType, toId are required" });
+      }
+      if (!["inventory_item", "recipe"].includes(fromType) || !["inventory_item", "recipe"].includes(toType)) {
+        return res.status(400).json({ error: "componentType must be inventory_item or recipe" });
+      }
+
+      // Verify source component belongs to this company
+      let fromBaseUnitId: string | undefined;
+      if (fromType === "inventory_item") {
+        const item = await storage.getInventoryItem(fromId);
+        if (!item || item.companyId !== companyId) return res.status(404).json({ error: "Source inventory item not found" });
+        fromBaseUnitId = item.unitId;
+      } else {
+        const r = await storage.getRecipe(fromId, companyId);
+        if (!r) return res.status(404).json({ error: "Source recipe not found" });
+        fromBaseUnitId = r.yieldUnitId;
+      }
+
+      // Verify replacement component belongs to this company
+      let toBaseUnitId: string | undefined;
+      if (toType === "inventory_item") {
+        const item = await storage.getInventoryItem(toId);
+        if (!item || item.companyId !== companyId) return res.status(404).json({ error: "Replacement inventory item not found" });
+        toBaseUnitId = item.unitId;
+      } else {
+        const r = await storage.getRecipe(toId, companyId);
+        if (!r) return res.status(404).json({ error: "Replacement recipe not found" });
+        toBaseUnitId = r.yieldUnitId;
+      }
+
+      // Find all recipe components matching fromType + fromId whose parent recipe belongs to this company
+      const affectedRows = await db
+        .select({
+          componentRowId: recipeComponents.id,
+          recipeId: recipeComponents.recipeId,
+          qty: recipeComponents.qty,
+          recipeName: recipes.name,
+          recipeComputedCost: recipes.computedCost,
+        })
+        .from(recipeComponents)
+        .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+        .where(
+          and(
+            eq(recipeComponents.componentType, fromType),
+            eq(recipeComponents.componentId, fromId),
+            eq(recipes.companyId, companyId),
+            isNull(recipeComponents.missingItemName),
+          )
+        );
+
+      // Deduplicate by recipe ID
+      const recipeMap = new Map<string, { id: string; name: string; componentCount: number }>();
+      for (const row of affectedRows) {
+        if (!recipeMap.has(row.recipeId)) {
+          recipeMap.set(row.recipeId, { id: row.recipeId, name: row.recipeName, componentCount: 0 });
+        }
+        recipeMap.get(row.recipeId)!.componentCount++;
+      }
+
+      // Unit compatibility
+      const units = await storage.getUnits();
+      const fromUnit = units.find(u => u.id === fromBaseUnitId);
+      const toUnit   = units.find(u => u.id === toBaseUnitId);
+      const fromKind = fromUnit?.kind ?? "unknown";
+      const toKind   = toUnit?.kind ?? "unknown";
+      const sameKind = fromKind === toKind;
+      const crossKindVolumeWeight =
+        (fromKind === "weight" && toKind === "volume") ||
+        (fromKind === "volume" && toKind === "weight");
+
+      res.json({
+        affectedRecipes: Array.from(recipeMap.values()),
+        totalAffected: recipeMap.size,
+        componentInstances: affectedRows.length,
+        unitCompatibility: {
+          fromKind,
+          toKind,
+          fromUnitName: fromUnit?.name,
+          toUnitName: toUnit?.name,
+          sameKind,
+          crossKindVolumeWeight,
+          needsConversionFactor: !sameKind,
+        },
+      });
+    } catch (error: any) {
+      console.error("[replace-component/preview]", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Execute: perform the bulk swap inside a logical transaction
+  app.post("/api/recipes/replace-component/execute", requireAuth, requireTier("basic"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      const userId: string | null = (req as any).userId ?? null;
+      const { fromType, fromId, toType, toId, conversionFactor } = req.body;
+
+      if (!fromType || !fromId || !toType || !toId) {
+        return res.status(400).json({ error: "fromType, fromId, toType, toId are required" });
+      }
+      const factor = typeof conversionFactor === "number" ? conversionFactor : parseFloat(conversionFactor ?? "1");
+      if (isNaN(factor) || factor <= 0) {
+        return res.status(400).json({ error: "conversionFactor must be a positive number" });
+      }
+
+      // Resolve the replacement component's base unit and display name
+      let toBaseUnitId: string;
+      let toName: string;
+      if (toType === "inventory_item") {
+        const item = await storage.getInventoryItem(toId);
+        if (!item || item.companyId !== companyId) return res.status(404).json({ error: "Replacement inventory item not found" });
+        toBaseUnitId = item.unitId;
+        toName = item.name;
+      } else {
+        const r = await storage.getRecipe(toId, companyId);
+        if (!r) return res.status(404).json({ error: "Replacement recipe not found" });
+        toBaseUnitId = r.yieldUnitId;
+        toName = r.name;
+      }
+
+      // Find all matching component rows (with company guard via JOIN)
+      const affectedRows = await db
+        .select({
+          component: recipeComponents,
+          recipeYieldQty: recipes.yieldQty,
+          recipeYieldUnitId: recipes.yieldUnitId,
+          recipeComputedCost: recipes.computedCost,
+        })
+        .from(recipeComponents)
+        .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+        .where(
+          and(
+            eq(recipeComponents.componentType, fromType),
+            eq(recipeComponents.componentId, fromId),
+            eq(recipes.companyId, companyId),
+            isNull(recipeComponents.missingItemName),
+          )
+        );
+
+      if (affectedRows.length === 0) {
+        return res.json({ updatedCount: 0, componentInstances: 0, recipeIds: [], costDelta: 0, toName });
+      }
+
+      const affectedRecipeIds = [...new Set(affectedRows.map(r => r.component.recipeId))];
+
+      // Capture max version numbers so each snapshot increments correctly
+      const versionRows = await db
+        .select({
+          recipeId: recipeVersions.recipeId,
+          maxVer: sql<number>`max(${recipeVersions.versionNumber})`,
+        })
+        .from(recipeVersions)
+        .where(inArray(recipeVersions.recipeId, affectedRecipeIds))
+        .groupBy(recipeVersions.recipeId);
+      const maxVersionMap = new Map(versionRows.map(r => [r.recipeId, r.maxVer ?? 0]));
+
+      // Snapshot current components per recipe (before the change) so auditors can diff
+      const snapshotsBefore = new Map<string, RecipeComponent[]>();
+      await Promise.all(
+        affectedRecipeIds.map(async (rid) => {
+          snapshotsBefore.set(rid, await storage.getRecipeComponents(rid));
+        })
+      );
+
+      // Perform the swap: update every matching component row
+      const costsBefore = new Map<string, number>();
+      for (const row of affectedRows) {
+        const { component } = row;
+        if (!costsBefore.has(component.recipeId)) {
+          costsBefore.set(component.recipeId, row.recipeComputedCost);
+        }
+        const newQty = parseFloat((component.qty * factor).toPrecision(8));
+        await db
+          .update(recipeComponents)
+          .set({
+            componentType: toType,
+            componentId: toId,
+            qty: newQty,
+            unitId: toBaseUnitId,
+            updatedAt: new Date(),
+          })
+          .where(eq(recipeComponents.id, component.id));
+      }
+
+      // Recalculate costs + write version snapshots for every affected recipe
+      const costsAfter = new Map<string, number>();
+      await Promise.all(
+        affectedRecipeIds.map(async (recipeId) => {
+          const newCost = await calculateRecipeCost(recipeId);
+          await storage.updateRecipe(recipeId, { computedCost: newCost });
+          costsAfter.set(recipeId, newCost);
+
+          const updatedComponents = await storage.getRecipeComponents(recipeId);
+          const versionNumber = (maxVersionMap.get(recipeId) ?? 0) + 1;
+          const meta = affectedRows.find(r => r.component.recipeId === recipeId)!;
+          await storage.createRecipeVersion({
+            recipeId,
+            versionNumber,
+            yieldQty: meta.recipeYieldQty,
+            yieldUnitId: meta.recipeYieldUnitId,
+            wastePercent: 0,
+            computedCost: newCost,
+            components: JSON.stringify(updatedComponents),
+            createdBy: userId,
+            changeReason: `bulk_replace: ${fromType}/${fromId} → ${toType}/${toId} (factor ${factor})`,
+          });
+
+          await cacheInvalidator.invalidateRecipes(companyId, recipeId);
+        })
+      );
+
+      const totalBefore = Array.from(costsBefore.values()).reduce((s, v) => s + v, 0);
+      const totalAfter  = Array.from(costsAfter.values()).reduce((s, v) => s + v, 0);
+
+      res.json({
+        updatedCount: affectedRecipeIds.length,
+        componentInstances: affectedRows.length,
+        recipeIds: affectedRecipeIds,
+        costDelta: totalAfter - totalBefore,
+        toName,
+      });
+    } catch (error: any) {
+      console.error("[replace-component/execute]", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

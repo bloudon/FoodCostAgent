@@ -93,10 +93,12 @@ import {
   Info,
   CheckCircle2,
   SkipForward,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
 import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit, InventoryItemUnit } from "@shared/schema";
 
 // Extended types for API responses with joined fields
@@ -984,6 +986,9 @@ function RecipeBuilderContent() {
     pricePerUnit: "",
     caseSize: "",
   });
+
+  // Bulk replace dialog state
+  const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
 
   // Clone as Size Variant dialog state
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
@@ -2309,6 +2314,18 @@ function RecipeBuilderContent() {
                     <span className="hidden sm:inline ml-2">Clone as Size</span>
                   </Button>
                 )}
+                {/* Replace across all recipes — only show for existing saved recipes */}
+                {!isNew && id && recipe?.canBeIngredient === 1 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setBulkReplaceOpen(true)}
+                    data-testid="button-bulk-replace-recipe"
+                    title="Replace this recipe as an ingredient across all recipes that use it"
+                  >
+                    <ArrowLeftRight className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-2">Replace</span>
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     if (selectedStores.length === 0) {
@@ -3381,6 +3398,21 @@ function RecipeBuilderContent() {
         ) : null}
       </DragOverlay>
       <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
+
+      {/* Bulk replace dialog — for recipes that can be used as ingredients */}
+      {!isNew && id && recipe && (
+        <BulkReplaceDialog
+          open={bulkReplaceOpen}
+          onOpenChange={setBulkReplaceOpen}
+          fromType="recipe"
+          fromId={id}
+          fromName={recipe.name}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+          }}
+        />
+      )}
     </DndContext>
   );
 }
