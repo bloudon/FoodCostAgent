@@ -398,6 +398,32 @@ export default function OrderGuideReview() {
     });
   };
 
+  // These memos must stay above the early returns so the hook call-count is
+  // consistent across renders (Rules of Hooks).
+  const sortedAmbiguousLinesMemo = useMemo(() => {
+    if (!reviewData) return [];
+    const hasWarningFn = (l: OrderGuideLine) => {
+      if (hasPackSizeMismatch(l)) return true;
+      if (!l.nameCount || !l.caseSize || l.caseSize <= 0) return false;
+      return Math.max(l.nameCount / l.caseSize, l.caseSize / l.nameCount) > 5 && !dismissedNameCountHints.has(l.id);
+    };
+    const warn = reviewData.lines.ambiguous.filter(hasWarningFn);
+    const clean = reviewData.lines.ambiguous.filter(l => !hasWarningFn(l));
+    return [...warn, ...clean];
+  }, [reviewData, dismissedNameCountHints]);
+
+  const sortedNewLinesMemo = useMemo(() => {
+    if (!reviewData) return [];
+    const hasWarningFn = (l: OrderGuideLine) => {
+      if (hasPackSizeMismatch(l)) return true;
+      if (!l.nameCount || !l.caseSize || l.caseSize <= 0) return false;
+      return Math.max(l.nameCount / l.caseSize, l.caseSize / l.nameCount) > 5 && !dismissedNameCountHints.has(l.id);
+    };
+    const warn = reviewData.lines.new.filter(hasWarningFn);
+    const clean = reviewData.lines.new.filter(l => !hasWarningFn(l));
+    return [...warn, ...clean];
+  }, [reviewData, dismissedNameCountHints]);
+
   if (isLoading) {
     return (
       <div className="p-6">
@@ -447,23 +473,9 @@ export default function OrderGuideReview() {
   const noVendorWarning = isImageScan && !currentVendorId;
   const selectedVendorName = vendors?.find(v => v.id === currentVendorId)?.name;
 
-  // Sort warning rows to the top within each category so they're immediately visible.
-  // Stable: warning rows keep their relative order; clean rows keep theirs.
-  const sortedAmbiguousLines = useMemo(() => {
-    const hasWarning = (l: OrderGuideLine) =>
-      hasPackSizeMismatch(l) || (hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id));
-    const warn = reviewData.lines.ambiguous.filter(hasWarning);
-    const clean = reviewData.lines.ambiguous.filter(l => !hasWarning(l));
-    return [...warn, ...clean];
-  }, [reviewData.lines.ambiguous, dismissedNameCountHints]);
-
-  const sortedNewLines = useMemo(() => {
-    const hasWarning = (l: OrderGuideLine) =>
-      hasPackSizeMismatch(l) || (hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id));
-    const warn = reviewData.lines.new.filter(hasWarning);
-    const clean = reviewData.lines.new.filter(l => !hasWarning(l));
-    return [...warn, ...clean];
-  }, [reviewData.lines.new, dismissedNameCountHints]);
+  // sortedAmbiguousLines and sortedNewLines are computed above the early returns (see sortedAmbiguousLinesMemo / sortedNewLinesMemo).
+  const sortedAmbiguousLines = sortedAmbiguousLinesMemo;
+  const sortedNewLines = sortedNewLinesMemo;
 
   const confirmSummary = [
     `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`,
