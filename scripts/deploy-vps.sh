@@ -23,10 +23,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Auto-load .env if DATABASE_URL is not already set in the environment
+# Auto-load .env if DATABASE_URL is not already set in the environment.
+# NOTE: We use `set -a; source; set +a` instead of `export $(… | xargs)` because
+# xargs word-splits on shell metacharacters (!, @, #, spaces) that commonly appear
+# in database passwords, which would mangle DATABASE_URL before psql ever sees it.
 if [[ -z "${DATABASE_URL:-}" ]]; then
   if [[ -f "$PROJECT_DIR/.env" ]]; then
-    export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^[[:space:]]*$' | xargs)
+    set -a
+    # shellcheck source=/dev/null
+    source "$PROJECT_DIR/.env"
+    set +a
     echo "  Loaded environment from .env"
   else
     echo "  Warning: no .env file found at $PROJECT_DIR/.env"
