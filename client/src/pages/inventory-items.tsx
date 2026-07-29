@@ -279,8 +279,9 @@ export default function InventoryItems() {
   const paginatedItems = itemsPerPage === 9999 ? sortedItems : sortedItems.slice(startIndex, endIndex);
 
   return (
-    <div className="h-full overflow-auto pb-16">
-      <div className="p-4 space-y-4">
+    <div className="h-full flex flex-col">
+      {/* Sticky header: title + buttons + filters */}
+      <div className="flex-shrink-0 bg-background border-b px-4 pt-4 pb-3 space-y-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -370,7 +371,11 @@ export default function InventoryItems() {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-auto pb-16">
+      <div className="p-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading inventory...</div>
@@ -388,7 +393,7 @@ export default function InventoryItems() {
         ) : (
           <div className="border rounded-lg overflow-x-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
                   <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="min-w-[180px]">Item</SortableTableHead>
                   <TableHead className="hidden sm:table-cell">Status</TableHead>
@@ -655,6 +660,7 @@ export default function InventoryItems() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* Edit Item Dialog */}

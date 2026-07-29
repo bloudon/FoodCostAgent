@@ -612,6 +612,10 @@ export class OrderGuideProcessor {
     // backfill but runs automatically on every approve so re-imports stay clean.
     await this.fixNullPackSizes(orderGuideId);
 
+    // Mark guide as approved so the re-import guard on line ~478 blocks any
+    // subsequent calls to approve() on the same guide.
+    await this.storage.updateOrderGuideStatus(orderGuideId, 'approved');
+
     return {
       vendorItemsCreated,
       inventoryItemsCreated,
@@ -904,6 +908,45 @@ export class OrderGuideProcessor {
       const derivedContainerLabel = innerPackRawIsLabel
         ? innerPackRawTrimmed.toLowerCase()
         : (line.uom ?? '').toLowerCase() || undefined;
+
+      // ── Deduplication ─────────────────────────────────────────────────────
+      // Check 1 — vendor SKU (strongest anchor).
+      // If this vendor already has an item with the same SKU we must update,
+      // not create. This handles re-uploads of the same CSV as a new order guide.
+      if (vendorId && line.vendorSku) {
+        const existingVendorItems = await this.storage.getVendorItems(vendorId, companyId);
+        const skuMatch = existingVendorItems.find(
+          (vi: any) => vi.vendorSku === line.vendorSku
+        );
+        if (skuMatch) {
+          console.log(`[OrderGuide] Dedup (SKU): "${line.vendorSku}" already linked to inventory item ${skuMatch.inventoryItemId} — updating instead of creating`);
+          await this.createVendorItemForExisting(
+            { ...line, matchedInventoryItemId: skuMatch.inventoryItemId },
+            vendorId,
+            companyId
+          );
+          const assignments = await this.assignInventoryItemToStores(skuMatch.inventoryItemId, companyId, targetStoreIds);
+          return { inventoryCreated: false, vendorItemCreated: true, storeAssignmentsCreated: assignments };
+        }
+      }
+
+      // Check 2 — product name (fallback for SKU-less imports).
+      // Catches re-imports where a vendor wasn't assigned or the CSV had no SKU column.
+      const allCompanyItems = await this.storage.getInventoryItems(undefined, undefined, companyId);
+      const normalizedName = (line.productName ?? '').trim().toLowerCase();
+      const nameMatch = normalizedName
+        ? allCompanyItems.find((i: any) => (i.name ?? '').trim().toLowerCase() === normalizedName)
+        : undefined;
+
+      if (nameMatch) {
+        console.log(`[OrderGuide] Dedup (name): "${line.productName}" already exists (id ${nameMatch.id}) — skipping item creation`);
+        if (vendorId) {
+          await this.createVendorItemForExisting({ ...line, matchedInventoryItemId: nameMatch.id }, vendorId, companyId);
+        }
+        const assignments = await this.assignInventoryItemToStores(nameMatch.id, companyId, targetStoreIds);
+        return { inventoryCreated: false, vendorItemCreated: !!vendorId, storeAssignmentsCreated: assignments };
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       // Create inventory item with smart defaults
       const inventoryItem = await this.storage.createInventoryItem({
