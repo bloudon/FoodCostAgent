@@ -29,6 +29,32 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 # in database passwords, which would mangle DATABASE_URL before psql ever sees it.
 if [[ -z "${DATABASE_URL:-}" ]]; then
   if [[ -f "$PROJECT_DIR/.env" ]]; then
+    # Preflight: detect .env lines whose values contain unquoted spaces.
+    #
+    # `source` word-splits on unquoted spaces, so a line like:
+    #   APP_NAME=FNB Cost Pro
+    # silently sets APP_NAME=FNB and tries to run "Cost" as a command.
+    # Values that contain spaces must be quoted, e.g.:
+    #   APP_NAME="FNB Cost Pro"
+    #
+    # Valid patterns that are NOT flagged:
+    #   KEY=singleword          — no spaces at all
+    #   KEY=value  # comment    — trailing inline comment (bash ignores after #)
+    #   KEY="multi word"        — properly quoted
+    #
+    # The pattern requires a second non-comment, non-space word after the first
+    # word, which is the only form that causes silent mis-assignment via source.
+    bad_lines=$(grep -En \
+      "^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^\"'[:space:]][^[:space:]]*[[:space:]]+[^#[:space:]]" \
+      "$PROJECT_DIR/.env" || true)
+    if [[ -n "$bad_lines" ]]; then
+      echo "ERROR: .env contains values with unquoted spaces." >&2
+      echo "       source will silently truncate these at the first space:" >&2
+      echo "$bad_lines" >&2
+      echo '       Fix: wrap the value in double quotes, e.g. APP_NAME="FNB Cost Pro"' >&2
+      exit 1
+    fi
+
     set -a
     # shellcheck source=/dev/null
     source "$PROJECT_DIR/.env"
