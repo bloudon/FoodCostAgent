@@ -78,6 +78,7 @@ interface ScanResult {
 interface InventoryItem {
   id: string;
   name: string;
+  pluSku?: string | null;
 }
 
 interface UnitOption {
@@ -188,7 +189,7 @@ function InventoryCombobox({
               {items.map(item => (
                 <CommandItem
                   key={item.id}
-                  value={item.name}
+                  value={item.pluSku ? `${item.name} ${item.pluSku}` : item.name}
                   onSelect={() => {
                     onChange(item.id, item.name);
                     setOpen(false);
@@ -235,7 +236,7 @@ export default function RecipeImport() {
 
   const { data: inventoryItems = [] } = useQuery<InventoryItem[], Error, InventoryItem[]>({
     queryKey: ['/api/inventory-items'],
-    select: (data: InventoryItem[]) => data.map(i => ({ id: i.id, name: i.name })),
+    select: (data: InventoryItem[]) => data.map(i => ({ id: i.id, name: i.name, pluSku: i.pluSku })),
   });
 
   const { data: units = [] } = useQuery<UnitOption[], Error, UnitOption[]>({

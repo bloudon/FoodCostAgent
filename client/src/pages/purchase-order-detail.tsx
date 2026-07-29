@@ -673,7 +673,8 @@ export default function PurchaseOrderDetail() {
   }) || [];
 
   const filteredInventoryItems = inventoryItems?.filter(item => {
-    const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.pluSku?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
     return matchesSearch && matchesCategory;
   }) || [];

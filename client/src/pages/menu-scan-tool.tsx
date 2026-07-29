@@ -109,6 +109,7 @@ type Resolution =
 interface InventoryItemOption {
   id: string;
   name: string;
+  pluSku?: string | null;
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -321,7 +322,7 @@ function IngredientRow({
                           .map((opt) => (
                             <CommandItem
                               key={opt.id}
-                              value={opt.name}
+                              value={opt.pluSku ? `${opt.name} ${opt.pluSku}` : opt.name}
                               onSelect={() => {
                                 onLink(opt.id, opt.name);
                                 setLinkOpen(false);
@@ -492,6 +493,7 @@ function MatchingScreen({
   const inventoryOptions: InventoryItemOption[] = (inventoryData || []).map((item: any) => ({
     id: item.id,
     name: item.name,
+    pluSku: item.pluSku ?? null,
   }));
 
   const oglOptions: OGLOption[] = oglData || [];
