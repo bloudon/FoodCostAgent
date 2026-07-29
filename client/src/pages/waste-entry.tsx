@@ -263,9 +263,11 @@ export default function WasteEntry() {
   ];
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
+    <div className="h-full flex flex-col">
+      {/* Pinned title + filter zone */}
+      <div className="flex-shrink-0 bg-background border-b px-4 pt-4 pb-4 md:px-8 md:pt-8">
       {/* Header with Store Selector */}
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+      <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
         <div className="flex items-center gap-4">
           <Button 
             variant="ghost" 
@@ -328,7 +330,8 @@ export default function WasteEntry() {
           </div>
         </div>
       </div>
-
+      </div>{/* end flex-shrink-0 */}
+      <div className="flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-8">
       {/* Step 1: Select Waste Type */}
       {!wasteType && (
         <div className="grid gap-4 md:grid-cols-2 max-w-4xl mx-auto">
@@ -666,9 +669,8 @@ export default function WasteEntry() {
                           <Package className="h-5 w-5 text-muted-foreground" />
                           <h3 className="text-lg font-semibold">Inventory Items</h3>
                         </div>
-                        <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
+                        <Table wrapperClassName="rounded-md border max-h-[calc(100vh-340px)]">
+                          <TableHeader className="sticky top-0 z-10 bg-card">
                             <TableRow>
                               <SortableTableHead field="wastedAt" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Date</SortableTableHead>
                               <SortableTableHead field="item" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort}>Item</SortableTableHead>
@@ -725,7 +727,6 @@ export default function WasteEntry() {
                             </TableRow>
                           </TableBody>
                         </Table>
-                        </div>
                       </div>
                     )}
 
@@ -736,9 +737,8 @@ export default function WasteEntry() {
                           <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
                           <h3 className="text-lg font-semibold">Menu Items</h3>
                         </div>
-                        <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
+                        <Table wrapperClassName="rounded-md border max-h-[calc(100vh-340px)]">
+                          <TableHeader className="sticky top-0 z-10 bg-card">
                             <TableRow>
                               <SortableTableHead field="wastedAt" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort} className="hidden sm:table-cell">Date</SortableTableHead>
                               <SortableTableHead field="item" sortField={wSortField} sortDirection={wSortDir} onSort={wHandleSort}>Item</SortableTableHead>
@@ -795,7 +795,6 @@ export default function WasteEntry() {
                             </TableRow>
                           </TableBody>
                         </Table>
-                        </div>
                       </div>
                     )}
 
@@ -814,6 +813,7 @@ export default function WasteEntry() {
           </Card>
         </div>
       )}
+      </div>{/* end flex-1 overflow-auto */}
     </div>
   );
 }

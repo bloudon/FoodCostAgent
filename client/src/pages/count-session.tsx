@@ -422,6 +422,7 @@ export default function CountSession() {
   const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   
   // Update filters when URL parameters change
   useEffect(() => {
@@ -531,26 +532,20 @@ export default function CountSession() {
   // Handle scroll event to show/hide back to top button
   useEffect(() => {
     const handleScroll = (event?: Event) => {
-      // The scrolling happens on the main element, not the window
-      // Get the main element's scroll position
-      const mainElement = document.querySelector('main');
-      const scrollTop = mainElement ? mainElement.scrollTop : (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop);
+      const scrollEl = contentScrollRef.current;
+      const scrollTop = scrollEl ? scrollEl.scrollTop : (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop);
       setShowBackToTop(scrollTop > 300);
     };
 
-    // Find the main element and listen to its scroll event
-    const mainElement = document.querySelector('main');
-    
-    if (mainElement) {
-      mainElement.addEventListener('scroll', handleScroll);
+    const scrollEl = contentScrollRef.current;
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleScroll);
     }
-    
-    // Also listen to window scroll as fallback
     window.addEventListener('scroll', handleScroll);
     
     return () => {
-      if (mainElement) {
-        mainElement.removeEventListener('scroll', handleScroll);
+      if (scrollEl) {
+        scrollEl.removeEventListener('scroll', handleScroll);
       }
       window.removeEventListener('scroll', handleScroll);
     };
@@ -1048,8 +1043,10 @@ export default function CountSession() {
   const isReadOnly = count && (count.canEdit === false || count.applied === 1);
   
   return (
-    <div className="py-4 px-0 sm:p-8 overflow-x-hidden">
-      <div className="mb-4 sm:mb-8 px-4 sm:px-0">
+    <div className="h-full flex flex-col overflow-x-hidden">
+      {/* Pinned title zone */}
+      <div className="flex-shrink-0 px-4 pt-4 pb-0 sm:px-8 sm:pt-8">
+      <div className="mb-4 sm:mb-8">
         <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
           <Button variant="ghost" className="mb-4" data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -1088,6 +1085,9 @@ export default function CountSession() {
           </div>
         </div>
       </div>
+      </div>{/* end flex-shrink-0 */}
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-auto px-4 pb-4 sm:px-8 sm:pb-8" ref={contentScrollRef}>
 
       {/* Read-Only Banner */}
       {isReadOnly && (
@@ -1376,9 +1376,8 @@ export default function CountSession() {
                   });
 
                   return (
-                    <div className="overflow-x-auto">
-                      <Table data-testid="table-all-entries">
-                        <TableHeader>
+                    <Table data-testid="table-all-entries" wrapperClassName="rounded-md border max-h-[calc(100vh-380px)]">
+                        <TableHeader className="sticky top-0 z-10 bg-card">
                           <TableRow>
                             <TableHead>
                               <button
@@ -1440,8 +1439,7 @@ export default function CountSession() {
                             );
                           })}
                         </TableBody>
-                      </Table>
-                    </div>
+                    </Table>
                   );
                 })()
               ) : (
@@ -2054,12 +2052,10 @@ export default function CountSession() {
       {showBackToTop && (
         <Button
           onClick={() => {
-            // Scroll both window and the main element to top
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            // Also scroll the main element (which has overflow-auto)
-            const mainElement = document.querySelector('main');
-            if (mainElement) {
-              mainElement.scrollTo({ top: 0, behavior: 'smooth' });
+            if (contentScrollRef.current) {
+              contentScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }
           }}
           size="icon"
@@ -2069,6 +2065,7 @@ export default function CountSession() {
           <ArrowUp className="h-5 w-5" />
         </Button>
       )}
+      </div>{/* end flex-1 overflow-auto */}
     </div>
   );
 }
