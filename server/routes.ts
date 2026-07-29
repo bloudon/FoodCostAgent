@@ -9565,22 +9565,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Execute: perform the bulk swap inside a logical transaction
+  // Execute: perform the bulk swap atomically, then recalculate costs
   app.post("/api/recipes/replace-component/execute", requireAuth, requireTier("basic"), async (req, res) => {
     try {
       const companyId = (req as any).companyId as string;
       const userId: string | null = (req as any).userId ?? null;
       const { fromType, fromId, toType, toId, conversionFactor } = req.body;
 
+      // Strict enum validation for both component types
+      const validTypes = ["inventory_item", "recipe"] as const;
       if (!fromType || !fromId || !toType || !toId) {
         return res.status(400).json({ error: "fromType, fromId, toType, toId are required" });
       }
+      if (!validTypes.includes(fromType) || !validTypes.includes(toType)) {
+        return res.status(400).json({ error: "componentType must be inventory_item or recipe" });
+      }
+
       const factor = typeof conversionFactor === "number" ? conversionFactor : parseFloat(conversionFactor ?? "1");
       if (isNaN(factor) || factor <= 0) {
         return res.status(400).json({ error: "conversionFactor must be a positive number" });
       }
 
-      // Resolve the replacement component's base unit and display name
+      // Resolve the replacement component's base unit and display name (before transaction)
       let toBaseUnitId: string;
       let toName: string;
       if (toType === "inventory_item") {
@@ -9595,93 +9601,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
         toName = r.name;
       }
 
-      // Find all matching component rows (with company guard via JOIN)
-      const affectedRows = await db
-        .select({
-          component: recipeComponents,
-          recipeYieldQty: recipes.yieldQty,
-          recipeYieldUnitId: recipes.yieldUnitId,
-          recipeComputedCost: recipes.computedCost,
-        })
-        .from(recipeComponents)
-        .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
-        .where(
-          and(
-            eq(recipeComponents.componentType, fromType),
-            eq(recipeComponents.componentId, fromId),
-            eq(recipes.companyId, companyId),
-            isNull(recipeComponents.missingItemName),
-          )
+      // Phase 1 — atomic: swap all component rows + write version snapshots inside one DB transaction.
+      // calculateRecipeCost uses the global `db` connection so cost recalculation happens in Phase 2
+      // after the transaction commits (the committed state is immediately visible via the global pool).
+      const { affectedRecipeIds, costsBefore, componentInstances } = await db.transaction(async (tx) => {
+        // Find all matching component rows (company guard via JOIN inside transaction)
+        const affectedRows = await tx
+          .select({
+            component: recipeComponents,
+            recipeYieldQty: recipes.yieldQty,
+            recipeYieldUnitId: recipes.yieldUnitId,
+            recipeComputedCost: recipes.computedCost,
+          })
+          .from(recipeComponents)
+          .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+          .where(
+            and(
+              eq(recipeComponents.componentType, fromType),
+              eq(recipeComponents.componentId, fromId),
+              eq(recipes.companyId, companyId),
+              isNull(recipeComponents.missingItemName),
+            )
+          );
+
+        if (affectedRows.length === 0) {
+          return { affectedRecipeIds: [] as string[], costsBefore: new Map<string, number>(), componentInstances: 0 };
+        }
+
+        const affectedRecipeIds = [...new Set(affectedRows.map(r => r.component.recipeId))];
+        const costsBefore = new Map<string, number>(
+          affectedRows.map(r => [r.component.recipeId, r.recipeComputedCost])
         );
 
-      if (affectedRows.length === 0) {
+        // Capture max version numbers inside the transaction for consistency
+        const versionRows = await tx
+          .select({
+            recipeId: recipeVersions.recipeId,
+            maxVer: sql<number>`max(${recipeVersions.versionNumber})`,
+          })
+          .from(recipeVersions)
+          .where(inArray(recipeVersions.recipeId, affectedRecipeIds))
+          .groupBy(recipeVersions.recipeId);
+        const maxVersionMap = new Map(versionRows.map(r => [r.recipeId, r.maxVer ?? 0]));
+
+        // Swap every matching component row
+        for (const { component } of affectedRows) {
+          const newQty = parseFloat((component.qty * factor).toPrecision(8));
+          await tx
+            .update(recipeComponents)
+            .set({
+              componentType: toType as string,
+              componentId: toId,
+              qty: newQty,
+              unitId: toBaseUnitId,
+              updatedAt: new Date(),
+            })
+            .where(eq(recipeComponents.id, component.id));
+        }
+
+        // Write version snapshots (cost=0 placeholder; Phase 2 recalculates and updates)
+        for (const recipeId of affectedRecipeIds) {
+          const updatedComponents = await tx
+            .select()
+            .from(recipeComponents)
+            .where(eq(recipeComponents.recipeId, recipeId));
+
+          const versionNumber = (maxVersionMap.get(recipeId) ?? 0) + 1;
+          const meta = affectedRows.find(r => r.component.recipeId === recipeId)!;
+          await tx.insert(recipeVersions).values({
+            recipeId,
+            versionNumber,
+            yieldQty: meta.recipeYieldQty,
+            yieldUnitId: meta.recipeYieldUnitId,
+            wastePercent: 0,
+            computedCost: 0, // updated in Phase 2 after calculateRecipeCost
+            components: JSON.stringify(updatedComponents),
+            createdBy: userId,
+            changeReason: `bulk_replace: ${fromType}/${fromId} → ${toType}/${toId} (factor ${factor})`,
+          });
+        }
+
+        return { affectedRecipeIds, costsBefore, componentInstances: affectedRows.length };
+      });
+
+      if (affectedRecipeIds.length === 0) {
         return res.json({ updatedCount: 0, componentInstances: 0, recipeIds: [], costDelta: 0, toName });
       }
 
-      const affectedRecipeIds = [...new Set(affectedRows.map(r => r.component.recipeId))];
-
-      // Capture max version numbers so each snapshot increments correctly
-      const versionRows = await db
-        .select({
-          recipeId: recipeVersions.recipeId,
-          maxVer: sql<number>`max(${recipeVersions.versionNumber})`,
-        })
-        .from(recipeVersions)
-        .where(inArray(recipeVersions.recipeId, affectedRecipeIds))
-        .groupBy(recipeVersions.recipeId);
-      const maxVersionMap = new Map(versionRows.map(r => [r.recipeId, r.maxVer ?? 0]));
-
-      // Snapshot current components per recipe (before the change) so auditors can diff
-      const snapshotsBefore = new Map<string, RecipeComponent[]>();
-      await Promise.all(
-        affectedRecipeIds.map(async (rid) => {
-          snapshotsBefore.set(rid, await storage.getRecipeComponents(rid));
-        })
-      );
-
-      // Perform the swap: update every matching component row
-      const costsBefore = new Map<string, number>();
-      for (const row of affectedRows) {
-        const { component } = row;
-        if (!costsBefore.has(component.recipeId)) {
-          costsBefore.set(component.recipeId, row.recipeComputedCost);
-        }
-        const newQty = parseFloat((component.qty * factor).toPrecision(8));
-        await db
-          .update(recipeComponents)
-          .set({
-            componentType: toType,
-            componentId: toId,
-            qty: newQty,
-            unitId: toBaseUnitId,
-            updatedAt: new Date(),
-          })
-          .where(eq(recipeComponents.id, component.id));
-      }
-
-      // Recalculate costs + write version snapshots for every affected recipe
+      // Phase 2 — post-transaction: recalculate costs and update recipe.computedCost.
+      // These reads see the committed state from Phase 1 via the global pool.
       const costsAfter = new Map<string, number>();
       await Promise.all(
         affectedRecipeIds.map(async (recipeId) => {
           const newCost = await calculateRecipeCost(recipeId);
           await storage.updateRecipe(recipeId, { computedCost: newCost });
           costsAfter.set(recipeId, newCost);
-
-          const updatedComponents = await storage.getRecipeComponents(recipeId);
-          const versionNumber = (maxVersionMap.get(recipeId) ?? 0) + 1;
-          const meta = affectedRows.find(r => r.component.recipeId === recipeId)!;
-          await storage.createRecipeVersion({
-            recipeId,
-            versionNumber,
-            yieldQty: meta.recipeYieldQty,
-            yieldUnitId: meta.recipeYieldUnitId,
-            wastePercent: 0,
-            computedCost: newCost,
-            components: JSON.stringify(updatedComponents),
-            createdBy: userId,
-            changeReason: `bulk_replace: ${fromType}/${fromId} → ${toType}/${toId} (factor ${factor})`,
-          });
-
           await cacheInvalidator.invalidateRecipes(companyId, recipeId);
         })
       );
@@ -9691,7 +9705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({
         updatedCount: affectedRecipeIds.length,
-        componentInstances: affectedRows.length,
+        componentInstances,
         recipeIds: affectedRecipeIds,
         costDelta: totalAfter - totalBefore,
         toName,
