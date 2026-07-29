@@ -2322,7 +2322,8 @@ DO $$ BEGIN
       AND case_size IS NOT NULL AND case_size > 0
       AND ABS(COALESCE(last_price, 0) - (last_case_price / case_size)) > 0.0001;
     -- 5. Report migration category counts via PostgreSQL NOTICE
-    DO $$
+    -- NOTE: uses $m3a$ delimiter (not $$) to avoid clashing with the outer DO $$ block.
+    DO $m3a$
     DECLARE
       v_receipt       bigint;
       v_og            bigint;
@@ -2345,7 +2346,7 @@ DO $$ BEGIN
           AND case_size IS NOT NULL AND case_size > 0;
       RAISE NOTICE '[M3A backfill] vendor_items price_source: receipt=%, order_guide_import=%, legacy_unknown=% (ambiguous=%, invalid-pack=%, semantic-repaired=%)',
         v_receipt, v_og, v_lu, v_ambiguous, v_invalid_pack, v_semantic_rep;
-    END $$;
+    END $m3a$;
 
     INSERT INTO _migration_log (version, description)
       VALUES ('v059', 'M3A: Vendor price integrity — price_source provenance on vendor_items and inventory_item_price_history');
