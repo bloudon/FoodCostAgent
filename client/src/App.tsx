@@ -2,6 +2,7 @@ import { Switch, Route, useLocation, Redirect } from "wouter";
 import { useEffect, useState } from "react";
 import { LogOut, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { NavHistoryProvider, useNavHistory } from "@/lib/nav-history-context";
+import { getLabelForPath } from "@/lib/route-config";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useAppLanguage } from "@/lib/language-context";
@@ -223,6 +224,8 @@ function AppTopBar() {
   const { t } = useAppLanguage();
   const companyName = user?.companyName;
   const { canGoBack, canGoForward, goBack, goForward, refresh } = useNavHistory();
+  const [location] = useLocation();
+  const pageLabel = getLabelForPath(location);
 
   const userInitials =
     user?.firstName && user?.lastName
@@ -289,6 +292,16 @@ function AppTopBar() {
         </TooltipTrigger>
         <TooltipContent side="bottom">Refresh</TooltipContent>
       </Tooltip>
+
+      {/* Current page label — hidden on mobile to avoid crowding */}
+      {pageLabel && (
+        <span
+          className="hidden md:block text-sm font-medium text-foreground ml-2"
+          data-testid="text-topbar-page-label"
+        >
+          {pageLabel}
+        </span>
+      )}
 
       {/* Right-side user controls — stable position, no sidebar dependency */}
       <div className="ml-auto flex items-center gap-1">

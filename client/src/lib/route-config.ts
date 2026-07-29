@@ -115,6 +115,36 @@ export const ROUTE_CONFIG: RouteConfig[] = [
 ];
 
 /**
+ * Convert a route pattern like "/foo/:id/bar" into a RegExp that matches
+ * exact pathnames with dynamic segments. Each `:param` matches one path
+ * segment (no slashes). The match must consume the entire pathname.
+ */
+function routePatternToRegex(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/\//g, "\\/")           // escape slashes
+    .replace(/:[^/]+/g, "[^/]+");    // :param → one segment
+  return new RegExp(`^${escaped}$`);
+}
+
+/**
+ * Look up a route's human-readable label by its current pathname.
+ * Returns undefined for "/" (Home) and unmatched paths.
+ * Uses segment-aware pattern matching so mid-path params (e.g.
+ * /order-guides/:id/review) are resolved correctly.
+ */
+export function getLabelForPath(pathname: string): string | undefined {
+  if (pathname === "/") return undefined;
+
+  // Find all routes whose pattern matches the pathname, then pick the
+  // longest pattern (most specific) to break ties.
+  const matches = ROUTE_CONFIG
+    .filter((r) => routePatternToRegex(r.route).test(pathname))
+    .sort((a, b) => b.route.length - a.route.length);
+
+  return matches[0]?.label;
+}
+
+/**
  * Look up a route's section by its current pathname.
  * Mirrors the logic in app-sidebar getActiveSection but driven by ROUTE_CONFIG.
  * Use for breadcrumbs, page-level section tagging, or tests.
