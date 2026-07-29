@@ -1,6 +1,7 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { NavHistoryProvider, useNavHistory } from "@/lib/nav-history-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useAppLanguage } from "@/lib/language-context";
@@ -221,6 +222,7 @@ function AppTopBar() {
   const { user, logout } = useAuth();
   const { t } = useAppLanguage();
   const companyName = user?.companyName;
+  const { canGoBack, canGoForward, goBack, goForward, refresh } = useNavHistory();
 
   const userInitials =
     user?.firstName && user?.lastName
@@ -232,24 +234,73 @@ function AppTopBar() {
       ? `${user.firstName} ${user.lastName}`
       : user?.email ?? "User";
 
+  const navBtnClass =
+    "inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors disabled:opacity-30 disabled:pointer-events-none";
+
   return (
-    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-3">
+    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-1">
       {/* Hamburger: mobile sheet trigger only. Desktop uses the hover rail. */}
       {isMobile && (
         <SidebarTrigger data-testid="button-mobile-menu" />
       )}
-      <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden" />
-      {companyName && (
-        <span
-          className="hidden md:block text-sm font-medium text-muted-foreground truncate"
-          data-testid="text-topbar-company-name"
-        >
-          {companyName}
-        </span>
-      )}
+      <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden mr-1" />
+
+      {/* ── In-app navigation controls ── */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={goBack}
+            disabled={!canGoBack}
+            aria-label="Back"
+            data-testid="button-nav-back"
+            className={navBtnClass}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Back</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={goForward}
+            disabled={!canGoForward}
+            aria-label="Forward"
+            data-testid="button-nav-forward"
+            className={navBtnClass}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Forward</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={refresh}
+            aria-label="Refresh"
+            data-testid="button-nav-refresh"
+            className={navBtnClass}
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Refresh</TooltipContent>
+      </Tooltip>
 
       {/* Right-side user controls — stable position, no sidebar dependency */}
       <div className="ml-auto flex items-center gap-1">
+        {/* Company name moved here from the left side */}
+        {companyName && (
+          <span
+            className="hidden md:block text-sm font-medium text-muted-foreground max-w-[180px] truncate mr-1"
+            data-testid="text-topbar-company-name"
+          >
+            {companyName}
+          </span>
+        )}
         <ThemeToggle />
         <LanguageToggle />
         <Tooltip>
@@ -271,7 +322,7 @@ function AppTopBar() {
             <button
               onClick={logout}
               data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
-              className="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
+              className={navBtnClass}
               aria-label={t.auth.logout}
             >
               <LogOut className="h-4 w-4" />
@@ -353,6 +404,7 @@ function ProtectedLayoutContent() {
   }
 
   return (
+    <NavHistoryProvider>
     <div className="flex flex-col h-screen">
       {isGlobalAdmin && <GlobalAdminHeader />}
       <SidebarProvider
@@ -474,6 +526,7 @@ function ProtectedLayoutContent() {
       {/* ChatPanel is a fixed overlay — outside the sidebar shell */}
       <ChatPanel />
     </div>
+    </NavHistoryProvider>
   );
 }
 
