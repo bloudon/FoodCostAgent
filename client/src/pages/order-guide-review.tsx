@@ -128,6 +128,10 @@ export default function OrderGuideReview() {
   const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
   const [newVendorName, setNewVendorName] = useState('');
 
+  // Active tab — defaults to 'matched' then jumps to the most urgent non-empty tab once data loads
+  const [activeTab, setActiveTab] = useState<'matched' | 'ambiguous' | 'new'>('matched');
+  const [tabInitialized, setTabInitialized] = useState(false);
+
   const matchedTableRef = useRef<HTMLDivElement>(null);
   const ambiguousTableRef = useRef<HTMLDivElement>(null);
   const newTableRef = useRef<HTMLDivElement>(null);
@@ -184,6 +188,15 @@ export default function OrderGuideReview() {
       setVendorInitialized(true);
     }
   }, [reviewData, vendorInitialized]);
+
+  // Jump to the most urgent non-empty tab once data first loads
+  useEffect(() => {
+    if (!reviewData || tabInitialized) return;
+    if (reviewData.summary.ambiguous > 0) setActiveTab('ambiguous');
+    else if (reviewData.summary.new > 0) setActiveTab('new');
+    else setActiveTab('matched');
+    setTabInitialized(true);
+  }, [reviewData, tabInitialized]);
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ['/api/vendors'],
@@ -434,6 +447,24 @@ export default function OrderGuideReview() {
   const noVendorWarning = isImageScan && !currentVendorId;
   const selectedVendorName = vendors?.find(v => v.id === currentVendorId)?.name;
 
+  // Sort warning rows to the top within each category so they're immediately visible.
+  // Stable: warning rows keep their relative order; clean rows keep theirs.
+  const sortedAmbiguousLines = useMemo(() => {
+    const hasWarning = (l: OrderGuideLine) =>
+      hasPackSizeMismatch(l) || (hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id));
+    const warn = reviewData.lines.ambiguous.filter(hasWarning);
+    const clean = reviewData.lines.ambiguous.filter(l => !hasWarning(l));
+    return [...warn, ...clean];
+  }, [reviewData.lines.ambiguous, dismissedNameCountHints]);
+
+  const sortedNewLines = useMemo(() => {
+    const hasWarning = (l: OrderGuideLine) =>
+      hasPackSizeMismatch(l) || (hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id));
+    const warn = reviewData.lines.new.filter(hasWarning);
+    const clean = reviewData.lines.new.filter(l => !hasWarning(l));
+    return [...warn, ...clean];
+  }, [reviewData.lines.new, dismissedNameCountHints]);
+
   const confirmSummary = [
     `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`,
     newSelectedCount > 0 ? `${newSelectedCount} new` : null,
@@ -644,7 +675,7 @@ export default function OrderGuideReview() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="matched" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'ambiguous' | 'new')} className="space-y-4">
         <TabsList>
           <TabsTrigger value="matched" data-testid="tab-matched">
             Auto-Matched ({reviewData.summary.matched})
@@ -764,7 +795,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.ambiguous} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
+              <OrderGuideTable lines={sortedAmbiguousLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -802,7 +833,7 @@ export default function OrderGuideReview() {
                   </span>
                 </div>
               )}
-              <OrderGuideTable lines={reviewData.lines.new} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef} />
+              <OrderGuideTable lines={sortedNewLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef} />
             </CardContent>
           </Card>
         </TabsContent>
