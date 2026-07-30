@@ -109,6 +109,9 @@ step "Building application (npm run build)"
 rm -rf dist
 npm run build
 
+step "Checking bundle for top-level await regressions"
+node "$SCRIPT_DIR/check-bundle-tla.js" || fail "Bundle TLA check failed — deploy aborted before any server restart. Fix the top-level await regression listed above and redeploy."
+
 step "Pruning dev dependencies"
 npm prune --omit=dev
 
