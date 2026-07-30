@@ -249,6 +249,7 @@ export function AppSidebar() {
   });
 
   return (
+    <>
     <Sidebar
       collapsible="icon"
       style={containerStyle}
@@ -333,11 +334,10 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      {/* ── Footer: pin / lock-minimized controls ───────────────────────── */}
+      {/* ── Footer: pin-expanded control ─────────────────────────────────── */}
       {!isMobile && (
         <SidebarFooter className="border-t p-2">
-          <div className="flex justify-center gap-1">
-            {/* Pin-expanded button — always visible */}
+          <div className="flex justify-center">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -353,31 +353,39 @@ export function AppSidebar() {
                 {isPinned ? "Unpin sidebar" : "Pin sidebar open"}
               </TooltipContent>
             </Tooltip>
-
-            {/* Lock-minimized button — always visible */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={toggleLockMinimized}
-                  className={cn(
-                    "inline-flex items-center justify-center rounded-md h-9 w-9 transition-colors",
-                    isLockedMinimized
-                      ? "text-primary hover-elevate active-elevate-2"
-                      : "text-muted-foreground hover-elevate active-elevate-2"
-                  )}
-                  data-testid="button-sidebar-lock"
-                  aria-label={isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
-                >
-                  {isLockedMinimized ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
-              </TooltipContent>
-            </Tooltip>
           </div>
         </SidebarFooter>
       )}
     </Sidebar>
+
+    {/*
+      Lock-minimized tab — rendered OUTSIDE the sidebar so the user can click it
+      without ever entering the sidebar hover zone (approach from the content side).
+      Positioned just past the sidebar right edge; hidden when sidebar is pin-expanded.
+    */}
+    {!isMobile && !isPinned && (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={toggleLockMinimized}
+            data-testid="button-sidebar-lock"
+            aria-label={isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
+            style={{ position: "fixed", bottom: "16px", left: "84px", zIndex: 55 }}
+            className={cn(
+              "h-7 w-7 rounded-r-md border border-l-0 flex items-center justify-center shadow-sm transition-colors",
+              isLockedMinimized
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-muted-foreground border-border hover:bg-accent"
+            )}
+          >
+            {isLockedMinimized ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
+        </TooltipContent>
+      </Tooltip>
+    )}
+  </>
   );
 }
