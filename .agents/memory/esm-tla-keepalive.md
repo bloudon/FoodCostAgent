@@ -9,23 +9,22 @@ When esbuild bundles a server with `--format=esm`, all module bodies are inlined
 
 Symptoms: exactly two log lines appear (`[DB]` + `ℹ️ Redis`) then the process exits — `[Startup] 1` never prints.
 
-## What does NOT work
+## What does NOT work (event-loop keepalive approaches — all wrong diagnosis)
 
-- `setInterval(() => {}, N)` — Node.js v20 TLA exit-code-13 fires before the macro-timer queue runs; the engine considers the loop "drained" for TLA purposes even with a pending timer.
-- `pool.connect()` + immediate `client.release()` — pg-pool unref()'s idle-connection timers, so the loop is effectively idle again after release().
-- Holding a checked-out client — pg internally unref()'s the client's socket after the auth handshake, so the active handle disappears.
+- `setInterval(() => {}, N)` — timer is unref'd by pg-pool internals; loop still drains.
+- `pool.connect()` + immediate release — released client goes to idle pool; idle timer is unref'd.
+- Holding a checked-out client — pg unref()'s the socket after the auth handshake.
+- `pool.query('SELECT pg_sleep(3)')` fire-and-forget — appears to fire, but TLA chain still hangs.
 
-## What works
+## Real root cause (different from the "event loop drains" theory)
 
-Fire-and-forget `pool.query('SELECT pg_sleep(3)')` — keeps a TCP socket in **active-read state** inside libuv for 3 s:
+`server/db.ts` used `await import('pg')` and `await import('drizzle-orm/node-postgres')` *inside an `if (isLocalDb)` block at module scope*. Even though they're indented, they are **top-level awaits** in the ESM sense. esbuild propagated this TLA into every file that imports db.ts, producing **36 cascading `await init_*()` calls at the module top level in the bundle** (confirmed by `grep -n "^await " dist/index.js`). Any one of those 36 awaits could hang (e.g. `await init_storage()`, `await init_auth()`, etc.) before the startup IIFE at the end ever ran.
 
-```ts
-// server/db.ts — isLocalDb branch, right after pool is created
-pool.query('SELECT pg_sleep(3)').catch(() => {/* cancelled on shutdown */});
-console.log('[DB] ESM keepalive query started');
-```
+## Actual fix
 
-A pending socket read is tracked as a libuv I/O handle below the timer/Promise layer — it is never unref()'d. 3 s is more than enough for all memoised `await init_*()` microtasks to complete and the startup IIFE to open its own DB connections and HTTP socket.
+Convert all `await import()` calls in `server/db.ts` to **static `import`** statements. Both drivers (`pg` and `@neondatabase/serverless`) are bundled by esbuild either way, so there is no cost. The runtime `isLocalDb` branch still selects which driver to use. After this change the bundle drops from 36 top-level awaits to exactly 1 (the startup IIFE in `index.ts`).
+
+**Rule to remember:** Any `await` at module scope — even inside an `if` block — is a TLA. Any module that imports a TLA module gets `await init_*()` emitted at its call site in the bundle, which is also a TLA. Prefer static imports in server-side modules; use dynamic `import()` only inside functions.
 
 ## Also required
 
