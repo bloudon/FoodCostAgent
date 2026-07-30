@@ -10,6 +10,8 @@ import {
   MoreHorizontal,
   Pin,
   PinOff,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -132,15 +134,18 @@ export function AppSidebar() {
 
   // ── Hover-rail state ───────────────────────────────────────────────────────
   const [isPinned, setIsPinned] = useState(false);
+  const [isLockedMinimized, setIsLockedMinimized] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Hydrate pin preference after mount (avoids SSR/hydration mismatch)
+  // Hydrate pin/lock preferences after mount (avoids SSR/hydration mismatch)
   useEffect(() => {
     const pinned = localStorage.getItem("sidebarPinned") === "true";
-    setIsPinned(pinned);
-    setOpen(pinned);
+    const locked = localStorage.getItem("sidebarLockedMinimized") === "true";
+    setIsPinned(pinned && !locked);
+    setIsLockedMinimized(locked);
+    setOpen(pinned && !locked);
   }, []); // intentionally empty — run once on mount
 
   // Cleanup timers on unmount
@@ -158,7 +163,7 @@ export function AppSidebar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isHovering, isPinned]);
 
-  const isExpanded = isMobile || isPinned || isHovering;
+  const isExpanded = (isMobile || isPinned || isHovering) && !isLockedMinimized;
 
   const togglePin = useCallback(() => {
     const next = !isPinned;
@@ -166,16 +171,34 @@ export function AppSidebar() {
     setOpen(next);
     localStorage.setItem("sidebarPinned", String(next));
     if (!next) setIsHovering(false);
+    // Pinning expanded clears locked-minimized
+    if (next) {
+      setIsLockedMinimized(false);
+      localStorage.setItem("sidebarLockedMinimized", "false");
+    }
   }, [isPinned, setOpen]);
 
+  const toggleLockMinimized = useCallback(() => {
+    const next = !isLockedMinimized;
+    setIsLockedMinimized(next);
+    localStorage.setItem("sidebarLockedMinimized", String(next));
+    if (next) {
+      // Locking minimized clears pinned-expanded
+      setIsPinned(false);
+      setOpen(false);
+      setIsHovering(false);
+      localStorage.setItem("sidebarPinned", "false");
+    }
+  }, [isLockedMinimized, setOpen]);
+
   const scheduleOpen = useCallback(() => {
-    if (isMobile || isPinned) return;
+    if (isMobile || isPinned || isLockedMinimized) return;
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
     openTimerRef.current = setTimeout(() => setIsHovering(true), OPEN_DELAY_MS);
   }, [isMobile, isPinned]);
 
   const scheduleClose = useCallback(() => {
-    if (isMobile || isPinned) return;
+    if (isMobile || isPinned || isLockedMinimized) return;
     if (openTimerRef.current) { clearTimeout(openTimerRef.current); openTimerRef.current = null; }
     closeTimerRef.current = setTimeout(() => setIsHovering(false), CLOSE_DELAY_MS);
   }, [isMobile, isPinned]);
@@ -202,7 +225,7 @@ export function AppSidebar() {
   // ── Overlay style (applied to the fixed container div via ...props spread) ─
   const overlayActive = !isMobile && isHovering && !isPinned;
   const containerStyle: React.CSSProperties | undefined = overlayActive
-    ? { width: EXPANDED_WIDTH, zIndex: 50 }
+    ? { width: EXPANDED_WIDTH, zIndex: 60 }
     : undefined;
   const containerClassName = overlayActive
     ? "shadow-[4px_0_16px_rgba(0,0,0,0.08)] border-r border-sidebar-border"
@@ -310,23 +333,46 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
 
-      {/* ── Footer: pin control only (user/theme/logout live in the top bar) ── */}
+      {/* ── Footer: pin / lock-minimized controls ───────────────────────── */}
       {!isMobile && (
         <SidebarFooter className="border-t p-2">
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-1">
+            {/* Pin-expanded button — always visible */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={togglePin}
                   className="inline-flex items-center justify-center rounded-md h-9 w-9 text-muted-foreground hover-elevate active-elevate-2 transition-colors"
                   data-testid="button-sidebar-pin"
-                  aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
+                  aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar open"}
                 >
                   {isPinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {isPinned ? "Unpin sidebar" : "Pin sidebar"}
+                {isPinned ? "Unpin sidebar" : "Pin sidebar open"}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Lock-minimized button — always visible */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={toggleLockMinimized}
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-md h-9 w-9 transition-colors",
+                    isLockedMinimized
+                      ? "text-primary hover-elevate active-elevate-2"
+                      : "text-muted-foreground hover-elevate active-elevate-2"
+                  )}
+                  data-testid="button-sidebar-lock"
+                  aria-label={isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
+                >
+                  {isLockedMinimized ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {isLockedMinimized ? "Unlock sidebar" : "Lock sidebar minimized"}
               </TooltipContent>
             </Tooltip>
           </div>
