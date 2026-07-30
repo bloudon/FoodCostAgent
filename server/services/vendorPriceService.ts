@@ -351,14 +351,16 @@ async function _executeWrite(
     })
     .where(eq(vendorItems.id, vendorItemId));
 
-  // ── 1b. Update pack geometry using the just-written price ─────────────────
-  // All inputs are available from params — no extra DB round-trip needed.
-  const geomPrice = unitPrice > 0 ? unitPrice : (casePrice > 0 ? casePrice / Math.max(caseSize, 1) : 0);
+  // ── 1b. Update pack geometry using the just-written case price ────────────
+  // IMPORTANT: computePackGeometry expects the PURCHASE-UNIT price (lastCasePrice),
+  // not the per-canonical-unit price (lastPrice). It divides by canonicalQty to
+  // produce normalizedPricePerCanonicalUnit.  Using unitPrice here would double-divide.
+  // casePrice from derivePrices() is the purchase-unit price — correct input.
   const geomResult = computePackGeometry({
     caseSize,
     innerPackSize,
     packUom,
-    lastPrice: geomPrice,
+    lastPrice: casePrice,            // purchase-unit price; divided by canonicalQty below
     canonicalUnitName: inventoryUnitName,
     pricingBasis: "purchase_unit",
   });

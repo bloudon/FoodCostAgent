@@ -200,11 +200,13 @@ export async function updateVendorItemPackGeometry(
       caseSize: vendorItems.caseSize,
       innerPackSize: vendorItems.innerPackSize,
       packUom: vendorItems.packUom,
-      lastPrice: vendorItems.lastPrice,
+      // Use lastCasePrice (purchase-unit price) as input to computePackGeometry.
+      // lastPrice is ALREADY normalized (lastCasePrice / effectivePackQty) — using it
+      // would cause a double-division and produce an incorrectly small normalized price.
+      lastCasePrice: vendorItems.lastCasePrice,
       isVariableWeight: vendorItems.isVariableWeight,
       pricingBasis: vendorItems.pricingBasis,
       inventoryItemId: vendorItems.inventoryItemId,
-      canonicalUnitName: inventoryItems.unitId, // resolved below via units join
     })
     .from(vendorItems)
     .leftJoin(inventoryItems, eq(vendorItems.inventoryItemId, inventoryItems.id))
@@ -241,7 +243,10 @@ export async function updateVendorItemPackGeometry(
     caseSize: row.caseSize,
     innerPackSize: row.innerPackSize,
     packUom: row.packUom,
-    lastPrice: row.lastPrice,
+    // lastCasePrice = purchase-unit price.  computePackGeometry divides by
+    // canonicalQty to produce normalizedPricePerCanonicalUnit.
+    // Using lastPrice here would double-divide (lastPrice is already normalized).
+    lastPrice: row.lastCasePrice,
     pricingBasis: effectivePricingBasis,
     isVariableWeight: effectiveVW,
     canonicalUnitName,
@@ -390,8 +395,10 @@ export async function backfillVendorPackGeometry(): Promise<BackfillReport> {
             return;
           }
 
-          // Missing price
-          if (!row.lastPrice || row.lastPrice <= 0) {
+          // Missing price — use lastCasePrice (purchase-unit price) as the authoritative
+          // price input. lastPrice is already normalized (divided by pack qty) and must
+          // not be used here, as it would cause double-division in computePackGeometry.
+          if (!row.lastCasePrice || row.lastCasePrice <= 0) {
             report.missingPrice++;
             await db
               .update(vendorItems)
@@ -432,12 +439,13 @@ export async function backfillVendorPackGeometry(): Promise<BackfillReport> {
             return;
           }
 
-          // Compute
+          // Compute — pass lastCasePrice (purchase-unit price) so the division
+          // normalizedPrice = lastCasePrice / canonicalQty yields $/canonical-unit.
           const result = computePackGeometry({
             caseSize: row.caseSize,
             innerPackSize: row.innerPackSize,
             packUom: row.packUom,
-            lastPrice: row.lastPrice,
+            lastPrice: row.lastCasePrice,
             pricingBasis: "purchase_unit",
             canonicalUnitName,
           });

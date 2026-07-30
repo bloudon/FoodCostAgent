@@ -563,7 +563,19 @@ export const vendorItems = pgTable("vendor_items", {
   isVariableWeight: integer("is_variable_weight").default(0),
 });
 
-export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });
+export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({
+  id: true,
+  // ── Derived geometry fields — server-only, never accepted from clients ────
+  // These are computed by the vendorPackGeometry service after every price or
+  // pack-structure write. Accepting them from clients would allow overwriting
+  // server-authoritative normalized prices with arbitrary values.
+  canonicalQtyPerPurchaseUnit: true,
+  normalizedPricePerCanonicalUnit: true,
+  packGeometryStatus: true,
+  packGeometrySource: true,
+  packGeometryUpdatedAt: true,
+  // Note: pricingBasis and isVariableWeight ARE user-settable inputs (not derived).
+});
 export type InsertVendorItem = z.infer<typeof insertVendorItemSchema>;
 export type VendorItem = typeof vendorItems.$inferSelect;
 
