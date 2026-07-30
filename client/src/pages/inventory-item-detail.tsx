@@ -230,11 +230,11 @@ function VendorPriceHistoryPanel({ inventoryItemId, vendorItemId }: { inventoryI
 }
 
 // Format the human-readable "1 [unit] = X [inv unit]" value for display.
-// qtyPerInventoryUnit stores how many recipe-units fit in 1 inventory unit,
-// so the display value is the reciprocal.
-function formatReciprocal(qtyPerInventoryUnit: number): string {
-  if (!qtyPerInventoryUnit || qtyPerInventoryUnit <= 0) return "—";
-  const v = 1 / qtyPerInventoryUnit;
+// unitsPerCanonical = how many of this unit per 1 canonical unit, so the
+// display value "1 [unit] = X [canonical]" is the reciprocal (1/unitsPerCanonical).
+function formatReciprocal(unitsPerCanonical: number): string {
+  if (!unitsPerCanonical || unitsPerCanonical <= 0) return "—";
+  const v = 1 / unitsPerCanonical;
   return parseFloat(v.toPrecision(4)).toString();
 }
 
@@ -322,7 +322,7 @@ function SortableRecipeUnitRow({
           </div>
         ) : (
           <span className="text-muted-foreground text-sm">
-            {formatReciprocal(row.qtyPerInventoryUnit)} {invUnitAbbrev}
+            {formatReciprocal(row.unitsPerCanonical)} {invUnitAbbrev}
           </span>
         )}
       </td>
@@ -416,7 +416,7 @@ function RecipeUnitsList({
   };
 
   const createMutation = useMutation({
-    mutationFn: async (body: { unitId: string; qtyPerInventoryUnit: number }) => {
+    mutationFn: async (body: { unitId: string; unitsPerCanonical: number }) => {
       return apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units`, {
         ...body,
         isIssueUnit: kind === "issue" ? 1 : 0,
@@ -434,9 +434,9 @@ function RecipeUnitsList({
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ rowId, qtyPerInventoryUnit }: { rowId: string; qtyPerInventoryUnit: number }) => {
+    mutationFn: async ({ rowId, unitsPerCanonical }: { rowId: string; unitsPerCanonical: number }) => {
       return apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${rowId}`, {
-        qtyPerInventoryUnit,
+        unitsPerCanonical,
       });
     },
     onSuccess: () => {
@@ -544,7 +544,7 @@ function RecipeUnitsList({
       setPendingFactorIsSuggested(false);
       return;
     }
-    // getSuggestedConversionFactor returns qtyPerInventoryUnit (how many
+    // getSuggestedConversionFactor returns unitsPerCanonical (how many
     // pendingUnit fit in 1 itemUnit). The display direction is the reciprocal.
     const suggested = getSuggestedConversionFactor(pendingUnit.name, itemUnit.name);
     if (suggested !== null) {
@@ -566,8 +566,9 @@ function RecipeUnitsList({
       });
       return;
     }
-    // Store the reciprocal: qtyPerInventoryUnit = 1 / entered
-    createMutation.mutate({ unitId: pendingUnitId, qtyPerInventoryUnit: 1 / entered });
+    // unitsPerCanonical = how many of this unit per 1 canonical unit
+    // User enters "1 [unit] = X [canonical]", so unitsPerCanonical = 1/entered
+    createMutation.mutate({ unitId: pendingUnitId, unitsPerCanonical: 1 / entered });
   };
 
   const usedUnitIds = new Set((rows ?? []).map((r) => r.unitId));
@@ -711,14 +712,14 @@ function RecipeUnitsList({
                     onStartEdit={() => {
                       setEditingId(row.id);
                       // Pre-fill with human-readable reciprocal
-                      setEditQty(formatReciprocal(row.qtyPerInventoryUnit));
+                      setEditQty(formatReciprocal(row.unitsPerCanonical));
                     }}
                     onCancelEdit={() => setEditingId(null)}
                     onSave={() => {
                       const entered = parseFloat(editQty);
                       if (entered > 0) {
-                        // Store reciprocal back as qtyPerInventoryUnit
-                        updateMutation.mutate({ rowId: row.id, qtyPerInventoryUnit: 1 / entered });
+                        // unitsPerCanonical = 1 / (user-entered canonical qty per unit)
+                        updateMutation.mutate({ rowId: row.id, unitsPerCanonical: 1 / entered });
                       }
                     }}
                     onDelete={() => deleteMutation.mutate(row.id)}

@@ -4177,7 +4177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Active recipe units: non-issue rows with a positive conversion factor.
         const activeRecipeRows = perItem.filter(
-          (u) => u.isIssueUnit === 0 && u.qtyPerInventoryUnit > 0
+          (u) => u.isIssueUnit === 0 && u.unitsPerCanonical > 0
         );
 
         if (activeRecipeRows.length > 0) {
@@ -8434,7 +8434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const bodySchema = z.object({
         unitId: z.string().uuid(),
-        qtyPerInventoryUnit: z.number().positive(),
+        unitsPerCanonical: z.number().positive(),
         isIssueUnit: z.union([z.literal(0), z.literal(1)]).optional().default(0),
         sortOrder: z.number().int().nonnegative().optional().default(0),
       });
@@ -8443,7 +8443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyId,
         inventoryItemId: req.params.id,
         unitId: parsed.unitId,
-        qtyPerInventoryUnit: parsed.qtyPerInventoryUnit,
+        unitsPerCanonical: parsed.unitsPerCanonical,
         isIssueUnit: parsed.isIssueUnit,
         sortOrder: parsed.sortOrder,
       });
@@ -8471,7 +8471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Inventory item not found" });
       }
       const bodySchema = z.object({
-        qtyPerInventoryUnit: z.number().positive().optional(),
+        unitsPerCanonical: z.number().positive().optional(),
         isIssueUnit: z.union([z.literal(0), z.literal(1)]).optional(),
         sortOrder: z.number().int().nonnegative().optional(),
       });
@@ -8483,8 +8483,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Unit row not found" });
       }
       const row = await storage.updateInventoryItemUnit(req.params.unitRowId, updates);
-      // Cascade recalc when the factor changed (sort/role moves don't affect cost)
-      if (updates.qtyPerInventoryUnit !== undefined) {
+      // Cascade recalc when the conversion factor changed (sort/role moves don't affect cost)
+      if (updates.unitsPerCanonical !== undefined) {
         const affected = await findAffectedRecipesByInventoryItem(req.params.id, companyId);
         for (const recipeId of affected) {
           const newCost = await calculateRecipeCost(recipeId);

@@ -306,16 +306,33 @@ export const inventoryItems = pgTable("inventory_items", {
   manufacturer: text("manufacturer"), // optional product manufacturer/brand
   categoryId: varchar("category_id"), // Reference to categories table
   pluSku: text("plu_sku"),
-  unitId: varchar("unit_id").notNull(), // unit reference (pounds by default)
-  caseSize: real("case_size").notNull().default(20), // case size in base units
-  containerSize: real("container_size"), // size of each container in item's unit (e.g. 0.375 lb per can)
-  containerLabel: text("container_label"), // label for the container (e.g. "can", "bottle", "bag")
-  containerUnitId: varchar("container_unit_id"), // unit used to display/enter container size (e.g. oz)
-  casePkgCount: real("case_pkg_count"), // number of containers per case (e.g. 6 cans per case)
+  /** Canonical inventory unit — the stable, vendor-independent unit for all
+   *  cost calculations (e.g. LB, FL OZ, EA). Never changes because a vendor
+   *  changes their pack format. price_per_unit and avg_cost_per_unit are
+   *  expressed per one of this unit. */
+  unitId: varchar("unit_id").notNull(),
+  /** Convenience cache: total canonical units in the primary vendor's purchase
+   *  unit (e.g. 20 when unit_id = LB and the primary case ships 20 LB).
+   *  Authoritative pack geometry lives on vendor_items. */
+  caseSize: real("case_size").notNull().default(20),
+  /** Size of each inner container expressed in the item's canonical unit
+   *  (e.g. 13 for a 13-oz can when canonical unit = OZ). */
+  containerSize: real("container_size"),
+  /** Human label for the inner container: "can", "bottle", "bag". */
+  containerLabel: text("container_label"),
+  /** Unit used to display/enter containerSize when it differs from the
+   *  canonical unit (e.g. oz when the canonical unit is lb). */
+  containerUnitId: varchar("container_unit_id"),
+  /** Number of inner containers per purchase unit (e.g. 16 cans per case). */
+  casePkgCount: real("case_pkg_count"),
   barcode: text("barcode"),
   active: integer("active").notNull().default(1), // 1 = active, 0 = inactive
-  pricePerUnit: real("price_per_unit").notNull().default(0), // most recent price per base unit (last cost method)
-  avgCostPerUnit: real("avg_cost_per_unit").notNull().default(0), // weighted average cost per base unit
+  /** Most recent cost per 1 canonical inventory unit (last-cost method).
+   *  Updated on vendor price sync and receipt processing. */
+  pricePerUnit: real("price_per_unit").notNull().default(0),
+  /** Weighted-average cost per 1 canonical inventory unit.
+   *  Updated incrementally as purchases are received. */
+  avgCostPerUnit: real("avg_cost_per_unit").notNull().default(0),
   yieldPercent: real("yield_percent").notNull().default(100), // usable yield percentage after trimming/waste (0-100), defaults to 100%
   parLevel: real("par_level"), // default target inventory level (can be overridden at store level)
   reorderLevel: real("reorder_level"), // default reorder level (can be overridden at store level)
@@ -343,16 +360,29 @@ export type InventoryItem = typeof inventoryItems.$inferSelect;
 
 // Inventory Item Units — per-item recipe/issue unit whitelist with item-specific
 // conversion factors. Lets recipes call for an apple in EA, LB, OZ, or CS even
-// though the inventory unit is, say, LB. Anchored to the inventory unit so that
-// `qtyPerInventoryUnit` answers the question "how many of THIS unit are in
-// 1 inventory unit of this item?" (e.g. for apples sold by the lb where 1 lb
-// equals 4 apples: EA row qtyPerInventoryUnit = 4; LB row = 1; OZ row = 16).
+// though the inventory unit is, say, LB.
+//
+// Field direction: `unitsPerCanonical` answers "how many of THIS unit equal
+// 1 canonical inventory unit?" Examples for an item whose canonical unit is LB:
+//   - EA row: unitsPerCanonical = 4   (4 apples per LB)
+//   - LB row: unitsPerCanonical = 1   (1 LB per LB — the identity row)
+//   - OZ row: unitsPerCanonical = 16  (16 oz per LB)
+//   - CS row: unitsPerCanonical = 0.05 (1/20 case per LB, i.e. a 20-LB case)
+//
+// Costing formula: qty_in_canonical = recipe_qty / unitsPerCanonical
+//   Example: 2 EA apples → 2 / 4 = 0.5 LB; multiply by price_per_unit ($/LB).
+//
+// Previously named `qtyPerInventoryUnit` (DB column name unchanged for
+// zero-downtime compatibility: "qty_per_inventory_unit").
 export const inventoryItemUnits = pgTable("inventory_item_units", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   unitId: varchar("unit_id").notNull(),
-  qtyPerInventoryUnit: real("qty_per_inventory_unit").notNull(),
+  /** How many of this unit equal 1 canonical inventory unit. Always > 0.
+   *  Costing: qty_in_canonical = recipe_qty / unitsPerCanonical.
+   *  DB column: qty_per_inventory_unit (unchanged for compatibility). */
+  unitsPerCanonical: real("qty_per_inventory_unit").notNull(),
   isIssueUnit: integer("is_issue_unit").notNull().default(0), // 1 = transfer/issue unit only, 0 = recipe unit
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -365,7 +395,7 @@ export const inventoryItemUnits = pgTable("inventory_item_units", {
 export const insertInventoryItemUnitSchema = createInsertSchema(inventoryItemUnits)
   .omit({ id: true, createdAt: true })
   .extend({
-    qtyPerInventoryUnit: z.number().positive("Qty must be greater than zero"),
+    unitsPerCanonical: z.number().positive("Qty must be greater than zero"),
     isIssueUnit: z.number().int().min(0).max(1).optional().default(0),
     sortOrder: z.number().int().optional().default(0),
   });

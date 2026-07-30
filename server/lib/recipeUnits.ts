@@ -3,9 +3,12 @@
  *
  * "Recipe Units" are an item-specific whitelist of units that recipes are
  * allowed to call this item by, with a per-item conversion factor. Each row's
- * `qtyPerInventoryUnit` answers "for 1 of the item's inventory unit, how many
- * of THIS unit do you get?" — so for 5-lb bags of an item priced by LB, the
- * "bag" row stores qtyPerInventoryUnit = 1/5 = 0.2 (you get 0.2 bags per LB).
+ * `unitsPerCanonical` answers "how many of THIS unit equal 1 canonical
+ * inventory unit?" — so for an apple item priced by LB where 1 LB = 4 apples,
+ * the EA row stores unitsPerCanonical = 4. For a 5-LB bag unit the bag row
+ * stores unitsPerCanonical = 0.2 (1/5 bag per LB).
+ *
+ * Costing formula: qty_in_canonical = recipe_qty / unitsPerCanonical
  *
  * The cost engine consults this list before falling back to the global
  * `units.to_base_ratio` math, so cross-kind references like "1 each apple"
@@ -41,8 +44,9 @@ export function convertToInventoryUnits(
   const override = perItemUnits.find(
     (u) => u.unitId === fromUnit.id && u.isIssueUnit === 0
   );
-  if (override && override.qtyPerInventoryUnit > 0) {
-    return qty / override.qtyPerInventoryUnit;
+  if (override && override.unitsPerCanonical > 0) {
+    // qty_in_canonical = recipe_qty / unitsPerCanonical
+    return qty / override.unitsPerCanonical;
   }
 
   // Same-kind path via global toBaseRatio
@@ -98,11 +102,11 @@ function findUnitByLabel(units: Unit[], label: string): Unit | undefined {
  * left untouched so user edits/manual additions are preserved.
  *
  * Auto-seeds:
- *   - The inventory unit itself (qtyPerInventoryUnit = 1)
+ *   - The inventory unit itself (unitsPerCanonical = 1)
  *   - "Case" unit when caseSize is set and a "case" row exists in `units`
- *     (qtyPerInventoryUnit = 1 / caseSize)
+ *     (unitsPerCanonical = 1/caseSize, e.g. 0.05 for a 20-LB case)
  *   - The containerLabel unit when containerSize is set and the label
- *     resolves to a global unit (qtyPerInventoryUnit = 1 / containerSize)
+ *     resolves to a global unit (unitsPerCanonical = 1/containerSize)
  */
 export async function autoSeedRecipeUnitsForItem(
   item: Pick<
@@ -127,14 +131,14 @@ export async function autoSeedRecipeUnitsForItem(
     existing.filter((u) => u.isIssueUnit === 0).map((u) => u.unitId)
   );
 
-  const seeds: Array<{ unitId: string; qtyPerInventoryUnit: number; sortOrder: number }> = [];
+  const seeds: Array<{ unitId: string; unitsPerCanonical: number; sortOrder: number }> = [];
 
-  // 1. Inventory unit itself
+  // 1. Inventory unit itself — identity row (unitsPerCanonical = 1)
   if (!existingRecipeUnitIds.has(item.unitId)) {
-    seeds.push({ unitId: item.unitId, qtyPerInventoryUnit: 1, sortOrder: 0 });
+    seeds.push({ unitId: item.unitId, unitsPerCanonical: 1, sortOrder: 0 });
   }
 
-  // 2. Case row (when we have a meaningful caseSize)
+  // 2. Case row — e.g. 1/20 case per LB for a 20-LB case
   const caseUnit = units.find((u) => u.name.toLowerCase() === "case");
   if (
     caseUnit &&
@@ -144,12 +148,12 @@ export async function autoSeedRecipeUnitsForItem(
   ) {
     seeds.push({
       unitId: caseUnit.id,
-      qtyPerInventoryUnit: 1 / item.caseSize,
+      unitsPerCanonical: 1 / item.caseSize,
       sortOrder: 1,
     });
   }
 
-  // 3. Container row (when label and containerSize are set and resolve)
+  // 3. Container row — e.g. 1/13 can per OZ for a 13-OZ can
   if (item.containerLabel && item.containerSize && item.containerSize > 0) {
     const containerUnit = findUnitByLabel(units, item.containerLabel);
     if (
@@ -159,7 +163,7 @@ export async function autoSeedRecipeUnitsForItem(
     ) {
       seeds.push({
         unitId: containerUnit.id,
-        qtyPerInventoryUnit: 1 / item.containerSize,
+        unitsPerCanonical: 1 / item.containerSize,
         sortOrder: 2,
       });
     }
@@ -171,7 +175,7 @@ export async function autoSeedRecipeUnitsForItem(
         companyId: item.companyId,
         inventoryItemId: item.id,
         unitId: seed.unitId,
-        qtyPerInventoryUnit: seed.qtyPerInventoryUnit,
+        unitsPerCanonical: seed.unitsPerCanonical,
         isIssueUnit: 0,
         sortOrder: seed.sortOrder,
       });

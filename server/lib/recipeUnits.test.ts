@@ -114,7 +114,7 @@ describe("convertToInventoryUnits — explicit per-item override WINS over water
     id: "override-oil-cup",
     inventoryItemId: ITEM_BY_LB.id,
     unitId: CUP.id,
-    qtyPerInventoryUnit: 1.84, // cups per lb — olive-oil density factor
+    unitsPerCanonical: 1.84, // 1.84 cups per LB — olive-oil density factor
     isIssueUnit: 0,
     sortOrder: 1,
     companyId: "company-1",
@@ -130,15 +130,15 @@ describe("convertToInventoryUnits — explicit per-item override WINS over water
       [OIL_CUP_OVERRIDE]
     );
     expect(result).not.toBeNull();
-    // qty / qtyPerInventoryUnit = 1 / 1.84 ≈ 0.5435 lb
+    // qty_in_canonical = recipe_qty / unitsPerCanonical = 1 / 1.84 ≈ 0.5435 lb
     // Water-density would give 0.5216 lb — different, proves override is used.
     expect(result!).toBeCloseTo(1 / 1.84, 4);
     // Confirm it is NOT the water-density value
     expect(result!).not.toBeCloseTo(0.5216, 3);
   });
 
-  it("zero qtyPerInventoryUnit override is ignored, falls back to water-density", () => {
-    const BAD_OVERRIDE: InventoryItemUnit = { ...OIL_CUP_OVERRIDE, qtyPerInventoryUnit: 0 };
+  it("zero unitsPerCanonical override is ignored, falls back to water-density", () => {
+    const BAD_OVERRIDE: InventoryItemUnit = { ...OIL_CUP_OVERRIDE, unitsPerCanonical: 0 };
     const result = convertToInventoryUnits(1, CUP, ITEM_BY_LB, ALL_UNITS, [BAD_OVERRIDE]);
     expect(result).not.toBeNull();
     // Falls through to water-density: ≈ 0.5216 lb

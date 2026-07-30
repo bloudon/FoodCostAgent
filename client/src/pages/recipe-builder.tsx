@@ -128,7 +128,7 @@ type ComponentWithDetails = RecipeComponent & {
 };
 
 // Utility: convert qty between two units, returning the new qty or null when no
-// conversion path exists. Tries per-item Recipe Unit rows first (qtyPerInventoryUnit),
+// conversion path exists. Tries per-item Recipe Unit rows first (unitsPerCanonical),
 // then falls back to same-kind toBaseRatio math.
 function convertQtyBetweenUnits(
   qty: number,
@@ -144,20 +144,20 @@ function convertQtyBetweenUnits(
   if (itemId && itemBaseUnitId && companyRecipeUnits) {
     const fromCustom = companyRecipeUnits.find(
       r => r.inventoryItemId === itemId && r.unitId === fromUnitId &&
-           r.isIssueUnit === 0 && r.qtyPerInventoryUnit > 0,
+           r.isIssueUnit === 0 && r.unitsPerCanonical > 0,
     );
     const toCustom = companyRecipeUnits.find(
       r => r.inventoryItemId === itemId && r.unitId === toUnitId &&
-           r.isIssueUnit === 0 && r.qtyPerInventoryUnit > 0,
+           r.isIssueUnit === 0 && r.unitsPerCanonical > 0,
     );
     if (fromCustom && toUnitId === itemBaseUnitId) {
-      return Math.round(qty / fromCustom.qtyPerInventoryUnit * 10000) / 10000;
+      return Math.round(qty / fromCustom.unitsPerCanonical * 10000) / 10000;
     }
     if (toCustom && fromUnitId === itemBaseUnitId) {
-      return Math.round(qty * toCustom.qtyPerInventoryUnit * 10000) / 10000;
+      return Math.round(qty * toCustom.unitsPerCanonical * 10000) / 10000;
     }
     if (fromCustom && toCustom) {
-      return Math.round(qty / fromCustom.qtyPerInventoryUnit * toCustom.qtyPerInventoryUnit * 10000) / 10000;
+      return Math.round(qty / fromCustom.unitsPerCanonical * toCustom.unitsPerCanonical * 10000) / 10000;
     }
   }
 
@@ -277,7 +277,7 @@ function InlineIngredientRow({
         const r = await apiRequest(
           "PATCH",
           `/api/inventory-items/${inventoryItemForConv}/recipe-units/${existingConvRow.id}`,
-          { qtyPerInventoryUnit: qty }
+          { unitsPerCanonical: qty }
         );
         if (!r.ok) throw new Error("Failed to update conversion");
         return r.json();
@@ -285,7 +285,7 @@ function InlineIngredientRow({
         const r = await apiRequest(
           "POST",
           `/api/inventory-items/${inventoryItemForConv}/recipe-units`,
-          { unitId: component.unitId, qtyPerInventoryUnit: qty, isIssueUnit: 0 }
+          { unitId: component.unitId, unitsPerCanonical: qty, isIssueUnit: 0 }
         );
         if (!r.ok) throw new Error("Failed to save conversion");
         return r.json();
@@ -447,8 +447,8 @@ function InlineIngredientRow({
   // include in the dependency array — no Temporal Dead Zone risk.
   useEffect(() => {
     if (convPopoverOpen) {
-      if (existingConvRow?.qtyPerInventoryUnit != null) {
-        setConvFactor(String(existingConvRow.qtyPerInventoryUnit));
+      if (existingConvRow?.unitsPerCanonical != null) {
+        setConvFactor(String(existingConvRow.unitsPerCanonical));
         setConvFactorIsSuggested(false);
       } else {
         const suggested = inventoryUnitRaw
@@ -472,7 +472,7 @@ function InlineIngredientRow({
         }
       }
     }
-  }, [convPopoverOpen, existingConvRow?.qtyPerInventoryUnit, component.unitName, inventoryUnitRaw]);
+  }, [convPopoverOpen, existingConvRow?.unitsPerCanonical, component.unitName, inventoryUnitRaw]);
 
   if (component.missingItem) {
     return (
@@ -1129,8 +1129,8 @@ function RecipeBuilderContent() {
         u.unitId === fromUnit.id &&
         u.isIssueUnit === 0
     );
-    if (override && override.qtyPerInventoryUnit > 0) {
-      return comp.qty / override.qtyPerInventoryUnit;
+    if (override && override.unitsPerCanonical > 0) {
+      return comp.qty / override.unitsPerCanonical;
     }
     const itemUnit = units?.find((u) => u.id === item.unitId);
     if (
@@ -1182,7 +1182,7 @@ function RecipeBuilderContent() {
     const override = companyRecipeUnits?.find(
       (u) => u.inventoryItemId === item.id && u.unitId === fromUnit.id && u.isIssueUnit === 0
     );
-    if (override && override.qtyPerInventoryUnit > 0) return false;
+    if (override && override.unitsPerCanonical > 0) return false;
     // Same-kind → not water-density
     if (fromUnit.kind === itemUnit.kind) return false;
     // Cross-kind volume↔weight with valid ratios → water-density estimate
@@ -1584,7 +1584,7 @@ function RecipeBuilderContent() {
   // Get compatible units for a specific component (for inline editing).
   // Mirrors `convertToInventoryUnits` so the dropdown only surfaces units the
   // cost engine can actually convert: the inventory unit itself, per-item
-  // Recipe Unit overrides (qtyPerInventoryUnit > 0, isIssueUnit = 0),
+  // Recipe Unit overrides (unitsPerCanonical > 0, isIssueUnit = 0),
   // same-kind units (via toBaseRatio), and cross-kind volume↔weight pairs
   // (via water-density fallback: 1 mL ≈ 1 g).
   // Sub-recipes only use same-kind because they don't have a per-item
@@ -1613,7 +1613,7 @@ function RecipeBuilderContent() {
     result.set(baseUnit.id, baseUnit);
 
     // Whitelisted per-item Recipe Units — only rows with a positive
-    // qtyPerInventoryUnit can actually be converted.
+    // unitsPerCanonical can actually be converted.
     let hasWhitelist = false;
     if (inventoryItemId && companyRecipeUnits) {
       const orderedWhitelist = companyRecipeUnits
@@ -1621,7 +1621,7 @@ function RecipeBuilderContent() {
           (row) =>
             row.inventoryItemId === inventoryItemId &&
             row.isIssueUnit === 0 &&
-            row.qtyPerInventoryUnit > 0
+            row.unitsPerCanonical > 0
         )
         .slice()
         .sort((a, b) => a.sortOrder - b.sortOrder);
