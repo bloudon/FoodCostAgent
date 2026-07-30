@@ -126,6 +126,12 @@ type VendorItem = {
   pricedAt: string | null;
   active: number;
   lastOrderDate: string | null;
+  // Pack geometry (server-computed, v066)
+  canonicalQtyPerPurchaseUnit: number | null;
+  normalizedPricePerCanonicalUnit: number | null;
+  packGeometryStatus: string | null; // 'verified'|'parsed'|'inferred'|'incomplete'|'conflicting'|'variable_weight'
+  pricingBasis: string | null;
+  isVariableWeight: number | null;
   vendor: {
     id: string;
     name: string;
@@ -1765,7 +1771,15 @@ export default function InventoryItemDetail() {
                         </p>
                         <p className="text-xs mt-0.5">
                           <span>Case: ${vi.lastCasePrice.toFixed(2)}</span>
-                          <span className="text-muted-foreground"> · Unit: ${vi.lastPrice.toFixed(4)}</span>
+                          <span className="text-muted-foreground"> · {
+                              vi.normalizedPricePerCanonicalUnit != null
+                                ? `$${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/${formatUnitName(unit?.name)}`
+                                : vi.packGeometryStatus === "conflicting"
+                                  ? "⚠ incompatible units"
+                                  : vi.packGeometryStatus === "variable_weight"
+                                    ? "variable weight"
+                                    : `Unit: $${vi.lastPrice.toFixed(4)}`
+                            }</span>
                           {vi.priceSource && (() => {
                             const { label, isLegacy } = formatPriceSource(vi.priceSource);
                             return isLegacy ? (
@@ -1946,7 +1960,27 @@ export default function InventoryItemDetail() {
                             <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
                             <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
-                            <TableCell className="text-muted-foreground">${vi.lastPrice.toFixed(4)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {vi.normalizedPricePerCanonicalUnit != null ? (
+                                <span title={`1 ${formatUnitName(vi.unit?.name)} = ${vi.canonicalQtyPerPurchaseUnit ?? "?"} ${formatUnitName(unit?.name)} · Case: $${vi.lastCasePrice.toFixed(2)} · Normalized: $${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/${formatUnitName(unit?.name)}`}>
+                                  ${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/{formatUnitName(unit?.name)}
+                                </span>
+                              ) : vi.packGeometryStatus === "conflicting" ? (
+                                <span className="text-amber-600 dark:text-amber-400 text-xs" title="Cannot normalize price — purchase unit and inventory unit use incompatible measurements.">
+                                  ⚠ incompatible units
+                                </span>
+                              ) : vi.packGeometryStatus === "incomplete" || vi.packGeometryStatus == null ? (
+                                <span className="text-muted-foreground/60 text-xs" title={`Add the total ${formatUnitName(unit?.name)} contained in one ${formatUnitName(vi.unit?.name)} to enable price comparison.`}>
+                                  ${vi.lastPrice.toFixed(4)}
+                                </span>
+                              ) : vi.packGeometryStatus === "variable_weight" ? (
+                                <span className="text-muted-foreground/60 text-xs" title="Weight varies by delivery — estimated price only.">
+                                  ~${vi.lastPrice.toFixed(4)} est.
+                                </span>
+                              ) : (
+                                <span>${vi.lastPrice.toFixed(4)}</span>
+                              )}
+                            </TableCell>
                             <TableCell data-testid={`text-price-source-${vi.id}`}>
                               {(() => {
                                 const { label, isLegacy } = formatPriceSource(vi.priceSource);

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, unique, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, unique, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -539,6 +539,28 @@ export const vendorItems = pgTable("vendor_items", {
   priceSourceReferenceId: text("price_source_reference_id"), // receipt ID, invoice ID, etc.
   // Extension pilot: how the price arrived (e.g. "browser_extension")
   priceTransport: text("price_transport"),
+
+  // ── Pack Geometry (v066) ───────────────────────────────────────────────────
+  // Total canonical inventory units contained in one orderable purchase unit.
+  // Examples: 4-pack × 5 LB = 20; 12 × 750 ML = 9000 (if canonical = ML); 30-ct eggs = 30.
+  // Always server-derived; never accepted from client requests unvalidated.
+  canonicalQtyPerPurchaseUnit: doublePrecision("canonical_qty_per_purchase_unit"),
+  // always server-derived: last_price / canonical_qty_per_purchase_unit.
+  // Cleared when geometry is incomplete or conflicting.
+  normalizedPricePerCanonicalUnit: doublePrecision("normalized_price_per_canonical_unit"),
+  // How was the geometry established?
+  // 'verified'|'parsed'|'inferred'|'incomplete'|'conflicting'|'variable_weight'
+  packGeometryStatus: text("pack_geometry_status"),
+  // Where did the geometry value originate?
+  // 'manual'|'vendor_portal'|'invoice'|'csv_order_guide'|'legacy_migration'|'ai_parse'|'receipt_confirmation'
+  packGeometrySource: text("pack_geometry_source"),
+  packGeometryUpdatedAt: timestamp("pack_geometry_updated_at"),
+  // 'purchase_unit' (default): last_price is price per purchase unit (CS, each, etc.)
+  // 'canonical_unit': last_price is already price per canonical unit (e.g. lb-priced meats)
+  pricingBasis: text("pricing_basis").default("purchase_unit"),
+  // 1 = weight varies by actual delivered weight (meats, seafood, cheese by case).
+  // These items cannot have a definitive normalized price from an estimated weight.
+  isVariableWeight: integer("is_variable_weight").default(0),
 });
 
 export const insertVendorItemSchema = createInsertSchema(vendorItems).omit({ id: true });

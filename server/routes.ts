@@ -16,6 +16,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
+import { updateVendorItemPackGeometry, invalidatePackGeometryForInventoryItem } from "./services/vendorPackGeometry";
 import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedLineSavings, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
@@ -8375,6 +8376,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await cacheInvalidator.invalidateRecipes(currentItem.companyId);
       }
       
+      // When the canonical unit changes, all linked vendor-item geometries are invalid.
+      // Invalidate them so the UI surfaces a re-verify prompt.
+      if (updates.unitId !== undefined && updates.unitId !== currentItem.unitId) {
+        try {
+          await invalidatePackGeometryForInventoryItem(req.params.id);
+        } catch (geomErr: any) {
+          console.warn(`[packGeometry] invalidation failed for inventoryItem ${req.params.id}:`, geomErr?.message);
+        }
+      }
+
       // Invalidate inventory cache after update
       await cacheInvalidator.invalidateInventory(currentItem.companyId, req.params.id);
       cacheLog(`INVALIDATE inventory after update (${currentItem.companyId}, ${req.params.id})`);
@@ -8784,6 +8795,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // If no price was provided, recordVendorPrice wasn't called, so trigger
+      // geometry classification directly so the row gets its status set.
+      if (!enteredCasePrice || enteredCasePrice <= 0) {
+        updateVendorItemPackGeometry({ vendorItemId: vendorItem.id, source: "manual" }).catch(() => {});
+      }
+
       res.status(201).json(vendorItem);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -8871,6 +8888,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateInventoryItem(vendorItem.inventoryItemId, syncUpdates);
           }
         }
+      }
+
+      // When structural fields change without a price change, recordVendorPrice
+      // wasn't called, so the inline geometry in _executeWrite didn't run.
+      // Re-classify geometry so canonical_qty stays consistent with new case_size.
+      const structuralGeomChanged =
+        updates.caseSize !== undefined ||
+        updates.innerPackSize !== undefined ||
+        updates.packUom !== undefined ||
+        updates.purchaseUnitId !== undefined;
+      if (structuralGeomChanged && !priceChanging) {
+        updateVendorItemPackGeometry({ vendorItemId: req.params.id, source: "manual" }).catch(() => {});
       }
 
       res.json(vendorItem);

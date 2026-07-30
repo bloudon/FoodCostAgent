@@ -1219,6 +1219,32 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS menu_location_assignments_menu_idx ON menu_location_assignments (menu_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS menu_location_assignments_company_idx ON menu_location_assignments (company_id)`);
 
+    // Task #724 — Vendor pack geometry: normalized pricing on vendor_items
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS canonical_qty_per_purchase_unit double precision`);
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS normalized_price_per_canonical_unit double precision`);
+    // 'verified'|'parsed'|'inferred'|'incomplete'|'conflicting'|'variable_weight'
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_geometry_status text`);
+    // 'manual'|'vendor_portal'|'invoice'|'csv_order_guide'|'legacy_migration'|'ai_parse'|'receipt_confirmation'
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_geometry_source text`);
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pack_geometry_updated_at timestamp`);
+    // 'purchase_unit' (default) | 'canonical_unit' (already per-canonical, e.g. lb-priced meats)
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS pricing_basis text DEFAULT 'purchase_unit'`);
+    // 1 = weight varies per delivery; no definitive normalized price possible
+    await db.execute(sql`ALTER TABLE vendor_items ADD COLUMN IF NOT EXISTS is_variable_weight integer DEFAULT 0`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS vi_pack_geometry_status_idx ON vendor_items (pack_geometry_status)`);
+
+    // Backfill pack geometry for all existing vendor items that haven't been classified yet.
+    // Runs asynchronously in the background so it doesn't block startup.
+    // Non-fatal: errors are caught inside backfillVendorPackGeometry().
+    setImmediate(async () => {
+      try {
+        const { backfillVendorPackGeometry } = await import("./services/vendorPackGeometry");
+        await backfillVendorPackGeometry();
+      } catch (e: any) {
+        console.warn("[PackGeometry] Backfill error (non-fatal):", e?.message ?? e);
+      }
+    });
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

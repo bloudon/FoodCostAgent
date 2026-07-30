@@ -28,6 +28,8 @@ import {
   inventoryItems,
   inventoryItemPriceHistory,
 } from "@shared/schema";
+import { computePackGeometry } from "./vendorPackGeometry";
+import type { PackGeometrySource } from "./vendorPackGeometry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,6 +348,37 @@ async function _executeWrite(
       pricedAt: now,
       ...(referenceId ? { priceSourceReferenceId: referenceId } : {}),
       updatedAt: now,
+    })
+    .where(eq(vendorItems.id, vendorItemId));
+
+  // ── 1b. Update pack geometry using the just-written price ─────────────────
+  // All inputs are available from params — no extra DB round-trip needed.
+  const geomPrice = unitPrice > 0 ? unitPrice : (casePrice > 0 ? casePrice / Math.max(caseSize, 1) : 0);
+  const geomResult = computePackGeometry({
+    caseSize,
+    innerPackSize,
+    packUom,
+    lastPrice: geomPrice,
+    canonicalUnitName: inventoryUnitName,
+    pricingBasis: "purchase_unit",
+  });
+  const geomSourceMap: Record<string, PackGeometrySource> = {
+    order_guide_import: "csv_order_guide",
+    invoice_scan: "invoice",
+    receipt: "receipt_confirmation",
+    connector: "vendor_portal",
+    manual: "manual",
+    po_create: "manual",
+    legacy_unknown: "legacy_migration",
+  };
+  await d
+    .update(vendorItems)
+    .set({
+      canonicalQtyPerPurchaseUnit: geomResult.canonicalQty,
+      normalizedPricePerCanonicalUnit: geomResult.normalizedPrice,
+      packGeometryStatus: geomResult.status,
+      packGeometrySource: geomSourceMap[source] ?? "manual",
+      packGeometryUpdatedAt: now,
     })
     .where(eq(vendorItems.id, vendorItemId));
 
