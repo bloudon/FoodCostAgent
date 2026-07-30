@@ -29,7 +29,7 @@ export function GlobalAdminHeader() {
   };
 
   return (
-    <div className="relative z-[70] bg-accent border-b border-accent-border px-4 py-2 flex items-center justify-between flex-wrap gap-1">
+    <div className="bg-accent border-b border-accent-border pl-[184px] pr-4 py-2 flex items-center justify-between flex-wrap gap-1">
       <div className="flex items-center gap-2 min-w-0">
         <Badge variant="secondary" className="gap-1.5 bg-background/90 shrink-0">
           <Building2 className="h-3 w-3" />
