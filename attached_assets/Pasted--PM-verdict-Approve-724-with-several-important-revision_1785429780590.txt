@@ -1,0 +1,381 @@
+## PM verdict
+
+**Approve #724 with several important revisions.**
+
+This is the correct architectural direction. Purchase-pack geometry belongs on the **vendor item**, while the inventory item retains a stable canonical unit such as LB, FL OZ, or EA.
+
+The ticket fixes the core mathematical requirement for valid vendor comparison:
+
+> Vendor purchase price ÷ canonical quantity in that vendor’s purchase unit = normalized canonical-unit price.
+
+However, the implementation needs stronger rules around backfilling, recalculation, precision, and whether two vendor products are genuinely comparable.
+
+# What is correct
+
+Keep these decisions:
+
+* `inventory_items.unit_id` remains the canonical inventory unit.
+* `inventory_items.price_per_unit` and `avg_cost_per_unit` remain canonical-unit costs.
+* Each vendor item owns its purchase-pack geometry.
+* Normalized vendor pricing is calculated server-side.
+* Missing pack geometry produces an explicit warning rather than a misleading zero.
+* Vendor comparison uses the persisted normalized value.
+* No migration to case-based inventory costing.
+
+This directly protects recipe costing, predictive ordering, and multi-vendor comparison.
+
+# Required changes before build
+
+## 1. Rename the quantity field for maximum clarity
+
+`canonical_qty_per_purchase_unit` is reasonably clear, but its meaning should be documented precisely:
+
+> The number of canonical inventory units contained in one orderable purchase unit for this vendor item.
+
+Examples:
+
+| Vendor pack           | Canonical unit | Stored quantity |
+| --------------------- | -------------- | --------------: |
+| 4 × 5 LB case         | LB             |              20 |
+| 12 × 750 ML case      | ML             |           9,000 |
+| 30-count case of eggs | EA             |              30 |
+| One 25 LB bag         | LB             |              25 |
+| Sold individually     | EA             |               1 |
+
+This must not mean quantity per inner pack, quantity per case component, or case count.
+
+## 2. Do not assume every existing row can be safely backfilled
+
+The proposed backfill says:
+
+> Compute from existing `case_size` and the relationship between `purchase_unit_id` and `inventory_items.unit_id`.
+
+That will work only when the existing data has enough trustworthy information.
+
+Potential problems:
+
+* `case_size` may already represent canonical quantity.
+* It may represent inner packs.
+* It may represent pieces per pack rather than total pieces per case.
+* `pack_uom` may contain parsing hints not represented by `purchase_unit_id`.
+* Existing data may contain stale or incorrect geometry.
+* The purchase and canonical units may belong to incompatible dimensions.
+* Variable-weight cases may not have one fixed canonical quantity.
+
+The migration should classify each row:
+
+* **Confidently derived**
+* **Already explicit**
+* **Ambiguous**
+* **Dimension mismatch**
+* **Missing geometry**
+* **Variable weight**
+
+Only confidently derived values should be written automatically.
+
+Everything else should remain null and be added to a remediation queue.
+
+## 3. Preserve how the quantity was established
+
+Add metadata such as:
+
+```text
+pack_geometry_source
+pack_geometry_status
+pack_geometry_updated_at
+pack_geometry_raw_text
+```
+
+Possible sources:
+
+* Vendor portal
+* Invoice
+* CSV order guide
+* Manual entry
+* Legacy migration
+* AI parse
+* Receipt confirmation
+
+Possible statuses:
+
+* Verified
+* Parsed
+* Inferred
+* Incomplete
+* Conflicting
+* Variable weight
+
+This matters because a manually verified `20 LB per CS` should be trusted more than a value inferred from a loose legacy string.
+
+## 4. Centralize the calculation
+
+Do not independently recompute these values in Square sync, CSV import, manual entry, browser-extension capture, invoice ingestion, and every future connector.
+
+Create one domain service, for example:
+
+```ts
+updateVendorItemPackGeometry({
+  vendorItemId,
+  purchasePrice,
+  purchaseUnitId,
+  canonicalQuantity,
+  source,
+});
+```
+
+That service should:
+
+* Validate quantity
+* Validate dimensional compatibility
+* Calculate normalized price
+* Apply decimal rounding rules
+* Set status and source
+* Update timestamps
+* Record an audit event where appropriate
+
+Every write path should call this same service.
+
+The ticket currently lists Square, CSV, and manual entry, but FnB Cost Pro has additional price sources that must be audited:
+
+* Order-guide imports
+* Invoice and receipt ingestion
+* Browser-extension capture
+* Vendor portal sync
+* Manual price edits
+* Receiving
+* Seed/import scripts
+* Orderly migration
+* Any price-integrity workflows from M3A
+
+A code search for every write to `vendor_items.last_price`, `case_size`, `pack_uom`, and `purchase_unit_id` should be an acceptance criterion.
+
+## 5. Decide whether normalized price is derived or authoritative
+
+Persisting `normalized_price_per_canonical_unit` is reasonable for performance and consistent display, but it must always be treated as **derived data**.
+
+That means:
+
+* Users cannot edit it directly.
+* It is recomputed whenever price, quantity, or canonical unit changes.
+* It is cleared when pack geometry becomes invalid.
+* It is never accepted from a client request as authoritative.
+* A repair job can recalculate all rows.
+
+Ideally, add a database or service invariant:
+
+```text
+normalized_price =
+last_price / canonical_qty_per_purchase_unit
+```
+
+within the selected decimal precision.
+
+## 6. Handle inventory-unit changes
+
+The ticket says changing `inventory_items.unit_id` is out of scope, but the system still needs defined behavior if someone later changes an item’s canonical unit.
+
+For example:
+
+* LB changes to OZ
+* GAL changes to FL OZ
+* EA changes to DOZEN
+
+Every linked vendor item’s canonical quantity and normalized price must then be recalculated.
+
+At minimum, #724 should establish:
+
+> Changing an inventory item’s canonical unit triggers recalculation or invalidation of all linked vendor-item pack geometry.
+
+Otherwise stored normalized prices can silently become wrong.
+
+## 7. Define decimal precision and rounding
+
+Do not rely on generic decimal defaults.
+
+Recommended conceptual precision:
+
+* Canonical quantity: enough precision for fractional weight and volume
+* Purchase price: currency precision plus support for imported fractional values
+* Normalized price: at least 6 decimal places, preferably more internally
+* Display: rounded based on context, without changing stored value
+
+Examples that require precision:
+
+* $43.25 for 128 FL OZ
+* $0.337890625 per FL OZ
+* Small spice quantities
+* Gram-level recipe costing
+* Liquor cost per ML
+* Partial edible yields
+
+Recipe-cost calculations should use the high-precision value rather than a two-decimal display value.
+
+## 8. Account for variable-weight products
+
+Some meat, seafood, cheese, and produce items may be ordered as a case but invoiced by actual weight.
+
+For these products:
+
+* The purchase unit may be `CS`.
+* The case does not contain one reliable fixed number of pounds.
+* Invoice price may be price per LB rather than price per case.
+* An average case weight may be useful for ordering, but not authoritative for costing.
+
+The model should support either:
+
+* `pricing_basis = CANONICAL_UNIT`, where the vendor price is already per LB, or
+* `pricing_basis = PURCHASE_UNIT`, where price is per case and fixed geometry is required.
+
+Suggested fields or equivalent semantics:
+
+```text
+pricing_basis
+is_variable_weight
+estimated_canonical_qty_per_purchase_unit
+```
+
+Do not calculate a definitive normalized case price from an estimated catch weight without visibly marking it as estimated.
+
+## 9. Vendor comparison requires more than normalization
+
+Normalized price is necessary but does not prove the products are interchangeable.
+
+Comparison should continue respecting:
+
+* Product match confidence
+* Pack compatibility
+* Brand or specification requirements
+* Yield differences
+* Quality grade
+* Approved-vendor restrictions
+* Contract pricing
+* Price freshness
+* Location availability
+* Delivery minimums and days
+
+The UI should not automatically label the lowest normalized cost as “best vendor” unless the products are confirmed comparable.
+
+The ticket should say:
+
+> Vendor comparison uses normalized prices only for vendor items already matched to the same inventory item and otherwise eligible for comparison.
+
+Even then, your existing `savingsReliable` and freshness rules should remain in force.
+
+# Recommended schema additions
+
+The two proposed columns are appropriate:
+
+```text
+canonical_qty_per_purchase_unit decimal nullable
+normalized_price_per_canonical_unit decimal nullable
+```
+
+I would strongly consider adding:
+
+```text
+pack_geometry_status
+pack_geometry_source
+pack_geometry_updated_at
+pricing_basis
+is_variable_weight
+```
+
+You may stage some of these in a follow-up, but `status` and `source` are especially valuable now.
+
+# Revised backfill rules
+
+For each vendor item:
+
+1. Identify the inventory item’s canonical unit.
+2. Determine whether the vendor price is per purchase unit or already per canonical unit.
+3. Parse the stored purchase pack using explicit numeric fields first.
+4. Use `pack_uom` or raw pack text only as supporting evidence.
+5. Verify unit dimensions are compatible.
+6. Calculate total canonical quantity only when unambiguous.
+7. Calculate normalized price only when price and quantity are both valid and positive.
+8. Otherwise leave both derived values null and mark the row incomplete.
+9. Store the derivation source and confidence/status.
+10. Produce a migration reconciliation report.
+
+The report should include:
+
+* Total vendor items
+* Successfully normalized
+* Already valid
+* Missing price
+* Missing geometry
+* Ambiguous geometry
+* Dimension mismatches
+* Variable-weight items
+* Invalid zero or negative values
+
+# UI requirements
+
+“Pack configuration incomplete” is correct but could be made more actionable.
+
+The vendor-item row should show:
+
+> **Pack configuration incomplete**
+> Add the total LB contained in one case to enable price comparison.
+
+Or:
+
+> **Cannot normalize price**
+> Purchase unit and inventory unit use incompatible measurements.
+
+Avoid one generic warning for every failure type.
+
+On manual editing, show the relationship plainly:
+
+> 1 CS = 20 LB
+> Case price: $62.00
+> Normalized price: $3.10/LB
+
+That is understandable to an operator and reinforces the correct domain model.
+
+# Missing acceptance criteria
+
+Add these:
+
+* Negative and zero canonical quantities are rejected.
+* Dimensionally incompatible conversions are rejected.
+* Normalized price is cleared when pack geometry becomes incomplete.
+* Normalized price cannot be directly edited by clients.
+* Every server-side write path that changes price or pack geometry triggers recalculation.
+* Vendor items already priced per canonical unit are supported.
+* Variable-weight vendor items do not receive misleading fixed normalized prices.
+* Changing an inventory item’s canonical unit recalculates or invalidates linked vendor values.
+* Migration creates a detailed reconciliation summary.
+* Existing vendor-routing reliability and price-freshness checks remain intact.
+
+# Required tests
+
+At minimum:
+
+1. Case of 4 × 5 LB at $62 = $3.10/LB.
+2. Case of 12 × 750 ML at $120 = $0.013333…/ML.
+3. Thirty-count eggs at $9 = $0.30/EA.
+4. Purchase unit and canonical unit both EA, quantity 1.
+5. Missing geometry returns null normalized price.
+6. Zero geometry is rejected.
+7. Weight-to-volume mismatch is rejected.
+8. Price change recalculates normalized price.
+9. Pack change recalculates normalized price.
+10. Canonical-unit change invalidates or converts linked values.
+11. Two vendors with different case sizes compare correctly.
+12. Variable-weight product is marked estimated or priced by canonical unit.
+13. Stale-price reliability remains false even when normalized pricing exists.
+14. Browser-extension and invoice update paths both recalculate correctly.
+15. Recipe costing remains unchanged because inventory canonical costs are untouched.
+
+# Final decision
+
+**#724 is approved after these revisions.**
+
+The most important change is to treat pack normalization as a proper domain capability rather than two columns populated opportunistically by a few sync paths.
+
+The product rule should remain:
+
+> **The inventory item defines what the product is measured in. Each vendor item defines how that vendor sells it.**
+
+That structure supports accurate vendor comparison without destabilizing recipes, inventory, receiving, or predictive ordering.
