@@ -17,7 +17,6 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -268,30 +267,43 @@ export function AppSidebar() {
 
       {/* ── Content: flat rail ───────────────────────────────────────────── */}
       <SidebarContent>
-        <SidebarMenu className="gap-0.5 px-2 py-2">
+        <SidebarMenu className="gap-0.5 px-1 py-2">
           {visibleItems.map((item) => {
             const active = activeSection === item.id;
+
+            const linkEl = (
+              <Link
+                href={item.href}
+                onClick={closeMobile}
+                data-testid={isMobile ? `${item.testId}-mobile` : item.testId}
+                className={cn(
+                  "flex items-center rounded-md transition-colors w-full",
+                  "text-sidebar-foreground",
+                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  active && "bg-sidebar-accent text-sidebar-accent-foreground",
+                  isExpanded ? "gap-3 px-3 py-2" : "justify-center py-3 px-0"
+                )}
+              >
+                <item.icon className="h-12 w-12 shrink-0" />
+                {isExpanded ? (
+                  <span className={cn("text-sm font-medium", active && "font-semibold")}>
+                    {item.label}
+                  </span>
+                ) : (
+                  <span className="sr-only">{item.label}</span>
+                )}
+              </Link>
+            );
+
             return (
               <SidebarMenuItem key={item.id}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={active}
-                  tooltip={isExpanded ? undefined : item.label}
-                  data-testid={isMobile ? `${item.testId}-mobile` : item.testId}
-                  className="gap-3"
-                >
-                  <Link href={item.href} onClick={closeMobile}>
-                    <item.icon className="h-12! w-12! shrink-0" />
-                    {isExpanded && (
-                      <span className={cn("font-medium", active && "font-semibold")}>
-                        {item.label}
-                      </span>
-                    )}
-                    {!isExpanded && (
-                      <span className="sr-only">{item.label}</span>
-                    )}
-                  </Link>
-                </SidebarMenuButton>
+                {!isExpanded ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
+                ) : linkEl}
               </SidebarMenuItem>
             );
           })}
