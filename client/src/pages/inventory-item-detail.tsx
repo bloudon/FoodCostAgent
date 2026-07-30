@@ -1509,7 +1509,7 @@ export default function InventoryItemDetail() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {item.manufacturer && <span>{item.manufacturer} | </span>}PLU/SKU: {item.pluSku}
+              {item.manufacturer && <span>{item.manufacturer}{item.pluSku ? " | " : ""}</span>}{item.pluSku ? `PLU/SKU: ${item.pluSku}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">

@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import multer from "multer";
 import { createCheckoutSession, stripeWebhook, getPlans } from "./billing";
+import { GlobalSearchService } from "./globalSearch";
 import { storage } from "./storage";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
@@ -4265,6 +4266,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ============ GLOBAL SEARCH ============
+  app.get("/api/search", requireAuth, async (req: AuthRequest, res) => {
+    const companyId = req.companyId;
+    if (!companyId) return res.status(400).json({ error: "No company context" });
+
+    const q = (req.query.q as string ?? "").trim();
+    if (!q || q.length < 2) {
+      return res.status(400).json({ error: "Query must be at least 2 characters" });
+    }
+
+    const startTime = Date.now();
+    try {
+      const service = new GlobalSearchService(companyId);
+      const results = await Promise.race([
+        service.searchAll(q),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Search timeout")), 5000)
+        ),
+      ]);
+      const elapsed = Date.now() - startTime;
+      return res.json({ results, elapsed });
+    } catch (err: any) {
+      if (err.message === "Search timeout") {
+        return res.status(504).json({ error: "Search timed out" });
+      }
+      throw err;
     }
   });
 

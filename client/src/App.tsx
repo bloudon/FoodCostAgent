@@ -1,6 +1,6 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
-import { useEffect, useState } from "react";
-import { LogOut, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { LogOut, ChevronLeft, ChevronRight, RotateCcw, Search } from "lucide-react";
 import { NavHistoryProvider, useNavHistory } from "@/lib/nav-history-context";
 import { getLabelForPath } from "@/lib/route-config";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -101,6 +101,7 @@ import PrepChartProduction from "@/pages/prep-chart-production";
 import ShelfScans from "@/pages/shelf-scans";
 import DashboardMobile from "@/pages/dashboard-mobile";
 import { ChatPanel } from "@/components/chat-panel";
+import { GlobalSearch } from "@/components/global-search";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { VersionBanner } from "@/components/version-banner";
 import { PosDisconnectedBanner } from "@/components/pos-disconnected-banner";
@@ -252,7 +253,7 @@ function ProtectedLayout() {
 }
 
 /** Renders the top bar inside SidebarInset so useSidebar() is in scope. */
-function AppTopBar() {
+function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
   const { isMobile } = useSidebar();
   const { user, logout } = useAuth();
   const { t } = useAppLanguage();
@@ -260,6 +261,7 @@ function AppTopBar() {
   const { canGoBack, canGoForward, goBack, goForward, refresh } = useNavHistory();
   const [location] = useLocation();
   const pageLabel = getLabelForPath(location);
+  const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
   const userInitials =
     user?.firstName && user?.lastName
@@ -348,6 +350,27 @@ function AppTopBar() {
             {companyName}
           </span>
         )}
+
+        {/* Global search trigger */}
+        {onSearchOpen && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onSearchOpen}
+                aria-label="Search"
+                data-testid="button-global-search"
+                className="inline-flex items-center justify-center rounded-md h-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors px-2 gap-1.5"
+              >
+                <Search className="h-4 w-4 shrink-0" />
+                <span className="hidden md:inline text-xs text-muted-foreground/70">
+                  {isMac ? "⌘K" : "Ctrl K"}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Search</TooltipContent>
+          </Tooltip>
+        )}
+
         <ThemeToggle />
         <LanguageToggle />
         <Tooltip>
@@ -386,7 +409,29 @@ function ProtectedLayoutContent() {
   const { user, refreshAuth } = useAuth();
   const [location] = useLocation();
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const isEmbedded = useEmbedded();
+
+  const openSearch = useCallback(() => setSearchOpen(true), []);
+
+  // Global ⌘K / Ctrl+K shortcut — guarded against inputs, modals, contenteditable
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "k") return;
+      const target = e.target as HTMLElement;
+      const inInput =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+      if (inInput) return;
+      // Don't open if another dialog/modal is already open
+      if (document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   const isGlobalAdmin = user?.role === "global_admin";
 
@@ -464,7 +509,7 @@ function ProtectedLayoutContent() {
       >
         <AppSidebar />
         <SidebarInset>
-          <AppTopBar />
+          <AppTopBar onSearchOpen={openSearch} />
 
           <VersionBanner
             currentVersion={pkgJson.version}
@@ -574,6 +619,9 @@ function ProtectedLayoutContent() {
 
       {/* ChatPanel is a fixed overlay — outside the sidebar shell */}
       <ChatPanel />
+
+      {/* Global search dialog */}
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
     </NavHistoryProvider>
   );

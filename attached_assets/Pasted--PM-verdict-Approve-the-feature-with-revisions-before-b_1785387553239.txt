@@ -1,0 +1,360 @@
+## PM verdict
+
+**Approve the feature, with revisions before build.**
+
+This is a high-value usability improvement and fits the new premium positioning well. A chef or manager should be able to think “ribeye,” “summer menu,” or “US Foods” and get there immediately without knowing where the record lives.
+
+The concept is right. The main risks are performance, permissions, weak matching, and launching with routes that do not reliably open the selected records.
+
+# What is strong
+
+Keep these decisions:
+
+* Global access from every authenticated screen
+* `Ctrl+K` on Windows and `⌘K` on Mac
+* One unified search across operational records
+* Company and location security enforcement
+* Grouped results with context
+* Keyboard navigation and Enter-to-open
+* Visible navigation trigger for discoverability
+* Limited v1 scope rather than overbuilding full-text search
+
+This should feel like a **record finder first**, not a complicated command center.
+
+# Changes I would require
+
+## 1. Do not search until the user enters at least two characters
+
+Running ten database queries for every single keystroke—including `a`, `s`, or `1`—will generate noise and unnecessary load.
+
+Recommended behavior:
+
+* Zero characters: show guidance, not results
+* One character: “Type at least 2 characters”
+* Two or more: begin searching
+* Debounce: approximately 200–300 milliseconds
+
+For numeric identifiers such as PO numbers, PLUs, or SKUs, two characters should still work.
+
+## 2. Cancel stale requests
+
+Debouncing alone is not enough.
+
+If the user types:
+
+> `chi` → `chick` → `chicken`
+
+An older response for `chi` must not overwrite the newer `chicken` results.
+
+Acceptance criteria should include:
+
+* Cancel prior request when a new query begins, or
+* Ignore responses that do not match the latest query
+* Show a subtle loading state
+* Do not flash “no results” while a request is still pending
+
+## 3. Permissions need entity-specific rules
+
+“Scoped to company and location access” is correct but underspecified.
+
+Not every entity follows the same location model:
+
+* Inventory items may be company-wide but assigned to locations.
+* Recipes may be shared across all locations.
+* Purchase orders may belong to one store.
+* Storage locations may belong to one operation.
+* Vendors may be company-wide.
+* Menus and menu items may have location assignments.
+
+The search service should reuse the same authorization rules as the entity’s normal list and detail endpoints. It should not invent a generic `companyId + locationId` filter.
+
+Add:
+
+> A user must never receive a search result for a record they could not retrieve directly through its normal API.
+
+That is the real security test.
+
+## 4. Exclude inactive, deleted, archived, and draft records deliberately
+
+The ticket needs an explicit policy.
+
+Recommended defaults:
+
+* Exclude soft-deleted records
+* Exclude inactive records unless no active result matches
+* Include draft purchase orders if the user has access
+* Include archived recipes or menus only behind a visible “Archived” label—or exclude them in v1
+* Do not return superseded duplicate vendor items unless they remain operationally active
+
+Otherwise users will search for “chicken” and get obsolete records mixed with current ones.
+
+## 5. The ten entity types should not have equal priority
+
+Five results from every entity can still produce an awkward 50-result list.
+
+A chef searching “salmon” will usually care more about:
+
+1. Inventory items
+2. Recipes
+3. Menu items
+4. Vendor items
+5. Prep items
+
+Purchase orders and order guides may be secondary unless the query strongly matches an identifier.
+
+Use a stable display priority rather than database response order.
+
+Recommended order:
+
+* Inventory Items
+* Recipes
+* Menu Items
+* Prep Items
+* Vendor Items
+* Vendors
+* Purchase Orders
+* Menus
+* Storage Locations
+* Order Guides
+
+You can tune this after observing usage.
+
+## 6. Subtitle requirements should be defined per entity
+
+“Short context line” is correct, but it should not be improvised during development.
+
+Suggested context:
+
+| Entity           | Subtitle                                |
+| ---------------- | --------------------------------------- |
+| Inventory item   | Category · base unit · active locations |
+| Recipe           | Category · yield                        |
+| Menu item        | Menu or location · selling price        |
+| Vendor           | Vendor type or account status           |
+| Vendor item      | Vendor · pack size · current price      |
+| Purchase order   | Vendor · location · status · date       |
+| Prep item        | Yield or associated recipe              |
+| Menu             | Location · active dates/status          |
+| Storage location | Operation/outlet · item count           |
+| Order guide      | Vendor · location · last updated        |
+
+Do not show blank separators when fields are missing.
+
+## 7. Search normalized identifiers, not only raw text
+
+Simple `ILIKE` is acceptable for v1, but normalize common identifiers.
+
+For example:
+
+* Barcode searches should ignore spaces and hyphens.
+* PO number searches should tolerate `PO-1024` versus `1024`.
+* SKU searches should be case-insensitive.
+* Accented names should ideally match unaccented input.
+* Extra whitespace should not prevent matches.
+
+This can still remain substring search; it just needs sensible normalization.
+
+## 8. Confirm every destination route before launch
+
+The route mapping is a hidden risk.
+
+Some entity types may not have a dedicated detail route. For example:
+
+* Storage locations may open in a settings page or drawer.
+* Order guides may not have a standalone detail screen.
+* Vendor items may live inside the parent vendor or inventory item.
+* Prep items may use a recipe-style editor.
+
+For every search type, define:
+
+* Destination route
+* Required route parameters
+* Whether the result opens a page, drawer, or filtered list
+* Behavior when the referenced record has since been removed
+
+Do not ship results that navigate to 404 pages or generic list screens without selecting the record.
+
+## 9. Keyboard handling must avoid conflicts
+
+The global shortcut should not fire unexpectedly when:
+
+* The user is typing in a text field
+* A modal is already open
+* A browser or editor shortcut has priority
+* The user is editing rich text
+* A barcode scanner is entering characters
+
+`Ctrl+K` is also used by browsers to focus the address/search bar in some environments. `preventDefault()` can usually handle it inside the application, but it needs testing across Chrome, Edge, Safari, and Firefox.
+
+Also consider `/` as an optional secondary search shortcut later, but do not add it in this ticket.
+
+## 10. Mobile needs more than “shows the trigger”
+
+The keyboard shortcut is irrelevant on most phones, so the mobile experience needs explicit behavior:
+
+* Search icon remains visible in the mobile header
+* Tap opens a full-width or near-full-screen search view
+* Search input receives focus automatically
+* Results are touch-friendly
+* Group headings remain visible
+* The on-screen keyboard does not hide the selected result
+* No `⌘K` hint appears on mobile
+
+## 11. Add an error state
+
+The ticket includes empty results but not search failure.
+
+Required states:
+
+* Initial guidance
+* Minimum-character guidance
+* Loading
+* Results
+* No results
+* API error with retry
+* Record no longer available
+
+A failed API call should not appear to the user as “no results.”
+
+# Backend architecture recommendation
+
+Ten parallel queries may be acceptable initially, but keep the endpoint behind a dedicated search service rather than putting all queries directly into the route handler.
+
+Suggested structure:
+
+```text
+GlobalSearchService
+  searchInventoryItems()
+  searchRecipes()
+  searchMenuItems()
+  searchVendors()
+  searchVendorItems()
+  searchPurchaseOrders()
+  searchPrepItems()
+  searchMenus()
+  searchStorageLocations()
+  searchOrderGuides()
+```
+
+Each search function should:
+
+* Apply entity-specific authorization
+* Return the same typed result contract
+* Limit results
+* Exclude inappropriate statuses
+* Generate its own subtitle
+* Return a canonical navigation destination
+
+This will make it easier to add or remove entity types without creating a giant endpoint.
+
+# Result contract
+
+I would expand the proposed result shape slightly:
+
+```ts
+type GlobalSearchResult = {
+  type: SearchEntityType;
+  id: string;
+  name: string;
+  subtitle?: string;
+  route: string;
+  status?: string;
+  iconKey: string;
+  matchedField: string;
+};
+```
+
+Returning the final authorized route from the backend can reduce frontend routing assumptions, although the frontend should still validate allowed internal paths.
+
+`matchedField` is useful when the visible name does not contain the query. For example:
+
+> Chicken Breast
+> Matched SKU: SYS-48291
+
+# Search quality for v1
+
+`ILIKE '%query%'` is acceptable to ship, but exact and prefix matches should appear before interior substring matches.
+
+For a query of `rib`:
+
+1. `Ribeye`
+2. `Rib Roast`
+3. `Prime Rib`
+4. `Caribbean Sauce`
+
+That does not require a full search engine. A simple ordering expression can prioritize:
+
+* Exact match
+* Prefix match
+* Identifier exact match
+* Identifier prefix match
+* General substring match
+
+This small enhancement will make the feature feel much more polished.
+
+# Revised acceptance criteria
+
+I would add:
+
+* Search begins at two characters and uses a 200–300 ms debounce.
+* Stale search responses cannot replace newer results.
+* Every entity uses its existing authorization and location-access rules.
+* Soft-deleted and inactive records are excluded according to a documented policy.
+* Exact and prefix matches rank above general substring matches.
+* Every result type has a confirmed working destination.
+* The API returns no more than five results per type and has a reasonable query timeout.
+* Search input and results are fully keyboard accessible.
+* Mobile uses a touch-friendly full-screen or responsive presentation.
+* Loading, failure, no-results, and unavailable-record states are handled separately.
+* Search usage is instrumented for analytics.
+
+# Analytics worth adding
+
+Track:
+
+* Search opened
+* Query submitted
+* Result selected
+* Selected entity type
+* No-results query
+* Search abandoned
+* Search response time
+
+Do not log sensitive result data or complete user queries without a deliberate privacy decision. Aggregated entity and performance data is enough initially.
+
+This will tell you whether chefs primarily search recipes, products, vendors, or orders—and can help determine future navigation priorities.
+
+# Scope recommendation
+
+Keep these out of v1 as proposed:
+
+* Searching recipe ingredients
+* PO line-item content
+* Saved searches
+* Advanced filtering
+* Search history
+* Action commands
+* AI or semantic search
+
+However, I would rename the feature internally from **Global Search (⌘K)** rather than “command palette.” It is not truly a command palette yet because it only finds and opens records.
+
+Later it can support actions such as:
+
+* Create a recipe
+* Start inventory count
+* Scan an invoice
+* Create a purchase order
+* Add a vendor
+* Switch location
+
+That could become especially valuable for phone-first chef workflows.
+
+## Final decision
+
+**Build #714 after incorporating the permission, routing, request-cancellation, and result-state requirements.**
+
+It is a good premium-product feature because it communicates:
+
+> The platform may be operationally deep, but users never have to dig through it.
+
+That is exactly aligned with FnB Cost Pro’s broader promise: sophisticated structure without unnecessary friction.
