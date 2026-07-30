@@ -5,9 +5,9 @@ import {
   ClipboardList,
   ShoppingCart,
   ChefHat,
+  UtensilsCrossed,
   BarChart3,
   MoreHorizontal,
-  Store,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -22,13 +22,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -37,7 +30,6 @@ import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/lib/auth-context";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
-import { useStoreContext } from "@/hooks/use-store-context";
 import { useTier } from "@/hooks/use-tier";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +84,13 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/menu-insights")
   ) return "analyze";
 
-  if (loc === "/menus" || loc.startsWith("/menus/")) return "more";
+  if (
+    loc === "/menu-items" || loc.startsWith("/menu-items/") ||
+    loc === "/menus" || loc.startsWith("/menus/") ||
+    loc === "/menu-scan" || loc.startsWith("/menu-scan/") ||
+    loc === "/recipes" || loc.startsWith("/recipes/") ||
+    loc.startsWith("/recipe")
+  ) return "menu";
 
   return "more";
 }
@@ -111,12 +109,13 @@ interface RailItem {
 }
 
 const RAIL: RailItem[] = [
-  { id: "home",    label: "Home",    icon: LayoutDashboard, href: "/",        testId: "nav-home" },
-  { id: "count",   label: "Count",   icon: ClipboardList,   href: "/count",   testId: "nav-count" },
-  { id: "order",   label: "Order",   icon: ShoppingCart,    href: "/order",   roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-order" },
-  { id: "prep",    label: "Prep",    icon: ChefHat,         href: "/prep",    testId: "nav-prep" },
-  { id: "analyze", label: "Analyze", icon: BarChart3,        href: "/analyze", roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
-  { id: "more",    label: "More",    icon: MoreHorizontal,  href: "/more",    testId: "nav-more" },
+  { id: "home",      label: "Home",      icon: LayoutDashboard,  href: "/",           testId: "nav-home" },
+  { id: "count",     label: "Inventory", icon: ClipboardList,    href: "/count",      testId: "nav-count" },
+  { id: "order",     label: "Order",     icon: ShoppingCart,     href: "/order",      roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-order" },
+  { id: "prep",      label: "Prep",      icon: ChefHat,          href: "/prep",       testId: "nav-prep" },
+  { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menu-items", testId: "nav-menu" },
+  { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
+  { id: "more",      label: "More",      icon: MoreHorizontal,   href: "/more",       testId: "nav-more" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -127,7 +126,6 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const { company } = useCompany();
-  const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
   useAccessibleStores(); // keeps store list warm in React Query cache
   const { setOpen, isMobile, setOpenMobile } = useSidebar();
   const { theme } = useTheme();
@@ -228,8 +226,6 @@ export function AppSidebar() {
     return true;
   });
 
-  const currentStoreName = stores.find((s) => s.id === selectedStoreId)?.name ?? "Select store";
-
   return (
     <Sidebar
       collapsible="icon"
@@ -268,42 +264,6 @@ export function AppSidebar() {
           </Link>
         </div>
 
-        {company && stores.length > 0 && (
-          isExpanded ? (
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger
-                className="w-full h-8 text-xs"
-                data-testid={isMobile ? "select-store-mobile" : "select-store"}
-              >
-                <Store className="h-3.5 w-3.5 mr-1 shrink-0" />
-                <SelectValue placeholder="Select store" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map((store) => (
-                  <SelectItem
-                    key={store.id}
-                    value={store.id}
-                    data-testid={`select-store-${store.id}`}
-                  >
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="flex justify-center w-full py-1 text-sidebar-foreground/60 hover-elevate rounded-md"
-                  aria-label={`Store: ${currentStoreName}`}
-                >
-                  <Store className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{currentStoreName}</TooltipContent>
-            </Tooltip>
-          )
-        )}
       </SidebarHeader>
 
       {/* ── Content: flat rail ───────────────────────────────────────────── */}
@@ -321,7 +281,7 @@ export function AppSidebar() {
                   className="gap-3"
                 >
                   <Link href={item.href} onClick={closeMobile}>
-                    <item.icon className="h-8 w-8 shrink-0" />
+                    <item.icon className="h-12 w-12 shrink-0" />
                     {isExpanded && (
                       <span className={cn("font-medium", active && "font-semibold")}>
                         {item.label}

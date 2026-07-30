@@ -39,7 +39,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/", label: "Home", section: "home" },
 
   // ── Count ────────────────────────────────────────────────────────────────
-  { route: "/count", label: "Count", section: "count" },
+  { route: "/count", label: "Inventory", section: "count" },
   {
     route: "/inventory-sessions",
     label: "Counts",

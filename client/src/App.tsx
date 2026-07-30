@@ -1,6 +1,6 @@
 import { Switch, Route, useLocation, Redirect } from "wouter";
 import { useEffect, useState, useCallback } from "react";
-import { LogOut, ChevronLeft, ChevronRight, RotateCcw, Search } from "lucide-react";
+import { LogOut, ChevronLeft, ChevronRight, RotateCcw, Search, Store } from "lucide-react";
 import { NavHistoryProvider, useNavHistory } from "@/lib/nav-history-context";
 import { getLabelForPath } from "@/lib/route-config";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,8 +17,16 @@ import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import pkgJson from "../../package.json";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { StoreProvider } from "@/hooks/use-store-context";
+import { StoreProvider, useStoreContext } from "@/hooks/use-store-context";
+import { useCompany } from "@/hooks/use-company";
 import { useEmbedded } from "@/hooks/use-embedded";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InventorySessions from "@/pages/inventory-sessions";
@@ -273,6 +281,9 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
       ? `${user.firstName} ${user.lastName}`
       : user?.email ?? "User";
 
+  const { selectedStoreId, setSelectedStoreId, stores } = useStoreContext();
+  const { company } = useCompany();
+
   const navBtnClass =
     "inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
@@ -357,8 +368,30 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
         <div />
       )}
 
-      {/* ── Right: company name, theme, language, avatar, logout ── */}
+      {/* ── Right: store picker, company name, theme, language, avatar, logout ── */}
       <div className="flex items-center justify-end gap-1">
+        {company && stores.length > 0 && (
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger
+              className="h-8 w-36 text-xs"
+              data-testid={isMobile ? "select-store-mobile" : "select-store"}
+            >
+              <Store className="h-3.5 w-3.5 mr-1 shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="Select store" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map((store) => (
+                <SelectItem
+                  key={store.id}
+                  value={store.id}
+                  data-testid={`select-store-${store.id}`}
+                >
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {companyName && (
           <span
             className="hidden lg:block text-sm font-medium text-muted-foreground max-w-[160px] truncate mr-1"
@@ -501,7 +534,7 @@ function ProtectedLayoutContent() {
         defaultOpen={false}
         style={{
           "--sidebar-width": "230px",
-          "--sidebar-width-icon": "72px",
+          "--sidebar-width-icon": "80px",
         } as React.CSSProperties}
       >
         <AppSidebar />
