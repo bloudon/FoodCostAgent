@@ -10,10 +10,6 @@ const isLocalDb = process.env.STORAGE_MODE === 'local' || process.env.AUTH_MODE 
 
 let pool: any;
 let db: any;
-// Held until the startup IIFE fires so the socket is "in use" (not idle-pool).
-// pg-pool unref()s idle connections' timers; a checked-out client is not unref'd,
-// so the TCP socket keeps the event loop alive through the ESM TLA microtask chain.
-export let _startupClient: any;
 
 if (isLocalDb) {
   const pgModule = await import('pg');
@@ -32,18 +28,15 @@ if (isLocalDb) {
   db = drizzle({ client: pool, schema });
   console.log('[DB] Using standard PostgreSQL driver (local/VPS mode)');
 
-  // Check out a client and hold it (do NOT release yet).
-  // pg-pool unref()'s idle connections' internal timers so Node can exit when
-  // the pool is otherwise unused.  A *checked-out* client is never unref'd —
-  // its TCP socket keeps the event loop alive through the entire ESM TLA
-  // microtask chain until the startup IIFE fires and releases it.
-  try {
-    _startupClient = await pool.connect();
-    console.log('[DB] Connection verified ✓');
-  } catch (err: any) {
-    // DB unreachable — log and continue; queries will surface the real error.
-    console.error('[DB] Initial connection check failed:', err.message);
-  }
+  // Fire-and-forget query that keeps a TCP socket in active-read state inside
+  // libuv for 3 s.  Node.js v20 exits with code 13 ("Unfinished Top-Level Await")
+  // when the microtask queue drains with no active I/O handles.  Timers and held
+  // pool clients are both unref()'d by pg-pool; a pending socket read is the only
+  // handle that is guaranteed not to be unref()'d.  3 s > time for all memoised
+  // await init_*() microtasks to complete and the startup IIFE to open its own
+  // DB connections.
+  pool.query('SELECT pg_sleep(3)').catch(() => {/* silently cancelled on shutdown */});
+  console.log('[DB] ESM keepalive query started');
 } else {
   const { Pool: NeonPool, neonConfig } = await import('@neondatabase/serverless');
   const ws = (await import('ws')).default;

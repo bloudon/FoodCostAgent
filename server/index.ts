@@ -8,7 +8,7 @@ import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { cache } from "./cache";
 import { setupSsoAuth } from "./ssoAuth";
-import { db, _startupClient } from "./db";
+import { db } from "./db";
 import { sql } from "drizzle-orm";
 
 const app = express();
@@ -1257,9 +1257,6 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 await (async () => {
-  // Release the held startup client now that the IIFE is running.
-  // runStartupMigrations() will open its own connections from here on.
-  if (_startupClient) { try { _startupClient.release(); } catch {} }
   console.log('[Startup] 1 — runStartupMigrations');
   // Apply schema migrations that may be missing on the VPS database
   await runStartupMigrations();
