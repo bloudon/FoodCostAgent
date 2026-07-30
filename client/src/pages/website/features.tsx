@@ -90,6 +90,7 @@ const GROUP_PHONE_CAPTIONS: string[] = ["", "", "", ""];
 export default function WebsiteFeatures() {
   const { lang, t } = useLanguage();
   const feat = t.features;
+  const contactHref = lang === "es" ? "/es/contact" : "/contact";
 
   const hasNewSections = feat.sections && feat.sections.length > 0;
 
@@ -106,73 +107,31 @@ export default function WebsiteFeatures() {
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
             {feat.badge}
           </span>
-          <h1 className="text-4xl sm:text-5xl font-extrabold mb-4">
+          <h1 className="text-4xl sm:text-5xl font-extrabold mb-4 leading-tight">
             {feat.headline}
           </h1>
           <p className="text-lg text-gray-300 leading-relaxed mb-8">
             {feat.subheadline}
           </p>
           <div className="flex flex-wrap gap-4 justify-center mb-5">
-            <CTAButton href={appLink("/signup")} large>
-              {feat.startFree}
-            </CTAButton>
+            <Link href={contactHref}>
+              <Button
+                size="lg"
+                className="bg-white text-gray-900 hover:bg-gray-100 border-0 text-base px-8 h-auto py-3 font-semibold"
+                data-testid="btn-feat-primary"
+              >
+                {feat.startFree} <ChevronRight className="h-5 w-5 ml-1" />
+              </Button>
+            </Link>
             <a href="#menu-scan-feature">
               <Button variant="outline" size="lg" className="border-white/40 text-white bg-white/10 backdrop-blur-sm">
                 {feat.heroSecondaryCtaLabel} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </a>
           </div>
-          <p className="text-sm text-gray-400">{feat.heroProofLine}</p>
-        </div>
-      </section>
-
-      <section className="py-16 bg-green-950 text-center" data-testid="section-guarantee">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Badge variant="outline" className="text-green-300 bg-green-900/50 border-green-700 mb-6">
-            Guarantee
-          </Badge>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-5">
-            {feat.guaranteeSection.title}
-          </h2>
-          <p className="text-green-200 leading-relaxed mb-6">
-            {feat.guaranteeSection.body}
-          </p>
-          <p className="text-xs text-green-400 italic max-w-2xl mx-auto">
-            {feat.guaranteeSection.disclaimer}
-          </p>
-        </div>
-      </section>
-
-      <section className="py-14 bg-gray-50" data-testid="section-what-you-bring">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">
-            {feat.whatYouBringSection.title}
-          </h2>
-          <ul className="space-y-3">
-            {feat.whatYouBringSection.bullets.map((bullet, i) => (
-              <li key={i} className="flex items-start gap-3 bg-white rounded-lg border border-gray-100 p-4">
-                <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 text-sm leading-relaxed">{bullet}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="py-14 bg-white" data-testid="section-opportunities">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-3 text-center">
-            {feat.opportunitiesSection.title}
-          </h2>
-          <p className="text-gray-500 text-center mb-8 text-sm">{feat.opportunitiesSection.subtitle}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {feat.opportunitiesSection.bullets.map((bullet, i) => (
-              <div key={i} className="flex items-start gap-3 p-4 rounded-lg bg-gray-50 border border-gray-100">
-                <DollarSign className="h-4 w-4 text-orange-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 text-sm leading-relaxed">{bullet}</span>
-              </div>
-            ))}
-          </div>
+          {feat.heroProofLine ? (
+            <p className="text-sm text-gray-400">{feat.heroProofLine}</p>
+          ) : null}
         </div>
       </section>
 
@@ -369,34 +328,34 @@ export default function WebsiteFeatures() {
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-starter">
-              <Badge variant="outline" className="text-green-700 bg-green-50 border-green-200 mb-3">
-                Starter
-              </Badge>
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">{feat.upgradeBasicTitle}</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{feat.upgradeBasicTitle}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{feat.upgradeBasicBody}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="upgrade-path-pro">
-              <Badge variant="outline" className="text-orange-700 bg-orange-50 border-orange-200 mb-3">
-                Pro
-              </Badge>
-              <h3 className="text-lg font-semibold text-gray-900 mt-3 mb-2">{feat.upgradeProTitle}</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{feat.upgradeProTitle}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{feat.upgradeProBody}</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="py-20 bg-green-900 text-center">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-20 bg-gray-900 text-center">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
             {feat.ctaTitle}
           </h2>
-          <p className="text-green-200 mb-8">
+          <p className="text-gray-400 mb-8">
             {feat.ctaSubtitle}
           </p>
-          <CTAButton href={appLink("/signup")} large>
-            {feat.getStartedFree}
-          </CTAButton>
+          <Link href={contactHref}>
+            <Button
+              size="lg"
+              className="bg-white text-gray-900 hover:bg-gray-100 border-0 text-base px-8 h-auto py-3 font-semibold"
+              data-testid="btn-feat-cta"
+            >
+              {feat.getStartedFree} <ChevronRight className="h-5 w-5 ml-1" />
+            </Button>
+          </Link>
         </div>
       </section>
     </MarketingLayout>

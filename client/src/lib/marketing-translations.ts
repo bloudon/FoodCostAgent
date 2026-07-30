@@ -34,186 +34,95 @@ export const translations = {
         description:
           "FnB Cost Pro brings inventory intelligence, live recipe costing, and vendor connectivity to chef-led restaurants and F&B operations. Built for the way professional kitchens work.",
       },
-      badge: "14-Day Food Cost Opportunity Guarantee",
-      headline1: "Find Your First Food Cost",
-      headline2: "Savings Opportunity in 14 Days",
-      headline3: "",
+      badge: "Culinary Operations Intelligence",
+      headline: "Built for the way chefs work.",
       subheadline:
-        "FnB Cost Pro helps restaurants turn menus, recipes, invoices, vendor pricing, and inventory data into clear food cost insight — starting with a guided launch designed to uncover at least one savings opportunity.",
-      ctaTrial: "Start Your 14-Day Opportunity Review",
-      ctaPricing: "View Pricing",
-      trialNote: "Guided Launch in an afternoon. 14-Day Food Cost Opportunity Guarantee. Cancel anytime.",
-      stats: [
-        { value: "8 hrs", label: "Weekly back-office data entry eliminated" },
-        { value: "$5,000", label: "Value of 1% food cost improvement at $500k/year" },
-        { value: "14 days", label: "To your first food cost savings opportunity" },
-        { value: "1 day", label: "Guided Launch — operational in an afternoon" },
+        "Turn handwritten recipes, photos, invoices and existing files into accurate recipe costs, inventory intelligence and smarter purchasing — without burying your culinary team in data entry.",
+      ctaPrimary: "Schedule a Culinary Review",
+      ctaSecondary: "See How It Works",
+      workflowLabel: "How it works",
+      workflowItems: [
+        { step: "Capture", phrase: "Photos, files and uploads — no re-keying required" },
+        { step: "Cost", phrase: "Recipes priced from live vendor data, automatically" },
+        { step: "Compare", phrase: "Theoretical vs. actual — see exactly where cost drifts" },
+        { step: "Predict", phrase: "Order recommendations when you have the history to support them" },
       ],
-      roiMathLabel: "The Math Is Simple",
-      roiMathTitle: "Small Percentage Changes Create Big Dollars",
-      roiMathSubtitle:
-        "Most restaurants don't need a massive improvement to justify better food cost visibility. Finding even 0.5% in food cost opportunity can cover the first year.",
-      roiMathHeaders: {
-        sales: "Annual Sales",
-        half: "0.5% Opportunity",
-        one: "1% Opportunity",
-        two: "2% Opportunity",
-      },
-      roiMathRows: [
-        { sales: "$500,000", half: "$2,500", one: "$5,000", two: "$10,000" },
-        { sales: "$750,000", half: "$3,750", one: "$7,500", two: "$15,000" },
-        { sales: "$1,000,000", half: "$5,000", one: "$10,000", two: "$20,000" },
-      ],
-      roiMathNote: "We identify the opportunity. Actual savings depend on the actions you take.",
-      menuScanLabel: "Menu Scan",
-      menuScanTitle: "Start With Your Menu. See Food Cost Clues in Minutes.",
-      menuScanSubtitle:
-        "Upload a photo of your menu and FnB Cost Pro begins organizing your items, departments, prices, and ingredient clues. Instead of starting from a blank spreadsheet, your menu becomes the starting map for recipe costing, invoice review, and food cost opportunity discovery.",
-      menuScanCallouts: [
-        "Menu items extracted",
-        "Departments organized",
-        "Prices captured",
-        "Ingredient clues identified",
-        "Recipe build-out starting point",
-        "Margin review starting point",
-      ],
-      roiLabel: "It Pays for Itself When You Find the Leak",
-      roiTitle: "Stop Guessing Where Food Cost Is Leaking.",
-      roiSubtitle:
-        "Labor savings matter. But the bigger prize is food cost visibility — knowing exactly where money is leaving before it becomes a problem.",
-      roiItems: [
+      captureLabel: "What You Can Capture",
+      captureTitle: "From a chef's photo to structured operational data.",
+      captureCards: [
         {
-          task: "Invoice entry → vendor price tracking",
-          manual: "~20 min per delivery × 3 deliveries/week",
-          saved: "~$80/month in entry time eliminated",
-          how: "Photograph the invoice — line items extracted and matched, and every price change flows into your recipe costs instantly",
+          input: "Handwritten recipe",
+          outputs: [
+            "Structured ingredients and quantities",
+            "Yield, portions and scaling",
+            "Current recipe cost from live vendor pricing",
+          ],
         },
         {
-          task: "Recipe & menu setup → true plate cost",
-          manual: "15–30 min per recipe to type ingredients and costs",
-          saved: "12–25 hours of setup labor for a 50-item menu",
-          how: "Photograph your menu or recipe card — items extracted instantly, plate costs calculated against live vendor pricing",
+          input: "Invoice or order guide",
+          outputs: [
+            "Vendor items and pack sizes",
+            "Delivered pricing per unit",
+            "Price history and change tracking",
+          ],
         },
         {
-          task: "Inventory counts → actual vs. theoretical",
-          manual: "2–4 hours per count × bi-weekly",
-          saved: "$80–240/month in kitchen manager time",
-          how: "Walk the shelves with your phone — counts feed directly into variance reporting so you can see where food cost is drifting",
+          input: "Inventory sheet",
+          outputs: [
+            "Inventory items and counts",
+            "Storage location assignments",
+            "Historical count and value data",
+          ],
+        },
+        {
+          input: "Product or case label",
+          outputs: [
+            "Product identity and description",
+            "Units, pack geometry and catch weight",
+            "Vendor-item matching and linking",
+          ],
         },
       ],
-      roiTotal: "For many restaurants, finding less than 1% in food cost opportunity can cover the first year.",
-      roiNote: "Labor savings are real too — most operators eliminate 6–10 hours of weekly data entry.",
-      featuresLabel: "The Proof Mechanism",
-      featuresTitle: "Scan. Structure. Find the Opportunity.",
-      featuresSubtitle:
-        "Every workflow is driven by your phone camera — each one feeding clearer food cost insight.",
-      seeAllFeatures: "See All Features",
-      features: [
-        {
-          title: "Menu Scan → Food Cost Starting Map",
-          desc: "Photograph your printed menu and every dish name, section, and price is extracted automatically. Your menu becomes the foundation for recipe costing, invoice review, and identifying where food cost opportunities may exist.",
-        },
-        {
-          title: "Count by Phone → Actual vs. Theoretical",
-          desc: "Walk your shelves with your phone. Counts feed directly into variance reporting — so you can see the gap between what you should have spent and what you actually spent.",
-        },
-        {
-          title: "Variance Reporting → Find the Leak",
-          desc: "Theoretical Food Cost variance shows exactly where margins are going. Compare expected spend to actual spend and pinpoint waste, over-portioning, and shrinkage by category.",
-        },
-        {
-          title: "Invoice Scan → Vendor Price Tracking",
-          desc: "Photograph a vendor delivery and every price change is captured automatically. Price increases flow instantly into recipe costs — so you always know when a dish's food cost has drifted.",
-        },
-        {
-          title: "Multi-Location",
-          desc: "Manage inventory, recipes, and team across every location from one account. Pro adds transfer orders between stores and cross-location reporting.",
-        },
-        {
-          title: "Live Recipe Costing",
-          desc: "Ingredient prices flow directly from vendor invoices into your recipes. Nested sub-recipes recalculate in the correct order. Your food cost is always current — not last month's spreadsheet.",
-        },
+      captureSummary:
+        "Recipes, inventory, vendors, pricing and predicted purchasing remain connected throughout the operation.",
+      purchasingLabel: "Purchasing Intelligence",
+      purchasingTitle: "Current pricing. Valid comparisons. Smarter orders.",
+      purchasingBody:
+        "Capture account-specific vendor pricing from supported portals and existing files. Compare live prices across your distributor relationships and identify where an order guide has moved against your recipe costs.",
+      purchasingBullets: [
+        "Account-specific pricing from supported distributor portals",
+        "Order guide imports from Sysco, GFS, US Foods and major distributors",
+        "Invoice scan captures delivered prices for every line item",
+        "Cross-vendor comparison when pricing is available from multiple order guides",
+        "Recipe costs update automatically when vendor pricing changes",
+        "Purchase order and receiving workflows connected to inventory",
       ],
-      recipeLabel: "Recipe Costing",
-      recipeTitle: "True Plate Cost — From Photo to Number",
-      recipeSubtitle:
-        "Food cost estimates begin immediately once ingredients are matched to inventory and vendor pricing. Photograph a recipe card and see where plate cost stands — and whether it has drifted since the last vendor delivery.",
-      recipeNote: "Recipe costing is included in all paid plans.",
-      seePlans: "See Plans",
-      recipeSteps: [
-        {
-          num: "1",
-          title: "Photograph Your Recipe",
-          body: "Point your phone at any recipe card, printed menu, or handwritten note. Every ingredient is read from the photo — quantities, units, and all.",
-        },
-        {
-          num: "2",
-          title: "Food Cost Begins to Emerge",
-          body: "Ingredients match to your inventory and vendor pricing. Set your yield percentages and FnB Cost Pro gives you the true food cost per portion — and flags ingredients where price has changed since your last count.",
-        },
-        {
-          num: "3",
-          title: "Catches Every Vendor Price Change",
-          body: "Every recipe updates automatically when vendor prices change. Nested sub-recipes recalculate in the right order. You always know your current plate cost — not last month's guess.",
-        },
+      purchasingCta: "Schedule a Culinary Review",
+      multiLabel: "Multi-Location",
+      multiTitle: "Every kitchen, storeroom and outlet connected.",
+      multiBody:
+        "Model central storage, outlet inventory and shared item locations. Recipes and costs remain consistent across every operation — with per-location counts and variance reporting showing where each kitchen stands.",
+      multiBullets: [
+        "Central and outlet inventory modelled separately or together",
+        "Shared item locations across storage areas and outlets",
+        "Per-location counts and variance reports",
+        "Consistent recipe costs across every operation",
+        "Role-based access for admin, management and kitchen staff",
+        "One account — every operation visible in one place",
       ],
-      howItWorksLabel: "The Guided Launch Journey",
-      howItWorksTitle: "Start With Your Menu. Reach Food Cost Insight in 14 Days.",
-      howItWorksSubtitle:
-        "FnB Cost Pro is designed to get your first location operational in an afternoon with a guided launch — and to begin identifying food cost opportunities within 14 days.",
-      steps: [
-        {
-          num: "01",
-          title: "Scan Your Menu",
-          body: "Upload a photo of your printed menu. Every dish, section, and price is extracted and seeds your recipe library in minutes — giving you the starting map for food cost review.",
-        },
-        {
-          num: "02",
-          title: "Review Invoices and Vendor Pricing",
-          body: "Photograph your vendor invoices or import your order guides. Every price lands in your recipe costs automatically — so you can see where ingredient cost is moving.",
-        },
-        {
-          num: "03",
-          title: "Identify Your First Savings Opportunity",
-          body: "Within 14 days, your Guided Launch Session reviews your menu, recipes, invoices, and variance data to identify at least one area where food cost may be leaking.",
-        },
+      onboardingTitle: "Start with the operation you already have",
+      onboardingItems: [
+        "Bring your existing menus, recipe cards, invoices or order guides",
+        "Capture them by photo, upload or file — no re-keying required",
+        "Your team reviews and confirms every extracted item before it is saved",
+        "Costs begin to connect as vendor data and recipe data align",
+        "A Culinary Review session helps you read what the data is telling you",
       ],
-      ctaBottomTitle: "Ready to Find Your First Food Cost Opportunity?",
-      ctaBottomSubtitle:
-        "Give us 14 days. We'll help identify at least one area where food cost may be leaking — using your menu, recipes, invoices, vendor pricing, or inventory process.",
-      ctaBottomTrial: "Start Your 14-Day Opportunity Review",
-      ctaBottomContact: "Talk to Us",
-      ctaChecklist: [
-        "14-Day Food Cost Opportunity Guarantee",
-        "Cancel anytime",
-        "Guided Launch in an afternoon",
-        "Identify at least one savings opportunity",
-      ],
-      stepLabel: "Step",
-      mobileShowcaseTitle: "Every workflow feeds food cost insight",
-      mobileShowcaseSubtitle:
-        "Count inventory, scan invoices, cost recipes — each one closing the loop between what you spend and what you should spend. No app store needed.",
-      mobilePhoneLabels: [
-        "Actual vs. theoretical — find the variance",
-        "Catch vendor price changes automatically",
-        "True plate cost — always current",
-      ],
-      mobileCallouts: [
-        { label: "Food cost visibility", sub: "Every scan feeds clearer cost insight" },
-        { label: "Always current", sub: "Vendor price changes update recipes instantly" },
-        { label: "Actual vs. theoretical", sub: "Counts feed directly into variance reports" },
-      ],
-      menuScanCTA: "Scan Your Menu",
-      menuScanMockTitle: "Menu scan complete",
-      menuScanMockSub: "Brian's Bistro — 3 sections, 42 items",
-      menuScanMockSections: [
-        { section: "Appetizers", count: "8 items", avg: "avg $12.50" },
-        { section: "Entrees", count: "18 items", avg: "avg $24.00" },
-        { section: "Desserts", count: "6 items", avg: "avg $9.75" },
-        { section: "Beverages", count: "10 items", avg: "avg $6.50" },
-      ],
-      menuScanMockFooter: "42 items ready for recipe build-out",
-      menuScanMockStatus: "Starting map created",
+      onboardingCta: "Schedule a Culinary Review",
+      ctaBottomTitle: "Ready to see how it works in your kitchen?",
+      ctaBottomBody:
+        "Connect with our team. We'll review your current operation, answer your questions and confirm whether FnB Cost Pro is the right fit — before you commit to anything.",
+      ctaBottomButton: "Schedule a Culinary Review",
     },
     features: {
       meta: {
@@ -221,31 +130,31 @@ export const translations = {
         description:
           "Explore FnB Cost Pro's culinary operations capabilities: menu scan, recipe costing, invoice capture, inventory counting, vendor connectivity, and cross-location management.",
       },
-      badge: "Features",
-      headline: "Food Cost Visibility Starts With a Photo",
+      badge: "Less Entry. More Intelligence.",
+      headline: "From a chef's photo to structured operational data.",
       subheadline:
-        "FnB Cost Pro turns your existing menus, recipe cards, vendor invoices, and inventory counts into a working food cost system — faster than manual entry, with a guided 14-day process designed to find at least one savings opportunity.",
+        "FnB Cost Pro turns your existing menus, recipe cards, vendor invoices and inventory materials into structured operational data — captured by photo or file, reviewed by your team before anything is saved.",
       badgesNote: "badges show which plan includes each feature",
-      startFree: "Start Your 14-Day Opportunity Review",
-      heroSecondaryCtaLabel: "See the Menu Scan",
-      heroProofLine: "14-Day Food Cost Opportunity Guarantee. Cancel anytime.",
-      upgradeTitle: "The Right Plan for Your Operation",
-      upgradeSubtitle: "Start with a 14-day trial. Cancel anytime.",
+      startFree: "Schedule a Culinary Review",
+      heroSecondaryCtaLabel: "See How It Works",
+      heroProofLine: "",
+      upgradeTitle: "The platform fits the way your operation works",
+      upgradeSubtitle: "Everything in one subscription. Scope expands as your operation grows.",
       upgradeFreeTitle: "",
       upgradeFreebody: "",
-      upgradeStarterTitle: "Starter — One Location",
+      upgradeStarterTitle: "Single Operation",
       upgradeStarterBody:
-        "Everything you need to run one location: menu and recipe scanning by photo, live recipe costing, vendor order guides, inventory counts, Theoretical Food Cost variance reporting, and the kitchen assistant.",
-      upgradeBasicTitle: "Starter — Know Your Costs",
+        "Photo-based setup, live recipe costing, vendor order guide imports, inventory counting workflows, Theoretical Food Cost variance reporting, and multi-seat team access. Everything you need to run a tight kitchen.",
+      upgradeBasicTitle: "Single Operation",
       upgradeBasicBody:
-        "Photo-based setup, live recipe costing, vendor order guides, Theoretical Food Cost variance reporting, and the kitchen assistant. Everything you need to run a tight back of house at one location.",
-      upgradeProTitle: "Pro — Multi-Location Control",
+        "Photo-based setup, live recipe costing, vendor order guide imports, inventory counting workflows, Theoretical Food Cost variance reporting, and multi-seat team access. Everything you need to run a tight kitchen.",
+      upgradeProTitle: "Multi-Operation",
       upgradeProBody:
-        "Everything in Starter plus shelf scanning by phone, invoice auto-matching, transfer orders between stores, cross-shop vendor pricing, and QuickBooks export. Add unlimited locations at $149/location/month. Built for operators running more than one store.",
-      ctaTitle: "Ready to Find Your First Food Cost Opportunity?",
+        "Everything in Single Operation plus shelf scanning by phone, cross-location variance reporting, cross-shop vendor pricing, transfer orders, and QuickBooks export. Built for operations running more than one kitchen.",
+      ctaTitle: "Ready to see how it works in your kitchen?",
       ctaSubtitle:
-        "Give us 14 days. We'll help you build a working food cost system and identify at least one area where food cost may be leaking.",
-      getStartedFree: "Start Your 14-Day Opportunity Review",
+        "Connect with our team. We'll review your current operation, answer your questions and confirm whether FnB Cost Pro is the right fit.",
+      getStartedFree: "Schedule a Culinary Review",
       tierLabels: { free: "Free", basic: "Starter", pro: "Pro" },
       sections: [
         {
@@ -661,186 +570,95 @@ export const translations = {
         description:
           "FnB Cost Pro aporta inteligencia de inventario, costeo de recetas en vivo y conectividad con proveedores a restaurantes liderados por chefs y operaciones de A&B. Construido para la forma en que trabajan las cocinas profesionales.",
       },
-      badge: "Garantía de Oportunidad en Costos de 14 Días",
-      headline1: "Encuentra tu Primera Oportunidad de",
-      headline2: "Ahorro en Costos en 14 Días",
-      headline3: "",
+      badge: "Inteligencia de Operaciones Culinarias",
+      headline: "Construida para la forma en que los chefs trabajan.",
       subheadline:
-        "FnB Cost Pro ayuda a los restaurantes a convertir menús, recetas, facturas, precios de proveedores e inventario en información clara sobre costos de alimentos — comenzando con un lanzamiento guiado diseñado para descubrir al menos una oportunidad de ahorro.",
-      ctaTrial: "Inicia tu Revisión de 14 Días",
-      ctaPricing: "Ver precios",
-      trialNote: "Lanzamiento guiado en una tarde. Garantía de oportunidad en costos de 14 días. Cancela cuando quieras.",
-      stats: [
-        { value: "8 hrs", label: "Entrada de datos administrativa semanal eliminada" },
-        { value: "$5,000", label: "Valor de 1% de mejora en costos con $500k/año en ventas" },
-        { value: "14 días", label: "Para tu primera oportunidad de ahorro en costos" },
-        { value: "1 día", label: "Lanzamiento guiado — operativo en una tarde" },
+        "Convierte recetas escritas a mano, fotos, facturas y archivos existentes en costos de recetas precisos, inteligencia de inventario y compras más inteligentes — sin sobrecargar a tu equipo culinario con entrada de datos.",
+      ctaPrimary: "Agendar una Revisión Culinaria",
+      ctaSecondary: "Cómo Funciona",
+      workflowLabel: "Cómo funciona",
+      workflowItems: [
+        { step: "Captura", phrase: "Fotos, archivos y cargas — sin re-entrada de datos" },
+        { step: "Costea", phrase: "Recetas con precio desde datos de proveedores en vivo" },
+        { step: "Compara", phrase: "Teórico vs. real — ve exactamente dónde se desvían los costos" },
+        { step: "Predice", phrase: "Recomendaciones de pedidos cuando tienes el historial para respaldarlas" },
       ],
-      roiMathLabel: "Las Matemáticas Son Simples",
-      roiMathTitle: "Pequeños Cambios Porcentuales Crean Grandes Diferencias",
-      roiMathSubtitle:
-        "La mayoría de los restaurantes no necesitan una mejora masiva para justificar una mejor visibilidad de costos. Encontrar incluso un 0.5% en oportunidad de costos puede cubrir el primer año.",
-      roiMathHeaders: {
-        sales: "Ventas Anuales",
-        half: "0.5% de Oportunidad",
-        one: "1% de Oportunidad",
-        two: "2% de Oportunidad",
-      },
-      roiMathRows: [
-        { sales: "$500,000", half: "$2,500", one: "$5,000", two: "$10,000" },
-        { sales: "$750,000", half: "$3,750", one: "$7,500", two: "$15,000" },
-        { sales: "$1,000,000", half: "$5,000", one: "$10,000", two: "$20,000" },
-      ],
-      roiMathNote: "Identificamos la oportunidad. Los ahorros reales dependen de las acciones que tomes.",
-      menuScanLabel: "Escaneo de Menú",
-      menuScanTitle: "Comienza con tu Menú. Ve las Claves de Costos en Minutos.",
-      menuScanSubtitle:
-        "Sube una foto de tu menú y FnB Cost Pro comienza a organizar tus platos, departamentos, precios y pistas de ingredientes. En lugar de comenzar desde una hoja en blanco, tu menú se convierte en el mapa inicial para el costeo de recetas, la revisión de facturas y el descubrimiento de oportunidades de costos.",
-      menuScanCallouts: [
-        "Platos extraídos",
-        "Departamentos organizados",
-        "Precios capturados",
-        "Pistas de ingredientes identificadas",
-        "Punto de partida para costeo de recetas",
-        "Punto de partida para revisión de márgenes",
-      ],
-      roiLabel: "Se Paga Solo Cuando Encuentras la Fuga",
-      roiTitle: "Deja de Adivinar Dónde Se Están Perdiendo los Costos.",
-      roiSubtitle:
-        "El ahorro en mano de obra importa. Pero el mayor beneficio es la visibilidad de costos de alimentos — saber exactamente dónde está saliendo el dinero antes de que se convierta en un problema.",
-      roiItems: [
+      captureLabel: "Qué Puedes Capturar",
+      captureTitle: "De la foto de un chef a datos operacionales estructurados.",
+      captureCards: [
         {
-          task: "Entrada de facturas → seguimiento de precios",
-          manual: "~20 min por entrega × 3 entregas/semana",
-          saved: "~$80/mes en tiempo de entrada eliminado",
-          how: "Fotografía la factura — líneas extraídas y emparejadas, y cada cambio de precio fluye a tus costos de recetas al instante",
+          input: "Receta escrita a mano",
+          outputs: [
+            "Ingredientes y cantidades estructurados",
+            "Rendimiento, porciones y escalado",
+            "Costo actual de receta con precios de proveedor en vivo",
+          ],
         },
         {
-          task: "Configuración de recetas → costo real por plato",
-          manual: "15–30 min por receta para escribir ingredientes",
-          saved: "12–25 horas de trabajo para un menú de 50 ítems",
-          how: "Fotografía tu menú o tarjeta de receta — ítems extraídos, costos calculados contra precios de proveedores en vivo",
+          input: "Factura o guía de pedidos",
+          outputs: [
+            "Artículos de proveedor y tamaños de empaque",
+            "Precio de entrega por unidad",
+            "Historial de precios y seguimiento de cambios",
+          ],
         },
         {
-          task: "Conteos de inventario → real vs. teórico",
-          manual: "2–4 horas por conteo × cada dos semanas",
-          saved: "$80–240/mes en tiempo de gerente",
-          how: "Camina por los estantes con tu teléfono — los conteos alimentan directamente los reportes de varianza",
+          input: "Hoja de inventario",
+          outputs: [
+            "Artículos de inventario y conteos",
+            "Asignaciones de ubicación de almacenamiento",
+            "Datos históricos de conteo y valor",
+          ],
+        },
+        {
+          input: "Etiqueta de producto o caja",
+          outputs: [
+            "Identidad y descripción del producto",
+            "Unidades, geometría de empaque y peso de captura",
+            "Emparejamiento y vinculación con artículo de proveedor",
+          ],
         },
       ],
-      roiTotal: "Para muchos restaurantes, encontrar menos del 1% en oportunidad de costos puede cubrir el primer año.",
-      roiNote: "El ahorro en mano de obra también es real — la mayoría elimina 6–10 horas semanales de entrada de datos.",
-      featuresLabel: "El Mecanismo de Prueba",
-      featuresTitle: "Escanea. Estructura. Encuentra la Oportunidad.",
-      featuresSubtitle:
-        "Cada flujo de trabajo está impulsado por la cámara de tu teléfono — cada uno alimentando una visión más clara de los costos de alimentos.",
-      seeAllFeatures: "Ver todas las funciones",
-      features: [
-        {
-          title: "Escaneo de Menú → Mapa de Costos",
-          desc: "Fotografía tu menú impreso y cada plato es extraído automáticamente. Tu menú se convierte en la base para el costeo de recetas, la revisión de facturas y la identificación de oportunidades de costos.",
-        },
-        {
-          title: "Conteo con Teléfono → Real vs. Teórico",
-          desc: "Camina por tus estantes con tu teléfono. Los conteos alimentan directamente los reportes de varianza — para que veas la brecha entre lo que debiste haber gastado y lo que gastaste.",
-        },
-        {
-          title: "Reportes de Varianza → Encuentra la Fuga",
-          desc: "La varianza del Costo Teórico de Alimentos muestra exactamente a dónde van los márgenes. Compara el gasto esperado con el real e identifica desperdicios, exceso de porciones y merma.",
-        },
-        {
-          title: "Escaneo de Facturas → Seguimiento de Precios",
-          desc: "Fotografía una entrega de proveedor y cada cambio de precio es capturado automáticamente. Los aumentos de precio fluyen instantáneamente a los costos de recetas.",
-        },
-        {
-          title: "Multi-sucursal",
-          desc: "Gestiona inventario, recetas y equipo en cada sucursal desde una sola cuenta. Pro agrega órdenes de transferencia entre tiendas y reportes multi-sucursal.",
-        },
-        {
-          title: "Costeo de Recetas en Vivo",
-          desc: "Los precios de ingredientes fluyen directamente desde las facturas de proveedores a tus recetas. Las sub-recetas anidadas se recalculan en el orden correcto. Tu costo de alimentos siempre está actualizado.",
-        },
+      captureSummary:
+        "Recetas, inventario, proveedores, precios y compras previstas permanecen conectados en toda la operación.",
+      purchasingLabel: "Inteligencia de Compras",
+      purchasingTitle: "Precios actuales. Comparaciones válidas. Pedidos más inteligentes.",
+      purchasingBody:
+        "Captura precios de proveedores específicos de tu cuenta desde portales compatibles y archivos existentes. Compara precios en vivo entre tus distribuidores e identifica dónde una guía de pedidos se ha movido respecto a tus costos de recetas.",
+      purchasingBullets: [
+        "Precios específicos de cuenta desde portales de distribuidores compatibles",
+        "Importación de guías de pedidos de Sysco, GFS, US Foods y distribuidores principales",
+        "El escaneo de facturas captura los precios entregados por cada línea",
+        "Comparación entre proveedores cuando hay precios disponibles de múltiples guías",
+        "Los costos de recetas se actualizan automáticamente cuando cambian los precios",
+        "Flujos de órdenes de compra y recepción conectados al inventario",
       ],
-      recipeLabel: "Costeo de Recetas",
-      recipeTitle: "Costo Real por Plato — De Foto a Número",
-      recipeSubtitle:
-        "Las estimaciones de costo de alimentos comienzan de inmediato una vez que los ingredientes se emparejan con el inventario y los precios de proveedores. Fotografía una tarjeta de receta y ve el costo actual del plato.",
-      recipeNote: "El costeo de recetas está incluido en todos los planes de pago.",
-      seePlans: "Ver planes",
-      recipeSteps: [
-        {
-          num: "1",
-          title: "Fotografía tu receta",
-          body: "Apunta tu teléfono a cualquier tarjeta de receta o nota impresa. Cada ingrediente es leído de la foto — cantidades, unidades y todo.",
-        },
-        {
-          num: "2",
-          title: "El costo de alimentos comienza a emerger",
-          body: "Los ingredientes se emparejan con tu inventario y precios de proveedores. Establece porcentajes de merma y obtén el costo real por porción — y alertas cuando un precio haya cambiado desde tu último conteo.",
-        },
-        {
-          num: "3",
-          title: "Captura cada cambio de precio",
-          body: "Cada receta se actualiza automáticamente cuando cambian los precios de los proveedores. Las sub-recetas anidadas se recalculan en el orden correcto. Siempre conoces el costo actual.",
-        },
+      purchasingCta: "Agendar una Revisión Culinaria",
+      multiLabel: "Multi-Sucursal",
+      multiTitle: "Cada cocina, almacén y punto de venta conectados.",
+      multiBody:
+        "Modela el almacenamiento central, el inventario de sucursales y las ubicaciones de artículos compartidos. Las recetas y los costos permanecen consistentes en toda la operación — con conteos por sucursal y reportes de varianza que muestran dónde está cada cocina.",
+      multiBullets: [
+        "Inventario central y de sucursales modelado por separado o en conjunto",
+        "Ubicaciones de artículos compartidas entre áreas de almacenamiento y puntos de venta",
+        "Conteos y reportes de varianza por sucursal",
+        "Costos de recetas consistentes en toda la operación",
+        "Acceso basado en roles para administración, gerencia y personal de cocina",
+        "Una cuenta — toda la operación visible en un solo lugar",
       ],
-      howItWorksLabel: "El Recorrido de Lanzamiento Guiado",
-      howItWorksTitle: "Comienza con tu Menú. Alcanza el Conocimiento de Costos en 14 Días.",
-      howItWorksSubtitle:
-        "FnB Cost Pro está diseñado para poner en marcha tu primera sucursal en una tarde con un lanzamiento guiado — y comenzar a identificar oportunidades de costos dentro de 14 días.",
-      steps: [
-        {
-          num: "01",
-          title: "Escanea tu menú",
-          body: "Sube una foto de tu menú impreso. Cada plato, sección y precio es extraído y llena tu biblioteca de recetas en minutos — dándote el mapa de partida para la revisión de costos.",
-        },
-        {
-          num: "02",
-          title: "Revisa facturas y precios de proveedores",
-          body: "Fotografía tus facturas o importa tus guías de pedidos. Cada precio llega automáticamente a tus costos de recetas — para que veas dónde se están moviendo los costos de ingredientes.",
-        },
-        {
-          num: "03",
-          title: "Identifica tu primera oportunidad de ahorro",
-          body: "En 14 días, tu sesión de lanzamiento guiado revisa tu menú, recetas, facturas y datos de varianza para identificar al menos un área donde los costos puedan estar escapándose.",
-        },
+      onboardingTitle: "Comienza con la operación que ya tienes",
+      onboardingItems: [
+        "Trae tus menús existentes, tarjetas de recetas, facturas o guías de pedidos",
+        "Captúralos por foto, carga o archivo — sin re-entrada de datos",
+        "Tu equipo revisa y confirma cada artículo extraído antes de guardarlo",
+        "Los costos comienzan a conectarse a medida que los datos de proveedores y recetas se alinean",
+        "Una sesión de Revisión Culinaria te ayuda a interpretar lo que los datos te dicen",
       ],
-      ctaBottomTitle: "¿Listo para Encontrar tu Primera Oportunidad de Ahorro?",
-      ctaBottomSubtitle:
-        "Danos 14 días. Te ayudaremos a identificar al menos un área donde los costos de alimentos pueden estar escapándose — usando tu menú, recetas, facturas, precios de proveedores o proceso de inventario.",
-      ctaBottomTrial: "Inicia tu Revisión de 14 Días",
-      ctaBottomContact: "Contáctanos",
-      ctaChecklist: [
-        "Garantía de oportunidad en costos de 14 días",
-        "Cancela en cualquier momento",
-        "Lanzamiento guiado en una tarde",
-        "Identifica al menos una oportunidad de ahorro",
-      ],
-      stepLabel: "Paso",
-      mobileShowcaseTitle: "Cada flujo de trabajo alimenta la visibilidad de costos",
-      mobileShowcaseSubtitle:
-        "Cuenta inventario, escanea facturas, costea recetas — cada uno cerrando el ciclo entre lo que gastas y lo que deberías gastar. Sin necesidad de descargar una app.",
-      mobilePhoneLabels: [
-        "Real vs. teórico — encuentra la varianza",
-        "Captura cambios de precios automáticamente",
-        "Costo real por plato — siempre actualizado",
-      ],
-      mobileCallouts: [
-        { label: "Visibilidad de costos", sub: "Cada escaneo alimenta mayor claridad en costos" },
-        { label: "Siempre actualizado", sub: "Los cambios de precio actualizan recetas al instante" },
-        { label: "Real vs. teórico", sub: "Los conteos alimentan directamente los reportes de varianza" },
-      ],
-      menuScanCTA: "Escanea tu menú",
-      menuScanMockTitle: "Escaneo de menú completo",
-      menuScanMockSub: "Brian's Bistro — 3 secciones, 42 ítems",
-      menuScanMockSections: [
-        { section: "Entradas", count: "8 ítems", avg: "prom $12.50" },
-        { section: "Platos principales", count: "18 ítems", avg: "prom $24.00" },
-        { section: "Postres", count: "6 ítems", avg: "prom $9.75" },
-        { section: "Bebidas", count: "10 ítems", avg: "prom $6.50" },
-      ],
-      menuScanMockFooter: "42 ítems listos para costeo de recetas",
-      menuScanMockStatus: "Mapa inicial creado",
+      onboardingCta: "Agendar una Revisión Culinaria",
+      ctaBottomTitle: "¿Listo para ver cómo funciona en tu cocina?",
+      ctaBottomBody:
+        "Conéctate con nuestro equipo. Revisaremos tu operación actual, responderemos tus preguntas y confirmaremos si FnB Cost Pro es la opción correcta — antes de que te comprometas con algo.",
+      ctaBottomButton: "Agendar una Revisión Culinaria",
     },
     features: {
       meta: {
@@ -848,31 +666,31 @@ export const translations = {
         description:
           "Explora las capacidades de FnB Cost Pro: escaneo de menú, costeo de recetas, captura de facturas, conteo de inventario, conectividad con proveedores y gestión multi-sucursal.",
       },
-      badge: "Funciones",
-      headline: "La visibilidad de costos comienza con una foto",
+      badge: "Menos Entrada. Más Inteligencia.",
+      headline: "De la foto de un chef a datos operacionales estructurados.",
       subheadline:
-        "FnB Cost Pro convierte tus menús, tarjetas de recetas, facturas de proveedores y conteos de inventario en un sistema de costos funcional — más rápido que la entrada manual, con un proceso guiado de 14 días para encontrar al menos una oportunidad de ahorro.",
+        "FnB Cost Pro convierte tus menús, tarjetas de recetas, facturas de proveedores y materiales de inventario existentes en datos operacionales estructurados — capturados por foto o archivo, revisados por tu equipo antes de guardar cualquier cosa.",
       badgesNote: "las insignias indican qué plan incluye cada función",
-      startFree: "Inicia tu Revisión de 14 Días",
-      heroSecondaryCtaLabel: "Ver el escaneo de menú",
-      heroProofLine: "Garantía de oportunidad de 14 días. Cancela en cualquier momento.",
-      upgradeTitle: "El plan correcto para tu operación",
-      upgradeSubtitle: "Comienza con una prueba de 14 días. Cancela cuando quieras.",
+      startFree: "Agendar una Revisión Culinaria",
+      heroSecondaryCtaLabel: "Cómo Funciona",
+      heroProofLine: "",
+      upgradeTitle: "La plataforma se adapta a la forma en que funciona tu operación",
+      upgradeSubtitle: "Todo en una sola suscripción. El alcance crece con tu operación.",
       upgradeFreeTitle: "",
       upgradeFreebody: "",
-      upgradeStarterTitle: "Starter — Una sucursal",
+      upgradeStarterTitle: "Operación Individual",
       upgradeStarterBody:
-        "Todo lo que necesitas para una sucursal: escaneo de menú y recetas por foto, costeo de recetas en vivo, guías de proveedores, conteos de inventario y reportes de varianza del Costo Teórico de Alimentos.",
-      upgradeBasicTitle: "Starter — Conoce tus costos",
+        "Configuración por foto, costeo de recetas en vivo, importación de guías de pedidos, flujos de conteo de inventario, reportes de varianza del Costo Teórico de Alimentos y acceso multi-usuario. Todo lo que necesitas para una cocina bien administrada.",
+      upgradeBasicTitle: "Operación Individual",
       upgradeBasicBody:
-        "Configuración por foto, costeo de recetas en vivo, guías de proveedores, reportes de varianza del Costo Teórico de Alimentos y el asistente de cocina. Todo lo que necesitas para una sucursal.",
-      upgradeProTitle: "Pro — Control multi-sucursal",
+        "Configuración por foto, costeo de recetas en vivo, importación de guías de pedidos, flujos de conteo de inventario, reportes de varianza del Costo Teórico de Alimentos y acceso multi-usuario. Todo lo que necesitas para una cocina bien administrada.",
+      upgradeProTitle: "Multi-Operación",
       upgradeProBody:
-        "Todo lo de Starter más escaneo de estantes por teléfono, órdenes de transferencia, comparación de precios entre proveedores y exportación a QuickBooks. Agrega sucursales ilimitadas a $149/sucursal/mes.",
-      ctaTitle: "¿Listo para encontrar tu primera oportunidad de ahorro?",
+        "Todo lo de Operación Individual más escaneo de estantes por teléfono, reportes de varianza entre sucursales, comparación de precios entre proveedores, órdenes de transferencia y exportación a QuickBooks. Para operaciones que gestionan más de una cocina.",
+      ctaTitle: "¿Listo para ver cómo funciona en tu cocina?",
       ctaSubtitle:
-        "Danos 14 días. Te ayudaremos a construir un sistema de costos funcional e identificar al menos un área donde los costos de alimentos pueden estar escapándose.",
-      getStartedFree: "Inicia tu Revisión de 14 Días",
+        "Conéctate con nuestro equipo. Revisaremos tu operación actual, responderemos tus preguntas y confirmaremos si FnB Cost Pro es la opción correcta.",
+      getStartedFree: "Agendar una Revisión Culinaria",
       tierLabels: { free: "Gratis", basic: "Starter", pro: "Pro" },
       sections: [],
       guaranteeSection: {
