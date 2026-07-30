@@ -1251,10 +1251,17 @@ async function runStartupMigrations() {
   }
 }
 
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Startup] ❌ Unhandled rejection:', reason);
+  process.exit(1);
+});
+
 (async () => {
+  console.log('[Startup] 1 — runStartupMigrations');
   // Apply schema migrations that may be missing on the VPS database
   await runStartupMigrations();
 
+  console.log('[Startup] 2 — setupSsoAuth');
   // Setup SSO authentication (must be before registerRoutes) - skip on VPS with local auth
   if (process.env.AUTH_MODE !== 'local') {
     try {
@@ -1263,7 +1270,8 @@ async function runStartupMigrations() {
       console.error('⚠️ SSO setup failed (non-fatal on VPS — set AUTH_MODE=local to skip):', err);
     }
   }
-  
+
+  console.log('[Startup] 3 — registerRoutes');
   const server = await registerRoutes(app);
   
   // Setup WebSocket for real-time POS streaming
