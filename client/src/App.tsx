@@ -46,6 +46,7 @@ import OrderGuideReview from "@/pages/order-guide-review";
 import OrderGuideScan from "@/pages/order-guide-scan";
 import InventoryImport from "@/pages/inventory-import";
 import OrderlyImport from "@/pages/orderly-import";
+import OrderlyReport from "@/pages/orderly-report";
 import RecipeImport from "@/pages/recipe-import";
 import Orders from "@/pages/orders";
 import PurchaseOrders from "@/pages/purchase-orders";
@@ -474,6 +475,7 @@ function ProtectedLayoutContent() {
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/inventory-import" component={InventoryImport} />
               <Route path="/orderly-import" component={OrderlyImport} />
+              <Route path="/orderly-report" component={OrderlyReport} />
               <Route path="/recipe-import" component={RecipeImport} />
               <Route path="/order" component={OrderLanding} />
               <Route path="/orders" component={Orders} />

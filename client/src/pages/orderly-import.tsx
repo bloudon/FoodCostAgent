@@ -57,7 +57,9 @@ import {
   ClipboardList,
   Info,
   AlertCircle,
+  FileText,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -218,6 +220,7 @@ function BatchList({
   onSelect: (batch: ImportBatch) => void;
   onCreateCountSession: (batch: ImportBatch) => void;
 }) {
+  const [, navigate] = useLocation();
   const { data: batches = [], isLoading } = useQuery<ImportBatch[]>({
     queryKey: ["/api/inventory-import/orderly/batches"],
     queryFn: async () => {
@@ -232,6 +235,8 @@ function BatchList({
     error: "bg-red-100 text-red-800",
   };
 
+  const hasApproved = batches.some((b) => b.status === "approved");
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -239,10 +244,18 @@ function BatchList({
           <h2 className="text-lg font-semibold">Orderly Inventory Imports</h2>
           <p className="text-sm text-muted-foreground">Upload an Orderly .xlsx export to stage and approve items, vendors, and locations.</p>
         </div>
-        <Button onClick={onNew}>
-          <Upload className="h-4 w-4 mr-2" />
-          Upload new file
-        </Button>
+        <div className="flex gap-2">
+          {hasApproved && (
+            <Button variant="outline" onClick={() => navigate("/orderly-report")}>
+              <FileText className="h-4 w-4 mr-2" />
+              View Report
+            </Button>
+          )}
+          <Button onClick={onNew}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload new file
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

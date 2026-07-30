@@ -54,6 +54,10 @@ import {
   applyBatchApproval,
   type RowDecision,
 } from '../services/orderly/orderlyDomain';
+import {
+  getReconciliationReport,
+  reportToCsvRows,
+} from '../services/orderly/orderlyReport';
 
 // ─── Multer upload — memory storage, xlsx only, max 50 MB ────────────────────
 
@@ -637,6 +641,50 @@ export function registerOrderlyImportRoutes(app: Express): void {
         res.json({ batchId, inventoryDate, confirmed: true });
       } catch (err: any) {
         console.error('[OrderlyImport] confirm-date error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/inventory-import/orderly/report
+   * Returns the full reconciliation report for all approved Orderly batches.
+   */
+  app.get(
+    '/api/inventory-import/orderly/report',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const report = await getReconciliationReport(companyId);
+        res.json(report);
+      } catch (err: any) {
+        console.error('[OrderlyImport] report error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/inventory-import/orderly/report/export/csv
+   * Returns the full report as a downloadable CSV file.
+   */
+  app.get(
+    '/api/inventory-import/orderly/report/export/csv',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const report = await getReconciliationReport(companyId);
+        const csv = reportToCsvRows(report);
+        const filename = `orderly-reconciliation-report-${new Date().toISOString().slice(0, 10)}.csv`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(csv);
+      } catch (err: any) {
+        console.error('[OrderlyImport] report CSV export error:', err);
         res.status(500).json({ error: err.message });
       }
     },
