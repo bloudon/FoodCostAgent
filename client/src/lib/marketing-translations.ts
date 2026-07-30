@@ -30,9 +30,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Find Your First Food Cost Savings Opportunity in 14 Days",
+        title: "FnB Cost Pro — Culinary Operations Intelligence for Chef-Led Restaurants",
         description:
-          "FnB Cost Pro helps restaurants turn menus, recipes, invoices, vendor pricing, and inventory data into clear food cost insight — starting with a guided launch designed to uncover at least one savings opportunity in your first 14 days.",
+          "FnB Cost Pro brings inventory intelligence, live recipe costing, and vendor connectivity to chef-led restaurants and F&B operations. Built for the way professional kitchens work.",
       },
       badge: "14-Day Food Cost Opportunity Guarantee",
       headline1: "Find Your First Food Cost",
@@ -217,9 +217,9 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Restaurant Food Cost Software Features | FnB Cost Pro",
+        title: "Platform Features — FnB Cost Pro Culinary Operations Platform",
         description:
-          "FnB Cost Pro helps restaurants turn menus, recipes, invoices, and inventory counts into food cost insight. Start with a guided 14-day process designed to find at least one savings opportunity.",
+          "Explore FnB Cost Pro's culinary operations capabilities: menu scan, recipe costing, invoice capture, inventory counting, vendor connectivity, and cross-location management.",
       },
       badge: "Features",
       headline: "Food Cost Visibility Starts With a Photo",
@@ -521,9 +521,9 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "About FnB Cost Pro — We Help Restaurants Find Food Cost Opportunities Faster",
+        title: "About FnB Cost Pro — The Kitchen Should Not Have to Adapt to the Software",
         description:
-          "FnB Cost Pro helps restaurants turn menus, recipes, invoices, and inventory data into food cost insight — starting with a 14-day guided process designed to find at least one savings opportunity.",
+          "FnB Cost Pro is built for chef-led restaurants and professional F&B operations. Culinary operations intelligence — inventory, recipe costing, and vendor connectivity — without adding administrative burden.",
       },
       badge: "Our Story",
       headline: "We Help Restaurants Find Food Cost Opportunities Faster",
@@ -657,9 +657,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Encuentra tu Primera Oportunidad de Ahorro en Costos en 14 Días",
+        title: "FnB Cost Pro — Inteligencia de Operaciones Culinarias para Restaurantes Liderados por Chefs",
         description:
-          "FnB Cost Pro ayuda a los restaurantes a convertir menús, recetas, facturas, precios de proveedores e inventario en información clara sobre costos de alimentos — comenzando con un lanzamiento guiado para descubrir al menos una oportunidad de ahorro en tus primeros 14 días.",
+          "FnB Cost Pro aporta inteligencia de inventario, costeo de recetas en vivo y conectividad con proveedores a restaurantes liderados por chefs y operaciones de A&B. Construido para la forma en que trabajan las cocinas profesionales.",
       },
       badge: "Garantía de Oportunidad en Costos de 14 Días",
       headline1: "Encuentra tu Primera Oportunidad de",
@@ -844,9 +844,9 @@ export const translations = {
     },
     features: {
       meta: {
-        title: "Funciones — FnB Cost Pro Gestión de Inventario y Cocina Trasera para Restaurantes",
+        title: "Funcionalidades de la Plataforma — FnB Cost Pro Plataforma de Operaciones Culinarias",
         description:
-          "Explora las funciones de gestión de inventario para restaurantes de FnB Cost Pro: escaneo por foto, conteos de inventario desde el teléfono y control de costos en cada sucursal.",
+          "Explora las capacidades de FnB Cost Pro: escaneo de menú, costeo de recetas, captura de facturas, conteo de inventario, conectividad con proveedores y gestión multi-sucursal.",
       },
       badge: "Funciones",
       headline: "La visibilidad de costos comienza con una foto",
@@ -1079,9 +1079,9 @@ export const translations = {
     },
     about: {
       meta: {
-        title: "Nosotros — FnB Cost Pro Ayuda a Restaurantes a Encontrar Oportunidades de Ahorro en Costos",
+        title: "Nosotros — FnB Cost Pro: La Cocina No Debería Adaptarse al Software",
         description:
-          "FnB Cost Pro ayuda a los restaurantes a convertir menús, recetas, facturas e inventario en información sobre costos de alimentos — comenzando con un proceso guiado de 14 días para encontrar al menos una oportunidad de ahorro.",
+          "FnB Cost Pro está construido para restaurantes liderados por chefs y operaciones profesionales de A&B. Inteligencia operacional para equipos culinarios, sin carga administrativa adicional.",
       },
       badge: "Nuestra historia",
       headline: "Ayudamos a los Restaurantes a Encontrar Oportunidades de Ahorro Más Rápido",

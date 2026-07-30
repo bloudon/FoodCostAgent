@@ -79,7 +79,23 @@ export function MarketingHead({
       el.setAttribute("content", content);
     };
 
+    const setOgMeta = (property: string, content: string) => {
+      let el = document.querySelector(`meta[property="${property}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute("property", property);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+
     setMeta("description", description);
+
+    setOgMeta("og:title", title);
+    setOgMeta("og:description", description);
+    setOgMeta("og:type", "website");
+    setOgMeta("og:url", canonicalUrl);
+    setOgMeta("og:site_name", "FnB Cost Pro");
 
     let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
     if (!canonical) {
