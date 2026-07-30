@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { usePageEvent } from "@/lib/analytics";
 import { CheckCircle2, ChevronRight, HelpCircle, Building2, MapPin, Cog, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead, CTAButton } from "@/components/website/marketing-layout";
@@ -23,6 +24,7 @@ export default function WebsitePricing() {
   const { lang, t } = useLanguage();
   const pricing = t.pricing;
   const [term, setTerm] = useState<Term>("monthly");
+  usePageEvent("pricing_page_viewed", { language: lang });
 
   const platformPrice =
     term === "monthly"

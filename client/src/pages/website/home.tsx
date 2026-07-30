@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { track, useInViewEvent } from "@/lib/analytics";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -81,6 +82,9 @@ export default function WebsiteHome() {
   const home = t.home;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
 
+  const workflowRef = useRef<HTMLElement>(null);
+  useInViewEvent(workflowRef, "workflow_section_viewed", { language: lang });
+
   return (
     <MarketingLayout>
       <MarketingHead
@@ -108,6 +112,7 @@ export default function WebsiteHome() {
                 size="lg"
                 className="bg-white text-gray-900 hover:bg-gray-100 border-0 text-base px-8 h-auto py-3 font-semibold"
                 data-testid="btn-hero-primary"
+                onClick={() => track("hero_cta_click", { language: lang })}
               >
                 {home.ctaPrimary}
                 <ChevronRight className="h-5 w-5 ml-1" />
@@ -119,6 +124,7 @@ export default function WebsiteHome() {
                 variant="outline"
                 className="text-white border-white/50 bg-white/10 backdrop-blur-sm text-base px-8 h-auto py-3"
                 data-testid="btn-hero-secondary"
+                onClick={() => track("secondary_cta_click", { language: lang })}
               >
                 {home.ctaSecondary}
               </Button>
@@ -128,7 +134,7 @@ export default function WebsiteHome() {
       </section>
 
       {/* ── Workflow strip ────────────────────────────────────────────────── */}
-      <section id="workflow-strip" className="py-14 bg-gray-900" data-testid="workflow-strip">
+      <section id="workflow-strip" className="py-14 bg-gray-900" data-testid="workflow-strip" ref={workflowRef}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-stretch">
             {home.workflowItems.map((item, i) => (

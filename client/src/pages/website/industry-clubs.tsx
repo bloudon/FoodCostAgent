@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
 import { newPageTranslations } from "@/lib/new-page-translations";
+import { usePageEvent } from "@/lib/analytics";
 
 export default function WebsiteIndustryClubs() {
   const { lang } = useLanguage();
   const t = newPageTranslations[lang];
   const p = t.industryClubs;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
+  usePageEvent("industry_page_viewed", { segment: "clubs-resorts", language: lang });
 
   return (
     <MarketingLayout>

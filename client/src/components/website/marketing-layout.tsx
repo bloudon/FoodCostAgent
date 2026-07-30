@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { track } from "@/lib/analytics";
 import { Link, useLocation } from "wouter";
 import { Menu, X, ChevronRight, ChevronDown, LayoutDashboard, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -259,6 +260,7 @@ function LanguageToggle({ lang }: { lang: Language }) {
       <Link
         href={enPath}
         data-testid="lang-toggle-en"
+        onClick={() => lang !== "en" && track("language_switched", { from: lang, to: "en" })}
         className={`px-2.5 py-1 text-xs font-semibold transition-colors ${
           lang === "en"
             ? "bg-green-600 text-white"
@@ -270,6 +272,7 @@ function LanguageToggle({ lang }: { lang: Language }) {
       <Link
         href={esPath}
         data-testid="lang-toggle-es"
+        onClick={() => lang !== "es" && track("language_switched", { from: lang, to: "es" })}
         className={`px-2.5 py-1 text-xs font-semibold transition-colors ${
           lang === "es"
             ? "bg-green-600 text-white"

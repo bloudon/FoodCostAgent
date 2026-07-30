@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { track } from "@/lib/analytics";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,6 +59,13 @@ export default function WebsiteContact() {
   const c = t.contact;
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
+  const formStartedRef = useRef(false);
+  function handleFormFocus() {
+    if (!formStartedRef.current) {
+      formStartedRef.current = true;
+      track("contact_form_started", { language: lang });
+    }
+  }
 
   const contactSchema = z.object({
     name: z.string().min(2, c.validationName),
@@ -103,6 +111,7 @@ export default function WebsiteContact() {
         throw new Error(message);
       }
       setSubmitted(true);
+      track("contact_form_submitted", { language: lang });
     } catch (err) {
       const message = err instanceof Error ? err.message : c.sendFailedDefault;
       toast({ title: c.sendFailedTitle, description: message, variant: "destructive" });
@@ -212,6 +221,7 @@ export default function WebsiteContact() {
                   onSubmit={form.handleSubmit(onSubmit)}
                   className="space-y-5"
                   data-testid="contact-form"
+                  onFocus={handleFormFocus}
                 >
                   {/* Name + Email */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

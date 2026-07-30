@@ -1,4 +1,5 @@
 import { ChevronRight, Building2, BookOpen, ShoppingCart, Package, Warehouse, ClipboardCheck, BarChart3 } from "lucide-react";
+import { usePageEvent } from "@/lib/analytics";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
@@ -12,6 +13,7 @@ export default function WebsiteForFbLeaders() {
   const t = newPageTranslations[lang];
   const p = t.forFbLeaders;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
+  usePageEvent("for_fb_leaders_page_viewed", { language: lang });
 
   return (
     <MarketingLayout>

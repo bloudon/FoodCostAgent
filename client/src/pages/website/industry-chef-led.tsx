@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
 import { newPageTranslations } from "@/lib/new-page-translations";
+import { usePageEvent } from "@/lib/analytics";
 
 export default function WebsiteIndustryChefLed() {
   const { lang } = useLanguage();
   const t = newPageTranslations[lang];
   const p = t.industryChefLed;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
+  usePageEvent("industry_page_viewed", { segment: "chef-led", language: lang });
 
   return (
     <MarketingLayout>

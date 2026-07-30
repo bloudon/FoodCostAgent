@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import { usePageEvent } from "@/lib/analytics";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
@@ -10,6 +11,7 @@ export default function WebsitePlatform() {
   const t = newPageTranslations[lang];
   const p = t.platform;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
+  usePageEvent("platform_section_viewed", { language: lang });
 
   return (
     <MarketingLayout>

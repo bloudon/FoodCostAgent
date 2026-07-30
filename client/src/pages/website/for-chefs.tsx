@@ -1,4 +1,5 @@
 import { ChevronRight, Camera, Clock, Layers, TrendingUp, Smartphone, RefreshCw, MinusCircle } from "lucide-react";
+import { usePageEvent } from "@/lib/analytics";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead } from "@/components/website/marketing-layout";
@@ -12,6 +13,7 @@ export default function WebsiteForChefs() {
   const t = newPageTranslations[lang];
   const p = t.forChefs;
   const contactHref = lang === "es" ? "/es/contact" : "/contact";
+  usePageEvent("for_chefs_page_viewed", { language: lang });
 
   return (
     <MarketingLayout>
