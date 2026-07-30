@@ -1269,7 +1269,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: z.string().min(2),
         email: z.string().email(),
         company: z.string().optional(),
-        message: z.string().min(10),
+        message: z.string().optional(),            // kept for backward compat
+        operationType: z.string().optional(),
+        locationCount: z.string().optional(),
+        role: z.string().optional(),
+        currentSystem: z.string().optional(),
+        primaryChallenge: z.string().optional(),
+        contactPreference: z.string().optional(),
       });
       const data = schema.parse(req.body);
       import("./email").then(({ sendContactEmail }) => {
