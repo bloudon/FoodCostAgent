@@ -11,33 +11,21 @@ Symptoms: exactly two log lines appear (`[DB]` + `ℹ️ Redis`) then the proces
 
 ## What does NOT work
 
-- `setInterval(() => {}, 1_000_000)` — Node.js v20 TLA exit-code-13 fires before the timer's macrotask can run; the engine considers the loop "effectively idle" for TLA purposes even though a timer is registered.
-- `pool.connect()` + immediate `client.release()` — pg-pool unref()'s its idle-connection timers, so after release() the event loop is effectively idle again from Node's perspective and exit-13 fires anyway.
+- `setInterval(() => {}, N)` — Node.js v20 TLA exit-code-13 fires before the macro-timer queue runs; the engine considers the loop "drained" for TLA purposes even with a pending timer.
+- `pool.connect()` + immediate `client.release()` — pg-pool unref()'s idle-connection timers, so the loop is effectively idle again after release().
+- Holding a checked-out client — pg internally unref()'s the client's socket after the auth handshake, so the active handle disappears.
 
 ## What works
 
-Check out a pg client and **hold it** (do NOT release) until the startup IIFE fires:
+Fire-and-forget `pool.query('SELECT pg_sleep(3)')` — keeps a TCP socket in **active-read state** inside libuv for 3 s:
 
 ```ts
-// server/db.ts — isLocalDb branch
-export let _startupClient: any;
-try {
-  _startupClient = await pool.connect();   // socket stays "in use" — not unref'd
-  console.log('[DB] Connection verified ✓');
-} catch (err: any) {
-  console.error('[DB] Initial connection check failed:', err.message);
-}
+// server/db.ts — isLocalDb branch, right after pool is created
+pool.query('SELECT pg_sleep(3)').catch(() => {/* cancelled on shutdown */});
+console.log('[DB] ESM keepalive query started');
 ```
 
-```ts
-// server/index.ts — start of startup IIFE
-await (async () => {
-  if (_startupClient) { try { _startupClient.release(); } catch {} }
-  // ... rest of startup
-})();
-```
-
-A *checked-out* pg client is never unref'd by pg-pool. Its TCP socket is an active libuv I/O handle — Node cannot exit while it is open. Release it at the top of the IIFE so runStartupMigrations() can use the pool normally.
+A pending socket read is tracked as a libuv I/O handle below the timer/Promise layer — it is never unref()'d. 3 s is more than enough for all memoised `await init_*()` microtasks to complete and the startup IIFE to open its own DB connections and HTTP socket.
 
 ## Also required
 
