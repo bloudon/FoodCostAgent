@@ -109,6 +109,12 @@ import WebsiteFeatures from "@/pages/website/features";
 import WebsitePricing from "@/pages/website/pricing";
 import WebsiteAbout from "@/pages/website/about";
 import WebsiteContact from "@/pages/website/contact";
+import WebsitePlatform from "@/pages/website/platform";
+import WebsiteForChefs from "@/pages/website/for-chefs";
+import WebsiteForFbLeaders from "@/pages/website/for-fb-leaders";
+import WebsiteIndustryChefLed from "@/pages/website/industry-chef-led";
+import WebsiteIndustryGroups from "@/pages/website/industry-groups";
+import WebsiteIndustryClubs from "@/pages/website/industry-clubs";
 import { LanguageContext } from "@/lib/language-context";
 import { translations } from "@/lib/marketing-translations";
 import type { Language } from "@/lib/marketing-translations";
@@ -147,6 +153,20 @@ const EsPricing = withLang("es", WebsitePricing);
 const EsAbout = withLang("es", WebsiteAbout);
 const EsContact = withLang("es", WebsiteContact);
 
+const EnPlatform = withLang("en", WebsitePlatform);
+const EnForChefs = withLang("en", WebsiteForChefs);
+const EnForFbLeaders = withLang("en", WebsiteForFbLeaders);
+const EnIndustryChefLed = withLang("en", WebsiteIndustryChefLed);
+const EnIndustryGroups = withLang("en", WebsiteIndustryGroups);
+const EnIndustryClubs = withLang("en", WebsiteIndustryClubs);
+
+const EsPlatform = withLang("es", WebsitePlatform);
+const EsForChefs = withLang("es", WebsiteForChefs);
+const EsForFbLeaders = withLang("es", WebsiteForFbLeaders);
+const EsIndustryChefLed = withLang("es", WebsiteIndustryChefLed);
+const EsIndustryGroups = withLang("es", WebsiteIndustryGroups);
+const EsIndustryClubs = withLang("es", WebsiteIndustryClubs);
+
 function WebsiteRouter() {
   useGa4();
   return (
@@ -161,6 +181,18 @@ function WebsiteRouter() {
       <Route path="/es/pricing" component={EsPricing} />
       <Route path="/es/about" component={EsAbout} />
       <Route path="/es/contact" component={EsContact} />
+      <Route path="/platform" component={EnPlatform} />
+      <Route path="/for-chefs" component={EnForChefs} />
+      <Route path="/for-fb-leaders" component={EnForFbLeaders} />
+      <Route path="/industries/chef-led-restaurants" component={EnIndustryChefLed} />
+      <Route path="/industries/restaurant-groups" component={EnIndustryGroups} />
+      <Route path="/industries/clubs-resorts" component={EnIndustryClubs} />
+      <Route path="/es/platform" component={EsPlatform} />
+      <Route path="/es/for-chefs" component={EsForChefs} />
+      <Route path="/es/for-fb-leaders" component={EsForFbLeaders} />
+      <Route path="/es/industries/chef-led-restaurants" component={EsIndustryChefLed} />
+      <Route path="/es/industries/restaurant-groups" component={EsIndustryGroups} />
+      <Route path="/es/industries/clubs-resorts" component={EsIndustryClubs} />
       <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
       <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
       <Route path="/login" component={Login} />

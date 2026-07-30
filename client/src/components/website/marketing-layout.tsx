@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ChevronRight, LayoutDashboard, LogOut, User } from "lucide-react";
+import { Menu, X, ChevronRight, ChevronDown, LayoutDashboard, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -38,17 +38,9 @@ export function appLink(path: string) {
 
 const BASE_DOMAIN = "https://fnbcostpro.com";
 
-const PAGE_PATHS: Record<string, string> = {
-  "/": "/",
-  "/features": "/features",
-  "/pricing": "/pricing",
-  "/about": "/about",
-  "/contact": "/contact",
-};
-
 function getBasePath(location: string): string {
   const stripped = location.startsWith("/es") ? location.replace(/^\/es/, "") || "/" : location;
-  return PAGE_PATHS[stripped] ?? stripped;
+  return stripped;
 }
 
 export function MarketingHead({
@@ -134,7 +126,7 @@ function NavLink({
   onClick?: () => void;
 }) {
   const [location] = useLocation();
-  const active = location === href;
+  const active = location === href || location.startsWith(href + "/");
   return (
     <Link
       href={href}
@@ -145,6 +137,102 @@ function NavLink({
     >
       {label}
     </Link>
+  );
+}
+
+function NavDropdown({
+  label,
+  items,
+  testId,
+}: {
+  label: string;
+  items: { label: string; href: string }[];
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openMenu = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setOpen(true);
+  };
+  const closeMenu = () => {
+    timerRef.current = setTimeout(() => setOpen(false), 80);
+  };
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={openMenu}
+      onMouseLeave={closeMenu}
+      data-testid={testId}
+    >
+      <button
+        className={`flex items-center gap-0.5 text-sm font-medium transition-colors hover:text-green-600 ${open ? "text-green-600" : "text-gray-700"}`}
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-0 pt-1 w-56 z-[60]"
+          onMouseEnter={openMenu}
+          onMouseLeave={closeMenu}
+        >
+          <div className="bg-white border border-gray-100 rounded-xl shadow-lg py-1.5">
+            {items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setOpen(false)}
+                className="block px-4 py-2 text-sm text-gray-700 hover:text-green-600 hover:bg-gray-50 transition-colors"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileExpandableSection({
+  label,
+  items,
+  onItemClick,
+}: {
+  label: string;
+  items: { label: string; href: string }[];
+  onItemClick: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      <button
+        className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-green-600 py-0.5 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span>{label}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="ml-3 mt-2 space-y-2.5 border-l-2 border-gray-100 pl-3">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onItemClick}
+              className="block text-sm text-gray-600 hover:text-green-600 transition-colors"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -198,11 +286,28 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { lang, t } = useLanguage();
 
-  const navLinks = [
-    { label: t.nav.features, href: lang === "es" ? "/es/features" : "/features" },
-    { label: t.nav.pricing, href: lang === "es" ? "/es/pricing" : "/pricing" },
-    { label: t.nav.about, href: lang === "es" ? "/es/about" : "/about" },
-    { label: t.nav.contact, href: lang === "es" ? "/es/contact" : "/contact" },
+  const platformHref = lang === "es" ? "/es/platform" : "/platform";
+  const forChefsHref = lang === "es" ? "/es/for-chefs" : "/for-chefs";
+  const forFbLeadersHref = lang === "es" ? "/es/for-fb-leaders" : "/for-fb-leaders";
+  const pricingHref = lang === "es" ? "/es/pricing" : "/pricing";
+  const aboutHref = lang === "es" ? "/es/about" : "/about";
+  const contactHref = lang === "es" ? "/es/contact" : "/contact";
+
+  const platformDropdownItems = t.nav.platformItems.map((item) => ({
+    label: item.label,
+    href: `${platformHref}#${item.anchor}`,
+  }));
+
+  const industriesDropdownItems = t.nav.industriesItems.map((item) => ({
+    label: item.label,
+    href: lang === "es" ? `/es${item.href}` : item.href,
+  }));
+
+  const footerProductLinks = [
+    { label: t.nav.platform, href: platformHref },
+    { label: t.nav.forChefs, href: forChefsHref },
+    { label: t.nav.forFbLeaders, href: forFbLeadersHref },
+    { label: t.nav.pricing, href: pricingHref },
   ];
 
   const { data: authUser } = useQuery<{ id: string; email: string; firstName?: string; lastName?: string } | null>({
@@ -241,10 +346,22 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               <img src="/website-logo.png" alt="FnB Cost Pro" className="h-16 w-auto -my-3" />
             </Link>
 
-            <nav className="hidden md:flex items-center gap-8">
-              {navLinks.map((l) => (
-                <NavLink key={l.href} href={l.href} label={l.label} />
-              ))}
+            {/* Desktop nav */}
+            <nav className="hidden md:flex items-center gap-7">
+              <NavDropdown
+                label={t.nav.platform}
+                items={platformDropdownItems}
+                testId="nav-platform-dropdown"
+              />
+              <NavLink href={forChefsHref} label={t.nav.forChefs} />
+              <NavLink href={forFbLeadersHref} label={t.nav.forFbLeaders} />
+              <NavDropdown
+                label={t.nav.industries}
+                items={industriesDropdownItems}
+                testId="nav-industries-dropdown"
+              />
+              <NavLink href={pricingHref} label={t.nav.pricing} />
+              <NavLink href={aboutHref} label={t.nav.about} />
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
@@ -294,15 +411,15 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                       {t.nav.login}
                     </Button>
                   </a>
-                  <a href={appLink("/signup")}>
+                  <Link href={contactHref}>
                     <Button
                       size="sm"
                       className="bg-orange-500 hover:bg-orange-600 text-white border-0"
                       data-testid="btn-nav-signup"
                     >
-                      {t.nav.getStarted}
+                      {t.nav.scheduleReview}
                     </Button>
-                  </a>
+                  </Link>
                 </>
               )}
             </div>
@@ -318,11 +435,23 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
+        {/* Mobile nav */}
         {mobileOpen && (
           <div className="md:hidden border-t border-gray-100 bg-white px-4 py-4 space-y-4">
-            {navLinks.map((l) => (
-              <NavLink key={l.href} href={l.href} label={l.label} onClick={() => setMobileOpen(false)} />
-            ))}
+            <MobileExpandableSection
+              label={t.nav.platform}
+              items={platformDropdownItems}
+              onItemClick={() => setMobileOpen(false)}
+            />
+            <NavLink href={forChefsHref} label={t.nav.forChefs} onClick={() => setMobileOpen(false)} />
+            <NavLink href={forFbLeadersHref} label={t.nav.forFbLeaders} onClick={() => setMobileOpen(false)} />
+            <MobileExpandableSection
+              label={t.nav.industries}
+              items={industriesDropdownItems}
+              onItemClick={() => setMobileOpen(false)}
+            />
+            <NavLink href={pricingHref} label={t.nav.pricing} onClick={() => setMobileOpen(false)} />
+            <NavLink href={aboutHref} label={t.nav.about} onClick={() => setMobileOpen(false)} />
             <div className="pt-1">
               <LanguageToggle lang={lang} />
             </div>
@@ -359,14 +488,14 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                       {t.nav.login}
                     </Button>
                   </a>
-                  <a href={appLink("/signup")} className="w-full">
+                  <Link href={contactHref} className="w-full">
                     <Button
                       className="w-full bg-orange-500 text-white border-0"
                       data-testid="btn-mobile-signup"
                     >
-                      {t.nav.getStarted}
+                      {t.nav.scheduleReview}
                     </Button>
-                  </a>
+                  </Link>
                 </>
               )}
             </div>
@@ -389,7 +518,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="text-white font-semibold text-sm mb-3">{t.footer.product}</h4>
               <ul className="space-y-2">
-                {navLinks.map((l) => (
+                {footerProductLinks.map((l) => (
                   <li key={l.href}>
                     <Link href={l.href} className="text-sm text-gray-400 hover:text-white transition-colors">
                       {l.label}
@@ -403,9 +532,9 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               <h4 className="text-white font-semibold text-sm mb-3">{t.footer.getStarted}</h4>
               <ul className="space-y-2">
                 <li>
-                  <a href={appLink("/signup")} className="text-sm text-gray-400 hover:text-white transition-colors">
-                    {t.footer.getStartedFree}
-                  </a>
+                  <Link href={contactHref} className="text-sm text-gray-400 hover:text-white transition-colors">
+                    {t.nav.scheduleReview}
+                  </Link>
                 </li>
                 <li>
                   <a href={appLink("/login")} className="text-sm text-gray-400 hover:text-white transition-colors">
@@ -414,7 +543,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                 </li>
                 <li>
                   <Link
-                    href={lang === "es" ? "/es/pricing" : "/pricing"}
+                    href={pricingHref}
                     className="text-sm text-gray-400 hover:text-white transition-colors"
                   >
                     {t.footer.viewPricing}
@@ -428,7 +557,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
               <ul className="space-y-2">
                 <li>
                   <Link
-                    href={lang === "es" ? "/es/about" : "/about"}
+                    href={aboutHref}
                     className="text-sm text-gray-400 hover:text-white transition-colors"
                   >
                     {t.footer.about}
@@ -436,7 +565,7 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
                 </li>
                 <li>
                   <Link
-                    href={lang === "es" ? "/es/contact" : "/contact"}
+                    href={contactHref}
                     className="text-sm text-gray-400 hover:text-white transition-colors"
                   >
                     {t.footer.contact}
