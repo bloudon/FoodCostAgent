@@ -2192,3 +2192,102 @@ export const posSyncJobs = pgTable("pos_sync_jobs", {
 export const insertPosSyncJobSchema = createInsertSchema(posSyncJobs).omit({ id: true, createdAt: true });
 export type InsertPosSyncJob = z.infer<typeof insertPosSyncJobSchema>;
 export type PosSyncJob = typeof posSyncJobs.$inferSelect;
+
+// ─── Orderly Inventory Import ─────────────────────────────────────────────────
+
+/**
+ * inventory_import_batches
+ * One record per uploaded Orderly inventory export file.
+ * Source rows are immutable — if the parser improves, re-parse against rawData
+ * without requiring another upload.
+ */
+export const inventoryImportBatches = pgTable("inventory_import_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourceSystem: text("source_system").notNull().default("ORDERLY"),
+  fileHash: text("file_hash").notNull(),            // SHA-256 of uploaded buffer
+  originalFilename: text("original_filename").notNull(),
+  sheetName: text("sheet_name"),                    // e.g. "Inventory Detail"
+  parserVersion: text("parser_version").notNull(),  // e.g. "1.0"
+  inventoryDate: text("inventory_date"),            // ISO YYYY-MM-DD
+  inventoryDateDetectedFrom: text("inventory_date_detected_from"),
+  inventoryDateConfirmed: integer("inventory_date_confirmed").notNull().default(0),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  uploadedBy: varchar("uploaded_by"),
+  status: text("status").notNull().default("pending_review"),
+  sourceRowCount: integer("source_row_count").notNull().default(0),
+  snapshotTotal: real("snapshot_total"),            // sum of total_cost across rows
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by"),
+  forceNewBatchReason: text("force_new_batch_reason"), // set when admin forces duplicate
+}, (t) => ({
+  companySystemIdx: index("inv_import_batches_company_system_idx").on(t.companyId, t.sourceSystem),
+  hashIdx: index("inv_import_batches_hash_idx").on(t.companyId, t.fileHash),
+}));
+
+export const insertInventoryImportBatchSchema = createInsertSchema(inventoryImportBatches).omit({ id: true, uploadedAt: true });
+export type InsertInventoryImportBatch = z.infer<typeof insertInventoryImportBatchSchema>;
+export type InventoryImportBatch = typeof inventoryImportBatches.$inferSelect;
+
+/**
+ * inventory_import_rows
+ * One record per source row in the uploaded file.
+ * rawData is immutable JSONB storing all original cell values so the parser
+ * can be re-run without re-uploading the file.
+ */
+export const inventoryImportRows = pgTable("inventory_import_rows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  rowIndex: integer("row_index").notNull(),          // 1-based (header = 0)
+  sheetName: text("sheet_name"),
+  rawData: jsonb("raw_data").notNull(),              // all 22+ original cell values
+  // Description (two separate transforms, both always stored)
+  rawDescription: text("raw_description"),
+  cleanedDescription: text("cleaned_description"),
+  cleaningMethod: text("cleaning_method"),           // none | supplier_suffix_strip | dash_supplier_strip | pack_text_strip
+  cleaningConfidence: real("cleaning_confidence"),   // 0–1
+  removedSuffix: text("removed_suffix"),
+  // Pack geometry (three-tier)
+  caseQuantity: real("case_quantity"),
+  innerPackQuantity: real("inner_pack_quantity"),
+  baseUnitQuantity: real("base_unit_quantity"),
+  caseUnit: text("case_unit"),
+  innerUnit: text("inner_unit"),
+  baseUnit: text("base_unit"),
+  packParseStatus: text("pack_parse_status"),        // ok | partial | unparseable
+  // Item code
+  sourceItemCode: text("source_item_code"),
+  itemCodeStatus: text("item_code_status"),          // valid | blank | placeholder | non_unique
+  // Supplier
+  supplierRaw: text("supplier_raw"),
+  supplierStatus: text("supplier_status"),           // valid | blank | placeholder | ambiguous
+  // Location & metadata
+  storageLocation: text("storage_location"),
+  sourceCategory: text("source_category"),
+  sourceGlCode: text("source_gl_code"),
+  sourceParTarget: real("source_par_target"),
+  packagePrice: real("package_price"),
+  // Three counting tiers
+  countUnit1: text("count_unit1"),
+  count1: real("count1"),
+  countUnit2: text("count_unit2"),
+  count2: real("count2"),
+  countUnit3: text("count_unit3"),
+  count3: real("count3"),
+  totalUnits: real("total_units"),
+  totalCost: real("total_cost"),
+  // Previous period columns
+  previousCase: real("previous_case"),
+  previousPack: real("previous_pack"),
+  previousUom: real("previous_uom"),
+  previousCost: real("previous_cost"),
+  // Row classification
+  rowStatus: text("row_status").notNull().default("new_item_candidate"),
+}, (t) => ({
+  batchIdx: index("inv_import_rows_batch_idx").on(t.batchId),
+  batchRowIdx: index("inv_import_rows_batch_row_idx").on(t.batchId, t.rowIndex),
+}));
+
+export const insertInventoryImportRowSchema = createInsertSchema(inventoryImportRows).omit({ id: true });
+export type InsertInventoryImportRow = z.infer<typeof insertInventoryImportRowSchema>;
+export type InventoryImportRow = typeof inventoryImportRows.$inferSelect;

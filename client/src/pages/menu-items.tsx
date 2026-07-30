@@ -2393,12 +2393,12 @@ export default function MenuItemsPage() {
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4 flex-1">
               <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-orange-500" />
                 <Input
                   placeholder="Search by name or PLU/SKU..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
                   data-testid="input-search"
                 />
               </div>

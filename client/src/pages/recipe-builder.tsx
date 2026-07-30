@@ -2424,12 +2424,12 @@ function RecipeBuilderContent() {
 
                 {/* Search */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
                   <Input
                     placeholder="Search items and recipes..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 h-8 text-sm"
+                    className="pl-9 h-8 text-sm border-orange-500/40 focus-visible:ring-orange-500/50"
                     data-testid="input-search-ingredients"
                   />
                 </div>
@@ -3266,9 +3266,9 @@ function RecipeBuilderContent() {
           </p>
           <div className="space-y-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500 pointer-events-none" />
               <Input
-                className="pl-9"
+                className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
                 placeholder="Search inventory..."
                 value={linkSearchQuery}
                 onChange={(e) => setLinkSearchQuery(e.target.value)}

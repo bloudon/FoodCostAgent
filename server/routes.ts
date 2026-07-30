@@ -27,6 +27,7 @@ import { Router } from "express";
 import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
 import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
+import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
@@ -166,6 +167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerExtensionRoutes(extensionRouter);
   registerPosRoutes(app);
   registerMenuRoutes(app);
+  registerOrderlyImportRoutes(app);
   app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
@@ -511,6 +513,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[Migration] qb_reconciliations table ready");
     } catch (err) {
       console.error("[Migration] qb_reconciliations error:", err);
+    }
+  })();
+
+  // ── Orderly import staging tables ────────────────────────────────────────
+  (async function migrateOrderlyImportTables() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS inventory_import_batches (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL DEFAULT 'ORDERLY',
+          file_hash TEXT NOT NULL,
+          original_filename TEXT NOT NULL,
+          sheet_name TEXT,
+          parser_version TEXT NOT NULL,
+          inventory_date TEXT,
+          inventory_date_detected_from TEXT,
+          inventory_date_confirmed INTEGER NOT NULL DEFAULT 0,
+          uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          uploaded_by VARCHAR,
+          status TEXT NOT NULL DEFAULT 'pending_review',
+          source_row_count INTEGER NOT NULL DEFAULT 0,
+          snapshot_total REAL,
+          approved_at TIMESTAMPTZ,
+          approved_by VARCHAR,
+          force_new_batch_reason TEXT
+        );
+        CREATE INDEX IF NOT EXISTS inv_import_batches_company_system_idx
+          ON inventory_import_batches(company_id, source_system);
+        CREATE INDEX IF NOT EXISTS inv_import_batches_hash_idx
+          ON inventory_import_batches(company_id, file_hash);
+
+        CREATE TABLE IF NOT EXISTS inventory_import_rows (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          batch_id VARCHAR NOT NULL,
+          row_index INTEGER NOT NULL,
+          sheet_name TEXT,
+          raw_data JSONB NOT NULL,
+          raw_description TEXT,
+          cleaned_description TEXT,
+          cleaning_method TEXT,
+          cleaning_confidence REAL,
+          removed_suffix TEXT,
+          case_quantity REAL,
+          inner_pack_quantity REAL,
+          base_unit_quantity REAL,
+          case_unit TEXT,
+          inner_unit TEXT,
+          base_unit TEXT,
+          pack_parse_status TEXT,
+          source_item_code TEXT,
+          item_code_status TEXT,
+          supplier_raw TEXT,
+          supplier_status TEXT,
+          storage_location TEXT,
+          source_category TEXT,
+          source_gl_code TEXT,
+          source_par_target REAL,
+          package_price REAL,
+          count_unit1 TEXT,
+          count1 REAL,
+          count_unit2 TEXT,
+          count2 REAL,
+          count_unit3 TEXT,
+          count3 REAL,
+          total_units REAL,
+          total_cost REAL,
+          previous_case REAL,
+          previous_pack REAL,
+          previous_uom REAL,
+          previous_cost REAL,
+          row_status TEXT NOT NULL DEFAULT 'new_item_candidate'
+        );
+        CREATE INDEX IF NOT EXISTS inv_import_rows_batch_idx
+          ON inventory_import_rows(batch_id);
+        CREATE INDEX IF NOT EXISTS inv_import_rows_batch_row_idx
+          ON inventory_import_rows(batch_id, row_index);
+      `);
+      console.log("[Migration] inventory_import_batches / inventory_import_rows tables ready");
+    } catch (err) {
+      console.error("[Migration] orderly_import_tables error:", err);
     }
   })();
 

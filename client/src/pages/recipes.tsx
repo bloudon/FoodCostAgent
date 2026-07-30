@@ -450,7 +450,7 @@ function RecipesContent() {
 
       <div className="mb-4 sm:mb-6 flex items-center gap-2 sm:gap-4">
         <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
           <Input
             placeholder="Search recipes..."
             className="pl-10"

@@ -348,12 +348,12 @@ export default function AdminUsers() {
       {/* Filters */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500 pointer-events-none" />
           <Input
             placeholder="Search by name, email, or company..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-8"
+            className="pl-8 border-orange-500/40 focus-visible:ring-orange-500/50"
             data-testid="input-user-search"
           />
         </div>

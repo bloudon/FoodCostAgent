@@ -154,12 +154,12 @@ export default function VendorDetail() {
               <h2 className="text-xl font-semibold">Inventory Items</h2>
               {vendorItems && vendorItems.length > 0 && (
                 <div className="relative w-full sm:w-72">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
                   <Input
                     placeholder="Search by name or SKU..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
+                    className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
                     data-testid="input-search-items"
                   />
                 </div>

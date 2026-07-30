@@ -342,12 +342,12 @@ export default function PosItemMapping() {
           ))}
         </div>
         <div className="relative ml-auto">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-orange-500" />
           <Input
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm w-52"
+            className="pl-8 h-8 text-sm w-52 border-orange-500/40 focus-visible:ring-orange-500/50"
           />
         </div>
       </div>
