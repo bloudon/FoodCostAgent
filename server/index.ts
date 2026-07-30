@@ -1257,7 +1257,11 @@ async function runStartupMigrations() {
 
   // Setup SSO authentication (must be before registerRoutes) - skip on VPS with local auth
   if (process.env.AUTH_MODE !== 'local') {
-    await setupSsoAuth(app);
+    try {
+      await setupSsoAuth(app);
+    } catch (err) {
+      console.error('⚠️ SSO setup failed (non-fatal on VPS — set AUTH_MODE=local to skip):', err);
+    }
   }
   
   const server = await registerRoutes(app);
