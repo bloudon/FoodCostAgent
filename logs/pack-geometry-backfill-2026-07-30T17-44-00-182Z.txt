@@ -1,0 +1,11 @@
+[PackGeometry Backfill] 2026-07-30T17:44:00.182Z
+  Total rows:           223
+  Successfully normalzd: 93
+  Already valid:        0
+  Missing price:        130
+  Missing geometry:     0
+  Ambiguous geometry:   0
+  Dimension mismatches: 0
+  Variable weight:      0
+  Invalid (zero/neg):   0
+  Errors:               0

@@ -38,7 +38,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   AlertDialog,
@@ -55,7 +54,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
 import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
 type InventoryItem = {
@@ -120,16 +119,18 @@ type VendorItem = {
   purchaseUnitId: string;
   caseSize: number;
   innerPackSize: number | null;
+  packUom: string | null;               // label for the inner pack unit (e.g. "lb", "oz", "ea")
   lastPrice: number;
   lastCasePrice: number;
   priceSource: string | null;
   pricedAt: string | null;
   active: number;
   lastOrderDate: string | null;
-  // Pack geometry (server-computed, v066)
+  // Pack geometry fields (added in v066)               // label for the inner pack unit (e.g. "lb", "oz", "ea")
   canonicalQtyPerPurchaseUnit: number | null;
   normalizedPricePerCanonicalUnit: number | null;
   packGeometryStatus: string | null; // 'verified'|'parsed'|'inferred'|'incomplete'|'conflicting'|'variable_weight'
+  packGeometrySource: string | null;
   pricingBasis: string | null;
   isVariableWeight: number | null;
   vendor: {
@@ -896,6 +897,404 @@ function RecipeUnitsList({
   );
 }
 
+// ── UsageConversionsSection ───────────────────────────────────────────────────
+// Flat table that replaces the three-tab Pack Breakdown / Recipe Units /
+// Issue Units UI.  Recipe and Issue DB rows are merged by unitId so each
+// kitchen unit only appears once, with a "Recipe" | "Issue" | "Both" select.
+function UsageConversionsSection({
+  itemId,
+  itemUnitId,
+  itemUnitAbbrev,
+  itemUnitKind,
+  units,
+}: {
+  itemId: string;
+  itemUnitId: string | null | undefined;
+  itemUnitAbbrev: string;
+  itemUnitKind: string;
+  units: Unit[] | undefined;
+}) {
+  const { toast } = useToast();
+
+  const { data: recipeRows, isLoading: recipeLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", itemId, "recipe-units", "recipe"],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load conversions");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const { data: issueRows, isLoading: issueLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", itemId, "recipe-units", "issue"],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units?type=issue`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load conversions");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", itemId, "recipe-units", "recipe"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", itemId, "recipe-units", "issue"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-item-units"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+  };
+
+  // Merge recipe + issue rows by unitId into logical conversions
+  const mergedRows = useMemo(() => {
+    const map = new Map<string, { unitId: string; recipeRow?: InventoryItemUnit; issueRow?: InventoryItemUnit }>();
+    for (const r of (recipeRows ?? [])) map.set(r.unitId, { ...map.get(r.unitId), unitId: r.unitId, recipeRow: r });
+    for (const r of (issueRows ?? []))  map.set(r.unitId, { ...map.get(r.unitId), unitId: r.unitId, issueRow: r });
+    return Array.from(map.values());
+  }, [recipeRows, issueRows]);
+
+  // ── Local state ──
+  const [editingKey, setEditingKey]   = useState<string | null>(null);
+  const [editQty, setEditQty]         = useState("");
+  const [showAdd, setShowAdd]         = useState(false);
+  const [addUnitId, setAddUnitId]     = useState<string | null>(null);
+  const [addQty, setAddQty]           = useState("");
+  const [addType, setAddType]         = useState<"recipe" | "issue" | "both">("recipe");
+  const [browseSearch, setBrowseSearch] = useState("");
+  const [suggestedFactor, setSuggestedFactor] = useState(false);
+  const [showAutoConverts, setShowAutoConverts] = useState(false);
+
+  const unitsRef = useRef(units);
+  useEffect(() => { unitsRef.current = units; }, [units]);
+
+  // Pre-fill a standard factor when addUnitId changes
+  useEffect(() => {
+    if (!addUnitId) { setSuggestedFactor(false); return; }
+    const allUnits = unitsRef.current;
+    const addUnit  = allUnits?.find(u => u.id === addUnitId);
+    const itemUnit = allUnits?.find(u => u.id === itemUnitId);
+    if (!addUnit || !itemUnit) { setSuggestedFactor(false); return; }
+    const sug = getSuggestedConversionFactor(addUnit.name, itemUnit.name);
+    if (sug !== null) {
+      setAddQty(String(parseFloat((1 / sug).toPrecision(6))));
+      setSuggestedFactor(true);
+    } else {
+      setAddQty("");
+      setSuggestedFactor(false);
+    }
+  }, [addUnitId, itemUnitId]);
+
+  // ── Mutations ──
+  const createMut = useMutation({
+    mutationFn: (body: { unitId: string; unitsPerCanonical: number; isIssueUnit: 0 | 1 }) =>
+      apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units`, body),
+    onSuccess: () => invalidate(),
+    onError: (err: any) => toast({ title: "Could not add", description: err?.message, variant: "destructive" }),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (rowId: string) => apiRequest("DELETE", `/api/inventory-items/${itemId}/recipe-units/${rowId}`),
+    onSuccess: () => { invalidate(); toast({ title: "Conversion removed" }); },
+    onError: (err: any) => toast({ title: "Could not remove", description: err?.message, variant: "destructive" }),
+  });
+
+  const usedUnitIds = useMemo(() => new Set(mergedRows.map(r => r.unitId)), [mergedRows]);
+  const autoConvertUnits = useMemo(
+    () => (units ?? []).filter(u => u.kind === itemUnitKind && u.id !== itemUnitId),
+    [units, itemUnitKind, itemUnitId],
+  );
+  const availableUnits = useMemo(
+    () => (units ?? []).filter(u => !usedUnitIds.has(u.id) && u.id !== itemUnitId),
+    [units, usedUnitIds, itemUnitId],
+  );
+  const filteredAvailable = useMemo(
+    () => browseSearch.trim()
+      ? availableUnits.filter(u =>
+          u.name.toLowerCase().includes(browseSearch.toLowerCase()) ||
+          u.abbreviation.toLowerCase().includes(browseSearch.toLowerCase()))
+      : availableUnits,
+    [availableUnits, browseSearch],
+  );
+
+  const handleSaveEdit = async (recipeRow?: InventoryItemUnit, issueRow?: InventoryItemUnit) => {
+    const entered = parseFloat(editQty);
+    if (!(entered > 0)) return;
+    const upc = 1 / entered;
+    try {
+      const patches = [
+        recipeRow && apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${recipeRow.id}`, { unitsPerCanonical: upc }),
+        issueRow  && apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${issueRow.id}`,  { unitsPerCanonical: upc }),
+      ].filter(Boolean);
+      await Promise.all(patches);
+      invalidate();
+      setEditingKey(null);
+    } catch (err: any) {
+      toast({ title: "Could not save", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const handleUsageTypeChange = async (
+    newType: "recipe" | "issue" | "both",
+    recipeRow: InventoryItemUnit | undefined,
+    issueRow: InventoryItemUnit | undefined,
+    unitId: string,
+  ) => {
+    const primary = recipeRow ?? issueRow;
+    if (!primary) return;
+    const upc = primary.unitsPerCanonical;
+    try {
+      if (newType === "both") {
+        if (!recipeRow) await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        if (!issueRow)  await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+      } else if (newType === "recipe") {
+        if (!recipeRow) await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        if (issueRow)   await deleteMut.mutateAsync(issueRow.id);
+      } else if (newType === "issue") {
+        if (!issueRow)  await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+        if (recipeRow)  await deleteMut.mutateAsync(recipeRow.id);
+      }
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Could not update type", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const handleAdd = async () => {
+    const entered = parseFloat(addQty);
+    if (!addUnitId || !(entered > 0)) {
+      toast({ title: "Enter a value", description: `How many ${itemUnitAbbrev || "inv units"} does 1 of this unit equal?`, variant: "destructive" });
+      return;
+    }
+    const upc = 1 / entered;
+    try {
+      if (addType === "both") {
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+      } else {
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: addType === "issue" ? 1 : 0 });
+      }
+      setShowAdd(false);
+      setAddUnitId(null);
+      setAddQty("");
+      setAddType("recipe");
+      toast({ title: "Conversion added" });
+    } catch (_err) {
+      // handled by mutation onError
+    }
+  };
+
+  const isLoading = recipeLoading || issueLoading;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold">Usage Conversions</p>
+        <p className="text-xs text-muted-foreground">
+          Canonical unit: <span className="font-medium">{itemUnitAbbrev || "—"}</span>
+          {" · "}Define how kitchen units map to this item for recipes and issuing.
+        </p>
+      </div>
+
+      {autoConvertUnits.length > 0 && (
+        <Collapsible open={showAutoConverts} onOpenChange={setShowAutoConverts}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover-elevate rounded px-1 py-0.5"
+              data-testid="button-toggle-auto-converts"
+            >
+              {showAutoConverts ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {autoConvertUnits.length} unit{autoConvertUnits.length !== 1 ? "s" : ""} auto-convert (no entry needed)
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-1.5 rounded-md border bg-muted/30 p-2.5 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                Same-type units convert automatically via standard ratios. Only add a custom conversion
+                if this item uses a non-standard factor.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {autoConvertUnits.map(u => (
+                  <Badge key={u.id} variant="secondary" className="text-xs font-normal">
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-xs text-muted-foreground">
+            <th className="pb-2 text-left font-medium">Kitchen Unit</th>
+            <th className="pb-2 text-left font-medium">Equals (per {itemUnitAbbrev || "unit"})</th>
+            <th className="pb-2 text-left font-medium">Used For</th>
+            <th className="w-20 pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading && (
+            <tr><td colSpan={4} className="py-3 text-sm text-muted-foreground">Loading…</td></tr>
+          )}
+          {!isLoading && mergedRows.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-3 text-sm text-muted-foreground">
+                No custom conversions yet. Same-type units (oz, g, kg for a lb item) convert automatically.
+              </td>
+            </tr>
+          )}
+          {mergedRows.map(({ unitId: uid, recipeRow, issueRow }) => {
+            const primary  = recipeRow ?? issueRow!;
+            const unitObj  = units?.find(u => u.id === uid);
+            const unitName = unitObj ? formatUnitName(unitObj.name) : uid;
+            const isEditing = editingKey === uid;
+            const usageType: "recipe" | "issue" | "both" =
+              recipeRow && issueRow ? "both" : recipeRow ? "recipe" : "issue";
+            return (
+              <tr key={uid} className="border-b last:border-b-0" data-testid={`row-conversion-${uid}`}>
+                <td className="py-2 pr-3 font-medium">{unitName}</td>
+                <td className="py-2 pr-3">
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">1 {unitName} =</span>
+                      <Input
+                        type="number" step="any" min="0" value={editQty}
+                        onChange={e => setEditQty(e.target.value)}
+                        className="h-8 w-24" autoFocus
+                        data-testid={`input-edit-qty-${uid}`}
+                      />
+                      <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      1 {unitName} = {formatReciprocal(primary.unitsPerCanonical)} {itemUnitAbbrev}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  <Select
+                    value={usageType}
+                    onValueChange={v => handleUsageTypeChange(v as "recipe" | "issue" | "both", recipeRow, issueRow, uid)}
+                    disabled={createMut.isPending || deleteMut.isPending}
+                  >
+                    <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-usage-type-${uid}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recipe">Recipe</SelectItem>
+                      <SelectItem value="issue">Issue</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="py-2">
+                  <div className="flex items-center gap-1">
+                    {isEditing ? (
+                      <>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => handleSaveEdit(recipeRow, issueRow)}
+                          data-testid={`button-save-${uid}`}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => setEditingKey(null)}
+                          data-testid={`button-cancel-${uid}`}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => { setEditingKey(uid); setEditQty(formatReciprocal(primary.unitsPerCanonical)); }}
+                          data-testid={`button-edit-${uid}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" disabled={deleteMut.isPending}
+                          onClick={async () => {
+                            if (recipeRow) await deleteMut.mutateAsync(recipeRow.id);
+                            if (issueRow)  await deleteMut.mutateAsync(issueRow.id);
+                          }}
+                          data-testid={`button-delete-${uid}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {!showAdd ? (
+        <Button variant="outline" size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-conversion">
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add conversion
+        </Button>
+      ) : (
+        <div className="rounded-md border bg-muted/20 p-3 space-y-3" data-testid="panel-add-conversion">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={addUnitId || ""} onValueChange={v => { setAddUnitId(v); setBrowseSearch(""); }}>
+              <SelectTrigger className="h-8 w-44" data-testid="select-add-unit">
+                <SelectValue placeholder="Choose unit…" />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="p-1">
+                  <Input
+                    placeholder="Search…" value={browseSearch}
+                    onChange={e => setBrowseSearch(e.target.value)}
+                    className="h-7 text-xs mb-1"
+                  />
+                </div>
+                {filteredAvailable.map(u => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </SelectItem>
+                ))}
+                {filteredAvailable.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No units found</div>
+                )}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">=</span>
+            <div className="flex items-center gap-1">
+              <Input
+                type="number" step="any" min="0" value={addQty}
+                onChange={e => { setAddQty(e.target.value); setSuggestedFactor(false); }}
+                placeholder="factor"
+                className={`h-8 w-24 ${suggestedFactor ? "border-blue-400" : ""}`}
+                data-testid="input-add-qty"
+              />
+              <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+            </div>
+            <Select value={addType} onValueChange={v => setAddType(v as "recipe" | "issue" | "both")}>
+              <SelectTrigger className="h-8 w-24" data-testid="select-add-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="recipe">Recipe</SelectItem>
+                <SelectItem value="issue">Issue</SelectItem>
+                <SelectItem value="both">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {suggestedFactor && (
+            <p className="text-xs text-blue-600">Standard conversion pre-filled — verify for your ingredient.</p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleAdd} disabled={createMut.isPending}
+              data-testid="button-confirm-add-conversion">
+              Add
+            </Button>
+            <Button size="sm" variant="ghost"
+              onClick={() => { setShowAdd(false); setAddUnitId(null); setAddQty(""); setBrowseSearch(""); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InventoryItemDetail() {
   const { id } = useParams();
   const [, navigate] = useLocation();
@@ -930,32 +1329,6 @@ export default function InventoryItemDetail() {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
 
-  // Tab selection driven by URL hash so other pages can deep-link
-  // (e.g. recipe builder warnings link to `/inventory-items/<id>#recipe-units`).
-  const allowedTabs = ["pack-breakdown", "recipe-units", "issue-units"] as const;
-  type UnitsTab = (typeof allowedTabs)[number];
-  const readTabFromHash = (): UnitsTab => {
-    if (typeof window === "undefined") return "pack-breakdown";
-    const raw = window.location.hash.replace(/^#/, "");
-    return (allowedTabs as readonly string[]).includes(raw)
-      ? (raw as UnitsTab)
-      : "pack-breakdown";
-  };
-  const [unitsTab, setUnitsTab] = useState<UnitsTab>(readTabFromHash);
-  useEffect(() => {
-    const onHash = () => setUnitsTab(readTabFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  const handleUnitsTabChange = (next: string) => {
-    if (!(allowedTabs as readonly string[]).includes(next)) return;
-    setUnitsTab(next as UnitsTab);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.hash = next;
-      window.history.replaceState(null, "", url.toString());
-    }
-  };
   
   // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
   const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
@@ -2437,296 +2810,92 @@ export default function InventoryItemDetail() {
                 <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 100%.</p>
               </div>
 
-              {/* Purchasing */}
+              {/* Usage Conversions — flat table replacing Pack Breakdown / Recipe Units / Issue Units tabs */}
+              <div className="rounded-md border p-4">
+                <UsageConversionsSection
+                  itemId={item.id}
+                  itemUnitId={item.unitId}
+                  itemUnitAbbrev={unit?.abbreviation || ""}
+                  itemUnitKind={unit?.kind || ""}
+                  units={units}
+                />
+              </div>
+
+              {/* Purchasing reference — vendor packs and normalized cost per canonical unit */}
               {(() => {
-                const liveCaseSize = getFieldValue("caseSize", item.caseSize);
-                const parsedCaseSizeDetail = parseFloat(String(liveCaseSize)) || 0;
-                const liveContainerLabel = getFieldValue("containerLabel", item.containerLabel || "");
-                // Derived count per case (for display in breakdown table)
-                // Compute Qty/Case locally if the user has filled in the size input
-                // This shows an immediate value without waiting for a server round-trip
-                const localCasePkgCount = (() => {
-                  const val = parseFloat(containerDisplaySize);
-                  if (!isNaN(val) && val > 0 && item && selectedContainerUnitId && units) {
-                    const baseUnit = units.find(u => u.id === item.unitId);
-                    const cUnit = units.find(u => u.id === selectedContainerUnitId);
-                    if (baseUnit && cUnit && baseUnit.toBaseRatio > 0 && baseUnit.kind === cUnit.kind) {
-                      const containerSizeInItemUnit = val * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
-                      if (containerSizeInItemUnit > 0 && item.caseSize) {
-                        return item.caseSize / containerSizeInItemUnit;
-                      }
-                    }
-                  }
-                  return null;
-                })();
-                const derivedCasePkgCount = (localCasePkgCount ?? item.casePkgCount)
-                  ? parseFloat((localCasePkgCount ?? item.casePkgCount!).toFixed(4)).toString()
-                  : null;
-
+                const activeVendors = (vendorItems ?? []).filter(vi => vi.active === 1);
                 return (
-                  <>
-                    <div className="space-y-3 rounded-md border p-4">
-                      <div>
-                        <p className="text-sm font-semibold">Purchasing</p>
-                        <p className="text-xs text-muted-foreground">Define how this item is purchased.</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Purchase Unit of Measure</Label>
-                          <Select value={purchaseUom} onValueChange={setPurchaseUom}>
-                            <SelectTrigger data-testid="select-purchase-uom">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PACK_OPTIONS.map(o => (
-                                <SelectItem key={o} value={o}>{o}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Purchase Unit Size</Label>
-                          {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex flex-1 h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground" data-testid="input-case-size">
-                                {parsedCaseSizeDetail}
-                              </div>
-                              <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
-                                {unit?.abbreviation || "unit"}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={liveCaseSize}
-                                onChange={(e) => handleFieldChange("caseSize", e.target.value)}
-                                onBlur={handleCaseSizeBlur}
-                                disabled={updateMutation.isPending}
-                                className="flex-1"
-                                data-testid="input-case-size"
-                              />
-                              <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
-                                {unit?.abbreviation || "unit"}
-                              </span>
-                            </div>
-                          )}
-                          {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 && (
-                            <p className="text-xs text-muted-foreground">Auto-synced from vendor</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Price per Unit ($)</Label>
-                        {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
-                          <>
-                            <div className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground" data-testid="display-price-per-unit">
-                              ${item.pricePerUnit?.toFixed(4) || '0.0000'}
-                            </div>
-                            <p className="text-xs text-muted-foreground">Auto-synced from vendor — edit price in the Vendors section above.</p>
-                          </>
-                        ) : (
-                          <>
-                            <Input
-                              type="number"
-                              step="0.0001"
-                              value={getFieldValue("pricePerUnit", item.pricePerUnit ?? 0)}
-                              onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
-                              onBlur={() => handleFieldBlur("pricePerUnit")}
-                              disabled={updateMutation.isPending}
-                              data-testid="input-price-per-unit"
-                            />
-                            <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
-                          </>
-                        )}
-                      </div>
+                  <div className="rounded-md border p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold">Purchasing</p>
+                      <p className="text-xs text-muted-foreground">
+                        Vendor purchase packs and normalized cost per {unit?.abbreviation || "canonical unit"}.
+                      </p>
                     </div>
-
-                    <div className="rounded-md border p-4">
-                      <Tabs value={unitsTab} onValueChange={handleUnitsTabChange}>
-                        <TabsList className="mb-3" data-testid="tabs-units">
-                          <TabsTrigger value="pack-breakdown" data-testid="tab-pack-breakdown">Pack Breakdown</TabsTrigger>
-                          <TabsTrigger value="recipe-units" data-testid="tab-recipe-units">Recipe Units</TabsTrigger>
-                          <TabsTrigger value="issue-units" data-testid="tab-issue-units">Issue Units</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="pack-breakdown" className="space-y-3">
-                          <div>
-                            <p className="text-sm font-semibold">Breakdown (optional)</p>
-                            <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
-                          </div>
+                    {activeVendors.length === 0 ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          No vendor items linked. Enter a manual unit price for costing.
+                        </p>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Price per Unit ($)</Label>
+                          <Input
+                            type="number"
+                            step="0.0001"
+                            value={getFieldValue("pricePerUnit", item.pricePerUnit ?? 0)}
+                            onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
+                            onBlur={() => handleFieldBlur("pricePerUnit")}
+                            disabled={updateMutation.isPending}
+                            className="h-8 w-36"
+                            data-testid="input-price-per-unit"
+                          />
+                          <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
+                        </div>
+                      </div>
+                    ) : (
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b text-xs text-muted-foreground">
-                            <th className="pb-2 text-left font-medium">Pack</th>
-                            <th className="pb-2 text-left font-medium">Size</th>
-                            <th className="pb-2 text-left font-medium">Qty / Case</th>
-                            <th className="w-8 pb-2"></th>
+                            <th className="pb-2 text-left font-medium">Vendor</th>
+                            <th className="pb-2 text-left font-medium">Purchase Pack</th>
+                            <th className="pb-2 text-right font-medium">Case Price</th>
+                            <th className="pb-2 text-right font-medium">Cost / {unit?.abbreviation || "unit"}</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <tr>
-                            <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
-                            <td className="py-1.5 pr-3 text-muted-foreground">
-                              {parsedCaseSizeDetail} {unit?.abbreviation || ""}
-                            </td>
-                            <td className="py-1.5 text-muted-foreground">1</td>
-                            <td></td>
-                          </tr>
-                          {showMiddleRow && (
-                            <tr>
-                              <td className="py-1.5 pr-3">
-                                <Select
-                                  value={liveContainerLabel || ""}
-                                  onValueChange={(v) => updateMutation.mutate({ containerLabel: v })}
-                                  disabled={updateMutation.isPending}
-                                >
-                                  <SelectTrigger className="h-8" data-testid="select-inner-pack-label">
-                                    <SelectValue placeholder="Select..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {PACK_OPTIONS.map(o => (
-                                      <SelectItem key={o} value={o}>{o}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              <td className="py-1.5 pr-3">
-                                <div className="flex items-center gap-1">
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    value={containerDisplaySize}
-                                    onChange={(e) => setContainerDisplaySize(e.target.value)}
-                                    onBlur={handleContainerSizeBlur}
-                                    disabled={updateMutation.isPending}
-                                    className="h-8 w-20"
-                                    placeholder="e.g., 6"
-                                    data-testid="input-container-size"
-                                  />
-                                  <Select
-                                    value={selectedContainerUnitId}
-                                    onValueChange={handleContainerUnitChange}
-                                    disabled={updateMutation.isPending}
-                                  >
-                                    <SelectTrigger className="h-8 w-20" data-testid="select-container-unit">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
-                                        <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                {liveContainerLabel.toLowerCase() === "each" && (
-                                  <p className="text-xs text-muted-foreground mt-1">= per-each weight</p>
-                                )}
-                              </td>
-                              <td className="py-1.5 text-muted-foreground">
-                                {derivedCasePkgCount ?? "—"}
-                              </td>
-                              <td className="py-1.5 pl-2">
-                                <button
-                                  type="button"
-                                  onClick={handleRemoveMiddleRow}
-                                  disabled={updateMutation.isPending}
-                                  className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-                                  data-testid="button-remove-inner-pack"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          )}
-                          <tr>
-                            <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
-                            <td className="py-1.5 pr-3 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
-                            <td className="py-1.5 text-muted-foreground">1</td>
-                            <td></td>
-                          </tr>
+                          {activeVendors.map(vi => {
+                            const ip = (vi.innerPackSize ?? 1) > 1 ? vi.innerPackSize! : null;
+                            const pUom = vi.packUom ?? vi.unit?.name ?? unit?.abbreviation ?? "";
+                            const packDesc = ip
+                              ? `${vi.caseSize} × ${ip} ${pUom}`
+                              : `${vi.caseSize} ${pUom}`;
+                            const normalizedCost = vi.normalizedPricePerCanonicalUnit;
+                            const gStatus = vi.packGeometryStatus;
+                            return (
+                              <tr key={vi.id} className="border-b last:border-b-0" data-testid={`row-purchasing-${vi.id}`}>
+                                <td className="py-2 pr-3 font-medium">{vi.vendor?.name ?? "—"}</td>
+                                <td className="py-2 pr-3 text-muted-foreground">{packDesc}</td>
+                                <td className="py-2 pr-3 text-right text-muted-foreground">
+                                  {vi.lastCasePrice > 0 ? `$${vi.lastCasePrice.toFixed(2)}` : "—"}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {normalizedCost != null ? (
+                                    <span className="font-medium">${normalizedCost.toFixed(4)}</span>
+                                  ) : gStatus === "conflicting" ? (
+                                    <Badge variant="destructive" className="text-xs">⚠ Units conflict</Badge>
+                                  ) : gStatus === "variable_weight" ? (
+                                    <Badge variant="secondary" className="text-xs">Variable weight</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">Incomplete</Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
-                      {!showMiddleRow && (
-                        <button
-                          type="button"
-                          onClick={() => setShowMiddleRow(true)}
-                          disabled={updateMutation.isPending}
-                          className="flex items-center gap-1 text-sm text-primary hover:underline disabled:opacity-50"
-                          data-testid="button-add-pack-size"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add Pack Size
-                        </button>
-                      )}
-                      {/* Per-each weight: surfaces the derived weight clearly when label is "each" */}
-                      {liveContainerLabel.toLowerCase() === "each" && item.containerSize && item.containerSize > 0 && !showMiddleRow && (
-                        <div className="mt-3 rounded-md border bg-muted/20 p-3 space-y-2" data-testid="section-per-each-weight">
-                          <div>
-                            <p className="text-sm font-medium">Per-each weight</p>
-                            <p className="text-xs text-muted-foreground">
-                              Derived from order guide data. Each unit weighs{" "}
-                              <span className="font-medium">{parseFloat(Number(item.containerSize).toFixed(6)).toString()} {unit?.abbreviation || ""}</span>.
-                              Update to correct the recipe unit conversion.
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="any"
-                              value={containerDisplaySize}
-                              onChange={(e) => setContainerDisplaySize(e.target.value)}
-                              onBlur={() => {
-                                setShowMiddleRow(true);
-                                handleContainerSizeBlur();
-                              }}
-                              disabled={updateMutation.isPending}
-                              className="h-8 w-24"
-                              placeholder="e.g., 0.75"
-                              data-testid="input-per-each-weight"
-                            />
-                            <Select
-                              value={selectedContainerUnitId}
-                              onValueChange={handleContainerUnitChange}
-                              disabled={updateMutation.isPending}
-                            >
-                              <SelectTrigger className="h-8 w-20" data-testid="select-per-each-weight-unit">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
-                                  <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <span className="text-sm text-muted-foreground">per each</span>
-                          </div>
-                        </div>
-                      )}
-                        </TabsContent>
-                        <TabsContent value="recipe-units">
-                          <RecipeUnitsList
-                            itemId={item.id}
-                            itemUnitId={item.unitId}
-                            itemUnitAbbrev={unit?.abbreviation || ""}
-                            itemUnitKind={unit?.kind || ""}
-                            units={units}
-                            kind="recipe"
-                          />
-                        </TabsContent>
-                        <TabsContent value="issue-units">
-                          <RecipeUnitsList
-                            itemId={item.id}
-                            itemUnitId={item.unitId}
-                            itemUnitAbbrev={unit?.abbreviation || ""}
-                            itemUnitKind={unit?.kind || ""}
-                            units={units}
-                            kind="issue"
-                          />
-                        </TabsContent>
-                      </Tabs>
-                    </div>
-                  </>
+                    )}
+                  </div>
                 );
               })()}
 

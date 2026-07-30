@@ -2,3 +2,4 @@
 - [Vendor Registry v2 migration](vendor-registry-v2.md) — seed gating via _migration_log, 10 new columns, 82 v2-only rows, geography search ranking.
 - [pg-driver empty array type](pg-empty-array-type.md) — `'{}'` in INSERT VALUES fails on VPS pg driver; use `ARRAY[]::text[]` instead.
 - [GitHub push from Replit](github-push.md) — git remote set-url is blocked; push via URL with GITHUB_PAT secret instead.
+- [App versioning & migration state](app-versioning.md) — current version (1.12.0), release history 1.5–1.12, schema migration tags v064/v065 + task-labeled blocks, CHANGELOG gap.

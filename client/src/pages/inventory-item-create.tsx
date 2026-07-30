@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Accordion,
   AccordionContent,
@@ -498,136 +497,20 @@ export default function InventoryItemCreate() {
                 </div>
               </div>
 
-              {/* Breakdown */}
-              <div className="rounded-md border p-4">
-                <Tabs defaultValue="pack-breakdown">
-                  <TabsList className="mb-3" data-testid="tabs-units">
-                    <TabsTrigger value="pack-breakdown" data-testid="tab-pack-breakdown">Pack Breakdown</TabsTrigger>
-                    <TabsTrigger value="recipe-units" data-testid="tab-recipe-units">Recipe Units</TabsTrigger>
-                    <TabsTrigger value="issue-units" data-testid="tab-issue-units">Issue Units</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="pack-breakdown" className="space-y-3">
-                    <div>
-                      <p className="text-sm font-semibold">Breakdown (optional)</p>
-                      <p className="text-xs text-muted-foreground">Define pack sizes that convert into the inventory unit.</p>
-                    </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="pb-2 text-left font-medium">Pack</th>
-                      <th className="pb-2 text-left font-medium">Size</th>
-                      <th className="pb-2 text-left font-medium">Qty / Case</th>
-                      <th className="w-8 pb-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className="py-1.5 pr-3 text-muted-foreground">{purchaseUom}</td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">
-                        {parsedCaseSize} {unit?.abbreviation || ""}
-                      </td>
-                      <td className="py-1.5 text-muted-foreground">1</td>
-                      <td></td>
-                    </tr>
-                    {showMiddleRow && (
-                      <tr>
-                        <td className="py-1.5 pr-3">
-                          <Select value={containerLabel || ""} onValueChange={setContainerLabel}>
-                            <SelectTrigger className="h-8" data-testid="select-inner-pack-label">
-                              <SelectValue placeholder="Select..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PACK_OPTIONS.map(o => (
-                                <SelectItem key={o} value={o}>{o}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="py-1.5 pr-3">
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              step="any"
-                              value={containerDisplaySize}
-                              onChange={(e) => setContainerDisplaySize(e.target.value)}
-                              className="h-8 w-20"
-                              placeholder="e.g., 6"
-                              data-testid="input-container-size"
-                            />
-                            <Select
-                              value={containerUnitId}
-                              onValueChange={setContainerUnitId}
-                            >
-                              <SelectTrigger className="h-8 w-20" data-testid="select-container-unit">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {(compatibleUnits ?? (unit ? [unit] : [])).map(u => (
-                                  <SelectItem key={u.id} value={u.id}>{u.abbreviation}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </td>
-                        <td className="py-1.5 text-muted-foreground">
-                          {(() => {
-                            const cs = computeContainerSizeInItemUnit();
-                            if (cs && cs > 0) {
-                              const count = parsedCaseSize / cs;
-                              return parseFloat(count.toFixed(4)).toString();
-                            }
-                            return "—";
-                          })()}
-                        </td>
-                        <td className="py-1.5 pl-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowMiddleRow(false);
-                              setContainerLabel("");
-                              setContainerDisplaySize("");
-                              setContainerUnitId(unitId);
-                            }}
-                            className="text-muted-foreground hover:text-destructive"
-                            data-testid="button-remove-inner-pack"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                    <tr>
-                      <td className="py-1.5 pr-3 text-muted-foreground">Each</td>
-                      <td className="py-1.5 pr-3 text-muted-foreground">1 {unit?.abbreviation || ""}</td>
-                      <td className="py-1.5 text-muted-foreground">1</td>
-                      <td></td>
-                    </tr>
-                  </tbody>
-                </table>
-                {!showMiddleRow && (
-                  <button
-                    type="button"
-                    onClick={() => setShowMiddleRow(true)}
-                    className="flex items-center gap-1 text-sm text-primary hover:underline"
-                    data-testid="button-add-pack-size"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add Pack Size
-                  </button>
-                )}
-                  </TabsContent>
-                  <TabsContent value="recipe-units">
-                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" data-testid="text-recipe-units-placeholder">
-                      Recipe units will be auto-seeded from the pack breakdown after the item is saved.
-                      Open the item to add or edit per-item Recipe Units.
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="issue-units">
-                    <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground" data-testid="text-issue-units-placeholder">
-                      Issue / transfer units can be configured after the item is saved.
-                    </div>
-                  </TabsContent>
-                </Tabs>
+              {/* Usage Conversions placeholder — configured after item is saved */}
+              <div className="rounded-md border p-4 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold">Usage Conversions</p>
+                  <p className="text-xs text-muted-foreground">
+                    Define how kitchen units (oz, slice, each) relate to the canonical unit for recipes and issuing.
+                  </p>
+                </div>
+                <div
+                  className="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
+                  data-testid="text-usage-conversions-placeholder"
+                >
+                  Unit conversions can be added after the item is saved.
+                </div>
               </div>
 
               <div className="space-y-2">

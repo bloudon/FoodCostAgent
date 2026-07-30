@@ -8450,6 +8450,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sortOrder: z.number().int().nonnegative().optional().default(0),
       });
       const parsed = bodySchema.parse(req.body);
+      // Cap at 10 distinct unit conversions per inventory item.
+      // We count distinct unitIds (not raw rows) so toggling Recipe → Both
+      // for an existing unit does not consume a slot.
+      const existingUnits = await storage.getInventoryItemUnits(req.params.id);
+      const existingUnitIds = new Set(existingUnits.map(u => u.unitId));
+      if (existingUnitIds.size >= 10 && !existingUnitIds.has(parsed.unitId)) {
+        return res.status(400).json({
+          error: "This item already has 10 unit conversions. Remove an existing conversion before adding a new one.",
+        });
+      }
       const row = await storage.createInventoryItemUnit({
         companyId,
         inventoryItemId: req.params.id,
