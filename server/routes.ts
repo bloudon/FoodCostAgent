@@ -665,6 +665,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Orderly count-session conversion columns ───────────────────────────────
+  (async function migrateOrderlyCountSessionColumns() {
+    try {
+      await db.execute(sql`
+        ALTER TABLE inventory_import_rows
+          ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR;
+
+        ALTER TABLE inventory_counts
+          ADD COLUMN IF NOT EXISTS source_system TEXT;
+        ALTER TABLE inventory_counts
+          ADD COLUMN IF NOT EXISTS source_batch_id VARCHAR;
+        ALTER TABLE inventory_counts
+          ADD COLUMN IF NOT EXISTS source_filename TEXT;
+        ALTER TABLE inventory_counts
+          ADD COLUMN IF NOT EXISTS source_inventory_date TEXT;
+        ALTER TABLE inventory_counts
+          ADD COLUMN IF NOT EXISTS is_historical_import INTEGER NOT NULL DEFAULT 0;
+      `);
+      console.log("[Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)");
+    } catch (err) {
+      console.error("[Migration] orderly_count_session_columns error:", err);
+    }
+  })();
+
   (async function migrateMenuItemRecipes() {
     try {
       await db.execute(sql`

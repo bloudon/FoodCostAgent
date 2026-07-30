@@ -28,6 +28,7 @@
  */
 
 import type { Express } from 'express';
+import { getConversionPreview, convertBatchToCountSession } from '../services/orderly/orderlyCountSession';
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
 import { db } from '../db';
@@ -522,6 +523,80 @@ export function registerOrderlyImportRoutes(app: Express): void {
         res.json({ batchId, inventoryDate, confirmed: true });
       } catch (err: any) {
         console.error('[OrderlyImport] confirm-date error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+  );
+
+  // ── Conversion preview (read-only) ────────────────────────────────────────
+  /**
+   * GET /api/inventory-import/orderly/batches/:batchId/conversion-preview
+   * Returns a ConversionPreview: reconciliation stats, excluded rows, duplicate
+   * warnings, and cross-reference notes.  No writes.
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/conversion-preview',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const { batchId } = req.params;
+        const preview = await getConversionPreview(batchId, companyId);
+        res.json(preview);
+      } catch (err: any) {
+        const status = err.message?.includes('not found') ? 404
+          : err.message?.includes('must be approved') ? 409
+          : 500;
+        console.error('[OrderlyImport] conversion-preview error:', err);
+        res.status(status).json({ error: err.message });
+      }
+    },
+  );
+
+  // ── Convert batch → count session ─────────────────────────────────────────
+  /**
+   * POST /api/inventory-import/orderly/batches/:batchId/convert-to-count-session
+   * Body: { storeId: string, acknowledgeVariance?: boolean }
+   * 409  — batch already converted (returns countSessionId)
+   * 422  — variance > tolerance and acknowledgeVariance is false (returns deltaPct)
+   */
+  app.post(
+    '/api/inventory-import/orderly/batches/:batchId/convert-to-count-session',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId    = (req as any).user?.id as string;
+        const { batchId } = req.params;
+        const { storeId, acknowledgeVariance = false } = req.body as {
+          storeId: string;
+          acknowledgeVariance?: boolean;
+        };
+
+        if (!storeId) {
+          return res.status(400).json({ error: 'storeId is required' });
+        }
+
+        const result = await convertBatchToCountSession(
+          batchId, companyId, userId, storeId, acknowledgeVariance,
+        );
+        res.json(result);
+      } catch (err: any) {
+        if ((err as any).code === 'ALREADY_CONVERTED') {
+          return res.status(409).json({
+            error: err.message,
+            countSessionId: (err as any).countSessionId,
+          });
+        }
+        if ((err as any).code === 'VARIANCE_EXCEEDED') {
+          return res.status(422).json({
+            error: err.message,
+            deltaPct: (err as any).deltaPct,
+          });
+        }
+        console.error('[OrderlyImport] convert-to-count-session error:', err);
         res.status(500).json({ error: err.message });
       }
     },

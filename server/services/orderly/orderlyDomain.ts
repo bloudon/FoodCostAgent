@@ -83,6 +83,7 @@ export interface ResolutionPreviewResult {
   totalRows: number;
   summary: ReturnType<typeof computeResolutionSummary>;
   rows: Array<{
+    rowId: string;
     rowIndex: number;
     storageLocation: string | null;
     sourceItemCode: string | null;
@@ -243,6 +244,7 @@ export async function runResolutionPreview(
   const summary = computeResolutionSummary(resolutions);
 
   const rows = batchRows.map((row: InventoryImportRow, i: number) => ({
+    rowId: row.id,
     rowIndex: row.rowIndex,
     storageLocation: row.storageLocation,
     sourceItemCode: row.sourceItemCode,
@@ -434,6 +436,14 @@ export async function applyBatchApproval(
           itemsCreated++;
         }
       }
+
+      // ── Persist resolved item ID back to the import row ──────────────
+      // This is read by the count-session conversion step to know which
+      // inventory item each row maps to without re-running matching.
+      await tx
+        .update(inventoryImportRows)
+        .set({ resolvedInventoryItemId: resolvedItemId })
+        .where(eq(inventoryImportRows.id, rowPreview.rowId));
 
       // ── External mapping creation ───────────────────────────────────
       if (resolvedItemId && rowPreview.sourceItemCode && rowPreview.itemCodeStatus === 'valid') {

@@ -7,7 +7,7 @@
  *  Step 4: Approve — commit items / vendors / locations, show result summary
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -39,7 +39,19 @@ import {
   Truck,
   Clock,
   ChevronLeft,
+  Calendar,
+  Database,
+  ListChecks,
+  DollarSign,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,7 +125,39 @@ interface ApprovalResult {
   rowsProcessed: number;
 }
 
-type WizardStep = "list" | "upload" | "date" | "preview" | "approved";
+type WizardStep = "list" | "upload" | "date" | "preview" | "approved" | "convert-preview" | "converted";
+
+interface ConversionPreview {
+  batchId: string;
+  inventoryDate: string | null;
+  originalFilename: string;
+  snapshotTotal: number | null;
+  importableTotal: number;
+  reconciliationDelta: number;
+  reconciliationDeltaPct: number;
+  exceedsVarianceTolerance: boolean;
+  includedRowCount: number;
+  excludedRowCount: number;
+  locationNames: string[];
+  existingCountSessionId: string | null;
+  existingSessionWarning: string | null;
+  crossReferenceWarnings: string[];
+  excludedRows: Array<{ rowIndex: number; description: string | null; reason: string }>;
+}
+
+interface ConversionResult {
+  countSessionId: string;
+  linesCreated: number;
+  linesSkipped: number;
+  totalValue: number;
+  storageLocationsCreated: number;
+  warnings: string[];
+}
+
+interface Store {
+  id: string;
+  name: string;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -147,9 +191,11 @@ function formatDate(d: string | null) {
 function BatchList({
   onNew,
   onSelect,
+  onConvert,
 }: {
   onNew: () => void;
   onSelect: (batch: ImportBatch) => void;
+  onConvert: (batch: ImportBatch) => void;
 }) {
   const { data: batches = [], isLoading } = useQuery<ImportBatch[]>({
     queryKey: ["/api/inventory-import/orderly/batches"],
@@ -217,9 +263,14 @@ function BatchList({
                     </span>
                   </TableCell>
                   <TableCell>
-                    {b.status !== "approved" && (
+                    {b.status !== "approved" ? (
                       <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onSelect(b); }}>
                         Review <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onConvert(b); }}>
+                        <Database className="h-3 w-3 mr-1" />
+                        Create count session
                       </Button>
                     )}
                   </TableCell>
@@ -641,9 +692,292 @@ function ResolutionPreviewStep({
   );
 }
 
+// ─── Step: Convert-to-count-session preview ───────────────────────────────────
+
+function ConvertPreviewStep({
+  batchId,
+  onConverted,
+  onBack,
+}: {
+  batchId: string;
+  onConverted: (result: ConversionResult) => void;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [storeId, setStoreId] = useState<string>("");
+  const [acknowledgeVariance, setAcknowledgeVariance] = useState(false);
+  const [converting, setConverting] = useState(false);
+
+  const { data: stores = [] } = useQuery<Store[]>({
+    queryKey: ["/api/stores/accessible"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/stores/accessible");
+      return res.json();
+    },
+  });
+
+  // Auto-select first store
+  useEffect(() => {
+    if (stores.length > 0 && !storeId) setStoreId(stores[0].id);
+  }, [stores, storeId]);
+
+  const { data: preview, isLoading, isError, error } = useQuery<ConversionPreview>({
+    queryKey: [`/api/inventory-import/orderly/batches/${batchId}/conversion-preview`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/inventory-import/orderly/batches/${batchId}/conversion-preview`);
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Failed to load preview"); }
+      return res.json();
+    },
+  });
+
+  async function handleConvert() {
+    if (!storeId) return;
+    setConverting(true);
+    try {
+      const res = await apiRequest("POST", `/api/inventory-import/orderly/batches/${batchId}/convert-to-count-session`, {
+        storeId,
+        acknowledgeVariance,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Conversion failed");
+      }
+      const result: ConversionResult = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      onConverted(result);
+    } catch (err: any) {
+      toast({ title: "Conversion failed", description: err.message, variant: "destructive" });
+    } finally {
+      setConverting(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="py-16 text-center">
+        <RefreshCw className="h-6 w-6 mx-auto mb-3 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground">Checking reconciliation…</p>
+      </div>
+    );
+  }
+
+  if (isError || !preview) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={onBack} className="-ml-1">
+          <ChevronLeft className="h-4 w-4 mr-1" /> Back
+        </Button>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{(error as any)?.message ?? "Failed to load conversion preview."}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // Already converted
+  if (preview.existingCountSessionId) {
+    return (
+      <div className="space-y-4 max-w-lg mx-auto text-center">
+        <CheckCircle2 className="h-12 w-12 mx-auto text-green-500" />
+        <h2 className="text-lg font-semibold">Already Converted</h2>
+        <p className="text-sm text-muted-foreground">
+          This batch has already been converted to a historical count session.
+        </p>
+        <Button onClick={onBack} className="w-full">Back to import list</Button>
+      </div>
+    );
+  }
+
+  const canConvert = !!storeId && (!preview.exceedsVarianceTolerance || acknowledgeVariance);
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="-ml-1">
+          <ChevronLeft className="h-4 w-4 mr-1" /> Back
+        </Button>
+        <div>
+          <h2 className="text-lg font-semibold">Create Count Session</h2>
+          <p className="text-sm text-muted-foreground">
+            {preview.originalFilename} · Inventory date: {formatDate(preview.inventoryDate)}
+          </p>
+        </div>
+      </div>
+
+      {/* Reconciliation summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { icon: <ListChecks className="h-4 w-4 text-muted-foreground" />, label: "Items to import", value: preview.includedRowCount.toLocaleString() },
+          { icon: <AlertTriangle className="h-4 w-4 text-muted-foreground" />, label: "Items excluded", value: preview.excludedRowCount.toLocaleString() },
+          { icon: <DollarSign className="h-4 w-4 text-muted-foreground" />, label: "Importable total", value: `$${preview.importableTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+          { icon: <DollarSign className="h-4 w-4 text-muted-foreground" />, label: "Orderly total", value: preview.snapshotTotal != null ? `$${preview.snapshotTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—" },
+        ].map(({ icon, label, value }) => (
+          <Card key={label}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">{icon}<span className="text-xs text-muted-foreground">{label}</span></div>
+              <div className="text-xl font-bold">{value}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Variance warning */}
+      {preview.exceedsVarianceTolerance && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Reconciliation variance is {preview.reconciliationDeltaPct.toFixed(2)}%</strong>
+            {" "}(delta: ${Math.abs(preview.reconciliationDelta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).
+            This exceeds the 0.5% tolerance. Check for excluded items before proceeding.
+            <div className="flex items-center gap-2 mt-3">
+              <Checkbox
+                id="ack-variance"
+                checked={acknowledgeVariance}
+                onCheckedChange={(v) => setAcknowledgeVariance(!!v)}
+              />
+              <label htmlFor="ack-variance" className="text-sm cursor-pointer">
+                I understand the variance and want to proceed
+              </label>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Duplicate session warning */}
+      {preview.existingSessionWarning && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{preview.existingSessionWarning}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Cross-reference warnings */}
+      {preview.crossReferenceWarnings.map((w, i) => (
+        <Alert key={i}>
+          <Calendar className="h-4 w-4" />
+          <AlertDescription>{w}</AlertDescription>
+        </Alert>
+      ))}
+
+      {/* Locations */}
+      {preview.locationNames.length > 0 && (
+        <div>
+          <p className="text-sm font-medium mb-1">Locations in this snapshot</p>
+          <div className="flex flex-wrap gap-1">
+            {preview.locationNames.map(l => (
+              <Badge key={l} variant="outline" className="text-xs">
+                <MapPin className="h-3 w-3 mr-1" />{l}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Excluded rows (collapsed summary) */}
+      {preview.excludedRowCount > 0 && (
+        <Alert>
+          <AlertDescription>
+            <strong>{preview.excludedRowCount} rows</strong> will be excluded — their inventory items were not resolved during approval.
+            These rows will not appear as count lines in the session.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Store selector */}
+      <div className="space-y-2">
+        <Label htmlFor="store-select">Count session store</Label>
+        <Select value={storeId} onValueChange={setStoreId}>
+          <SelectTrigger id="store-select" className="max-w-xs">
+            <SelectValue placeholder="Select a store…" />
+          </SelectTrigger>
+          <SelectContent>
+            {stores.map(s => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          The count session will be attached to this store's count history.
+        </p>
+      </div>
+
+      <div className="flex justify-end pt-2">
+        <Button size="lg" onClick={handleConvert} disabled={!canConvert || converting}>
+          {converting
+            ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            : <Database className="h-4 w-4 mr-2" />
+          }
+          {converting ? "Creating…" : `Create count session (${preview.includedRowCount} lines)`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step: Converted summary ──────────────────────────────────────────────────
+
+function ConvertedSummary({
+  result,
+  batchName,
+  onDone,
+}: {
+  result: ConversionResult;
+  batchName: string;
+  onDone: () => void;
+}) {
+  return (
+    <div className="space-y-6 max-w-lg mx-auto text-center">
+      <div>
+        <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
+        <h2 className="text-xl font-semibold">Count Session Created</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Historical count session from <strong>{batchName}</strong> is now in your count history.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-left">
+        {[
+          { label: "Count lines created", value: result.linesCreated },
+          { label: "Lines skipped", value: result.linesSkipped },
+          { label: "Storage locations created", value: result.storageLocationsCreated },
+          { label: "Total snapshot value", value: `$${result.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg border p-3">
+            <div className="text-2xl font-bold">{typeof value === "number" ? value.toLocaleString() : value}</div>
+            <div className="text-xs text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {result.warnings.length > 0 && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <ul className="list-disc list-inside text-xs space-y-1">
+              {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        The session is labeled as an Orderly import and appears in Inventory Counts as a historical record.
+        Counts reflect on-hand quantities at the inventory date — not actual usage between periods.
+      </p>
+
+      <Button onClick={onDone} className="w-full">
+        <BarChart2 className="h-4 w-4 mr-2" />
+        Back to import history
+      </Button>
+    </div>
+  );
+}
+
 // ─── Step: Approved summary ───────────────────────────────────────────────────
 
-function ApprovedSummary({ result, onDone }: { result: ApprovalResult; onDone: () => void }) {
+function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalResult; onDone: () => void; onConvertNow: () => void }) {
   return (
     <div className="space-y-6 max-w-lg mx-auto text-center">
       <div>
@@ -673,10 +1007,16 @@ function ApprovedSummary({ result, onDone }: { result: ApprovalResult; onDone: (
         ))}
       </div>
 
-      <Button onClick={onDone} className="w-full">
-        <BarChart2 className="h-4 w-4 mr-2" />
-        Back to import history
-      </Button>
+      <div className="flex flex-col gap-3">
+        <Button onClick={onConvertNow} className="w-full" size="lg">
+          <Database className="h-4 w-4 mr-2" />
+          Create count session from this snapshot
+        </Button>
+        <Button onClick={onDone} variant="outline" className="w-full">
+          <BarChart2 className="h-4 w-4 mr-2" />
+          Back to import history
+        </Button>
+      </div>
     </div>
   );
 }
@@ -686,21 +1026,31 @@ function ApprovedSummary({ result, onDone }: { result: ApprovalResult; onDone: (
 export default function OrderlyImport() {
   const [step, setStep] = useState<WizardStep>("list");
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [activeBatchName, setActiveBatchName] = useState<string>("");
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [approvalResult, setApprovalResult] = useState<ApprovalResult | null>(null);
+  const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
 
   function selectBatch(batch: ImportBatch) {
     setActiveBatchId(batch.id);
+    setActiveBatchName(batch.originalFilename);
     setDetectedDate(batch.inventoryDate);
     if (batch.status === "approved") {
-      setStep("list"); // already approved — just show in list
+      setStep("convert-preview");
     } else {
       setStep("date");
     }
   }
 
+  function handleConvert(batch: ImportBatch) {
+    setActiveBatchId(batch.id);
+    setActiveBatchName(batch.originalFilename);
+    setStep("convert-preview");
+  }
+
   function handleUploaded(batchId: string) {
     setActiveBatchId(batchId);
+    setActiveBatchName("");
     setDetectedDate(null);
     setStep("date");
   }
@@ -714,10 +1064,23 @@ export default function OrderlyImport() {
     setStep("approved");
   }
 
+  function handleConverted(result: ConversionResult) {
+    setConversionResult(result);
+    setStep("converted");
+  }
+
+  function resetToList() {
+    setStep("list");
+    setActiveBatchId(null);
+    setActiveBatchName("");
+    setApprovalResult(null);
+    setConversionResult(null);
+  }
+
   return (
     <div className="container mx-auto py-8 max-w-5xl px-4">
-      {/* Breadcrumb stepper */}
-      {step !== "list" && step !== "approved" && (
+      {/* Breadcrumb stepper — only for the upload→approve flow */}
+      {(step === "upload" || step === "date" || step === "preview") && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-6">
           {["Upload", "Date", "Preview", "Approve"].map((label, i) => {
             const stepOrder: WizardStep[] = ["upload", "date", "preview", "approved"];
@@ -740,6 +1103,7 @@ export default function OrderlyImport() {
         <BatchList
           onNew={() => setStep("upload")}
           onSelect={selectBatch}
+          onConvert={handleConvert}
         />
       )}
 
@@ -767,14 +1131,27 @@ export default function OrderlyImport() {
         />
       )}
 
-      {step === "approved" && approvalResult && (
+      {step === "approved" && approvalResult && activeBatchId && (
         <ApprovedSummary
           result={approvalResult}
-          onDone={() => {
-            setStep("list");
-            setActiveBatchId(null);
-            setApprovalResult(null);
-          }}
+          onDone={resetToList}
+          onConvertNow={() => setStep("convert-preview")}
+        />
+      )}
+
+      {step === "convert-preview" && activeBatchId && (
+        <ConvertPreviewStep
+          batchId={activeBatchId}
+          onConverted={handleConverted}
+          onBack={() => setStep("list")}
+        />
+      )}
+
+      {step === "converted" && conversionResult && (
+        <ConvertedSummary
+          result={conversionResult}
+          batchName={activeBatchName}
+          onDone={resetToList}
         />
       )}
     </div>
