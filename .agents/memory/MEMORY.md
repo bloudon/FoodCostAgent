@@ -3,3 +3,4 @@
 - [pg-driver empty array type](pg-empty-array-type.md) — `'{}'` in INSERT VALUES fails on VPS pg driver; use `ARRAY[]::text[]` instead.
 - [GitHub push from Replit](github-push.md) — git remote set-url is blocked; push via URL with GITHUB_PAT secret instead.
 - [App versioning & migration state](app-versioning.md) — current version (1.12.0), release history 1.5–1.12, schema migration tags v064/v065 + task-labeled blocks, CHANGELOG gap.
+- [ESM TLA exit-code-13 keepalive](esm-tla-keepalive.md) — setInterval does NOT prevent code 13 in Node v20; pool.connect() I/O handle does. Also requires `await (async()=>{})()` IIFE.
