@@ -1,3 +1,16 @@
+// IMPORTANT: Keep ALL imports here as static `import` statements — never use
+// `await import(...)` at module scope in this file or any file it re-exports.
+//
+// Why: esbuild propagates top-level await (TLA) to every module that imports a
+// file containing one.  When server/db.ts previously used `await import('pg')`,
+// it produced 36 cascading TLA lines in dist/index.js.  On the VPS, Node.js
+// exits with code 13 (ESM TLA stall) when any of those awaits do not resolve
+// before the process is torn down, causing a crash-loop at startup.
+//
+// The only legitimate TLA in the bundle is the `await (async () => { ... })()`
+// IIFE in server/index.ts that keeps the event loop alive.  Everything else
+// must be a static import or moved inside an async function body.
+// See: scripts/check-bundle-tla.js — run after build to enforce this invariant.
 import * as schema from "@shared/schema";
 import pg from "pg";
 import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
