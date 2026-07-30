@@ -60,7 +60,7 @@ export default function WebsiteContact() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
   const [deliveryFailed, setDeliveryFailed] = useState(false);
-  const [failedContactEmail, setFailedContactEmail] = useState("hello@fnbcostpro.com");
+  const [failedContactEmail, setFailedContactEmail] = useState("info@fnbcostpro.com");
   const formStartedRef = useRef(false);
   function handleFormFocus() {
     if (!formStartedRef.current) {
@@ -112,7 +112,7 @@ export default function WebsiteContact() {
           const email =
             isObj && "contactEmail" in errBody && typeof (errBody as { contactEmail: unknown }).contactEmail === "string"
               ? (errBody as { contactEmail: string }).contactEmail
-              : "hello@fnbcostpro.com";
+              : "info@fnbcostpro.com";
           setFailedContactEmail(email);
           setDeliveryFailed(true);
           return;
@@ -191,8 +191,8 @@ export default function WebsiteContact() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-gray-900 mb-0.5">{c.emailLabel}</p>
-                    <a href="mailto:hello@fnbcostpro.com" className="text-sm text-green-600 hover:underline">
-                      hello@fnbcostpro.com
+                    <a href="mailto:info@fnbcostpro.com" className="text-sm text-green-600 hover:underline">
+                      info@fnbcostpro.com
                     </a>
                   </div>
                 </div>

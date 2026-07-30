@@ -1272,11 +1272,11 @@ async function runStartupMigrations() {
   }
 
   // Warn operators if the contact-form recipient address is not configured.
-  // Without CONTACT_EMAIL, submissions fall back to hello@fnbcostpro.com which
+  // Without CONTACT_EMAIL, submissions fall back to info@fnbcostpro.com which
   // requires an active mailbox at that domain.
   if (!process.env.CONTACT_EMAIL) {
     console.warn(
-      '[Startup] ⚠️  CONTACT_EMAIL is not set — contact-form submissions will be sent to the default address (hello@fnbcostpro.com). ' +
+      '[Startup] ⚠️  CONTACT_EMAIL is not set — contact-form submissions will be sent to the default address (info@fnbcostpro.com). ' +
       'Set CONTACT_EMAIL in your environment to route them to a real inbox.'
     );
   }

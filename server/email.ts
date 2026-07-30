@@ -460,7 +460,7 @@ export async function sendSquareTokenRevokedAlert(opts: {
 // Single source of truth for the contact/support address.
 // Override via the CONTACT_EMAIL env var (e.g. in .env.example).
 export const CONTACT_DISPLAY_EMAIL =
-  process.env.CONTACT_EMAIL || "hello@fnbcostpro.com";
+  process.env.CONTACT_EMAIL || "info@fnbcostpro.com";
 
 export async function sendContactEmail(opts: {
   name: string;
