@@ -1256,7 +1256,7 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-(async () => {
+await (async () => {
   console.log('[Startup] 1 — runStartupMigrations');
   // Apply schema migrations that may be missing on the VPS database
   await runStartupMigrations();
