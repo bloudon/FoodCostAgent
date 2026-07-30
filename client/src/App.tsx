@@ -277,98 +277,95 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
     "inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
   return (
-    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-accent gap-1">
-      {/* Hamburger: mobile sheet trigger only. Desktop uses the hover rail. */}
-      {isMobile && (
-        <SidebarTrigger data-testid="button-mobile-menu" />
-      )}
-      <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden mr-1" />
+    <div className="sticky top-0 z-50 grid grid-cols-[1fr_auto_1fr] h-12 items-center border-b px-4 bg-accent gap-2">
+      {/* ── Left: hamburger, logo, nav controls, page label ── */}
+      <div className="flex items-center gap-1 min-w-0">
+        {isMobile && (
+          <SidebarTrigger data-testid="button-mobile-menu" />
+        )}
+        <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden mr-1" />
 
-      {/* ── In-app navigation controls ── */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={goBack}
-            disabled={!canGoBack}
-            aria-label="Back"
-            data-testid="button-nav-back"
-            className={navBtnClass}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={goBack}
+              disabled={!canGoBack}
+              aria-label="Back"
+              data-testid="button-nav-back"
+              className={navBtnClass}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Back</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={goForward}
+              disabled={!canGoForward}
+              aria-label="Forward"
+              data-testid="button-nav-forward"
+              className={navBtnClass}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Forward</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={refresh}
+              aria-label="Refresh"
+              data-testid="button-nav-refresh"
+              className={navBtnClass}
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Refresh</TooltipContent>
+        </Tooltip>
+
+        {pageLabel && (
+          <span
+            className="hidden md:block text-sm font-medium text-foreground ml-1 truncate"
+            data-testid="text-topbar-page-label"
           >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Back</TooltipContent>
-      </Tooltip>
+            {pageLabel}
+          </span>
+        )}
+      </div>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={goForward}
-            disabled={!canGoForward}
-            aria-label="Forward"
-            data-testid="button-nav-forward"
-            className={navBtnClass}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Forward</TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={refresh}
-            aria-label="Refresh"
-            data-testid="button-nav-refresh"
-            className={navBtnClass}
-          >
-            <RotateCcw className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Refresh</TooltipContent>
-      </Tooltip>
-
-      {/* Current page label — hidden on mobile to avoid crowding */}
-      {pageLabel && (
-        <span
-          className="hidden md:block text-sm font-medium text-foreground ml-2"
-          data-testid="text-topbar-page-label"
+      {/* ── Center: global search box ── */}
+      {onSearchOpen ? (
+        <button
+          onClick={onSearchOpen}
+          aria-label="Search"
+          data-testid="button-global-search"
+          className="flex items-center gap-2 h-8 w-48 sm:w-56 md:w-72 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground hover:bg-accent hover:border-ring transition-colors"
         >
-          {pageLabel}
-        </span>
+          <Search className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1 text-left text-sm">Search…</span>
+          <kbd className="hidden md:inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/60">
+            {isMac ? "⌘K" : "Ctrl K"}
+          </kbd>
+        </button>
+      ) : (
+        <div />
       )}
 
-      {/* Right-side user controls — stable position, no sidebar dependency */}
-      <div className="ml-auto flex items-center gap-1">
-        {/* Company name moved here from the left side */}
+      {/* ── Right: company name, theme, language, avatar, logout ── */}
+      <div className="flex items-center justify-end gap-1">
         {companyName && (
           <span
-            className="hidden md:block text-sm font-medium text-muted-foreground max-w-[180px] truncate mr-1"
+            className="hidden lg:block text-sm font-medium text-muted-foreground max-w-[160px] truncate mr-1"
             data-testid="text-topbar-company-name"
           >
             {companyName}
           </span>
-        )}
-
-        {/* Global search trigger */}
-        {onSearchOpen && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onSearchOpen}
-                aria-label="Search"
-                data-testid="button-global-search"
-                className="inline-flex items-center justify-center rounded-md h-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors px-2 gap-1.5"
-              >
-                <Search className="h-4 w-4 shrink-0" />
-                <span className="hidden md:inline text-xs text-muted-foreground/70">
-                  {isMac ? "⌘K" : "Ctrl K"}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Search</TooltipContent>
-          </Tooltip>
         )}
 
         <ThemeToggle />
