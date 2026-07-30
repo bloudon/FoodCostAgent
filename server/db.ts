@@ -10,6 +10,10 @@ const isLocalDb = process.env.STORAGE_MODE === 'local' || process.env.AUTH_MODE 
 
 let pool: any;
 let db: any;
+// Held until the startup IIFE fires so the socket is "in use" (not idle-pool).
+// pg-pool unref()s idle connections' timers; a checked-out client is not unref'd,
+// so the TCP socket keeps the event loop alive through the ESM TLA microtask chain.
+export let _startupClient: any;
 
 if (isLocalDb) {
   const pgModule = await import('pg');
@@ -28,18 +32,16 @@ if (isLocalDb) {
   db = drizzle({ client: pool, schema });
   console.log('[DB] Using standard PostgreSQL driver (local/VPS mode)');
 
-  // Open a real connection so the TCP socket acts as an I/O handle.
-  // This prevents Node.js exit-code-13 ("Unfinished Top-Level Await") that
-  // occurs when every subsequent await init_*() in the ESM module body resolves
-  // as a pure microtask — leaving the macrotask queue empty before the startup
-  // IIFE ever fires.  An active socket is enough; the pool keeps it alive for
-  // idleTimeoutMillis (30 s), well past the time needed for the IIFE to start.
+  // Check out a client and hold it (do NOT release yet).
+  // pg-pool unref()'s idle connections' internal timers so Node can exit when
+  // the pool is otherwise unused.  A *checked-out* client is never unref'd —
+  // its TCP socket keeps the event loop alive through the entire ESM TLA
+  // microtask chain until the startup IIFE fires and releases it.
   try {
-    const _testClient = await pool.connect();
-    _testClient.release();
+    _startupClient = await pool.connect();
     console.log('[DB] Connection verified ✓');
   } catch (err: any) {
-    // DB unreachable at start — log and continue; queries will surface the real error.
+    // DB unreachable — log and continue; queries will surface the real error.
     console.error('[DB] Initial connection check failed:', err.message);
   }
 } else {
