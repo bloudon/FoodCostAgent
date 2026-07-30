@@ -200,10 +200,11 @@ export async function updateVendorItemPackGeometry(
       caseSize: vendorItems.caseSize,
       innerPackSize: vendorItems.innerPackSize,
       packUom: vendorItems.packUom,
-      // Use lastCasePrice (purchase-unit price) as input to computePackGeometry.
-      // lastPrice is ALREADY normalized (lastCasePrice / effectivePackQty) — using it
-      // would cause a double-division and produce an incorrectly small normalized price.
+      // Both prices fetched; the correct one is selected below based on pricingBasis.
+      // • lastCasePrice = purchase-unit price (divide by canonicalQty → normalized)
+      // • lastPrice     = already-normalized price; use when pricingBasis = canonical_unit
       lastCasePrice: vendorItems.lastCasePrice,
+      lastPrice: vendorItems.lastPrice,
       isVariableWeight: vendorItems.isVariableWeight,
       pricingBasis: vendorItems.pricingBasis,
       inventoryItemId: vendorItems.inventoryItemId,
@@ -239,14 +240,20 @@ export async function updateVendorItemPackGeometry(
   const effectivePricingBasis = (pricingBasis ?? row.pricingBasis ?? "purchase_unit") as PricingBasis;
   const effectiveVW = row.isVariableWeight;
 
+  // Select the correct price for the computation:
+  // • canonical_unit → lastPrice is already per canonical unit; computePackGeometry
+  //   returns it unchanged with canonicalQty = 1 (handled by the pricingBasis branch)
+  // • purchase_unit  → lastCasePrice is per purchase unit; computePackGeometry
+  //   divides by effectivePackQty to produce normalizedPricePerCanonicalUnit
+  const priceInput = effectivePricingBasis === "canonical_unit"
+    ? row.lastPrice
+    : row.lastCasePrice;
+
   const result = computePackGeometry({
     caseSize: row.caseSize,
     innerPackSize: row.innerPackSize,
     packUom: row.packUom,
-    // lastCasePrice = purchase-unit price.  computePackGeometry divides by
-    // canonicalQty to produce normalizedPricePerCanonicalUnit.
-    // Using lastPrice here would double-divide (lastPrice is already normalized).
-    lastPrice: row.lastCasePrice,
+    lastPrice: priceInput,
     pricingBasis: effectivePricingBasis,
     isVariableWeight: effectiveVW,
     canonicalUnitName,

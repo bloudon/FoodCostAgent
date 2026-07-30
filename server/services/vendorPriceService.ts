@@ -351,18 +351,34 @@ async function _executeWrite(
     })
     .where(eq(vendorItems.id, vendorItemId));
 
-  // ── 1b. Update pack geometry using the just-written case price ────────────
-  // IMPORTANT: computePackGeometry expects the PURCHASE-UNIT price (lastCasePrice),
-  // not the per-canonical-unit price (lastPrice). It divides by canonicalQty to
-  // produce normalizedPricePerCanonicalUnit.  Using unitPrice here would double-divide.
-  // casePrice from derivePrices() is the purchase-unit price — correct input.
+  // ── 1b. Update pack geometry — read row's stored pricingBasis first ────────
+  // pricingBasis is a structural field on the vendor item (set by operators) that
+  // controls whether last_price is per purchase unit or per canonical unit.
+  // We must honour the stored value, not assume "purchase_unit" for every write.
+  const [rowMeta] = await d
+    .select({
+      pricingBasis: vendorItems.pricingBasis,
+      isVariableWeight: vendorItems.isVariableWeight,
+    })
+    .from(vendorItems)
+    .where(eq(vendorItems.id, vendorItemId))
+    .limit(1);
+
+  const rowPricingBasis = ((rowMeta?.pricingBasis) ?? "purchase_unit") as "purchase_unit" | "canonical_unit";
+
+  // Select the correct price for computePackGeometry:
+  // • purchase_unit  → use casePrice (will be divided by canonicalQty)
+  // • canonical_unit → use unitPrice (already normalized; returned as-is with qty=1)
+  const geomPriceInput = rowPricingBasis === "canonical_unit" ? unitPrice : casePrice;
+
   const geomResult = computePackGeometry({
     caseSize,
     innerPackSize,
     packUom,
-    lastPrice: casePrice,            // purchase-unit price; divided by canonicalQty below
+    lastPrice: geomPriceInput,
     canonicalUnitName: inventoryUnitName,
-    pricingBasis: "purchase_unit",
+    pricingBasis: rowPricingBasis,
+    isVariableWeight: rowMeta?.isVariableWeight,
   });
   const geomSourceMap: Record<string, PackGeometrySource> = {
     order_guide_import: "csv_order_guide",

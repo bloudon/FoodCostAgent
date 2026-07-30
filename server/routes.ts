@@ -8890,16 +8890,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // When structural fields change without a price change, recordVendorPrice
+      // When structural or basis fields change without a price change, recordVendorPrice
       // wasn't called, so the inline geometry in _executeWrite didn't run.
-      // Re-classify geometry so canonical_qty stays consistent with new case_size.
+      // Re-classify geometry so canonical_qty and pricingBasis stay consistent.
       const structuralGeomChanged =
         updates.caseSize !== undefined ||
         updates.innerPackSize !== undefined ||
         updates.packUom !== undefined ||
-        updates.purchaseUnitId !== undefined;
+        updates.purchaseUnitId !== undefined ||
+        updates.pricingBasis !== undefined ||     // basis change requires re-normalization
+        updates.isVariableWeight !== undefined;   // variable-weight toggle changes status
       if (structuralGeomChanged && !priceChanging) {
-        updateVendorItemPackGeometry({ vendorItemId: req.params.id, source: "manual" }).catch(() => {});
+        updateVendorItemPackGeometry({
+          vendorItemId: req.params.id,
+          source: "manual",
+          pricingBasis: updates.pricingBasis as any ?? undefined,
+        }).catch(() => {});
       }
 
       res.json(vendorItem);

@@ -180,6 +180,58 @@ describe("Pack geometry — DB integration (recordVendorPrice)", () => {
   });
 
   /**
+   * Test: canonical-unit pricing — meat bought by the pound at $5.99/LB
+   * pricingBasis = "canonical_unit" → canonicalQty = 1, normalized = $5.99
+   * Verifies the basis branch in both recordVendorPrice and updateVendorItemPackGeometry.
+   */
+  it("canonical-unit pricing: $5.99/LB → normalizedPricePerCanonicalUnit=$5.99, canonicalQty=1", async () => {
+    const { unit } = await insertFixtures("pound");
+
+    await db.insert(vendorItems).values({
+      id: IDs.vendorItem4x5,
+      vendorId: IDs.vendor,
+      inventoryItemId: IDs.invItem,
+      purchaseUnitId: unit.id,
+      caseSize: 1,                 // buying individual pounds
+      innerPackSize: 1,
+      packUom: "lb",
+      pricingBasis: "canonical_unit", // price quoted per pound (canonical unit)
+      lastPrice: 0,
+      lastCasePrice: 0,
+      active: 1,
+    }).onConflictDoNothing();
+
+    // Record $5.99/LB via the "unit" price basis
+    await recordVendorPrice({
+      vendorItemId: IDs.vendorItem4x5,
+      inventoryItemId: IDs.invItem,
+      companyId: IDs.company,
+      priceBasis: "unit",
+      price: 5.99,
+      caseSize: 1,
+      innerPackSize: 1,
+      packUom: "lb",
+      inventoryUnitName: "pound",
+      source: "manual",
+      representsActualPurchase: false,
+    });
+
+    const [saved] = await db
+      .select()
+      .from(vendorItems)
+      .where(eq(vendorItems.id, IDs.vendorItem4x5))
+      .limit(1);
+
+    expect(saved).toBeTruthy();
+    // canonical_unit basis → canonicalQty = 1, normalizedPrice = price per LB
+    expect(saved.canonicalQtyPerPurchaseUnit).toBeCloseTo(1, 4);
+    expect(saved.normalizedPricePerCanonicalUnit).toBeCloseTo(5.99, 4);
+    // Must NOT be double-divided (e.g. 5.99 / 1 is fine, but 5.99 / 20 = 0.2995 would be wrong)
+    expect(saved.normalizedPricePerCanonicalUnit).toBeGreaterThan(5);
+    expect(saved.packGeometryStatus).toBe("verified"); // canonical_unit always returns "verified"
+  });
+
+  /**
    * Test: 30-count eggs at $9 → normalizedPricePerCanonicalUnit = $0.30/EA
    */
   it("30-count eggs at $9 persists normalizedPricePerCanonicalUnit=$0.30/EA", async () => {
