@@ -1,5 +1,8 @@
 import { Target, TrendingUp, Lightbulb, Wrench } from "lucide-react";
-import { MarketingLayout, MarketingHead, CTAButton, SectionHeading, appLink } from "@/components/website/marketing-layout";
+import { ChevronRight } from "lucide-react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { MarketingLayout, MarketingHead, SectionHeading } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
 
 const VALUE_ICONS = [Target, TrendingUp, Lightbulb, Wrench];
@@ -7,6 +10,7 @@ const VALUE_ICONS = [Target, TrendingUp, Lightbulb, Wrench];
 export default function WebsiteAbout() {
   const { lang, t } = useLanguage();
   const about = t.about;
+  const contactHref = lang === "es" ? "/es/contact" : "/contact";
 
   return (
     <MarketingLayout>
@@ -15,15 +19,17 @@ export default function WebsiteAbout() {
         description={about.meta.description}
         lang={lang}
       />
+
+      {/* ── Founding story ───────────────────────────────────────────────── */}
       <section className="py-16 bg-gradient-to-b from-gray-900 to-gray-800 text-center">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <span className="inline-block text-xs font-semibold uppercase tracking-widest text-green-400 mb-4">
             {about.badge}
           </span>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-6">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-6 leading-tight">
             {about.headline}
           </h1>
-          <p className="text-lg text-gray-300 leading-relaxed mb-4">
+          <p className="text-lg text-gray-300 leading-relaxed mb-6">
             {about.subheadline}
           </p>
           <p className="text-base text-gray-400 leading-relaxed">
@@ -32,11 +38,15 @@ export default function WebsiteAbout() {
         </div>
       </section>
 
+      {/* ── Mission ───────────────────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl">
-            <h2 className="text-3xl font-bold text-gray-900 mb-6">{about.missionTitle}</h2>
-            <p className="text-gray-500 text-lg leading-relaxed mb-6">
+            <h2 className="text-3xl font-bold text-gray-900 mb-6">
+              {about.missionTitle}
+            </h2>
+            {/* Mission statement — visually emphasised */}
+            <p className="text-xl text-gray-900 font-medium leading-relaxed mb-6 border-l-4 border-orange-400 pl-5">
               {about.mission1}
             </p>
             <p className="text-gray-500 text-lg leading-relaxed mb-6">
@@ -49,6 +59,7 @@ export default function WebsiteAbout() {
         </div>
       </section>
 
+      {/* ── Values ────────────────────────────────────────────────────────── */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading label={about.valuesLabel} title={about.valuesTitle} />
@@ -56,7 +67,11 @@ export default function WebsiteAbout() {
             {about.values.map((v, i) => {
               const Icon = VALUE_ICONS[i];
               return (
-                <div key={v.title} className="bg-white rounded-lg border border-gray-100 p-6" data-testid={`value-${v.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                <div
+                  key={v.title}
+                  className="bg-white rounded-lg border border-gray-100 p-6"
+                  data-testid={`value-${v.title.toLowerCase().replace(/\s+/g, "-")}`}
+                >
                   <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mb-4">
                     <Icon className="h-5 w-5 text-green-700" />
                   </div>
@@ -69,6 +84,7 @@ export default function WebsiteAbout() {
         </div>
       </section>
 
+      {/* ── Who we're built for ───────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <SectionHeading
@@ -91,27 +107,25 @@ export default function WebsiteAbout() {
         </div>
       </section>
 
-      <section className="py-20 bg-green-900 text-center">
+      {/* ── CTA ───────────────────────────────────────────────────────────── */}
+      <section className="py-20 bg-gray-900 text-center">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-white mb-4">
             {about.ctaTitle}
           </h2>
-          <p className="text-green-200 mb-8">
+          <p className="text-gray-400 mb-8">
             {about.ctaSubtitle}
           </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <CTAButton href={appLink("/signup")} large>
+          <Link href={contactHref}>
+            <Button
+              size="lg"
+              className="bg-white text-gray-900 hover:bg-gray-100 border-0 text-base px-8 h-auto py-3 font-semibold"
+              data-testid="btn-about-cta"
+            >
               {about.getStartedFree}
-            </CTAButton>
-            <a href={appLink("/signup")}>
-              <button
-                className="px-8 py-3 rounded-md text-base font-semibold text-white border border-white/40 bg-white/10 backdrop-blur-sm hover-elevate"
-                data-testid="btn-about-scan-menu"
-              >
-                {about.ctaSecondary}
-              </button>
-            </a>
-          </div>
+              <ChevronRight className="h-5 w-5 ml-1" />
+            </Button>
+          </Link>
         </div>
       </section>
     </MarketingLayout>
