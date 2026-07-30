@@ -242,7 +242,7 @@ function AppTopBar() {
     "inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
   return (
-    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-background gap-1">
+    <div className="sticky top-0 z-50 flex h-12 items-center border-b px-4 bg-accent gap-1">
       {/* Hamburger: mobile sheet trigger only. Desktop uses the hover rail. */}
       {isMobile && (
         <SidebarTrigger data-testid="button-mobile-menu" />
