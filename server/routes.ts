@@ -597,6 +597,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Orderly entity resolution tables ─────────────────────────────────────
+  (async function migrateOrderlyResolutionTables() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS inventory_locations (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          name TEXT NOT NULL,
+          normalized_name TEXT NOT NULL,
+          location_type TEXT NOT NULL DEFAULT 'storage',
+          parent_location_id VARCHAR,
+          outlet_or_cost_center_id VARCHAR,
+          is_central_storage INTEGER NOT NULL DEFAULT 0,
+          replenishes_location_ids TEXT[],
+          active INTEGER NOT NULL DEFAULT 1,
+          source_system TEXT,
+          source_external_id TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS inv_locations_company_active_idx
+          ON inventory_locations(company_id, active);
+        CREATE INDEX IF NOT EXISTS inv_locations_normalized_idx
+          ON inventory_locations(company_id, normalized_name);
+
+        CREATE TABLE IF NOT EXISTS inventory_item_location_assignments (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          inventory_item_id VARCHAR NOT NULL,
+          location_id VARCHAR NOT NULL,
+          par_target REAL,
+          is_primary INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (inventory_item_id, location_id)
+        );
+        CREATE INDEX IF NOT EXISTS inv_item_loc_assign_item_idx
+          ON inventory_item_location_assignments(inventory_item_id);
+        CREATE INDEX IF NOT EXISTS inv_item_loc_assign_loc_idx
+          ON inventory_item_location_assignments(location_id);
+        CREATE INDEX IF NOT EXISTS inv_item_loc_assign_company_idx
+          ON inventory_item_location_assignments(company_id);
+
+        CREATE TABLE IF NOT EXISTS inventory_item_external_mappings (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          inventory_item_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_external_id TEXT NOT NULL,
+          source_description TEXT,
+          match_strategy TEXT,
+          confidence_score REAL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          confirmed_at TIMESTAMPTZ,
+          confirmed_by VARCHAR,
+          UNIQUE (company_id, source_system, source_external_id)
+        );
+        CREATE INDEX IF NOT EXISTS inv_item_ext_mappings_item_idx
+          ON inventory_item_external_mappings(inventory_item_id);
+        CREATE INDEX IF NOT EXISTS inv_item_ext_mappings_source_idx
+          ON inventory_item_external_mappings(company_id, source_system, source_external_id);
+      `);
+      console.log("[Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready");
+    } catch (err) {
+      console.error("[Migration] orderly_resolution_tables error:", err);
+    }
+  })();
+
   (async function migrateMenuItemRecipes() {
     try {
       await db.execute(sql`

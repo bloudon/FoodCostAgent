@@ -2291,3 +2291,82 @@ export const inventoryImportRows = pgTable("inventory_import_rows", {
 export const insertInventoryImportRowSchema = createInsertSchema(inventoryImportRows).omit({ id: true });
 export type InsertInventoryImportRow = z.infer<typeof insertInventoryImportRowSchema>;
 export type InventoryImportRow = typeof inventoryImportRows.$inferSelect;
+
+// ─── Inventory Locations ─────────────────────────────────────────────────────
+// First-class location hierarchy — supports multi-outlet clubs, bars, kitchens etc.
+// Distinct from the legacy storageLocations table (company-scoped, flat, no hierarchy).
+export const inventoryLocations = pgTable("inventory_locations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull(), // lowercase trimmed for dedup
+  locationType: text("location_type").notNull().default("storage"),
+  // storage | outlet | cost_center | kitchen | bar | prep | cellar
+  parentLocationId: varchar("parent_location_id"),          // nullable self-referential hierarchy
+  outletOrCostCenterId: varchar("outlet_or_cost_center_id"), // optional POS outlet reference
+  isCentralStorage: integer("is_central_storage").notNull().default(0),
+  replenishesLocationIds: text("replenishes_location_ids").array(), // future predictive ordering
+  active: integer("active").notNull().default(1),
+  sourceSystem: text("source_system"),       // "ORDERLY" | "manual" | "square" etc.
+  sourceExternalId: text("source_external_id"), // external ID from source system
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  companyActiveIdx: index("inv_locations_company_active_idx").on(t.companyId, t.active),
+  normalizedIdx: index("inv_locations_normalized_idx").on(t.companyId, t.normalizedName),
+}));
+
+export const insertInventoryLocationSchema = createInsertSchema(inventoryLocations)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventoryLocation = z.infer<typeof insertInventoryLocationSchema>;
+export type InventoryLocation = typeof inventoryLocations.$inferSelect;
+
+// ─── Inventory Item → Location Assignments ───────────────────────────────────
+// Links inventory items to inventory_locations (NOT the deprecated inventory_item_locations table).
+// Created during Orderly import approval; can also be created manually.
+export const inventoryItemLocationAssignments = pgTable("inventory_item_location_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  locationId: varchar("location_id").notNull(), // references inventory_locations.id
+  parTarget: real("par_target"),                // target par level at this location
+  isPrimary: integer("is_primary").notNull().default(0),
+  active: integer("active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  uniqueItemLocation: unique().on(t.inventoryItemId, t.locationId),
+  itemIdx: index("inv_item_loc_assign_item_idx").on(t.inventoryItemId),
+  locationIdx: index("inv_item_loc_assign_loc_idx").on(t.locationId),
+  companyIdx: index("inv_item_loc_assign_company_idx").on(t.companyId),
+}));
+
+export const insertInventoryItemLocationAssignmentSchema = createInsertSchema(inventoryItemLocationAssignments)
+  .omit({ id: true, createdAt: true });
+export type InsertInventoryItemLocationAssignment = z.infer<typeof insertInventoryItemLocationAssignmentSchema>;
+export type InventoryItemLocationAssignment = typeof inventoryItemLocationAssignments.$inferSelect;
+
+// ─── Inventory Item External Mappings ────────────────────────────────────────
+// Stores source-system item codes so future imports auto-resolve items without
+// user intervention. Created and confirmed during Orderly (or other) import approval.
+export const inventoryItemExternalMappings = pgTable("inventory_item_external_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  sourceSystem: text("source_system").notNull(),       // "ORDERLY" | "SYSCO" | "USFOODS" etc.
+  sourceExternalId: text("source_external_id").notNull(), // item code from source system
+  sourceDescription: text("source_description"),       // description snapshot for drift detection
+  matchStrategy: text("match_strategy"),               // "code" | "name_pack" | "fuzzy" | "manual"
+  confidenceScore: real("confidence_score"),           // 0–1 match confidence at time of mapping
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),              // when a human confirmed this mapping
+  confirmedBy: varchar("confirmed_by"),
+}, (t) => ({
+  uniqueSourceMapping: unique().on(t.companyId, t.sourceSystem, t.sourceExternalId),
+  itemIdx: index("inv_item_ext_mappings_item_idx").on(t.inventoryItemId),
+  sourceIdx: index("inv_item_ext_mappings_source_idx").on(t.companyId, t.sourceSystem, t.sourceExternalId),
+}));
+
+export const insertInventoryItemExternalMappingSchema = createInsertSchema(inventoryItemExternalMappings)
+  .omit({ id: true, createdAt: true });
+export type InsertInventoryItemExternalMapping = z.infer<typeof insertInventoryItemExternalMappingSchema>;
+export type InventoryItemExternalMapping = typeof inventoryItemExternalMappings.$inferSelect;

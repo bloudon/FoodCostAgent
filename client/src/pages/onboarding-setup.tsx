@@ -686,6 +686,7 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
 
   if (subStep === "upload") {
     return (
+      <div className="space-y-4">
       <Card data-testid="card-step-invoice-upload">
         <CardHeader>
           <CardTitle>
@@ -738,6 +739,22 @@ export function InvoiceScanStep({ onComplete }: { onComplete: () => void }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Orderly alternative path */}
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <FileText className="h-4 w-4 shrink-0" />
+          <span>Using Orderly? Import directly from an Orderly .xlsx export instead.</span>
+        </div>
+        <a
+          href="/orderly-import"
+          className="shrink-0 text-sm font-medium text-primary hover:underline flex items-center gap-1"
+        >
+          Import from Orderly
+          <ArrowRight className="h-3 w-3" />
+        </a>
+      </div>
+      </div>
     );
   }
 

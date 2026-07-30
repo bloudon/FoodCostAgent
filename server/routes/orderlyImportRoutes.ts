@@ -43,6 +43,11 @@ import {
   type OrderlyRow,
   type OrderlyParseResult,
 } from '../services/orderly/OrderlyParser';
+import {
+  runResolutionPreview,
+  applyBatchApproval,
+  type RowDecision,
+} from '../services/orderly/orderlyDomain';
 
 // ─── Multer upload — memory storage, xlsx only, max 50 MB ────────────────────
 
@@ -417,6 +422,64 @@ export function registerOrderlyImportRoutes(app: Express): void {
       } catch (err: any) {
         console.error('[OrderlyImport] batches list error:', err);
         res.status(500).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/inventory-import/orderly/batches/:batchId/resolution-preview
+   *
+   * Runs the 4-strategy matching algorithm against the company's existing
+   * inventory items / vendors / locations and returns per-row decisions.
+   * Pure read — no DB writes.
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/resolution-preview',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const { batchId } = req.params;
+        const preview = await runResolutionPreview(batchId, companyId);
+        res.json(preview);
+      } catch (err: any) {
+        console.error('[OrderlyImport] resolution-preview error:', err);
+        const status = err.message?.includes('not found') ? 404 : 500;
+        res.status(status).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/inventory-import/orderly/batches/:batchId/approve
+   *
+   * Commits the import — creates/links items, vendors, vendor-items, locations,
+   * and external mappings inside a single transaction.
+   *
+   * Body (optional):
+   *   rowDecisions: RowDecision[]  — per-row overrides for ambiguous matches
+   */
+  app.post(
+    '/api/inventory-import/orderly/batches/:batchId/approve',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).userId as string | null ?? null;
+        const { batchId } = req.params;
+        const rowDecisions: RowDecision[] = req.body?.rowDecisions ?? [];
+
+        const result = await applyBatchApproval(batchId, companyId, userId, rowDecisions);
+        res.json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] approve error:', err);
+        const status =
+          err.message?.includes('not found') ? 404
+          : err.message?.includes('already been approved') ? 409
+          : 500;
+        res.status(status).json({ error: err.message });
       }
     },
   );
