@@ -59,6 +59,8 @@ export default function WebsiteContact() {
   const c = t.contact;
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
+  const [deliveryFailed, setDeliveryFailed] = useState(false);
+  const [failedContactEmail, setFailedContactEmail] = useState("hello@fnbcostpro.com");
   const formStartedRef = useRef(false);
   function handleFormFocus() {
     if (!formStartedRef.current) {
@@ -103,10 +105,21 @@ export default function WebsiteContact() {
         body: JSON.stringify(values),
       });
       if (!res.ok) {
-        const err: unknown = await res.json().catch(() => ({}));
+        const errBody: unknown = await res.json().catch(() => ({}));
+        const isObj = typeof errBody === "object" && errBody !== null;
+        // 503 = SMTP delivery failure — show the direct-email fallback panel
+        if (res.status === 503) {
+          const email =
+            isObj && "contactEmail" in errBody && typeof (errBody as { contactEmail: unknown }).contactEmail === "string"
+              ? (errBody as { contactEmail: string }).contactEmail
+              : "hello@fnbcostpro.com";
+          setFailedContactEmail(email);
+          setDeliveryFailed(true);
+          return;
+        }
         const message =
-          typeof err === "object" && err !== null && "message" in err && typeof (err as { message: unknown }).message === "string"
-            ? (err as { message: string }).message
+          isObj && "message" in errBody && typeof (errBody as { message: unknown }).message === "string"
+            ? (errBody as { message: string }).message
             : c.sendFailedDefault;
         throw new Error(message);
       }
@@ -197,7 +210,39 @@ export default function WebsiteContact() {
 
             {/* Right: form */}
             <div className="lg:col-span-3">
-              {submitted ? (
+              {deliveryFailed ? (
+                <div
+                  className="flex flex-col items-center justify-center h-full min-h-[420px] text-center"
+                  data-testid="contact-delivery-failed"
+                >
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                    <Mail className="h-8 w-8 text-red-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    {lang === "es" ? "No pudimos enviar tu mensaje" : "We couldn't send your message"}
+                  </h3>
+                  <p className="text-gray-500 text-sm max-w-xs leading-relaxed mb-4">
+                    {lang === "es"
+                      ? "Estamos teniendo problemas con nuestro sistema de correo. Por favor, escríbenos directamente:"
+                      : "We're having trouble with our email system right now. Please reach out to us directly:"}
+                  </p>
+                  <a
+                    href={`mailto:${failedContactEmail}`}
+                    className="text-green-600 font-semibold hover:underline text-base"
+                    data-testid="contact-failed-email-link"
+                  >
+                    {failedContactEmail}
+                  </a>
+                  <Button
+                    variant="outline"
+                    className="mt-6"
+                    onClick={() => setDeliveryFailed(false)}
+                    data-testid="btn-try-again"
+                  >
+                    {lang === "es" ? "Intentar de nuevo" : "Try again"}
+                  </Button>
+                </div>
+              ) : submitted ? (
                 <div
                   className="flex flex-col items-center justify-center h-full min-h-[420px] text-center"
                   data-testid="contact-success"

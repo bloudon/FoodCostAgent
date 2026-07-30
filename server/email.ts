@@ -457,6 +457,11 @@ export async function sendSquareTokenRevokedAlert(opts: {
   }
 }
 
+// Single source of truth for the contact/support address.
+// Override via the CONTACT_EMAIL env var (e.g. in .env.example).
+export const CONTACT_DISPLAY_EMAIL =
+  process.env.CONTACT_EMAIL || "hello@fnbcostpro.com";
+
 export async function sendContactEmail(opts: {
   name: string;
   email: string;
@@ -472,7 +477,7 @@ export async function sendContactEmail(opts: {
   const { name, email, company, message, operationType, locationCount, role, currentSystem, primaryChallenge, contactPreference } = opts;
   const transport = createTransport();
   if (!transport) return;
-  const contactTo = process.env.CONTACT_EMAIL || "info@fnbcostpro.com";
+  const contactTo = CONTACT_DISPLAY_EMAIL;
 
   const row = (label: string, value: string | undefined) =>
     value ? `<tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:160px;vertical-align:top;">${label}</td><td style="padding:8px 0;color:#111827;font-size:14px;">${value}</td></tr>` : "";

@@ -1280,9 +1280,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         contactPreference: z.string().optional(),
       });
       const data = schema.parse(req.body);
-      import("./email").then(({ sendContactEmail }) => {
-        sendContactEmail(data).catch((err: unknown) => console.error("[Contact] email error:", err));
-      });
+      const { sendContactEmail, CONTACT_DISPLAY_EMAIL } = await import("./email");
+      try {
+        await sendContactEmail(data);
+      } catch (smtpErr: any) {
+        console.error("[Contact] SMTP delivery failed:", smtpErr?.message ?? smtpErr);
+        return res.status(503).json({
+          message: "We couldn't send your message — please email us directly.",
+          contactEmail: CONTACT_DISPLAY_EMAIL,
+        });
+      }
       return res.json({ ok: true });
     } catch (err: any) {
       if (err?.name === "ZodError") {

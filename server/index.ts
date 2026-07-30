@@ -1271,6 +1271,16 @@ async function runStartupMigrations() {
     console.error('⚠️ Seed error (non-fatal):', err);
   }
 
+  // Warn operators if the contact-form recipient address is not configured.
+  // Without CONTACT_EMAIL, submissions fall back to hello@fnbcostpro.com which
+  // requires an active mailbox at that domain.
+  if (!process.env.CONTACT_EMAIL) {
+    console.warn(
+      '[Startup] ⚠️  CONTACT_EMAIL is not set — contact-form submissions will be sent to the default address (hello@fnbcostpro.com). ' +
+      'Set CONTACT_EMAIL in your environment to route them to a real inbox.'
+    );
+  }
+
   // Start background session cleanup job
   // Runs every hour to remove expired auth sessions and prevent table bloat
   const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
