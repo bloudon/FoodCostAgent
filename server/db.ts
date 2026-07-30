@@ -10,8 +10,6 @@ const isLocalDb = process.env.STORAGE_MODE === 'local' || process.env.AUTH_MODE 
 
 let pool: any;
 let db: any;
-// eslint-disable-next-line prefer-const
-export let _startupKeepalive: ReturnType<typeof setInterval> | undefined;
 
 if (isLocalDb) {
   const pgModule = await import('pg');
@@ -29,13 +27,21 @@ if (isLocalDb) {
   });
   db = drizzle({ client: pool, schema });
   console.log('[DB] Using standard PostgreSQL driver (local/VPS mode)');
-  // Keep the event loop alive while all the memoised `await init_*()` calls in the
-  // ESM module body resolve as pure microtasks.  Without this, Node exits with
-  // code 13 ("Unfinished Top-Level Await") because the macrotask queue is empty
-  // even though the TLA chain is still running.  The interval is cleared at the
-  // very start of the startup IIFE in server/index.ts once real I/O (DB socket)
-  // takes over keeping the event loop alive.
-  _startupKeepalive = setInterval(() => {/* noop – event-loop sentinel */}, 1_000_000);
+
+  // Open a real connection so the TCP socket acts as an I/O handle.
+  // This prevents Node.js exit-code-13 ("Unfinished Top-Level Await") that
+  // occurs when every subsequent await init_*() in the ESM module body resolves
+  // as a pure microtask — leaving the macrotask queue empty before the startup
+  // IIFE ever fires.  An active socket is enough; the pool keeps it alive for
+  // idleTimeoutMillis (30 s), well past the time needed for the IIFE to start.
+  try {
+    const _testClient = await pool.connect();
+    _testClient.release();
+    console.log('[DB] Connection verified ✓');
+  } catch (err: any) {
+    // DB unreachable at start — log and continue; queries will surface the real error.
+    console.error('[DB] Initial connection check failed:', err.message);
+  }
 } else {
   const { Pool: NeonPool, neonConfig } = await import('@neondatabase/serverless');
   const ws = (await import('ws')).default;
