@@ -260,7 +260,7 @@ function LanguageToggle({ lang }: { lang: Language }) {
       <Link
         href={enPath}
         data-testid="lang-toggle-en"
-        onClick={() => lang !== "en" && track("language_switched", { from: lang, to: "en" })}
+        onClick={() => lang !== "en" && track("language_switched", { language: lang, from: lang, to: "en" })}
         className={`px-2.5 py-1 text-xs font-semibold transition-colors ${
           lang === "en"
             ? "bg-green-600 text-white"
@@ -272,7 +272,7 @@ function LanguageToggle({ lang }: { lang: Language }) {
       <Link
         href={esPath}
         data-testid="lang-toggle-es"
-        onClick={() => lang !== "es" && track("language_switched", { from: lang, to: "es" })}
+        onClick={() => lang !== "es" && track("language_switched", { language: lang, from: lang, to: "es" })}
         className={`px-2.5 py-1 text-xs font-semibold transition-colors ${
           lang === "es"
             ? "bg-green-600 text-white"
