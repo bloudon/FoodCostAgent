@@ -8,7 +8,7 @@ import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { cache } from "./cache";
 import { setupSsoAuth } from "./ssoAuth";
-import { db } from "./db";
+import { db, _startupKeepalive } from "./db";
 import { sql } from "drizzle-orm";
 
 const app = express();
@@ -1257,6 +1257,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 await (async () => {
+  // Release the event-loop sentinel timer installed by db.ts so Node can exit
+  // normally if startup fails after this point.
+  clearInterval(_startupKeepalive);
   console.log('[Startup] 1 — runStartupMigrations');
   // Apply schema migrations that may be missing on the VPS database
   await runStartupMigrations();
