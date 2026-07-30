@@ -1,10 +1,14 @@
 /**
- * Orderly Import — four-step wizard
+ * Orderly Import — four-step wizard + count session conversion
  *
  *  Step 1: Upload .xlsx  (or pick an existing pending batch)
  *  Step 2: Confirm inventory date
  *  Step 3: Resolution preview — shows per-row match results
  *  Step 4: Approve — commit items / vendors / locations, show result summary
+ *
+ *  For approved batches:
+ *  Step: count-session-preview — reconciliation review before creating session
+ *  Step: count-session-done    — result confirmation
  */
 
 import { useState, useRef, useEffect } from "react";
@@ -18,6 +22,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -43,14 +54,10 @@ import {
   Database,
   ListChecks,
   DollarSign,
+  ClipboardList,
+  Info,
+  AlertCircle,
 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -125,7 +132,21 @@ interface ApprovalResult {
   rowsProcessed: number;
 }
 
-type WizardStep = "list" | "upload" | "date" | "preview" | "approved" | "convert-preview" | "converted";
+interface CountSessionPreviewRow {
+  rowIndex: number;
+  inventoryItemId: string;
+  inventoryItemName: string;
+  storageLocation: string | null;
+  count1: number | null;
+  countUnit1: string | null;
+  count2: number | null;
+  countUnit2: string | null;
+  count3: number | null;
+  countUnit3: string | null;
+  totalUnits: number | null;
+  totalCost: number | null;
+}
+type WizardStep = "list" | "upload" | "date" | "preview" | "approved" | "count-session-preview" | "count-session-done";
 
 interface ConversionPreview {
   batchId: string;
@@ -191,11 +212,11 @@ function formatDate(d: string | null) {
 function BatchList({
   onNew,
   onSelect,
-  onConvert,
+  onCreateCountSession,
 }: {
   onNew: () => void;
   onSelect: (batch: ImportBatch) => void;
-  onConvert: (batch: ImportBatch) => void;
+  onCreateCountSession: (batch: ImportBatch) => void;
 }) {
   const { data: batches = [], isLoading } = useQuery<ImportBatch[]>({
     queryKey: ["/api/inventory-import/orderly/batches"],
@@ -252,7 +273,7 @@ function BatchList({
             </TableHeader>
             <TableBody>
               {batches.map((b) => (
-                <TableRow key={b.id} className="cursor-pointer hover:bg-muted/40" onClick={() => onSelect(b)}>
+                <TableRow key={b.id} className="hover:bg-muted/40">
                   <TableCell className="font-mono text-xs">{b.originalFilename}</TableCell>
                   <TableCell>{formatDate(b.inventoryDate)}</TableCell>
                   <TableCell>{b.sourceRowCount.toLocaleString()}</TableCell>
@@ -263,16 +284,24 @@ function BatchList({
                     </span>
                   </TableCell>
                   <TableCell>
-                    {b.status !== "approved" ? (
-                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onSelect(b); }}>
-                        Review <ArrowRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onConvert(b); }}>
-                        <Database className="h-3 w-3 mr-1" />
-                        Create count session
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {b.status !== "approved" && (
+                        <Button size="sm" variant="outline" onClick={() => onSelect(b)}>
+                          Review <ArrowRight className="h-3 w-3 ml-1" />
+                        </Button>
+                      )}
+                      {b.status === "approved" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-blue-700 border-blue-200 hover:bg-blue-50"
+                          onClick={() => onCreateCountSession(b)}
+                        >
+                          <ClipboardList className="h-3 w-3 mr-1" />
+                          Create count session
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -692,6 +721,306 @@ function ResolutionPreviewStep({
   );
 }
 
+function CountSessionPreviewStep({
+  batchId,
+  onCreated,
+  onBack,
+}: {
+  batchId: string;
+  onCreated: (result: CreateCountSessionResult) => void;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
+  const [acknowledgedVariance, setAcknowledgedVariance] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const { data: stores = [] } = useQuery<CompanyStore[]>({
+    queryKey: ["/api/stores/accessible"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/stores/accessible");
+      return res.json();
+    },
+  });
+
+  const { data: preview, isLoading, isError } = useQuery<CountSessionPreview>({
+    queryKey: [`/api/inventory-import/orderly/batches/${batchId}/count-session-preview`],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/inventory-import/orderly/batches/${batchId}/count-session-preview`,
+      );
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Failed to load count session preview");
+      }
+      return res.json();
+    },
+  });
+
+  async function handleCreate() {
+    if (!selectedStoreId) {
+      toast({ title: "Select a store", description: "Choose which store this count session belongs to.", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiRequest("POST", `/api/inventory-import/orderly/batches/${batchId}/create-count-session`, {
+        storeId: selectedStoreId,
+        acknowledgedVariance,
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error ?? "Failed to create count session");
+      }
+      const result: CreateCountSessionResult = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      onCreated(result);
+    } catch (err: any) {
+      // If variance error, prompt user to acknowledge
+      if (err.message?.includes("variance")) {
+        setAcknowledgedVariance(false);
+        toast({
+          title: "Reconciliation variance",
+          description: err.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Failed", description: err.message, variant: "destructive" });
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="py-16 text-center">
+        <RefreshCw className="h-6 w-6 mx-auto mb-3 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground">Loading snapshot preview…</p>
+      </div>
+    );
+  }
+
+  if (isError || !preview) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>Failed to load count session preview. Please try again.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const fmtPct = (n: number | null) => n == null ? "—" : (n * 100).toFixed(2) + "%";
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="-ml-1">
+          <ChevronLeft className="h-4 w-4 mr-1" /> Back
+        </Button>
+        <div>
+          <h2 className="text-lg font-semibold">Create Count Session from Snapshot</h2>
+          <p className="text-sm text-muted-foreground">
+            {preview.originalFilename} · Inventory date: {formatDate(preview.inventoryDate)}
+          </p>
+        </div>
+      </div>
+
+      {/* Accounting language clarification */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription className="text-xs">
+          <strong>Snapshot data only.</strong> Two snapshots show beginning/ending inventory value (snapshot variance / value change).
+          "Actual usage" requires purchase history. This session is labeled as a historical snapshot, not a usage report.
+        </AlertDescription>
+      </Alert>
+
+      {/* Duplicate warnings */}
+      {preview.duplicateWarnings.length > 0 && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>{preview.duplicateWarnings.length} existing count session(s)</strong> may overlap this date (±3 days):
+            <ul className="mt-1 space-y-0.5">
+              {preview.duplicateWarnings.map(w => (
+                <li key={w.countId} className="text-xs">
+                  {w.name ?? formatDate(w.countDate)} — {formatDate(w.countDate)}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Summary grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Source rows</div>
+            <div className="text-2xl font-bold">{preview.sourceRowCount.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Included items</div>
+            <div className="text-2xl font-bold">{preview.includedRows.length.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">{preview.excludedRows.length} excluded</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Importable value</div>
+            <div className="text-2xl font-bold">{fmt(preview.importableTotal)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground mb-1">Source total</div>
+            <div className="text-2xl font-bold">{preview.snapshotTotal != null ? fmt(preview.snapshotTotal) : "—"}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Reconciliation */}
+      <div className={`rounded-md border p-4 ${preview.reconciliationExceedsTolerance ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20" : "border-green-200 bg-green-50/50 dark:bg-green-950/20"}`}>
+        <div className="flex items-center gap-2 mb-2">
+          {preview.reconciliationExceedsTolerance
+            ? <AlertTriangle className="h-4 w-4 text-amber-600" />
+            : <CheckCircle2 className="h-4 w-4 text-green-600" />
+          }
+          <span className="text-sm font-medium">Reconciliation</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <div className="text-xs text-muted-foreground">Delta</div>
+            <div className="font-medium">{preview.reconciliationDelta != null ? fmt(preview.reconciliationDelta) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Delta %</div>
+            <div className={`font-medium ${preview.reconciliationExceedsTolerance ? "text-amber-700" : "text-green-700"}`}>
+              {fmtPct(preview.reconciliationDeltaPct)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted-foreground">Tolerance</div>
+            <div className="font-medium">{fmtPct(preview.reconciliationTolerance)}</div>
+          </div>
+        </div>
+        {preview.reconciliationExceedsTolerance && (
+          <div className="mt-3 flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="ack-variance"
+              checked={acknowledgedVariance}
+              onChange={e => setAcknowledgedVariance(e.target.checked)}
+              className="mt-0.5"
+            />
+            <label htmlFor="ack-variance" className="text-xs text-amber-800 dark:text-amber-300">
+              I acknowledge the reconciliation variance exceeds the {fmtPct(preview.reconciliationTolerance)} tolerance and want to proceed anyway.
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* Cross-reference discrepancies (May vs June) */}
+      {preview.crossReferenceDiscrepancies.length > 0 && (
+        <div className="rounded-md border border-orange-200 bg-orange-50/50 dark:bg-orange-950/20 p-4">
+          <p className="text-sm font-medium mb-2 flex items-center gap-1 text-orange-700">
+            <AlertTriangle className="h-4 w-4" />
+            {preview.crossReferenceDiscrepancies.length} May/June cross-reference discrepanc{preview.crossReferenceDiscrepancies.length === 1 ? "y" : "ies"}
+          </p>
+          <p className="text-xs text-muted-foreground mb-2">
+            These items have different values in the June "Previous" columns vs. the approved May snapshot.
+            Review before proceeding.
+          </p>
+          <div className="overflow-auto max-h-48">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Item</TableHead>
+                  <TableHead className="text-xs">June embedded May</TableHead>
+                  <TableHead className="text-xs">Actual May</TableHead>
+                  <TableHead className="text-xs">Delta</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {preview.crossReferenceDiscrepancies.slice(0, 20).map(d => (
+                  <TableRow key={d.rowIndex}>
+                    <TableCell className="text-xs truncate max-w-[180px]">{d.description ?? d.sourceItemCode}</TableCell>
+                    <TableCell className="text-xs">{fmt(d.juneEmbeddedPreviousCost)}</TableCell>
+                    <TableCell className="text-xs">{fmt(d.mayActualCost)}</TableCell>
+                    <TableCell className="text-xs text-orange-700">{fmt(d.delta)} ({fmtPct(d.deltaPercent)})</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Excluded rows */}
+      {preview.excludedRows.length > 0 && (
+        <div className="rounded-md border p-4 bg-muted/30">
+          <p className="text-sm font-medium mb-1">{preview.excludedRows.length} excluded rows</p>
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span>{preview.excludedRows.filter(r => r.reason === "no_item_resolved").length} — no item resolved</span>
+            <span>{preview.excludedRows.filter(r => r.reason === "missing_count_geometry").length} — no count data</span>
+          </div>
+        </div>
+      )}
+
+      {/* Locations */}
+      {preview.locations.length > 0 && (
+        <div className="rounded-md border p-3 bg-blue-50/50 dark:bg-blue-950/20">
+          <p className="text-xs font-medium mb-2 flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-blue-600" />
+            {preview.locations.length} location{preview.locations.length > 1 ? "s" : ""} in this snapshot
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {preview.locations.map(l => (
+              <Badge key={l} variant="outline" className="text-xs">{l}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Store selection + action */}
+      <div className="border rounded-lg p-4 space-y-4 bg-background">
+        <div className="space-y-2">
+          <Label htmlFor="store-select">Attach to store</Label>
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger id="store-select" className="max-w-xs">
+              <SelectValue placeholder="Select a store…" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            The count session will appear in this store's count history.
+          </p>
+        </div>
+
+        <Button
+          onClick={handleCreate}
+          disabled={creating || !selectedStoreId || (preview.reconciliationExceedsTolerance && !acknowledgedVariance)}
+          className="w-full"
+        >
+          {creating
+            ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Creating session…</>
+            : <><ClipboardList className="h-4 w-4 mr-2" /> Create count session from snapshot</>
+          }
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Step: Convert-to-count-session preview ───────────────────────────────────
 
 function ConvertPreviewStep({
@@ -1026,31 +1355,28 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
 export default function OrderlyImport() {
   const [step, setStep] = useState<WizardStep>("list");
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
-  const [activeBatchName, setActiveBatchName] = useState<string>("");
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [approvalResult, setApprovalResult] = useState<ApprovalResult | null>(null);
-  const [conversionResult, setConversionResult] = useState<ConversionResult | null>(null);
+  const [countSessionResult, setCountSessionResult] = useState<CreateCountSessionResult | null>(null);
 
   function selectBatch(batch: ImportBatch) {
     setActiveBatchId(batch.id);
-    setActiveBatchName(batch.originalFilename);
     setDetectedDate(batch.inventoryDate);
     if (batch.status === "approved") {
-      setStep("convert-preview");
+      // Go directly to count session preview for approved batches
+      setStep("count-session-preview");
     } else {
       setStep("date");
     }
   }
 
-  function handleConvert(batch: ImportBatch) {
+  function handleCreateCountSession(batch: ImportBatch) {
     setActiveBatchId(batch.id);
-    setActiveBatchName(batch.originalFilename);
-    setStep("convert-preview");
+    setStep("count-session-preview");
   }
 
   function handleUploaded(batchId: string) {
     setActiveBatchId(batchId);
-    setActiveBatchName("");
     setDetectedDate(null);
     setStep("date");
   }
@@ -1064,35 +1390,54 @@ export default function OrderlyImport() {
     setStep("approved");
   }
 
-  function handleConverted(result: ConversionResult) {
-    setConversionResult(result);
-    setStep("converted");
+  function handleCountSessionCreated(result: CreateCountSessionResult) {
+    setCountSessionResult(result);
+    setStep("count-session-done");
   }
 
   function resetToList() {
     setStep("list");
     setActiveBatchId(null);
-    setActiveBatchName("");
     setApprovalResult(null);
-    setConversionResult(null);
+    setCountSessionResult(null);
   }
+
+  const importSteps = ["Upload", "Date", "Preview", "Approve"];
+  const importStepOrder: WizardStep[] = ["upload", "date", "preview", "approved"];
 
   return (
     <div className="container mx-auto py-8 max-w-5xl px-4">
-      {/* Breadcrumb stepper — only for the upload→approve flow */}
-      {(step === "upload" || step === "date" || step === "preview") && (
+      {/* Breadcrumb stepper — import flow only */}
+      {step !== "list" && step !== "approved" && step !== "count-session-preview" && step !== "count-session-done" && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-6">
-          {["Upload", "Date", "Preview", "Approve"].map((label, i) => {
-            const stepOrder: WizardStep[] = ["upload", "date", "preview", "approved"];
-            const active = stepOrder[i] === step;
-            const done = stepOrder.indexOf(step) > i;
+          {importSteps.map((label, i) => {
+            const active = importStepOrder[i] === step;
+            const done = importStepOrder.indexOf(step) > i;
             return (
               <span key={label} className="flex items-center gap-2">
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${active ? "bg-primary text-primary-foreground" : done ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"}`}>
                   {done ? "✓" : i + 1}
                 </span>
                 <span className={active ? "text-foreground font-medium" : ""}>{label}</span>
-                {i < 3 && <span>›</span>}
+                {i < importSteps.length - 1 && <span>›</span>}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Count session breadcrumb */}
+      {step === "count-session-preview" && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-6">
+          {["Review snapshot", "Create session"].map((label, i) => {
+            const active = i === 0;
+            return (
+              <span key={label} className="flex items-center gap-2">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  {i + 1}
+                </span>
+                <span className={active ? "text-foreground font-medium" : ""}>{label}</span>
+                {i < 1 && <span>›</span>}
               </span>
             );
           })}
@@ -1103,7 +1448,7 @@ export default function OrderlyImport() {
         <BatchList
           onNew={() => setStep("upload")}
           onSelect={selectBatch}
-          onConvert={handleConvert}
+          onCreateCountSession={handleCreateCountSession}
         />
       )}
 
@@ -1131,29 +1476,131 @@ export default function OrderlyImport() {
         />
       )}
 
-      {step === "approved" && approvalResult && activeBatchId && (
+      {step === "approved" && approvalResult && (
         <ApprovedSummary
           result={approvalResult}
           onDone={resetToList}
-          onConvertNow={() => setStep("convert-preview")}
+          onConvertNow={() => {
+            setStep("count-session-preview");
+          }}
         />
       )}
 
-      {step === "convert-preview" && activeBatchId && (
-        <ConvertPreviewStep
+      {step === "count-session-preview" && activeBatchId && (
+        <CountSessionPreviewStep
           batchId={activeBatchId}
-          onConverted={handleConverted}
+          onCreated={handleCountSessionCreated}
           onBack={() => setStep("list")}
         />
       )}
 
-      {step === "converted" && conversionResult && (
-        <ConvertedSummary
-          result={conversionResult}
-          batchName={activeBatchName}
+      {step === "count-session-done" && countSessionResult && (
+        <CountSessionDoneStep
+          result={countSessionResult}
           onDone={resetToList}
         />
       )}
     </div>
   );
+}
+
+interface CompanyStore {
+  id: string;
+  name: string;
+}
+
+interface CreateCountSessionResult {
+  countId: string;
+  inventoryDate: string | null;
+  name: string;
+  linesCreated: number;
+  importableTotal: number;
+  reconciliationDelta: number | null;
+  reconciliationDeltaPct: number | null;
+  locationsCreated: number;
+}
+
+function CountSessionDoneStep({
+  result,
+  onDone,
+}: {
+  result: CreateCountSessionResult;
+  onDone: () => void;
+}) {
+  const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const fmtPct = (n: number | null) => n == null ? "—" : (n * 100).toFixed(2) + "%";
+
+  return (
+    <div className="space-y-6 max-w-lg mx-auto text-center">
+      <div>
+        <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
+        <h2 className="text-xl font-semibold">Count Session Created</h2>
+        <p className="text-sm text-muted-foreground mt-1 break-words">{result.name}</p>
+      </div>
+
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription className="text-xs text-left">
+          This is a historical snapshot session. It shows the inventory value at the count date
+          but does not adjust live on-hand quantities. Use it for period-over-period snapshot variance analysis.
+          "Actual usage" requires purchase data.
+        </AlertDescription>
+      </Alert>
+
+      <div className="grid grid-cols-2 gap-3 text-left">
+        {[
+          { label: "Count lines created", value: result.linesCreated.toLocaleString() },
+          { label: "Locations created", value: result.locationsCreated.toLocaleString() },
+          { label: "Importable total", value: fmt(result.importableTotal) },
+          { label: "Reconciliation delta", value: result.reconciliationDelta != null ? fmt(result.reconciliationDelta) : "—" },
+          { label: "Delta %", value: fmtPct(result.reconciliationDeltaPct) },
+          { label: "Inventory date", value: result.inventoryDate ?? "—" },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg border p-3">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div className="font-semibold mt-0.5">{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <Button onClick={onDone} className="w-full">
+        <BarChart2 className="h-4 w-4 mr-2" />
+        Back to import history
+      </Button>
+    </div>
+  );
+}
+
+interface CrossReferenceDiscrepancy {
+  rowIndex: number;
+  sourceItemCode: string;
+  description: string | null;
+  juneEmbeddedPreviousCost: number;
+  mayActualCost: number;
+  delta: number;
+  deltaPercent: number;
+}
+
+interface ExcludedRow {
+  rowIndex: number;
+  rawDescription: string | null;
+  reason: "no_item_resolved" | "zero_cost" | "missing_count_geometry";
+}
+
+interface CountSessionPreview {
+  batchId: string;
+  inventoryDate: string | null;
+  originalFilename: string;
+  sourceRowCount: number;
+  snapshotTotal: number | null;
+  includedRows: CountSessionPreviewRow[];
+  excludedRows: ExcludedRow[];
+  importableTotal: number;
+  reconciliationDelta: number | null;
+  reconciliationDeltaPct: number | null;
+  reconciliationExceedsTolerance: boolean;
+  reconciliationTolerance: number;
+  locations: string[];
+  duplicateWarnings: Array<{ countId: string; countDate: string; name: string | null }>;
+  crossReferenceDiscrepancies: CrossReferenceDiscrepancy[];
 }

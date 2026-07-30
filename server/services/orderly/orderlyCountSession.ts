@@ -2,31 +2,39 @@
  * Orderly Count Session Service
  *
  * Converts an approved Orderly import batch into a historical inventory count
- * session that appears in FnB Cost Pro's count history.
+ * session, enabling period-over-period snapshot variance analysis.
  *
- * Key design decisions:
- * - Uses `inventory_import_rows.resolved_inventory_item_id` (set during approval)
- *   to know which inventory item each row maps to — no guessing from names.
- * - Bridges `inventory_locations` (Orderly hierarchy) to `storage_locations`
- *   (the FK target of count lines) via find-or-create by name.
- * - Raises 409 if the batch has already been converted.
- * - Raises 422 if the reconciliation variance exceeds the tolerance threshold
- *   unless the caller passes `acknowledgeVariance: true`.
+ * Language note: these are SNAPSHOTS, not "usage". Two snapshots provide
+ * beginning/ending inventory value (snapshot variance / value change).
+ * "Actual usage" requires BI + Purchases − EI − Waste − Transfers.
+ *
+ * Steps:
+ *  1. previewCountSession   — compute included items, valuation, reconciliation
+ *  2. createCountSession    — build inventory_counts + inventory_count_lines rows
+ *
+ * The service resolves inventory item IDs by:
+ *   (a) inventory_import_rows.resolved_inventory_item_id   (set during approval)
+ *   (b) Fallback: inventory_item_external_mappings lookup by sourceItemCode
  */
 
 import { db } from '../../db';
-import { eq, and, sql, inArray } from 'drizzle-orm';
+import { eq, and, inArray, or, sql } from 'drizzle-orm';
 import {
   inventoryImportBatches,
   inventoryImportRows,
-  inventoryItems,
-  storageLocations,
+  inventoryItemExternalMappings,
+  inventoryItemLocationAssignments,
+  inventoryLocations,
   inventoryCounts,
   inventoryCountLines,
+  storageLocations,
+  inventoryItems,
+  units,
   type InventoryImportRow,
+  type InventoryLocation,
 } from '@shared/schema';
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Warn (and require acknowledgement) when importable total differs from
  *  Orderly's reported snapshot total by more than this percentage. */
@@ -476,4 +484,623 @@ export async function convertBatchToCountSession(
   });
 
   return result;
+}
+
+export const DEFAULT_RECONCILIATION_TOLERANCE = 0.005; // 0.5%
+
+export interface CreateCountSessionResult {
+  countId: string;
+  inventoryDate: string | null;
+  name: string;
+  linesCreated: number;
+  importableTotal: number;
+  reconciliationDelta: number | null;
+  reconciliationDeltaPct: number | null;
+  locationsCreated: number;
+}
+
+const DUPLICATE_GUARD_DAYS = 3;
+
+export interface CrossReferenceDiscrepancy {
+  rowIndex: number;
+  sourceItemCode: string;
+  description: string | null;
+  juneEmbeddedPreviousCost: number;
+  mayActualCost: number;
+  delta: number;
+  deltaPercent: number;
+}
+
+export interface CountSessionPreview {
+  batchId: string;
+  inventoryDate: string | null;
+  originalFilename: string;
+  sourceRowCount: number;
+  snapshotTotal: number | null;
+  /** Rows that can be imported */
+  includedRows: CountSessionPreviewRow[];
+  /** Rows excluded and why */
+  excludedRows: ExcludedRow[];
+  /** Sum of totalCost for included rows */
+  importableTotal: number;
+  /** Absolute delta between importableTotal and snapshotTotal */
+  reconciliationDelta: number | null;
+  /** Delta as a fraction (0–1) of snapshotTotal */
+  reconciliationDeltaPct: number | null;
+  /** Whether the delta exceeds the tolerance (default 0.5%) */
+  reconciliationExceedsTolerance: boolean;
+  reconciliationTolerance: number;
+  /** Unique storage locations that will be used */
+  locations: string[];
+  /** Existing count sessions that may be duplicates */
+  duplicateWarnings: Array<{ countId: string; countDate: string; name: string | null }>;
+  /** Cross-reference discrepancies (June vs May) */
+  crossReferenceDiscrepancies: CrossReferenceDiscrepancy[];
+}
+
+function normalizeLocationName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+export interface CreateCountSessionParams {
+  batchId: string;
+  companyId: string;
+  userId: string | null;
+  storeId: string;
+  /** If true, proceed even if reconciliation tolerance is exceeded */
+  acknowledgedVariance?: boolean;
+  /** Override reconciliation tolerance (0–1 fraction), default 0.005 */
+  reconciliationTolerance?: number;
+}
+
+export interface CountSessionPreviewRow {
+  rowIndex: number;
+  inventoryItemId: string;
+  inventoryItemName: string;
+  storageLocation: string | null;
+  /** Count tiers from the Orderly file */
+  count1: number | null;
+  countUnit1: string | null;
+  count2: number | null;
+  countUnit2: string | null;
+  count3: number | null;
+  countUnit3: string | null;
+  totalUnits: number | null;
+  /** Valuation from the Orderly file */
+  totalCost: number | null;
+  packagePrice: number | null;
+}
+
+/**
+ * Compute the effective quantity in base units from three-tier Orderly counts.
+ *
+ * Orderly uses three tiers: Case × count1, Pack × count2, UOM × count3.
+ * If all three tiers are zero/null, fall back to totalUnits.
+ *
+ * We cannot safely convert across unit types (e.g. cases → lbs) without
+ * inventory unit context here, so we use `totalUnits` as the canonical qty
+ * when provided (Orderly computes it), with the tier counts stored for
+ * reference on the count line.
+ */
+function computeEffectiveQty(row: InventoryImportRow): number {
+  if (row.totalUnits != null && row.totalUnits > 0) return row.totalUnits;
+  // Fall back: sum individual tier counts
+  const t1 = row.count1 ?? 0;
+  const t2 = row.count2 ?? 0;
+  const t3 = row.count3 ?? 0;
+  return t1 + t2 + t3;
+}
+
+async function resolveItemIdsForBatch(
+  rows: InventoryImportRow[],
+  companyId: string,
+): Promise<Map<number, string>> {
+  const rowToItemId = new Map<number, string>();
+
+  // Step 1: use resolvedInventoryItemId when available (set during approval)
+  const rowsWithDirect = rows.filter(r => r.resolvedInventoryItemId);
+  for (const r of rowsWithDirect) {
+    rowToItemId.set(r.rowIndex, r.resolvedInventoryItemId!);
+  }
+
+  // Step 2: fallback via external mappings (for pre-existing approved batches)
+  const rowsNeedingLookup = rows.filter(
+    r => !r.resolvedInventoryItemId && r.sourceItemCode && r.itemCodeStatus === 'valid',
+  );
+  if (rowsNeedingLookup.length > 0) {
+    const codes = Array.from(new Set(rowsNeedingLookup.map(r => r.sourceItemCode!)));
+    const mappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(
+        and(
+          eq(inventoryItemExternalMappings.companyId, companyId),
+          eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
+          inArray(inventoryItemExternalMappings.sourceExternalId, codes),
+        ),
+      );
+    const codeToItemId = new Map<string, string>(
+      mappings.map((m: { sourceExternalId: string; inventoryItemId: string }) => [m.sourceExternalId, m.inventoryItemId]),
+    );
+    for (const r of rowsNeedingLookup) {
+      const itemId = codeToItemId.get(r.sourceItemCode!);
+      if (itemId) rowToItemId.set(r.rowIndex, itemId);
+    }
+  }
+
+  return rowToItemId;
+}
+
+export interface ExcludedRow {
+  rowIndex: number;
+  rawDescription: string | null;
+  reason: 'no_item_resolved' | 'zero_cost' | 'missing_count_geometry';
+}
+
+export async function previewCountSession(
+  batchId: string,
+  companyId: string,
+  options: { tolerance?: number } = {},
+): Promise<CountSessionPreview> {
+  const tolerance = options.tolerance ?? DEFAULT_RECONCILIATION_TOLERANCE;
+
+  // Load batch + rows
+  const [batchRows, batchMeta] = await Promise.all([
+    db
+      .select()
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId))
+      .orderBy(inventoryImportRows.rowIndex),
+    db
+      .select()
+      .from(inventoryImportBatches)
+      .where(
+        and(
+          eq(inventoryImportBatches.id, batchId),
+          eq(inventoryImportBatches.companyId, companyId),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  const batch = batchMeta[0];
+  if (!batch) throw new Error('Batch not found or not accessible');
+  if (batch.status !== 'approved') {
+    throw new Error('Batch must be approved before creating a count session');
+  }
+
+  // Resolve item IDs
+  const rowToItemId = await resolveItemIdsForBatch(batchRows, companyId);
+
+  // Load item names
+  const allItemIds = Array.from(rowToItemId.values());
+  let itemNameMap = new Map<string, string>();
+  if (allItemIds.length > 0) {
+    const items = await db
+      .select({ id: inventoryItems.id, name: inventoryItems.name })
+      .from(inventoryItems)
+      .where(inArray(inventoryItems.id, allItemIds));
+    itemNameMap = new Map(items.map((i: { id: string; name: string }) => [i.id, i.name]));
+  }
+
+  // Build included / excluded lists
+  const includedRows: CountSessionPreviewRow[] = [];
+  const excludedRows: ExcludedRow[] = [];
+  const locationNames = new Set<string>();
+
+  for (const row of batchRows) {
+    const itemId = rowToItemId.get(row.rowIndex);
+    if (!itemId) {
+      excludedRows.push({
+        rowIndex: row.rowIndex,
+        rawDescription: row.rawDescription ?? row.cleanedDescription,
+        reason: 'no_item_resolved',
+      });
+      continue;
+    }
+    // Only include rows with meaningful count data
+    const hasCount =
+      (row.totalUnits != null && row.totalUnits > 0) ||
+      (row.count1 != null && row.count1 > 0) ||
+      (row.count2 != null && row.count2 > 0) ||
+      (row.count3 != null && row.count3 > 0);
+    if (!hasCount) {
+      excludedRows.push({
+        rowIndex: row.rowIndex,
+        rawDescription: row.rawDescription ?? row.cleanedDescription,
+        reason: 'missing_count_geometry',
+      });
+      continue;
+    }
+    if (row.storageLocation) locationNames.add(row.storageLocation.trim());
+
+    includedRows.push({
+      rowIndex: row.rowIndex,
+      inventoryItemId: itemId,
+      inventoryItemName: itemNameMap.get(itemId) ?? `Item ${itemId.slice(0, 8)}`,
+      storageLocation: row.storageLocation ?? null,
+      count1: row.count1 ?? null,
+      countUnit1: row.countUnit1 ?? null,
+      count2: row.count2 ?? null,
+      countUnit2: row.countUnit2 ?? null,
+      count3: row.count3 ?? null,
+      countUnit3: row.countUnit3 ?? null,
+      totalUnits: row.totalUnits ?? null,
+      totalCost: row.totalCost ?? null,
+      packagePrice: row.packagePrice ?? null,
+    });
+  }
+
+  // Reconciliation
+  const importableTotal = includedRows.reduce((s, r) => s + (r.totalCost ?? 0), 0);
+  const snapshotTotal = batch.snapshotTotal ?? null;
+  let reconciliationDelta: number | null = null;
+  let reconciliationDeltaPct: number | null = null;
+  let reconciliationExceedsTolerance = false;
+
+  if (snapshotTotal != null && snapshotTotal > 0) {
+    reconciliationDelta = Math.abs(importableTotal - snapshotTotal);
+    reconciliationDeltaPct = reconciliationDelta / snapshotTotal;
+    reconciliationExceedsTolerance = reconciliationDeltaPct > tolerance;
+  }
+
+  // Duplicate guard — look for existing count sessions from same source
+  const inventoryDateStr = batch.inventoryDate;
+  let duplicateWarnings: Array<{ countId: string; countDate: string; name: string | null }> = [];
+  if (inventoryDateStr) {
+    const targetDate = new Date(inventoryDateStr);
+    const minDate = new Date(targetDate);
+    minDate.setDate(minDate.getDate() - DUPLICATE_GUARD_DAYS);
+    const maxDate = new Date(targetDate);
+    maxDate.setDate(maxDate.getDate() + DUPLICATE_GUARD_DAYS);
+
+    const existingSessions = await db
+      .select({
+        id: inventoryCounts.id,
+        countDate: inventoryCounts.countDate,
+        name: inventoryCounts.name,
+        sourceSystem: inventoryCounts.sourceSystem,
+      })
+      .from(inventoryCounts)
+      .where(
+        and(
+          eq(inventoryCounts.companyId, companyId),
+          sql`${inventoryCounts.countDate} >= ${minDate}`,
+          sql`${inventoryCounts.countDate} <= ${maxDate}`,
+          eq(inventoryCounts.sourceSystem, 'ORDERLY'),
+        ),
+      );
+
+    duplicateWarnings = existingSessions.map((s: { id: string; countDate: Date; name: string | null }) => ({
+      countId: s.id,
+      countDate: s.countDate.toISOString().split('T')[0],
+      name: s.name,
+    }));
+  }
+
+  // May/June cross-reference — if this is a June batch, find an approved May batch
+  const crossReferenceDiscrepancies: CrossReferenceDiscrepancy[] = [];
+  if (inventoryDateStr) {
+    const inventoryDate = new Date(inventoryDateStr);
+    // June = month 5 (0-indexed)
+    if (inventoryDate.getMonth() === 5) {
+      // Look for a May batch (within 45 days before)
+      const mayBatches = await db
+        .select({ id: inventoryImportBatches.id, inventoryDate: inventoryImportBatches.inventoryDate })
+        .from(inventoryImportBatches)
+        .where(
+          and(
+            eq(inventoryImportBatches.companyId, companyId),
+            eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
+            eq(inventoryImportBatches.status, 'approved'),
+          ),
+        );
+
+      // Filter to batches with May dates
+      const mayBatch = mayBatches.find((b: { id: string; inventoryDate: string | null }) => {
+        if (!b.inventoryDate) return false;
+        const d = new Date(b.inventoryDate);
+        return d.getMonth() === 4 && d.getFullYear() === inventoryDate.getFullYear();
+      });
+
+      if (mayBatch) {
+        // Load May rows keyed by sourceItemCode
+        const mayRows = await db
+          .select({
+            sourceItemCode: inventoryImportRows.sourceItemCode,
+            totalCost: inventoryImportRows.totalCost,
+          })
+          .from(inventoryImportRows)
+          .where(eq(inventoryImportRows.batchId, mayBatch.id));
+
+        const mayByCodes = new Map<string, number>(
+          mayRows
+            .filter((r: { sourceItemCode: string | null; totalCost: number | null }) => r.sourceItemCode)
+            .map((r: { sourceItemCode: string | null; totalCost: number | null }) => [r.sourceItemCode!, r.totalCost ?? 0]),
+        );
+
+        // Compare June's embedded Previous columns against May actuals
+        for (const row of batchRows) {
+          if (
+            !row.sourceItemCode ||
+            row.previousCost == null ||
+            row.previousCost === 0
+          )
+            continue;
+          const mayCost = mayByCodes.get(row.sourceItemCode);
+          if (mayCost == null) continue;
+          const delta = Math.abs(row.previousCost - mayCost);
+          const deltaPercent = mayCost > 0 ? delta / mayCost : delta > 0 ? 1 : 0;
+          if (deltaPercent > 0.001) {
+            // Flag discrepancies > 0.1%
+            crossReferenceDiscrepancies.push({
+              rowIndex: row.rowIndex,
+              sourceItemCode: row.sourceItemCode,
+              description: row.cleanedDescription ?? row.rawDescription ?? null,
+              juneEmbeddedPreviousCost: row.previousCost,
+              mayActualCost: mayCost,
+              delta,
+              deltaPercent,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    batchId,
+    inventoryDate: batch.inventoryDate ?? null,
+    originalFilename: batch.originalFilename,
+    sourceRowCount: batch.sourceRowCount,
+    snapshotTotal,
+    includedRows,
+    excludedRows,
+    importableTotal,
+    reconciliationDelta,
+    reconciliationDeltaPct,
+    reconciliationExceedsTolerance,
+    reconciliationTolerance: tolerance,
+    locations: Array.from(locationNames).sort(),
+    duplicateWarnings,
+    crossReferenceDiscrepancies,
+  };
+}
+
+export async function createCountSession(
+  params: CreateCountSessionParams,
+): Promise<CreateCountSessionResult> {
+  const {
+    batchId,
+    companyId,
+    userId,
+    storeId,
+    acknowledgedVariance = false,
+    reconciliationTolerance = DEFAULT_RECONCILIATION_TOLERANCE,
+  } = params;
+
+  // Run preview to validate state
+  const preview = await previewCountSession(batchId, companyId, {
+    tolerance: reconciliationTolerance,
+  });
+
+  if (preview.reconciliationExceedsTolerance && !acknowledgedVariance) {
+    const pct = ((preview.reconciliationDeltaPct ?? 0) * 100).toFixed(2);
+    throw new Error(
+      `Reconciliation variance (${pct}%) exceeds tolerance (${(reconciliationTolerance * 100).toFixed(1)}%). ` +
+      `Set acknowledgedVariance: true to proceed anyway.`,
+    );
+  }
+
+  if (preview.includedRows.length === 0) {
+    throw new Error('No rows with resolved items are available to import into a count session.');
+  }
+
+  // Idempotency: block if this batch already has a count session (same sourceBatchId)
+  const [existingSession] = await db
+    .select({ id: inventoryCounts.id, name: inventoryCounts.name })
+    .from(inventoryCounts)
+    .where(eq(inventoryCounts.sourceBatchId, batchId))
+    .limit(1);
+  if (existingSession) {
+    throw Object.assign(
+      new Error(
+        `A count session for this batch already exists (id: ${existingSession.id}). ` +
+        `Session name: "${existingSession.name}". Remove the existing session before creating a new one.`,
+      ),
+      { code: 'ALREADY_CONVERTED', countSessionId: existingSession.id },
+    );
+  }
+
+  // Load batch metadata (already validated by preview)
+  const [batch] = await db
+    .select()
+    .from(inventoryImportBatches)
+    .where(eq(inventoryImportBatches.id, batchId))
+    .limit(1);
+
+  const inventoryDateStr = batch.inventoryDate ?? new Date().toISOString().split('T')[0];
+  const [y, m, d] = inventoryDateStr.split('-').map(Number);
+  const countDate = new Date(Date.UTC(y, m - 1, d));
+
+  // Fetch all inventory items to get unit costs
+  const allItemIds = Array.from(new Set(preview.includedRows.map(r => r.inventoryItemId)));
+  type ItemRow = { id: string; unitId: string; pricePerUnit: number };
+  const itemsData: ItemRow[] = allItemIds.length > 0
+    ? await db
+        .select({
+          id: inventoryItems.id,
+          unitId: inventoryItems.unitId,
+          pricePerUnit: inventoryItems.pricePerUnit,
+        })
+        .from(inventoryItems)
+        .where(inArray(inventoryItems.id, allItemIds))
+    : [];
+  const itemsById = new Map<string, ItemRow>(itemsData.map((i: ItemRow) => [i.id, i]));
+
+  // Get default unit IDs for items (for count lines)
+  const allUnitIds = Array.from(new Set(itemsData.map((i: ItemRow) => i.unitId)));
+  const unitsData = allUnitIds.length > 0
+    ? await db.select({ id: units.id }).from(units).where(inArray(units.id, allUnitIds))
+    : [];
+  const validUnitIds = new Set(unitsData.map((u: { id: string }) => u.id));
+
+  // Ensure we have a fallback unit (any "count" kind)
+  let fallbackUnitId = allUnitIds[0] ?? '';
+
+  // Resolve/create storage locations (company-scoped storageLocations table)
+  const existingStorageLocs = await db
+    .select({ id: storageLocations.id, name: storageLocations.name })
+    .from(storageLocations)
+    .where(eq(storageLocations.companyId, companyId));
+
+  const storageLocMap = new Map<string, string>(
+    existingStorageLocs.map((l: { id: string; name: string }) => [normalizeLocationName(l.name), l.id]),
+  );
+
+  // Everything in one transaction
+  let locationsCreated = 0;
+  let linesCreated = 0;
+  let finalCountId = '';
+
+  const sessionName = `Imported from Orderly — ${batch.originalFilename} — ${inventoryDateStr}`;
+
+  await db.transaction(async (tx: any) => {
+    // Create storageLocations entries for any new locations
+    for (const locName of preview.locations) {
+      const norm = normalizeLocationName(locName);
+      if (!storageLocMap.has(norm)) {
+        const [newLoc] = await tx
+          .insert(storageLocations)
+          .values({ companyId, name: locName, sortOrder: 0 })
+          .returning({ id: storageLocations.id });
+        storageLocMap.set(norm, newLoc.id);
+        locationsCreated++;
+      }
+    }
+
+    // Create the inventory_counts row
+    const [countRow] = await tx
+      .insert(inventoryCounts)
+      .values({
+        companyId,
+        storeId,
+        countDate,
+        userId: userId ?? 'system',
+        name: sessionName,
+        note: `Historical snapshot imported from Orderly. Source rows: ${batch.sourceRowCount}. Reconciliation delta: ${preview.reconciliationDelta != null ? '$' + preview.reconciliationDelta.toFixed(2) : 'N/A'}.`,
+        applied: 0,
+        isPowerSession: 0,
+        sourceSystem: 'ORDERLY',
+        sourceBatchId: batchId,
+        sourceFilename: batch.originalFilename,
+        sourceInventoryDate: inventoryDateStr,
+        importedSnapshotTotal: preview.snapshotTotal,
+      })
+      .returning({ id: inventoryCounts.id });
+    finalCountId = countRow.id;
+
+    // Aggregate rows by (inventoryItemId, storageLocation) — deduplicate.
+    // Track totalCostAccum and qtyAccum separately so merged lines get a
+    // correct weighted-average unit cost rather than keeping the first row's cost.
+    const lineMap = new Map<string, {
+      inventoryItemId: string;
+      storageLocationId: string;
+      qty: number;
+      totalCostAccum: number; // running total of extended cost for weighted avg
+      caseQty: number | null;      // tier 1: full cases (count1)
+      containerQty: number | null; // tier 2: inner packs / containers (count2)
+      looseUnits: number | null;   // tier 3: loose base units (count3)
+      unitId: string;
+    }>();
+
+    for (const row of preview.includedRows) {
+      const item = itemsById.get(row.inventoryItemId);
+      const unitId = item?.unitId && validUnitIds.has(item.unitId) ? item.unitId : fallbackUnitId;
+      const qty = row.totalUnits ?? (row.count1 ?? 0) + (row.count2 ?? 0) + (row.count3 ?? 0);
+      // Derive extended cost from snapshot economics — use row.totalCost directly
+      // (Orderly already computed this), then fall back to packagePrice or current price.
+      let extendedCost: number;
+      if (row.totalCost != null && row.totalCost > 0) {
+        extendedCost = row.totalCost;
+      } else if (row.packagePrice != null && row.packagePrice > 0 && qty > 0) {
+        extendedCost = row.packagePrice * qty;
+      } else {
+        extendedCost = (item?.pricePerUnit ?? 0) * qty;
+      }
+
+      const locName = row.storageLocation ?? 'General Storage';
+      const norm = normalizeLocationName(locName);
+      let storageLocId = storageLocMap.get(norm);
+      if (!storageLocId) {
+        // Create on-the-fly for unlisted locations
+        const [newLoc] = await tx
+          .insert(storageLocations)
+          .values({ companyId, name: locName, sortOrder: 0 })
+          .returning({ id: storageLocations.id });
+        storageLocId = newLoc.id as string;
+        storageLocMap.set(norm, storageLocId);
+        locationsCreated++;
+      }
+
+      const key = `${row.inventoryItemId}::${storageLocId}`;
+      if (lineMap.has(key)) {
+        // Merge duplicate: accumulate qty and cost for weighted-average unit cost
+        const existing = lineMap.get(key)!;
+        existing.qty += qty;
+        existing.totalCostAccum += extendedCost;
+        if (row.count1 != null) existing.caseQty = (existing.caseQty ?? 0) + row.count1;
+        if (row.count2 != null) existing.containerQty = (existing.containerQty ?? 0) + row.count2;
+        if (row.count3 != null) existing.looseUnits = (existing.looseUnits ?? 0) + row.count3;
+      } else {
+        lineMap.set(key, {
+          inventoryItemId: row.inventoryItemId,
+          storageLocationId: storageLocId!,
+          qty,
+          totalCostAccum: extendedCost,
+          caseQty: row.count1 ?? null,
+          containerQty: row.count2 ?? null,
+          looseUnits: row.count3 ?? null,
+          unitId,
+        });
+      }
+    }
+
+    // Insert count lines — compute weighted unit cost from accumulated totals
+    const lineValues = Array.from(lineMap.values()).map(l => {
+      const unitCost = l.qty > 0 ? l.totalCostAccum / l.qty : 0;
+      return {
+        inventoryCountId: finalCountId,
+        inventoryItemId: l.inventoryItemId,
+        storageLocationId: l.storageLocationId,
+        qty: l.qty,
+        caseQty: l.caseQty,
+        containerQty: l.containerQty,
+        looseUnits: l.looseUnits,
+        unitId: l.unitId,
+        unitCost,
+      };
+    });
+
+    // Insert in chunks
+    const CHUNK = 500;
+    for (let i = 0; i < lineValues.length; i += CHUNK) {
+      await tx.insert(inventoryCountLines).values(lineValues.slice(i, i + CHUNK));
+    }
+    linesCreated = lineValues.length;
+  });
+
+  return {
+    countId: finalCountId,
+    inventoryDate: inventoryDateStr,
+    name: sessionName,
+    linesCreated,
+    importableTotal: preview.importableTotal,
+    reconciliationDelta: preview.reconciliationDelta,
+    reconciliationDeltaPct: preview.reconciliationDeltaPct,
+    locationsCreated,
+  };
 }

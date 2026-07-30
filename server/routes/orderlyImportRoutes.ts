@@ -28,7 +28,11 @@
  */
 
 import type { Express } from 'express';
-import { getConversionPreview, convertBatchToCountSession } from '../services/orderly/orderlyCountSession';
+import {
+  previewCountSession,
+  createCountSession,
+  DEFAULT_RECONCILIATION_TOLERANCE,
+} from '../services/orderly/orderlyCountSession';
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
 import { db } from '../db';
@@ -36,6 +40,7 @@ import { sql, eq, and, isNull } from 'drizzle-orm';
 import {
   inventoryImportBatches,
   inventoryImportRows,
+  companyStores,
 } from '@shared/schema';
 import {
   parseOrderlyWorkbook,
@@ -486,6 +491,115 @@ export function registerOrderlyImportRoutes(app: Express): void {
   );
 
   /**
+   * GET /api/inventory-import/orderly/batches/:batchId/count-session-preview
+   *
+   * Pre-conversion review before creating a historical count session.
+   * Returns: included items, valuation, excluded rows, reconciliation delta,
+   *          duplicate warnings, and May/June cross-reference discrepancies.
+   *
+   * Query params:
+   *   tolerance: number (0–1 fraction, default 0.005 = 0.5%)
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/count-session-preview',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const { batchId } = req.params;
+        const tolerance = req.query.tolerance
+          ? parseFloat(req.query.tolerance as string)
+          : DEFAULT_RECONCILIATION_TOLERANCE;
+
+        if (isNaN(tolerance) || tolerance < 0 || tolerance > 1) {
+          return res.status(400).json({ error: 'tolerance must be a number between 0 and 1' });
+        }
+
+        const preview = await previewCountSession(batchId, companyId, { tolerance });
+        res.json(preview);
+      } catch (err: any) {
+        console.error('[OrderlyImport] count-session-preview error:', err);
+        const status =
+          err.message?.includes('not found') ? 404
+          : err.message?.includes('must be approved') ? 409
+          : 500;
+        res.status(status).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/inventory-import/orderly/batches/:batchId/create-count-session
+   *
+   * Creates a historical inventory count session from the approved batch.
+   *
+   * Body:
+   *   storeId: string           — required; which store to attach the session to
+   *   acknowledgedVariance?: boolean  — if true, proceed even if reconciliation > tolerance
+   *   reconciliationTolerance?: number  — override tolerance (0–1 fraction)
+   */
+  app.post(
+    '/api/inventory-import/orderly/batches/:batchId/create-count-session',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).userId as string | null ?? null;
+        const { batchId } = req.params;
+        const { storeId, acknowledgedVariance, reconciliationTolerance } = req.body as {
+          storeId?: string;
+          acknowledgedVariance?: boolean;
+          reconciliationTolerance?: number;
+        };
+
+        if (!storeId) {
+          return res.status(400).json({ error: 'storeId is required' });
+        }
+
+        // Security: verify storeId belongs to the caller's company before insertion
+        const [store] = await db
+          .select({ id: companyStores.id })
+          .from(companyStores)
+          .where(
+            and(
+              eq(companyStores.id, storeId),
+              eq(companyStores.companyId, companyId),
+            ),
+          )
+          .limit(1);
+
+        if (!store) {
+          return res.status(403).json({
+            error: 'Store not found or does not belong to your company',
+          });
+        }
+
+        const result = await createCountSession({
+          batchId,
+          companyId,
+          userId,
+          storeId,
+          acknowledgedVariance: acknowledgedVariance ?? false,
+          reconciliationTolerance: reconciliationTolerance ?? DEFAULT_RECONCILIATION_TOLERANCE,
+        });
+
+        res.status(201).json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] create-count-session error:', err);
+        const status =
+          err.message?.includes('not found') ? 404
+          : err.message?.includes('must be approved') ? 409
+          : err.message?.includes('variance') ? 422
+          : err.message?.includes('No rows') ? 422
+          : 500;
+        res.status(status).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
    * PATCH /api/inventory-import/orderly/batches/:batchId/confirm-date
    * Body: { inventoryDate: "YYYY-MM-DD" }
    */
@@ -528,77 +642,6 @@ export function registerOrderlyImportRoutes(app: Express): void {
     },
   );
 
-  // ── Conversion preview (read-only) ────────────────────────────────────────
-  /**
-   * GET /api/inventory-import/orderly/batches/:batchId/conversion-preview
-   * Returns a ConversionPreview: reconciliation stats, excluded rows, duplicate
-   * warnings, and cross-reference notes.  No writes.
-   */
-  app.get(
-    '/api/inventory-import/orderly/batches/:batchId/conversion-preview',
-    requireAuth,
-    requireTier('basic'),
-    async (req, res) => {
-      try {
-        const companyId = (req as any).companyId as string;
-        const { batchId } = req.params;
-        const preview = await getConversionPreview(batchId, companyId);
-        res.json(preview);
-      } catch (err: any) {
-        const status = err.message?.includes('not found') ? 404
-          : err.message?.includes('must be approved') ? 409
-          : 500;
-        console.error('[OrderlyImport] conversion-preview error:', err);
-        res.status(status).json({ error: err.message });
-      }
-    },
-  );
-
-  // ── Convert batch → count session ─────────────────────────────────────────
-  /**
-   * POST /api/inventory-import/orderly/batches/:batchId/convert-to-count-session
-   * Body: { storeId: string, acknowledgeVariance?: boolean }
-   * 409  — batch already converted (returns countSessionId)
-   * 422  — variance > tolerance and acknowledgeVariance is false (returns deltaPct)
-   */
-  app.post(
-    '/api/inventory-import/orderly/batches/:batchId/convert-to-count-session',
-    requireAuth,
-    requireTier('basic'),
-    async (req, res) => {
-      try {
-        const companyId = (req as any).companyId as string;
-        const userId    = (req as any).user?.id as string;
-        const { batchId } = req.params;
-        const { storeId, acknowledgeVariance = false } = req.body as {
-          storeId: string;
-          acknowledgeVariance?: boolean;
-        };
-
-        if (!storeId) {
-          return res.status(400).json({ error: 'storeId is required' });
-        }
-
-        const result = await convertBatchToCountSession(
-          batchId, companyId, userId, storeId, acknowledgeVariance,
-        );
-        res.json(result);
-      } catch (err: any) {
-        if ((err as any).code === 'ALREADY_CONVERTED') {
-          return res.status(409).json({
-            error: err.message,
-            countSessionId: (err as any).countSessionId,
-          });
-        }
-        if ((err as any).code === 'VARIANCE_EXCEEDED') {
-          return res.status(422).json({
-            error: err.message,
-            deltaPct: (err as any).deltaPct,
-          });
-        }
-        console.error('[OrderlyImport] convert-to-count-session error:', err);
-        res.status(500).json({ error: err.message });
-      }
-    },
-  );
 }
+// NOTE: The legacy conversion-preview and convert-to-count-session endpoints have been
+// removed. Use count-session-preview and create-count-session instead (registered above).

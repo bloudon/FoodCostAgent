@@ -588,12 +588,12 @@ export const inventoryCounts = pgTable("inventory_counts", {
   appliedAt: timestamp("applied_at"), // When the count was applied (local time)
   appliedBy: varchar("applied_by"), // User who applied the count
   isPowerSession: integer("is_power_session").notNull().default(0), // 1 = power inventory session (only power items)
-  // Historical import metadata — populated when a session is created from an import batch
-  sourceSystem: text("source_system"),                // 'ORDERLY' | null
-  sourceBatchId: varchar("source_batch_id"),           // FK to inventory_import_batches.id
-  sourceFilename: text("source_filename"),             // original filename for display
-  sourceInventoryDate: text("source_inventory_date"), // YYYY-MM-DD from source system
-  isHistoricalImport: integer("is_historical_import").notNull().default(0), // 1 = created from import
+  // Source import metadata — set when session is created from an Orderly (or other) import batch
+  sourceSystem: text("source_system"),                    // e.g. "ORDERLY"
+  sourceBatchId: varchar("source_batch_id"),              // inventory_import_batches.id
+  sourceFilename: text("source_filename"),                // original filename from the import
+  sourceInventoryDate: text("source_inventory_date"),     // YYYY-MM-DD from the Orderly report
+  importedSnapshotTotal: real("imported_snapshot_total"), // total value from source for reconciliation
 });
 
 export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({
@@ -1019,7 +1019,7 @@ export const insertMenuItemRecipeSchema = createInsertSchema(menuItemRecipes).om
 export type InsertMenuItemRecipe = z.infer<typeof insertMenuItemRecipeSchema>;
 export type MenuItemRecipe = typeof menuItemRecipes.$inferSelect;
 
-// ============ THEORETICAL FOOD COST (TFC) MODULE ============
+// ─────────── THEORETICAL FOOD COST (TFC) MODULE ───────────
 
 // Dayparts (configurable meal periods for sales analysis)
 export const dayparts = pgTable("dayparts", {
@@ -1699,7 +1699,7 @@ export const chatCorrections = pgTable("chat_corrections", {
 export const insertChatCorrectionSchema = createInsertSchema(chatCorrections).omit({ id: true, createdAt: true });
 export type InsertChatCorrection = z.infer<typeof insertChatCorrectionSchema>;
 
-// ============ PREP CHART MODULE (Pro tier) ============
+// ─────────── PREP CHART MODULE (Pro tier) ───────────
 
 // Stations — kitchen production areas (Grill, Cold Prep, Fryer, etc.)
 export const stations = pgTable("stations", {
@@ -2103,7 +2103,7 @@ export const extensionIngestionBatches = pgTable("extension_ingestion_batches", 
 }));
 export type ExtensionIngestionBatch = typeof extensionIngestionBatches.$inferSelect;
 
-// ============ POS CONNECTOR FOUNDATION ============
+// ─────────── POS CONNECTOR FOUNDATION ───────────
 
 // POS Connections — one OAuth connection per company (Square, Clover, etc.)
 export const posConnections = pgTable("pos_connections", {
@@ -2289,9 +2289,8 @@ export const inventoryImportRows = pgTable("inventory_import_rows", {
   previousCost: real("previous_cost"),
   // Row classification
   rowStatus: text("row_status").notNull().default("new_item_candidate"),
-  // Set during batch approval — the inventory_items.id that was created or matched for this row.
-  // Used by the count-session conversion step to link count lines back to items.
-  resolvedInventoryItemId: varchar("resolved_inventory_item_id"),
+  // Resolved entity IDs — set during batch approval so count-session creation can trace back
+  resolvedInventoryItemId: varchar("resolved_inventory_item_id"), // inventoryItems.id after approval
 }, (t) => ({
   batchIdx: index("inv_import_rows_batch_idx").on(t.batchId),
   batchRowIdx: index("inv_import_rows_batch_row_idx").on(t.batchId, t.rowIndex),

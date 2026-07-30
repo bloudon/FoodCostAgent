@@ -463,6 +463,20 @@ export async function applyBatchApproval(
           .onConflictDoNothing();
       }
 
+      // Store resolved item ID on the import row so count-session creation can
+      // trace back count values to the resolved inventory item without re-matching.
+      if (resolvedItemId) {
+        await tx
+          .update(inventoryImportRows)
+          .set({ resolvedInventoryItemId: resolvedItemId })
+          .where(
+            and(
+              eq(inventoryImportRows.batchId, batchId),
+              eq(inventoryImportRows.rowIndex, rowPreview.rowIndex),
+            ),
+          );
+      }
+
       // ── Vendor resolution ────────────────────────────────────────────
       let resolvedVendorId: string | null = null;
 

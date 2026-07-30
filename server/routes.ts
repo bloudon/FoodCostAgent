@@ -726,6 +726,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateOrderlyCountSession() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'orderly_count_session_metadata'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS source_system TEXT;
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS source_batch_id VARCHAR;
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS source_filename TEXT;
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS source_inventory_date TEXT;
+          ALTER TABLE inventory_counts ADD COLUMN IF NOT EXISTS imported_snapshot_total REAL;
+          ALTER TABLE inventory_import_rows ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('orderly_count_session_metadata')`
+        );
+        console.log("[Migration] Applied orderly_count_session_metadata");
+      } else {
+        console.log("[Migration] Already applied (orderly_count_session_metadata)");
+      }
+    } catch (err) {
+      console.error("[Migration] orderly_count_session_metadata error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
