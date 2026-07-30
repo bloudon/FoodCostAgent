@@ -217,7 +217,7 @@ export class GlobalSearchService {
         id: row.id,
         name: row.name,
         subtitle: parts.length > 0 ? parts.join(" · ") : undefined,
-        route: `/menu-items`,
+        route: `/menu-items/${row.id}`,
         iconKey: "utensils",
         matchedField: row.matched_field as string,
       };

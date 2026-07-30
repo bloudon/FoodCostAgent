@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -526,6 +526,8 @@ export default function MenuItemsPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const params = useParams<{ id?: string }>();
+  const routeItemId = params?.id ?? null;
   const [postSaveRecipePrompt, setPostSaveRecipePrompt] = useState<{ name: string; id: string } | null>(null);
   const [selectedStoresForAdd, setSelectedStoresForAdd] = useState<string[]>([]);
   const [selectedStoresForEdit, setSelectedStoresForEdit] = useState<string[]>([]);
@@ -628,6 +630,18 @@ export default function MenuItemsPage() {
   const { data: menuDepts, isLoading: isLoadingDepts } = useQuery<MenuDepartment[]>({
     queryKey: ["/api/menu-departments"],
   });
+
+  // Auto-open edit dialog when navigating directly to /menu-items/:id
+  useEffect(() => {
+    if (!routeItemId || !menuItems) return;
+    // Check both flat list and hierarchy variants
+    const allItems = menuItems;
+    const target = allItems.find((m) => m.id === routeItemId);
+    if (target && !editDialogOpen) {
+      handleEditMenuItem(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeItemId, menuItems]);
 
   // When Manage Sections dialog opens with no departments, pre-load editable staging suggestions
   const DEFAULT_SECTIONS = ["Appetizers", "Entrees", "Sides", "Desserts", "Beverages", "Specials"];
@@ -1869,6 +1883,7 @@ export default function MenuItemsPage() {
                 setEditingItem(null);
                 setSelectedStoresForEdit([]);
                 editForm.reset();
+                if (routeItemId) navigate("/menu-items");
               }
             }}>
             <DialogContent className="max-w-lg">

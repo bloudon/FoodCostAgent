@@ -530,6 +530,7 @@ function ProtectedLayoutContent() {
               <Route path="/inventory-items/par-levels" component={ParLevels} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />
+              <Route path="/menu-items/:id" component={MenuItems} />
               <Route path="/menu-items" component={MenuItems} />
               <Route path="/menus/:id" component={MenuBuilderPage} />
               <Route path="/menus" component={MenusPage} />
