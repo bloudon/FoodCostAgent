@@ -1,0 +1,45 @@
+
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] Connection verified ✓
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] Connection verified ✓
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] Connection verified ✓
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+
+7|fnbcostpro  | > rest-express@1.12.0 start
+7|fnbcostpro  | > NODE_ENV=production node dist/index.js
+7|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostpro  | [DB] Connection verified ✓
+7|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostpro  | > rest-express@1.12.0 start
+7|fnbcostpro  | > NODE_ENV=production node dist/index.js
+7|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostpro  | [DB] Connection verified ✓
+7|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostpro  | > rest-express@1.12.0 start
+7|fnbcostpro  | > NODE_ENV=production node dist/index.js
+7|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostpro  | [DB] Connection verified ✓
+7|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+^C
