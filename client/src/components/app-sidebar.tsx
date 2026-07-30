@@ -281,7 +281,7 @@ export function AppSidebar() {
                   className="gap-3"
                 >
                   <Link href={item.href} onClick={closeMobile}>
-                    <item.icon className="h-12 w-12 shrink-0" />
+                    <item.icon className="h-12! w-12! shrink-0" />
                     {isExpanded && (
                       <span className={cn("font-medium", active && "font-semibold")}>
                         {item.label}
