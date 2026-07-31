@@ -93,7 +93,7 @@ export function MenuScanStep({
       setSessionId(data.sessionId);
       setItems(data.items || []);
       if (data.intelligence) setIntelligence(data.intelligence);
-      setSubStep("bar-question");
+      setSubStep(menuMode ? "review" : "bar-question");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Scan failed";
       toast({ title: "Scan failed", description: message, variant: "destructive" });
