@@ -385,10 +385,19 @@ export function registerMenuRoutes(app: Express): void {
   app.get("/api/menus/:id/locations", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      const user = (req as any).user;
       if (!companyId) return res.status(400).json({ error: "No company selected" });
       const menu = await storage.getMenu(req.params.id, companyId);
       if (!menu) return res.status(404).json({ error: "Menu not found" });
-      const assignments = await storage.getMenuLocationAssignments(req.params.id, companyId);
+
+      // Global admins and company admins see all location assignments; store-level
+      // staff see only the locations they are assigned to.
+      let accessibleStoreIds: string[] | null = null;
+      if (user && !isGlobalAdmin(user) && !isCompanyAdmin(user)) {
+        accessibleStoreIds = await getAccessibleStores(user, companyId);
+      }
+
+      const assignments = await storage.getMenuLocationAssignments(req.params.id, companyId, accessibleStoreIds);
       res.json(assignments);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

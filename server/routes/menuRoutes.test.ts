@@ -653,7 +653,7 @@ describe("GET /api/menus/:id/locations", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].storeId).toBe("store-1");
-    expect(mockStorage.getMenuLocationAssignments).toHaveBeenCalledWith("menu-1", "co-A");
+    expect(mockStorage.getMenuLocationAssignments).toHaveBeenCalledWith("menu-1", "co-A", null);
   });
 
   it("returns 404 when menu not found", async () => {

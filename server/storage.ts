@@ -725,7 +725,7 @@ export interface IStorage {
   computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport>;
 
   // Menu Location Assignments
-  getMenuLocationAssignments(menuId: string, companyId: string): Promise<MenuLocationAssignment[]>;
+  getMenuLocationAssignments(menuId: string, companyId: string, accessibleStoreIds?: string[] | null): Promise<MenuLocationAssignment[]>;
   addMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<MenuLocationAssignment>;
   removeMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<void>;
 
@@ -5545,9 +5545,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Menu Location Assignments
-  async getMenuLocationAssignments(menuId: string, companyId: string): Promise<MenuLocationAssignment[]> {
+  async getMenuLocationAssignments(menuId: string, companyId: string, accessibleStoreIds?: string[] | null): Promise<MenuLocationAssignment[]> {
+    const conditions = [
+      eq(menuLocationAssignments.menuId, menuId),
+      eq(menuLocationAssignments.companyId, companyId),
+    ];
+    if (accessibleStoreIds !== null && accessibleStoreIds !== undefined) {
+      conditions.push(inArray(menuLocationAssignments.storeId, accessibleStoreIds.length > 0 ? accessibleStoreIds : [""]));
+    }
     return db.select().from(menuLocationAssignments)
-      .where(and(eq(menuLocationAssignments.menuId, menuId), eq(menuLocationAssignments.companyId, companyId)))
+      .where(and(...conditions))
       .orderBy(asc(menuLocationAssignments.createdAt));
   }
 
