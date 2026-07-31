@@ -602,7 +602,7 @@ export function MenuScanStep({
           </Button>
         </div>
 
-        <div className="rounded-md border overflow-hidden" data-testid="section-whats-next">
+        {!menuMode && <div className="rounded-md border overflow-hidden" data-testid="section-whats-next">
           {uploadedImages.length > 0 && (
             <div className="relative">
               <img
@@ -659,7 +659,7 @@ export function MenuScanStep({
               ))}
             </div>
           </div>
-        </div>
+        </div>}
       </CardContent>
     </Card>
   );
