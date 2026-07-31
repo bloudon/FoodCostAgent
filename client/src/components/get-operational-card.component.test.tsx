@@ -199,31 +199,33 @@ describe("GetOperationalCard — visibility", () => {
 // ── Suite: Progress display ───────────────────────────────────────────────────
 
 describe("GetOperationalCard — progress display", () => {
-  it("shows '0 of 5 complete' for a brand-new account", () => {
+  it("shows '0 of 4 complete' for a brand-new account", () => {
     renderCard({});
     expect(
       screen.getByTestId("operational-card-progress-text")
-    ).toHaveTextContent("0 of 5 complete");
+    ).toHaveTextContent("0 of 4 complete");
   });
 
-  it("shows '1 of 5 complete' when one milestone step is done", () => {
+  it("shows '1 of 4 complete' when one required milestone step is done", () => {
     renderCard({ completedMilestoneIds: ["menu_scan"] });
     expect(
       screen.getByTestId("operational-card-progress-text")
-    ).toHaveTextContent("1 of 5 complete");
+    ).toHaveTextContent("1 of 4 complete");
   });
 
-  it("shows '2 of 5 complete' when menu milestone + orderly batches are done", () => {
+  it("shows '2 of 4 complete' when menu milestone + orderly batches are done", () => {
     renderCard({
       completedMilestoneIds: ["menu_scan"],
       orderlyBatches: [{ id: "batch-1" }],
     });
     expect(
       screen.getByTestId("operational-card-progress-text")
-    ).toHaveTextContent("2 of 5 complete");
+    ).toHaveTextContent("2 of 4 complete");
   });
 
-  it("shows '4 of 5 complete' when four steps are done", () => {
+  it("shows '3 of 4 complete' when 3 required steps done + optional inventory_count done", () => {
+    // inventory_count is optional — completing it doesn't advance the required count.
+    // Required completed: menu_scan + storage_locations + invoice_scan = 3; orderly = 0.
     renderCard({
       completedMilestoneIds: [
         "menu_scan",
@@ -234,7 +236,7 @@ describe("GetOperationalCard — progress display", () => {
     });
     expect(
       screen.getByTestId("operational-card-progress-text")
-    ).toHaveTextContent("4 of 5 complete");
+    ).toHaveTextContent("3 of 4 complete");
   });
 
   it("renders the progress bar element", () => {

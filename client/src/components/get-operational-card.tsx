@@ -2,16 +2,18 @@
  * GetOperationalCard — full-width "Get Operational" checklist shown at the
  * top of the dashboard when a new company hasn't finished basic setup yet.
  *
- * Shows 5 high-level steps:
- *   1. Scan your menu
- *   2. Set up store & storage areas
- *   3. Upload a vendor invoice
- *   4. Import Orderly inventory data
- *   5. Run your first inventory count
+ * Shows 4 required steps + 1 optional step:
+ *   1. Scan your menu          (required)
+ *   2. Set up store & storage  (required)
+ *   3. Upload a vendor invoice  (required)
+ *   4. Import Orderly data      (required)
+ *   5. Run your first inventory count  (optional — don't count before you
+ *      know what you're counting; users can do this later)
  *
  * Step completion is driven by the onboarding milestones API (steps 1-3, 5)
  * and the Orderly batches API (step 4).
  * Dismiss state is shared with SetupMilestoneTracker via the milestones API.
+ * The card auto-hides when all REQUIRED steps are complete.
  */
 
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -51,6 +53,8 @@ interface OperationalStep {
   description: string;
   Icon: React.ComponentType<{ className?: string }>;
   href: string;
+  /** Optional steps don't block card dismissal — card hides when all required steps are done. */
+  optional?: boolean;
 }
 
 const STEPS: OperationalStep[] = [
@@ -93,6 +97,9 @@ const STEPS: OperationalStep[] = [
     description: "Count current stock to establish your baseline",
     Icon: ClipboardList,
     href: "/inventory-sessions",
+    // Optional: don't count before you know what you're counting.
+    // Card auto-hides when the 4 required steps above are complete.
+    optional: true,
   },
 ];
 
@@ -151,13 +158,16 @@ export function GetOperationalCard() {
     return { ...step, done };
   });
 
-  const completedCount = stepsWithStatus.filter((s) => s.done).length;
+  // Required steps drive progress, auto-hide, and the "Next" / "Continue" flow.
+  // Optional steps are shown at the bottom but don't block card dismissal.
+  const requiredSteps = stepsWithStatus.filter((s) => !s.optional);
+  const requiredCompleted = requiredSteps.filter((s) => s.done).length;
 
-  // Auto-hide once everything is done
-  if (completedCount === STEPS.length) return null;
+  // Auto-hide once all required steps are done (optional step doesn't block).
+  if (requiredCompleted === requiredSteps.length) return null;
 
-  const nextStep = stepsWithStatus.find((s) => !s.done);
-  const progressPct = (completedCount / STEPS.length) * 100;
+  const nextStep = requiredSteps.find((s) => !s.done);
+  const progressPct = (requiredCompleted / requiredSteps.length) * 100;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -173,7 +183,7 @@ export function GetOperationalCard() {
                 className="text-sm text-muted-foreground shrink-0"
                 data-testid="operational-card-progress-text"
               >
-                {completedCount} of {STEPS.length} complete
+                {requiredCompleted} of {requiredSteps.length} complete
               </span>
             </div>
             <Button
@@ -199,6 +209,7 @@ export function GetOperationalCard() {
             {stepsWithStatus.map((step) => {
               const { Icon } = step;
               const isNext = step.id === nextStep?.id;
+              const isOptional = !!step.optional;
 
               return (
                 <div
@@ -214,7 +225,9 @@ export function GetOperationalCard() {
                     ) : (
                       <Icon
                         className={`h-4 w-4 shrink-0 mt-0.5 ${
-                          isNext ? "text-[#f2690d]" : "text-muted-foreground/40"
+                          isNext
+                            ? "text-[#f2690d]"
+                            : "text-muted-foreground/40"
                         }`}
                       />
                     )}
@@ -235,6 +248,11 @@ export function GetOperationalCard() {
                             Next
                           </span>
                         )}
+                        {isOptional && !step.done && !isNext && (
+                          <span className="ml-2 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wide align-middle">
+                            Optional
+                          </span>
+                        )}
                       </p>
                       {isNext && !step.done && (
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -250,6 +268,19 @@ export function GetOperationalCard() {
                         variant="ghost"
                         size="sm"
                         className="shrink-0"
+                        data-testid={`button-go-operational-${step.id}`}
+                      >
+                        Go
+                        <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    </Link>
+                  )}
+                  {isOptional && !step.done && !isNext && (
+                    <Link href={step.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-muted-foreground/60"
                         data-testid={`button-go-operational-${step.id}`}
                       >
                         Go
