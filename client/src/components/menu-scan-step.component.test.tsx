@@ -586,3 +586,66 @@ describe("MenuScanStep — section-whats-next visibility", () => {
     expect(screen.getByTestId("section-whats-next")).toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite: bar-question visibility based on menuMode
+// ---------------------------------------------------------------------------
+
+describe("MenuScanStep — bar-question skipped when menuMode=true", () => {
+  /**
+   * Triggers a scan for the given menuMode and resolves once the component
+   * has settled past the upload step.
+   *
+   * - menuMode=true  → component goes directly to "review" (bar-question never rendered)
+   * - menuMode=false → component renders the bar-question card before "review"
+   */
+  async function triggerScanWithMode(menuMode: boolean): Promise<void> {
+    mockApiRequest.mockReset();
+    setupMockMutation();
+
+    // POST /api/onboarding/menu-scan → scan succeeds
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      json: async () => SCAN_RESPONSE,
+    });
+    // Fallback for any subsequent requests (e.g. PATCH /api/onboarding/has-bar)
+    mockApiRequest.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    render(
+      React.createElement(MenuScanStep, {
+        onComplete: vi.fn(),
+        menuMode,
+      })
+    );
+
+    // Trigger fake file upload — stub calls onUploadComplete immediately
+    fireEvent.click(screen.getByTestId("button-upload-menu"));
+  }
+
+  it("never shows card-step-bar-question when menuMode is true", async () => {
+    await triggerScanWithMode(true);
+
+    // Component skips bar-question and goes straight to review
+    await waitFor(() =>
+      expect(screen.getByTestId("card-step-menu-review")).toBeInTheDocument()
+    );
+
+    // The bar-question card must never have been rendered
+    expect(screen.queryByTestId("card-step-bar-question")).not.toBeInTheDocument();
+  });
+
+  it("shows card-step-bar-question before review when menuMode is false", async () => {
+    await triggerScanWithMode(false);
+
+    // Component should show the bar-question card
+    await waitFor(() =>
+      expect(screen.getByTestId("card-step-bar-question")).toBeInTheDocument()
+    );
+
+    // review card must not yet be visible while bar-question is showing
+    expect(screen.queryByTestId("card-step-menu-review")).not.toBeInTheDocument();
+  });
+});
