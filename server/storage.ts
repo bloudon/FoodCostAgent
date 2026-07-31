@@ -5289,8 +5289,16 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(menus.createdAt));
   }
 
-  /** Returns menus enriched with rich dashboard stats — used by the portfolio page. */
-  async getMenusWithStats(companyId: string): Promise<Array<Menu & {
+  /** Returns menus enriched with rich dashboard stats — used by the portfolio page.
+   *
+   * @param accessibleStoreIds  When non-null, location names and counts are
+   *   restricted to stores in this list (store-level staff scoping).
+   *   Pass null to include all locations (global / company admins).
+   */
+  async getMenusWithStats(
+    companyId: string,
+    accessibleStoreIds: string[] | null = null,
+  ): Promise<Array<Menu & {
     totalItems: number; pricedItems: number;
     itemCount: number; sectionCount: number; totalSectionCount: number;
     recipedItems: number; locationCount: number; locationNames: string[];
@@ -5298,6 +5306,18 @@ export class DatabaseStorage implements IStorage {
   }>> {
     // Each stat uses an independent scalar subquery to avoid row-multiplication
     // when joining sections × entries × recipes × locations simultaneously.
+
+    // Build optional store-id filter fragment used in the location subqueries.
+    const storeFilter =
+      accessibleStoreIds !== null && accessibleStoreIds.length > 0
+        ? sql` AND mla.store_id = ANY(ARRAY[${sql.join(
+            accessibleStoreIds.map((id) => sql`${id}`),
+            sql`, `,
+          )}]::text[])`
+        : accessibleStoreIds !== null && accessibleStoreIds.length === 0
+          ? sql` AND FALSE` // user has no assigned stores — show nothing
+          : sql``; // null → no filter (admins)
+
     const result = await db.execute(sql`
       SELECT
         m.id,
@@ -5361,19 +5381,21 @@ export class DatabaseStorage implements IStorage {
          FROM menu_sections
          WHERE menu_id = m.id) AS total_section_count,
 
-        -- Active assigned location count
+        -- Active assigned location count (scoped to accessible stores)
         (SELECT COUNT(*)::int
          FROM menu_location_assignments mla
          JOIN company_stores cs ON cs.id = mla.store_id
          WHERE mla.menu_id = m.id
-           AND cs.status = 'active') AS location_count,
+           AND cs.status = 'active'
+           ${storeFilter}) AS location_count,
 
-        -- Active assigned location names (sorted, empty array if none)
+        -- Active assigned location names (sorted, empty array if none; scoped to accessible stores)
         (SELECT COALESCE(array_agg(cs.name ORDER BY cs.name), ARRAY[]::text[])
          FROM menu_location_assignments mla
          JOIN company_stores cs ON cs.id = mla.store_id
          WHERE mla.menu_id = m.id
-           AND cs.status = 'active') AS location_names
+           AND cs.status = 'active'
+           ${storeFilter}) AS location_names
 
       FROM menus m
       WHERE m.company_id = ${companyId}

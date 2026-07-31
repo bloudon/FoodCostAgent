@@ -12,6 +12,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../auth";
+import { getAccessibleStores, isGlobalAdmin, isCompanyAdmin } from "../permissions";
 import type { ReadinessReport } from "../services/menuReadinessService";
 
 export function registerMenuRoutes(app: Express): void {
@@ -22,8 +23,17 @@ export function registerMenuRoutes(app: Express): void {
   app.get("/api/menus", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
+      const user = (req as any).user;
       if (!companyId) return res.status(400).json({ error: "No company selected" });
-      const menus = await storage.getMenusWithStats(companyId);
+
+      // Global admins and company admins see all location names; store-level
+      // staff see only the locations they are assigned to.
+      let accessibleStoreIds: string[] | null = null;
+      if (user && !isGlobalAdmin(user) && !isCompanyAdmin(user)) {
+        accessibleStoreIds = await getAccessibleStores(user, companyId);
+      }
+
+      const menus = await storage.getMenusWithStats(companyId, accessibleStoreIds);
       res.json(menus);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

@@ -191,7 +191,7 @@ describe("GET /api/menus", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].id).toBe("menu-1");
-    expect(mockStorage.getMenusWithStats).toHaveBeenCalledWith("co-A");
+    expect(mockStorage.getMenusWithStats).toHaveBeenCalledWith("co-A", null);
   });
 });
 
