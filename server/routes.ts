@@ -76,6 +76,7 @@ import {
   insertCompanyStoreSchema,
   insertInvitationSchema,
   insertQuickBooksVendorMappingSchema,
+  POS_PROVIDER_VALUES,
   type RecipeComponent,
   type InventoryItemUnit,
   type Unit,
@@ -761,6 +762,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Startup migration: DB CHECK constraint on pos_provider ─────────────────
+  // Ensures the DB itself rejects unrecognised POS provider values, so data is
+  // never silently corrupted if a new provider is added to the DB before the
+  // application code is updated.  The constraint is created once and never
+  // recreated automatically — add a new named migration (e.g.
+  // 'pos_provider_check_v2') when POS_PROVIDER_VALUES changes.
+  (async function migratePosProviderCheckConstraint() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'pos_provider_check_constraint'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        // Normalize any legacy 'none' sentinel values to NULL before adding the
+        // CHECK constraint ('none' is a UI-only value; it was never meant to be
+        // persisted and the constraint only allows real provider identifiers or NULL).
+        await db.execute(sql`
+          UPDATE companies SET pos_provider = NULL WHERE pos_provider = 'none';
+        `);
+        await db.execute(sql`
+          ALTER TABLE companies
+            DROP CONSTRAINT IF EXISTS companies_pos_provider_check;
+          ALTER TABLE companies
+            ADD CONSTRAINT companies_pos_provider_check
+            CHECK (
+              pos_provider IS NULL
+              OR pos_provider IN (
+                'square', 'thrive', 'toast', 'hungerrush',
+                'clover', 'spoton', 'other'
+              )
+            );
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('pos_provider_check_constraint')`
+        );
+        console.log("[Migration] Applied pos_provider_check_constraint");
+      } else {
+        console.log("[Migration] Already applied (pos_provider_check_constraint)");
+      }
+    } catch (err) {
+      console.error("[Migration] pos_provider_check_constraint error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
@@ -1096,7 +1147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: z.string().email(),
         password: z.string().min(6, "Password must be at least 6 characters"),
         company: insertCompanySchema.omit({ id: true, tccAccountId: true }).extend({
-          posProvider: z.enum(['square', 'thrive', 'toast', 'hungerrush', 'clover', 'spoton', 'other', 'none']).optional(),
+          posProvider: z.enum(POS_PROVIDER_VALUES).optional(),
           tccAccountId: z.string().optional(),
         }).refine(
           (data) => {
@@ -1137,6 +1188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Whitelist only allowed company fields to prevent field injection attacks
         // Normalize empty strings to undefined for nullable fields
+        // 'none' is a UI sentinel meaning "no provider" — store as NULL in the DB.
         const safeCompanyData = {
           name: company.name,
           legalName: company.legalName,
@@ -1147,7 +1199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           city: company.city,
           state: company.state,
           postalCode: company.postalCode,
-          posProvider: company.posProvider || undefined, // POS system provider
+          posProvider: (!company.posProvider || company.posProvider === 'none') ? undefined : company.posProvider, // POS system provider
           tccAccountId: (company.tccAccountId?.trim() || undefined), // Optional - only required for Thrive POS users
         };
         
@@ -1762,7 +1814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         city: z.string().optional(),
         state: z.string().optional(),
         postalCode: z.string().optional(),
-        posProvider: z.enum(["square", "thrive", "toast", "hungerrush", "clover", "spoton", "other", "none"]).optional(),
+        posProvider: z.enum(POS_PROVIDER_VALUES).optional(),
         tccAccountId: z.string().optional(),
       });
 
@@ -1788,7 +1840,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           city: data.city || undefined,
           state: data.state || undefined,
           postalCode: data.postalCode || undefined,
-          posProvider: data.posProvider || undefined,
+          // 'none' is a UI sentinel meaning "no provider" — store as NULL in the DB.
+          posProvider: (!data.posProvider || data.posProvider === 'none') ? undefined : data.posProvider,
           tccAccountId: data.tccAccountId || undefined,
           status: "active",
         }).returning();
@@ -16489,6 +16542,12 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     try {
       const data = insertCompanySchema.parse(req.body);
 
+      // Normalize 'none' → null before writing to the DB ('none' is a UI-only
+      // sentinel; the DB CHECK constraint only permits real provider values or NULL).
+      if (data.posProvider === "none") {
+        data.posProvider = undefined;
+      }
+
       const { company, defaultStore } = await db.transaction(async (tx) => {
         // Create the company
         const [newCompany] = await tx
@@ -16605,6 +16664,12 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
       // ── End POS validation ──────────────────────────────────────────────────
 
+      // Normalize 'none' → null before writing to the DB (the DB CHECK constraint
+      // only permits real provider values or NULL; 'none' is a UI-only sentinel).
+      if ("posProvider" in data && (data.posProvider === "none" || !data.posProvider)) {
+        (data as any).posProvider = null;
+      }
+
       const company = await storage.updateCompany(req.params.id, data);
       
       if (!company) {
@@ -16637,7 +16702,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     try {
       const body = z.object({
         posProvider: z
-          .enum(["square", "thrive", "toast", "hungerrush", "clover", "spoton", "other", "none"])
+          .enum(POS_PROVIDER_VALUES)
           .nullable()
           .optional(),
         primarySalesMethod: z
