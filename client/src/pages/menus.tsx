@@ -131,7 +131,23 @@ function StatusBadge({ status }: { status: EffectiveStatus }) {
 
 // ── Summary bar ───────────────────────────────────────────────────────────────
 
-function SummaryBar({ menus }: { menus: MenuWithStats[] }) {
+interface SummaryBarProps {
+  menus: MenuWithStats[];
+  statusFilter: EffectiveStatus | "all";
+  attentionFilter: boolean;
+  onLiveClick: () => void;
+  onScheduledClick: () => void;
+  onAttentionClick: () => void;
+}
+
+function SummaryBar({
+  menus,
+  statusFilter,
+  attentionFilter,
+  onLiveClick,
+  onScheduledClick,
+  onAttentionClick,
+}: SummaryBarProps) {
   const live      = menus.filter((m) => m.effectiveStatus === "live").length;
   const scheduled = menus.filter((m) => m.effectiveStatus === "scheduled").length;
   const attention = menus.filter(needsAttention).length;
@@ -139,21 +155,74 @@ function SummaryBar({ menus }: { menus: MenuWithStats[] }) {
     .filter((m) => m.effectiveStatus === "live")
     .reduce((sum, m) => sum + m.itemCount, 0);
 
-  const stats = [
-    { label: "Live menus",          value: live,      accent: live > 0 ? "text-green-600 dark:text-green-400" : "" },
-    { label: "Scheduled",           value: scheduled,  accent: "" },
-    { label: "Needs attention",     value: attention,  accent: attention > 0 ? "text-amber-600 dark:text-amber-400" : "" },
-    { label: "Live menu items",     value: liveItems,  accent: "" },
-  ];
+  const liveActive      = statusFilter === "live";
+  const scheduledActive = statusFilter === "scheduled";
+  const attentionActive = attentionFilter;
+
+  function tileClass(active: boolean, interactive: boolean) {
+    const base = "rounded-lg border px-4 py-3 text-left transition-colors";
+    if (!interactive) return `${base} bg-card cursor-default`;
+    if (active)
+      return `${base} bg-primary text-primary-foreground border-primary cursor-pointer ring-2 ring-primary/40`;
+    return `${base} bg-card hover:bg-accent hover:border-accent-foreground/20 cursor-pointer`;
+  }
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-lg border bg-card px-4 py-3">
-          <p className={`text-2xl font-semibold tabular-nums ${s.accent}`}>{s.value}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
-        </div>
-      ))}
+      {/* Live menus — clickable */}
+      <button
+        type="button"
+        className={tileClass(liveActive, true)}
+        onClick={onLiveClick}
+        data-testid="summary-tile-live"
+        aria-pressed={liveActive}
+      >
+        <p className={`text-2xl font-semibold tabular-nums ${liveActive ? "" : live > 0 ? "text-green-600 dark:text-green-400" : ""}`}>
+          {live}
+        </p>
+        <p className={`text-xs mt-0.5 ${liveActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+          Live menus
+        </p>
+      </button>
+
+      {/* Scheduled — clickable */}
+      <button
+        type="button"
+        className={tileClass(scheduledActive, true)}
+        onClick={onScheduledClick}
+        data-testid="summary-tile-scheduled"
+        aria-pressed={scheduledActive}
+      >
+        <p className="text-2xl font-semibold tabular-nums">{scheduled}</p>
+        <p className={`text-xs mt-0.5 ${scheduledActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+          Scheduled
+        </p>
+      </button>
+
+      {/* Needs attention — clickable */}
+      <button
+        type="button"
+        className={tileClass(attentionActive, true)}
+        onClick={onAttentionClick}
+        data-testid="summary-tile-attention"
+        aria-pressed={attentionActive}
+      >
+        <p className={`text-2xl font-semibold tabular-nums ${attentionActive ? "" : attention > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+          {attention}
+        </p>
+        <p className={`text-xs mt-0.5 ${attentionActive ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+          Needs attention
+        </p>
+      </button>
+
+      {/* Live menu items — non-interactive aggregate */}
+      <div
+        className={tileClass(false, false)}
+        data-testid="summary-tile-live-items"
+      >
+        <p className="text-2xl font-semibold tabular-nums">{liveItems}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Live menu items</p>
+      </div>
     </div>
   );
 }
@@ -632,6 +701,7 @@ export default function MenusPage() {
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<EffectiveStatus | "all">("all");
+  const [attentionFilter, setAttentionFilter] = useState(false);
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
@@ -669,6 +739,9 @@ export default function MenusPage() {
     if (statusFilter !== "all") {
       list = list.filter((m) => m.effectiveStatus === statusFilter);
     }
+    if (attentionFilter) {
+      list = list.filter(needsAttention);
+    }
     if (locationFilter !== "all") {
       // locationCount === 0 means "applies to all locations" — always include global menus
       list = list.filter((m) => m.locationCount === 0 || m.locationNames.includes(locationFilter));
@@ -677,15 +750,35 @@ export default function MenusPage() {
       list = list.filter((m) => m.menuType === typeFilter);
     }
     return list;
-  }, [allMenus, nameFilter, statusFilter, locationFilter, typeFilter]);
+  }, [allMenus, nameFilter, statusFilter, attentionFilter, locationFilter, typeFilter]);
 
-  const hasActiveFilters = nameFilter.trim() || statusFilter !== "all" || locationFilter !== "all" || typeFilter !== "all";
+  const hasActiveFilters = nameFilter.trim() || statusFilter !== "all" || attentionFilter || locationFilter !== "all" || typeFilter !== "all";
 
   function clearFilters() {
     setNameFilter("");
     setStatusFilter("all");
+    setAttentionFilter(false);
     setLocationFilter("all");
     setTypeFilter("all");
+  }
+
+  // Summary bar tile click handlers — toggle on/off
+  function handleLiveTileClick() {
+    setAttentionFilter(false);
+    setStatusFilter((prev) => (prev === "live" ? "all" : "live"));
+    track("menu_filter_used", { filter_type: "summary_tile", value: "live" });
+  }
+
+  function handleScheduledTileClick() {
+    setAttentionFilter(false);
+    setStatusFilter((prev) => (prev === "scheduled" ? "all" : "scheduled"));
+    track("menu_filter_used", { filter_type: "summary_tile", value: "scheduled" });
+  }
+
+  function handleAttentionTileClick() {
+    setStatusFilter("all");
+    setAttentionFilter((prev) => !prev);
+    track("menu_filter_used", { filter_type: "summary_tile", value: "attention" });
   }
 
   // Group filtered menus by effective status
@@ -752,7 +845,14 @@ export default function MenusPage() {
         {!isLoading && allMenus.length > 0 && (
           <>
             {/* ── Summary bar (always from full list, not filtered) ── */}
-            <SummaryBar menus={allMenus} />
+            <SummaryBar
+              menus={allMenus}
+              statusFilter={statusFilter}
+              attentionFilter={attentionFilter}
+              onLiveClick={handleLiveTileClick}
+              onScheduledClick={handleScheduledTileClick}
+              onAttentionClick={handleAttentionTileClick}
+            />
 
             {/* ── Filter bar ── */}
             <div className="flex flex-wrap items-center gap-2">
