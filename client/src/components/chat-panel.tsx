@@ -232,11 +232,11 @@ export function ChatPanel() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-6 z-[60] h-14 w-14 rounded-full bg-[#f2690d] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+        className="fixed bottom-20 right-6 z-[60] h-14 w-14 rounded-full shadow-lg overflow-hidden transition-transform hover:scale-105 active:scale-95 p-0 border-0"
         style={{ visibility: open ? "hidden" : "visible" }}
         data-testid="button-chat-open"
       >
-        <img src="/chefq-icon.png" alt="ChefQ" className="h-10 w-10 rounded-full object-cover" />
+        <img src="/chefq-icon.png" alt="ChefQ" className="h-full w-full scale-[1.55]" />
       </button>
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
