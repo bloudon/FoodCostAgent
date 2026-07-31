@@ -266,6 +266,140 @@ describe("REVIEW_ONLY_MILESTONES", () => {
   });
 });
 
+describe("auto-dismiss: GET /api/onboarding/milestones when all milestones complete", () => {
+  /** Full data-presence with all flags true. Still needs categories + review via reviewedSteps. */
+  const fullDataPresence = {
+    hasMenuItems: true,
+    hasPlan: true,
+    hasInventoryItems: true,
+    hasStorageLocations: true,
+    hasRecipes: true,
+    hasInventoryCount: false, // set true per-test where needed
+    hasMenuInsightsData: false,
+  };
+
+  function makeAutoDismissSetup() {
+    let markCompletedCallCount = 0;
+    let isCompleted = 0;
+
+    // stepData for categories + review so all 8 milestones are satisfied
+    const stepData = JSON.stringify({ reviewedSteps: ["categories", "review"] });
+
+    const deps: GetMilestonesDeps = {
+      async getProgress(_companyId) {
+        return { stepData, isCompleted };
+      },
+      async getDataPresence(_companyId) {
+        return { ...fullDataPresence, hasInventoryCount: true };
+      },
+      async markCompleted(_companyId) {
+        markCompletedCallCount += 1;
+        isCompleted = 1; // persist the dismissal for subsequent calls
+      },
+    };
+
+    return { deps, getMarkCompletedCallCount: () => markCompletedCallCount };
+  }
+
+  it("returns dismissed: true when all 8 milestones are complete", async () => {
+    const { deps } = makeAutoDismissSetup();
+    const app = makeApp("co-auto-dismiss", makeSharedStore().reviewStepDeps, deps);
+
+    const res = await request(app).get("/api/onboarding/milestones");
+    expect(res.status).toBe(200);
+    expect(res.body.dismissed).toBe(true);
+  });
+
+  it("returns completedCount equal to totalCount when all milestones complete", async () => {
+    const { deps } = makeAutoDismissSetup();
+    const app = makeApp("co-auto-count", makeSharedStore().reviewStepDeps, deps);
+
+    const res = await request(app).get("/api/onboarding/milestones");
+    expect(res.status).toBe(200);
+    expect(res.body.completedCount).toBe(res.body.totalCount);
+  });
+
+  it("calls markCompleted() exactly once on the first request that completes all milestones", async () => {
+    const { deps, getMarkCompletedCallCount } = makeAutoDismissSetup();
+    const app = makeApp("co-mark-once", makeSharedStore().reviewStepDeps, deps);
+
+    await request(app).get("/api/onboarding/milestones");
+    expect(getMarkCompletedCallCount()).toBe(1);
+  });
+
+  it("does NOT call markCompleted() again on subsequent requests when already dismissed", async () => {
+    const { deps, getMarkCompletedCallCount } = makeAutoDismissSetup();
+    const app = makeApp("co-no-double-mark", makeSharedStore().reviewStepDeps, deps);
+
+    // First request triggers auto-dismiss
+    await request(app).get("/api/onboarding/milestones");
+    expect(getMarkCompletedCallCount()).toBe(1);
+
+    // Subsequent requests must NOT call markCompleted again
+    await request(app).get("/api/onboarding/milestones");
+    await request(app).get("/api/onboarding/milestones");
+    expect(getMarkCompletedCallCount()).toBe(1);
+  });
+
+  it("returns dismissed: true on follow-up requests after auto-dismiss", async () => {
+    const { deps } = makeAutoDismissSetup();
+    const app = makeApp("co-stays-dismissed", makeSharedStore().reviewStepDeps, deps);
+
+    await request(app).get("/api/onboarding/milestones");
+    const res = await request(app).get("/api/onboarding/milestones");
+    expect(res.status).toBe(200);
+    expect(res.body.dismissed).toBe(true);
+  });
+
+  it("does NOT auto-dismiss when categories milestone is incomplete", async () => {
+    let markCompletedCallCount = 0;
+
+    // Only review-only 'review' step is done, not 'categories'
+    const stepData = JSON.stringify({ reviewedSteps: ["review"] });
+    const deps: GetMilestonesDeps = {
+      async getProgress() {
+        return { stepData, isCompleted: null };
+      },
+      async getDataPresence() {
+        return { ...fullDataPresence, hasInventoryCount: true };
+      },
+      async markCompleted() {
+        markCompletedCallCount += 1;
+      },
+    };
+
+    const app = makeApp("co-partial-cats", makeSharedStore().reviewStepDeps, deps);
+    const res = await request(app).get("/api/onboarding/milestones");
+
+    expect(res.body.dismissed).toBe(false);
+    expect(markCompletedCallCount).toBe(0);
+  });
+
+  it("does NOT auto-dismiss when review milestone is incomplete", async () => {
+    let markCompletedCallCount = 0;
+
+    // Only review-only 'categories' step is done, not 'review'
+    const stepData = JSON.stringify({ reviewedSteps: ["categories"] });
+    const deps: GetMilestonesDeps = {
+      async getProgress() {
+        return { stepData, isCompleted: null };
+      },
+      async getDataPresence() {
+        return { ...fullDataPresence, hasInventoryCount: true };
+      },
+      async markCompleted() {
+        markCompletedCallCount += 1;
+      },
+    };
+
+    const app = makeApp("co-partial-review", makeSharedStore().reviewStepDeps, deps);
+    const res = await request(app).get("/api/onboarding/milestones");
+
+    expect(res.body.dismissed).toBe(false);
+    expect(markCompletedCallCount).toBe(0);
+  });
+});
+
 describe("DB failure — handlers return 500 JSON", () => {
   it("POST review-step returns 500 when getProgress() throws", async () => {
     const deps: ReviewStepDeps = {
