@@ -31,7 +31,7 @@ import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
-import { createReviewStepHandler, createGetMilestonesHandler } from "./lib/milestonesHandler";
+import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
@@ -2058,8 +2058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/onboarding/milestones/dismiss", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      const companyId = user.companyId;
+      const companyId = getEffectiveCompanyId(req);
 
       if (!companyId) {
         return res.status(400).json({ error: "User is not associated with a company" });
@@ -2087,8 +2086,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/onboarding/milestones/undismiss", requireAuth, async (req, res) => {
     try {
-      const user = (req as any).user;
-      const companyId = user.companyId;
+      const companyId = getEffectiveCompanyId(req);
       if (!companyId) {
         return res.status(400).json({ error: "User is not associated with a company" });
       }

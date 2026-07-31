@@ -1,5 +1,33 @@
 import type { Request, Response } from "express";
 
+/**
+ * Resolve the company ID that should be used for onboarding/milestones
+ * operations for the current request.
+ *
+ * - Regular users: their own `user.companyId`
+ * - Global admins: `selectedCompanyId` stored in the session (set when they
+ *   switch into a company via the company picker)
+ *
+ * Returns null when no company context can be determined.
+ */
+export function getEffectiveCompanyId(req: Request): string | null {
+  const user = (req as any).user;
+  if (!user) return null;
+
+  if (user.role === "global_admin") {
+    const isSSOAuth = (req as any).ssoAuth;
+    const authSession = (req as any).authSession;
+    if (isSSOAuth) {
+      return (req as any).session?.selectedCompanyId || null;
+    } else if (authSession) {
+      return authSession.selectedCompanyId || null;
+    }
+    return null;
+  }
+
+  return user.companyId || null;
+}
+
 export interface OnboardingProgressRecord {
   stepData: string | null;
   isCompleted?: number | null;
@@ -13,7 +41,7 @@ export interface ReviewStepDeps {
 export function createReviewStepHandler(deps: ReviewStepDeps) {
   return async (req: Request, res: Response) => {
     try {
-      const companyId: string | undefined = (req as any).user?.companyId;
+      const companyId = getEffectiveCompanyId(req);
       if (!companyId) {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
@@ -152,7 +180,7 @@ export function computeMilestones(
 export function createGetMilestonesHandler(deps: GetMilestonesDeps) {
   return async (req: Request, res: Response) => {
     try {
-      const companyId: string | undefined = (req as any).user?.companyId;
+      const companyId = getEffectiveCompanyId(req);
       if (!companyId) {
         return res.status(400).json({ error: "User is not associated with a company" });
       }
