@@ -48,9 +48,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Culinary Operations Intelligence for Chef-Led Restaurants",
+        title: "FnB Cost Pro | Culinary Operations Intelligence for Chefs",
         description:
-          "FnB Cost Pro brings inventory intelligence, live recipe costing, and vendor connectivity to chef-led restaurants and F&B operations. Built for the way professional kitchens work.",
+          "Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders.",
       },
       badge: "Culinary Operations Intelligence",
       headline: "Built for the way chefs work.",
@@ -645,9 +645,9 @@ export const translations = {
     },
     home: {
       meta: {
-        title: "FnB Cost Pro — Inteligencia de Operaciones Culinarias para Restaurantes Liderados por Chefs",
+        title: "FnB Cost Pro | Inteligencia de Operaciones Culinarias para Chefs",
         description:
-          "FnB Cost Pro aporta inteligencia de inventario, costeo de recetas en vivo y conectividad con proveedores a restaurantes liderados por chefs y operaciones de A&B. Construido para la forma en que trabajan las cocinas profesionales.",
+          "Construida para la forma en que trabajan los chefs. Convierte recetas, fotos, inventario y datos de proveedores en costos de alimentos precisos, comparaciones de proveedores y pedidos predictivos.",
       },
       badge: "Inteligencia de Operaciones Culinarias",
       headline: "Construida para la forma en que los chefs trabajan.",

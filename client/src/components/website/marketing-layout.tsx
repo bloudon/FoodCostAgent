@@ -90,6 +90,10 @@ export function MarketingHead({
     setOgMeta("og:url", canonicalUrl);
     setOgMeta("og:site_name", "FnB Cost Pro");
 
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:title", title);
+    setMeta("twitter:description", description);
+
     let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
     if (!canonical) {
       canonical = document.createElement("link") as HTMLLinkElement;
