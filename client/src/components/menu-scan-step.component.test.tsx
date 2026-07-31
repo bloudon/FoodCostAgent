@@ -517,3 +517,72 @@ describe("MenuScanStep — description value survives the approve mutation paylo
     expect(item0!.description, "Original AI description should be sent unchanged").toBe("Herb-marinated");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite: section-whats-next visibility based on menuMode
+// ---------------------------------------------------------------------------
+
+describe("MenuScanStep — section-whats-next visibility", () => {
+  /**
+   * Renders MenuScanStep with the given menuMode, simulates a successful scan,
+   * and advances to the review sub-step.
+   *
+   * When menuMode=true the component skips the bar-question entirely and goes
+   * straight from "upload" to "review", so there is no bar-question card to
+   * interact with.
+   *
+   * When menuMode=false (default) the component shows the bar-question card
+   * first; we skip it via the "Skip" button as in the other helpers above.
+   */
+  async function renderAndAdvanceToReviewWithMode(menuMode: boolean): Promise<void> {
+    mockApiRequest.mockReset();
+    setupMockMutation();
+
+    // POST /api/onboarding/menu-scan → scan succeeds
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      json: async () => SCAN_RESPONSE,
+    });
+    // PATCH /api/onboarding/has-bar (only reached when menuMode=false)
+    mockApiRequest.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+
+    render(
+      React.createElement(MenuScanStep, {
+        onComplete: vi.fn(),
+        menuMode,
+      })
+    );
+
+    // Trigger fake file upload
+    fireEvent.click(screen.getByTestId("button-upload-menu"));
+
+    if (menuMode) {
+      // With menuMode=true the component jumps straight to review
+      await waitFor(() =>
+        expect(screen.getByTestId("card-step-menu-review")).toBeInTheDocument()
+      );
+    } else {
+      // With menuMode=false the component shows the bar-question first
+      await waitFor(() =>
+        expect(screen.getByTestId("card-step-bar-question")).toBeInTheDocument()
+      );
+      fireEvent.click(screen.getByTestId("button-skip-bar-question"));
+      await waitFor(() =>
+        expect(screen.getByTestId("card-step-menu-review")).toBeInTheDocument()
+      );
+    }
+  }
+
+  it("hides section-whats-next when menuMode is true", async () => {
+    await renderAndAdvanceToReviewWithMode(true);
+    expect(screen.queryByTestId("section-whats-next")).not.toBeInTheDocument();
+  });
+
+  it("shows section-whats-next when menuMode is false", async () => {
+    await renderAndAdvanceToReviewWithMode(false);
+    expect(screen.getByTestId("section-whats-next")).toBeInTheDocument();
+  });
+});
