@@ -25,6 +25,7 @@ import {
   Check,
 } from "lucide-react";
 import { SetupMilestoneTracker } from "@/components/setup-milestone-tracker";
+import { GetOperationalCard } from "@/components/get-operational-card";
 import { useStoreContext } from "@/hooks/use-store-context";
 import { useAuth } from "@/lib/auth-context";
 import { parseCountDate } from "@/lib/utils";
@@ -401,6 +402,7 @@ export default function Dashboard() {
         </Card>
       )}
 
+      <GetOperationalCard />
       <SetupMilestoneTracker />
 
       {/* ── Page header ─────────────────────────────────────────────────── */}
