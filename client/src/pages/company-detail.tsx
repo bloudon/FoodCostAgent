@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { Company, CompanyStore, InsertCompany, InsertCompanyStore, insertCompanySchema, insertCompanyStoreSchema } from "@shared/schema";
+import { Company, CompanyStore, InsertCompany, InsertCompanyStore, insertCompanySchema, insertCompanyStoreSchema, POS_PROVIDER_VALUES } from "@shared/schema";
 import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,6 +108,20 @@ export default function CompanyDetail() {
   // Update form when company data loads
   useEffect(() => {
     if (company && !isEditingCompany) {
+      // Warn when the DB posProvider value is set but not in the known enum.
+      // Without this check the value would be silently cast and then lost on the
+      // next save, because insertCompanySchema rejects unrecognised strings.
+      if (company.posProvider && !(POS_PROVIDER_VALUES as readonly string[]).includes(company.posProvider)) {
+        console.warn(
+          `[company-detail] posProvider "${company.posProvider}" is not in the current form enum. ` +
+          `It will be cleared when this company is next saved. Add the value to POS_PROVIDER_VALUES in shared/schema.ts to fix this.`
+        );
+        toast({
+          title: "Unrecognised POS provider",
+          description: `The stored POS provider "${company.posProvider}" is not supported by the current form. Saving will clear this value — add it to the schema to preserve it.`,
+          variant: "destructive",
+        });
+      }
       companyForm.reset(toInsertCompany(company));
     }
   }, [company, isEditingCompany]);

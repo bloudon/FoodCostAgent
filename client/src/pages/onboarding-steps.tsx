@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Building2, Store, FolderTree, Check, Plus, Upload, Users, Info, CheckCircle, UserCircle, MailCheck, Eye, EyeOff } from "lucide-react";
 import { useOnboarding } from "@/pages/onboarding-wizard";
-import { insertVendorSchema, type Vendor } from "@shared/schema";
+import { insertVendorSchema, type Vendor, POS_PROVIDER_VALUES } from "@shared/schema";
 
 // Account Setup Form Schema (step 1 - personal info)
 const accountFormSchema = z.object({
@@ -402,7 +402,7 @@ const companyFormSchema = z.object({
   city: z.string().optional(),
   state: z.string().optional(),
   postalCode: z.string().optional(),
-  posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+  posProvider: z.enum(POS_PROVIDER_VALUES).optional(),
   tccAccountId: z.string().uuid("TCC Account ID must be a valid UUID").optional(),
 });
 

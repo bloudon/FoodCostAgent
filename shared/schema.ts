@@ -37,10 +37,17 @@ export const companies = pgTable("companies", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+/** Canonical list of all posProvider values the DB can hold.
+ *  Keep this in sync with the `pos_provider` column comment above and any
+ *  migrations that add new POS providers.  All form enums reference this
+ *  constant so a single edit is sufficient when a new provider is added. */
+export const POS_PROVIDER_VALUES = ['square', 'thrive', 'toast', 'hungerrush', 'clover', 'spoton', 'other', 'none'] as const;
+export type PosProvider = typeof POS_PROVIDER_VALUES[number];
+
 export const insertCompanySchema = createInsertSchema(companies)
   .omit({ id: true, createdAt: true })
   .extend({
-    posProvider: z.enum(['square', 'thrive', 'toast', 'hungerrush', 'clover', 'spoton', 'other', 'none']).optional(),
+    posProvider: z.enum(POS_PROVIDER_VALUES).optional(),
     primarySalesMethod: z.enum(['pos_connector', 'manual_upload']).nullish(),
     tccAccountId: z.string().uuid("TCC Account ID must be a valid UUID").optional(), // Only required if posProvider is 'thrive'
   });
