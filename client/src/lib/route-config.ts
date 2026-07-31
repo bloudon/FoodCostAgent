@@ -32,6 +32,12 @@ export interface RouteConfig {
   requiredFeature?: string;
   /** Old paths that should redirect to `route` */
   legacyRoutes?: string[];
+  /**
+   * Additional search keywords (space-separated) that supplement the label
+   * for the global nav search. Use for common synonyms or alternate phrasings
+   * that users might type when looking for this page.
+   */
+  keywords?: string;
 }
 
 export const ROUTE_CONFIG: RouteConfig[] = [
@@ -54,9 +60,11 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/inventory-items/par-levels", label: "Par Levels", section: "count" },
   { route: "/inventory-items/new", label: "New Item", section: "count" },
   { route: "/inventory-items/:id", label: "Item Detail", section: "count" },
-  { route: "/inventory-import", label: "Import Inventory", section: "count" },
+  { route: "/inventory-import", label: "Import Inventory", section: "count", keywords: "upload import csv items" },
+  { route: "/orderly-import", label: "Orderly Import", section: "count", keywords: "orderly upload import sync" },
+  { route: "/orderly-report", label: "Orderly Report", section: "count" },
   { route: "/shelf-scans", label: "Shelf Scans", section: "count" },
-  { route: "/waste", label: "Waste", section: "count" },
+  { route: "/waste", label: "Waste", section: "count", keywords: "waste loss spoilage" },
 
   // ── Order ────────────────────────────────────────────────────────────────
   { route: "/order", label: "Order", section: "order", requiredRole: "store_manager" },
@@ -69,7 +77,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   },
   { route: "/purchase-orders/:id", label: "Order Detail", section: "order", requiredRole: "store_manager" },
   { route: "/receiving/:poId", label: "Receive Delivery", section: "order", requiredRole: "store_manager" },
-  { route: "/vendors", label: "Vendors", section: "order", requiredRole: "store_manager" },
+  { route: "/vendors", label: "Vendors", section: "order", requiredRole: "store_manager", keywords: "supplier distributor purchasing" },
   { route: "/transfer-orders", label: "Transfer Orders", section: "order", requiredRole: "store_manager" },
   { route: "/transfer-orders/:id", label: "Transfer Detail", section: "order", requiredRole: "store_manager" },
   { route: "/order-guide-scan", label: "Update Vendor Prices", section: "order", requiredRole: "store_manager" },
@@ -87,7 +95,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
 
   // ── Analyze ──────────────────────────────────────────────────────────────
   { route: "/analyze", label: "Analyze", section: "analyze", requiredRole: "store_manager" },
-  { route: "/tfc/variance", label: "Food Cost", section: "analyze", requiredRole: "store_manager" },
+  { route: "/tfc/variance", label: "Food Cost", section: "analyze", requiredRole: "store_manager", keywords: "theoretical food cost tfc" },
   { route: "/tfc/sales-import", label: "Import Sales", section: "analyze", requiredRole: "store_manager" },
   { route: "/variance", label: "Inventory Variance", section: "analyze", requiredRole: "store_manager" },
   { route: "/menu-insights", label: "Menu Insights", section: "analyze" },
@@ -95,8 +103,9 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   // ── More ─────────────────────────────────────────────────────────────────
   { route: "/more", label: "More", section: "more" },
   { route: "/menu-items", label: "Menu Items", section: "more" },
-  { route: "/menu-scan", label: "Menu Scan", section: "more", legacyRoutes: ["/menu-import"] },
-  { route: "/recipes", label: "Recipes", section: "more" },
+  { route: "/menus", label: "Menus", section: "more" },
+  { route: "/menu-scan", label: "Menu Scan", section: "more", legacyRoutes: ["/menu-import"], keywords: "scan import menu photo camera" },
+  { route: "/recipes", label: "Recipes", section: "more", keywords: "recipe builder" },
   { route: "/recipe-import", label: "Import Recipes", section: "more" },
   { route: "/categories", label: "Categories", section: "more", requiredRole: "store_manager" },
   { route: "/unit-conversions", label: "Unit Conversions", section: "more", requiredRole: "store_manager" },
@@ -104,7 +113,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/stores", label: "Store Locations", section: "more", requiredRole: "store_manager" },
   { route: "/users", label: "Users", section: "more", requiredRole: "company_admin" },
   { route: "/api-credentials", label: "API Credentials", section: "more", requiredRole: "company_admin" },
-  { route: "/settings", label: "Settings", section: "more", requiredRole: "company_admin" },
+  { route: "/settings", label: "Settings", section: "more", requiredRole: "company_admin", keywords: "company configuration pos integrations" },
 
   // ── Platform Admin ───────────────────────────────────────────────────────
   { route: "/companies", label: "Companies", section: "more", requiredRole: "global_admin" },
@@ -112,6 +121,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/admin/users", label: "Admin Users", section: "more", requiredRole: "global_admin" },
   { route: "/admin/vendor-registry", label: "Vendor Registry", section: "more", requiredRole: "global_admin" },
   { route: "/admin/backgrounds", label: "Backgrounds", section: "more", requiredRole: "global_admin" },
+  { route: "/admin/pos-sync-jobs", label: "POS Sync Jobs", section: "more", requiredRole: "global_admin", keywords: "pos sync square jobs" },
 ];
 
 /**
