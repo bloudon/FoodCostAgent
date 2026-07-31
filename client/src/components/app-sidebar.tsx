@@ -114,7 +114,7 @@ const RAIL: RailItem[] = [
   { id: "count",     label: "Inventory", icon: ClipboardList,    href: "/count",      testId: "nav-count" },
   { id: "order",     label: "Order",     icon: ShoppingCart,     href: "/order",      roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-order" },
   { id: "prep",      label: "Prep",      icon: ChefHat,          href: "/prep",       testId: "nav-prep" },
-  { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menu-items", testId: "nav-menu" },
+  { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menus",       testId: "nav-menu" },
   { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
   { id: "more",      label: "More",      icon: MoreHorizontal,   href: "/more",       testId: "nav-more" },
 ];

@@ -5289,52 +5289,123 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(menus.createdAt));
   }
 
-  /** Returns menus enriched with entry counts — used by the portfolio page. */
-  async getMenusWithStats(companyId: string): Promise<Array<Menu & { totalItems: number; pricedItems: number }>> {
+  /** Returns menus enriched with rich dashboard stats — used by the portfolio page. */
+  async getMenusWithStats(companyId: string): Promise<Array<Menu & {
+    totalItems: number; pricedItems: number;
+    itemCount: number; sectionCount: number; totalSectionCount: number;
+    recipedItems: number; locationCount: number; locationNames: string[];
+    effectiveStatus: string;
+  }>> {
+    // Each stat uses an independent scalar subquery to avoid row-multiplication
+    // when joining sections × entries × recipes × locations simultaneously.
     const result = await db.execute(sql`
-      SELECT m.id,
-             m.company_id,
-             m.name,
-             m.menu_type,
-             m.status,
-             m.description,
-             m.effective_start,
-             m.effective_end,
-             m.recurrence_days,
-             m.recurrence_time_start,
-             m.recurrence_time_end,
-             m.created_by,
-             m.updated_by,
-             m.created_at,
-             m.updated_at,
-             COUNT(DISTINCT me.id)::int                                                   AS total_items,
-             COUNT(DISTINCT CASE WHEN me.price IS NOT NULL THEN me.id END)::int           AS priced_items
-      FROM   menus m
-      LEFT   JOIN menu_entries me ON me.menu_id = m.id
-      WHERE  m.company_id = ${companyId}
-      GROUP  BY m.id
-      ORDER  BY m.created_at ASC
+      SELECT
+        m.id,
+        m.company_id,
+        m.name,
+        m.menu_type,
+        m.status,
+        m.description,
+        m.effective_start,
+        m.effective_end,
+        m.recurrence_days,
+        m.recurrence_time_start,
+        m.recurrence_time_end,
+        m.created_by,
+        m.updated_by,
+        m.created_at,
+        m.updated_at,
+
+        -- Canonical effective status (server-resolved, never stale)
+        CASE
+          WHEN m.status = 'retired' THEN 'archived'
+          WHEN m.effective_end IS NOT NULL
+               AND m.effective_end < NOW()
+               AND m.status <> 'live'   THEN 'expired'
+          WHEN m.status = 'scheduled'
+               AND m.effective_start IS NOT NULL
+               AND m.effective_start > NOW() THEN 'scheduled'
+          WHEN m.status = 'scheduled'   THEN 'live'
+          ELSE m.status
+        END AS effective_status,
+
+        -- Total entry count (each placement counts separately)
+        (SELECT COUNT(*)::int
+         FROM menu_entries
+         WHERE menu_id = m.id) AS item_count,
+
+        -- Priced entries: positive sell price only (market-price / complimentary excluded)
+        (SELECT COUNT(*)::int
+         FROM menu_entries
+         WHERE menu_id = m.id
+           AND price IS NOT NULL
+           AND price > 0) AS priced_items,
+
+        -- Recipe-linked entries (has ≥1 row in menu_item_recipes — does NOT imply costed)
+        (SELECT COUNT(DISTINCT me.id)::int
+         FROM menu_entries me
+         JOIN menu_item_recipes mir ON mir.menu_item_id = me.menu_item_id
+         WHERE me.menu_id = m.id) AS reciped_items,
+
+        -- Sections with at least one entry (empty sections are warnings, not counted here)
+        (SELECT COUNT(DISTINCT ms.id)::int
+         FROM menu_sections ms
+         WHERE ms.menu_id = m.id
+           AND EXISTS (
+             SELECT 1 FROM menu_entries
+             WHERE menu_id = m.id AND menu_section_id = ms.id
+           )) AS section_count,
+
+        -- Total section count (for computing empty-section warnings on client)
+        (SELECT COUNT(*)::int
+         FROM menu_sections
+         WHERE menu_id = m.id) AS total_section_count,
+
+        -- Active assigned location count
+        (SELECT COUNT(*)::int
+         FROM menu_location_assignments mla
+         JOIN company_stores cs ON cs.id = mla.store_id
+         WHERE mla.menu_id = m.id
+           AND cs.status = 'active') AS location_count,
+
+        -- Active assigned location names (sorted, empty array if none)
+        (SELECT COALESCE(array_agg(cs.name ORDER BY cs.name), ARRAY[]::text[])
+         FROM menu_location_assignments mla
+         JOIN company_stores cs ON cs.id = mla.store_id
+         WHERE mla.menu_id = m.id
+           AND cs.status = 'active') AS location_names
+
+      FROM menus m
+      WHERE m.company_id = ${companyId}
+      ORDER BY m.created_at ASC
     `);
     const raw: any[] = (result as any).rows ?? [];
     return raw.map((r) => ({
-      id:             r.id,
-      companyId:      r.company_id,
-      name:           r.name,
-      menuType:       r.menu_type,
-      status:         r.status,
-      description:    r.description,
+      id:                  r.id,
+      companyId:           r.company_id,
+      name:                r.name,
+      menuType:            r.menu_type,
+      status:              r.status,
+      description:         r.description,
       effectiveStart:      r.effective_start,
       effectiveEnd:        r.effective_end,
       recurrenceDays:      r.recurrence_days ?? null,
       recurrenceTimeStart: r.recurrence_time_start ?? null,
       recurrenceTimeEnd:   r.recurrence_time_end ?? null,
       createdBy:           r.created_by,
-      updatedBy:      r.updated_by,
-      createdAt:      r.created_at,
-      updatedAt:      r.updated_at,
-      totalItems:     r.total_items  ?? 0,
-      pricedItems:    r.priced_items ?? 0,
-    })) as Array<Menu & { totalItems: number; pricedItems: number }>;
+      updatedBy:           r.updated_by,
+      createdAt:           r.created_at,
+      updatedAt:           r.updated_at,
+      effectiveStatus:     r.effective_status ?? r.status,
+      itemCount:           r.item_count        ?? 0,
+      totalItems:          r.item_count        ?? 0,  // backward-compat alias
+      pricedItems:         r.priced_items      ?? 0,
+      recipedItems:        r.reciped_items     ?? 0,
+      sectionCount:        r.section_count     ?? 0,
+      totalSectionCount:   r.total_section_count ?? 0,
+      locationCount:       r.location_count    ?? 0,
+      locationNames:       Array.isArray(r.location_names) ? r.location_names : [],
+    }));
   }
 
   async getMenu(id: string, companyId: string): Promise<Menu | undefined> {
