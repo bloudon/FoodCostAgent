@@ -121,8 +121,9 @@ export default function CompanyDetail() {
     }
   });
 
-  const storeForm = useForm<InsertCompanyStore>({
-    resolver: zodResolver(storeFormSchema),
+  const storeForm = useForm<InsertCompanyStore, any, InsertCompanyStore>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(storeFormSchema) as any,
     defaultValues: {
       companyId: id || "",
       code: "",
