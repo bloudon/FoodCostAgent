@@ -654,7 +654,7 @@ function EmptyStateFiltered({ onClear }: { onClear: () => void }) {
   );
 }
 
-// ── Menu group section ────────────────────────────────────────────────────────
+// ── Menu group section (mobile / filtered view) ───────────────────────────────
 
 function MenuGroup({
   label,
@@ -687,11 +687,50 @@ function MenuGroup({
         )}
       </button>
       {!collapsed && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {menus.map((m) => <MenuCard key={m.id} menu={m} />)}
         </div>
       )}
     </section>
+  );
+}
+
+// ── Desktop 3-column layout ───────────────────────────────────────────────────
+
+interface ColumnGroup {
+  sublabel?: string;
+  menus: MenuWithStats[];
+}
+
+function MenuColumn({ label, groups }: { label: string; groups: ColumnGroup[] }) {
+  const total = groups.reduce((sum, g) => sum + g.menus.length, 0);
+  const showSublabels = groups.filter((g) => g.sublabel && g.menus.length > 0).length > 1;
+
+  return (
+    <div className="min-w-0 space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}{total > 0 ? ` (${total})` : ""}
+      </h2>
+
+      {total === 0 ? (
+        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">
+          None
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groups.map((g, i) => (
+            <div key={i} className="space-y-3">
+              {showSublabels && g.sublabel && g.menus.length > 0 && (
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  {g.sublabel}
+                </p>
+              )}
+              {g.menus.map((m) => <MenuCard key={m.id} menu={m} />)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -942,10 +981,35 @@ export default function MenusPage() {
             {/* ── Grouped cards ── */}
             {hasContent && (
               <div className="space-y-7">
-                <MenuGroup label="Active now"           menus={liveMenus} />
-                <MenuGroup label="Scheduled"            menus={scheduledMenus} />
-                <MenuGroup label="Ready to publish"     menus={readyMenus} />
-                <MenuGroup label="Draft"                menus={draftMenus} />
+
+                {/* Desktop: 3-column layout (Active | Scheduled | Drafts) */}
+                <div className="hidden lg:grid grid-cols-3 gap-6 items-start">
+                  <MenuColumn
+                    label="Active now"
+                    groups={[{ menus: liveMenus }]}
+                  />
+                  <MenuColumn
+                    label="Scheduled"
+                    groups={[{ menus: scheduledMenus }]}
+                  />
+                  <MenuColumn
+                    label="Drafts"
+                    groups={[
+                      { sublabel: "Ready to publish", menus: readyMenus },
+                      { sublabel: "Draft",            menus: draftMenus },
+                    ]}
+                  />
+                </div>
+
+                {/* Mobile: stacked groups */}
+                <div className="lg:hidden space-y-7">
+                  <MenuGroup label="Active now"       menus={liveMenus} />
+                  <MenuGroup label="Scheduled"        menus={scheduledMenus} />
+                  <MenuGroup label="Ready to publish" menus={readyMenus} />
+                  <MenuGroup label="Draft"            menus={draftMenus} />
+                </div>
+
+                {/* Archived & expired — full width on all breakpoints */}
                 <MenuGroup
                   label="Archived & expired"
                   menus={archivedMenus}
