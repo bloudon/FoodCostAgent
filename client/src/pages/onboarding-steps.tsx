@@ -403,6 +403,7 @@ const companyFormSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   posProvider: z.enum(['thrive', 'toast', 'hungerrush', 'clover', 'other', 'none']).optional(),
+  tccAccountId: z.string().uuid("TCC Account ID must be a valid UUID").optional(),
 });
 
 type CompanyFormValues = z.infer<typeof companyFormSchema>;

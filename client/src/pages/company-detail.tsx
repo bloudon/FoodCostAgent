@@ -89,10 +89,26 @@ export default function CompanyDetail() {
     },
   });
 
+  /** Transform a Company DB row to the InsertCompany shape expected by the form.
+   *  posProvider on the DB row is `string | null`; the insert schema requires the
+   *  strict enum value or `undefined`. */
+  const toInsertCompany = (c: Company): InsertCompany => {
+    // Omit DB-only fields (id, createdAt) not present in the insert schema.
+    // posProvider and primarySalesMethod are `string | null` on the DB row but the
+    // insert schema requires a strict enum or undefined — cast them explicitly.
+    // The remaining spread is safe: DB select types are a superset of insert types.
+    const { id: _id, createdAt: _createdAt, ...rest } = c;
+    return {
+      ...(rest as unknown as InsertCompany),
+      posProvider: (rest.posProvider as InsertCompany["posProvider"]) ?? undefined,
+      primarySalesMethod: (rest.primarySalesMethod as InsertCompany["primarySalesMethod"]) ?? undefined,
+    };
+  };
+
   // Update form when company data loads
   useEffect(() => {
     if (company && !isEditingCompany) {
-      companyForm.reset(company);
+      companyForm.reset(toInsertCompany(company));
     }
   }, [company, isEditingCompany]);
 
@@ -397,7 +413,7 @@ export default function CompanyDetail() {
                 size="sm"
                 onClick={() => {
                   setIsEditingCompany(false);
-                  companyForm.reset(company);
+                  if (company) companyForm.reset(toInsertCompany(company));
                 }}
                 data-testid="button-cancel-edit-company"
               >

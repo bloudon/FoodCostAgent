@@ -216,7 +216,7 @@ export default function Vendors() {
     },
     onSuccess: async (createdVendor: Vendor) => {
       const formVals = form.getValues();
-      await upsertConnector(createdVendor.id, connectorId, formVals.name, formVals.website);
+      await upsertConnector(createdVendor.id, connectorId, formVals.name, formVals.website ?? undefined);
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
         title: "Success",
@@ -248,7 +248,7 @@ export default function Vendors() {
     onSuccess: async () => {
       if (editingVendor) {
         const formVals = form.getValues();
-        await upsertConnector(editingVendor.id, connectorId, formVals.name, formVals.website);
+        await upsertConnector(editingVendor.id, connectorId, formVals.name, formVals.website ?? undefined);
       }
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({
@@ -555,6 +555,9 @@ export default function Vendors() {
     setIsDialogOpen(true);
   };
 
+  const VALID_DELIVERY_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+  type DeliveryDay = (typeof VALID_DELIVERY_DAYS)[number];
+
   const handleEditClick = (vendor: Vendor) => {
     setEditingVendor(vendor);
     const existing = supplierConnectionsData?.data?.find(c => c.vendorId === vendor.id);
@@ -567,13 +570,16 @@ export default function Vendors() {
     if (!existingConnectorId) {
       detectConnectorFromRegistry(vendor.name, vendor.website ?? "");
     }
+    const narrowedDeliveryDays = (vendor.deliveryDays ?? []).filter(
+      (d): d is DeliveryDay => (VALID_DELIVERY_DAYS as readonly string[]).includes(d)
+    );
     form.reset({
       name: vendor.name,
       accountNumber: vendor.accountNumber || "",
       orderGuideType: vendor.orderGuideType || "manual",
       phone: vendor.phone || "",
       website: vendor.website || "",
-      deliveryDays: vendor.deliveryDays || [],
+      deliveryDays: narrowedDeliveryDays,
       leadDaysAhead: vendor.leadDaysAhead ?? undefined,
       active: vendor.active ?? 1,
       taxId: vendor.taxId || "",
