@@ -309,7 +309,7 @@ export function AppSidebar() {
                   isExpanded ? "gap-3 px-3 py-2" : "justify-center py-3 px-0"
                 )}
               >
-                <item.icon className="h-9 w-9 shrink-0" />
+                <item.icon className="h-7 w-7 shrink-0" />
                 {isExpanded ? (
                   <span className={cn("text-sm font-medium", active && "font-semibold")}>
                     {item.label}

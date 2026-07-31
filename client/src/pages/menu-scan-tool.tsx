@@ -30,7 +30,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-type Screen = "scan" | "summary" | "matching";
+type Screen = "scan" | "summary" | "matching" | "create";
 
 const SESSION_KEY = "menu_scan_session";
 
@@ -214,6 +214,198 @@ function SummaryScreen({
         </Button>
         <Button variant="ghost" onClick={onSkip} data-testid="button-skip-to-menu">
           Go to Menu Items
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- CreateMenuScreen ------------------------------------------------------
+
+function CreateMenuScreen({
+  summary,
+  onBack,
+}: {
+  summary: ImportedSummary;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const [menuName, setMenuName] = useState<string>(() => {
+    const sections = Array.from(
+      new Set(summary.items.map(i => (i.department || "").trim()).filter(d => d && d !== "Other"))
+    );
+    if (sections.length === 1) return `${sections[0]} Menu`;
+    return "Scanned Menu";
+  });
+  const [creating, setCreating] = useState(false);
+
+  // Reconstruct section → items preserving approval/review order
+  const sectionOrder: string[] = [];
+  const sectionItems = new Map<string, ApprovedMenuItem[]>();
+  for (const item of summary.items) {
+    const dept = (item.department || "").trim() || "Other";
+    if (!sectionOrder.includes(dept)) sectionOrder.push(dept);
+    if (!sectionItems.has(dept)) sectionItems.set(dept, []);
+    sectionItems.get(dept)!.push(item);
+  }
+
+  const handleCreate = async () => {
+    const name = menuName.trim() || "Scanned Menu";
+    setCreating(true);
+    try {
+      // 1. Create the menu
+      const menuRes = await apiRequest("POST", "/api/menus", { name });
+      const menuData = await menuRes.json() as any;
+      if (!menuRes.ok) throw new Error(menuData.error || "Failed to create menu");
+      const menuId = menuData.id as string;
+
+      // 2. For each section: create section then add entries
+      for (let i = 0; i < sectionOrder.length; i++) {
+        const sectionName = sectionOrder[i];
+        const sItems = sectionItems.get(sectionName) || [];
+
+        const secRes = await apiRequest("POST", `/api/menus/${menuId}/sections`, {
+          name: sectionName,
+          displayOrder: i,
+        });
+        const secData = await secRes.json() as any;
+        if (!secRes.ok) throw new Error(secData.error || "Failed to create section");
+        const sectionId = secData.id as string;
+
+        for (let j = 0; j < sItems.length; j++) {
+          await apiRequest("POST", `/api/menus/${menuId}/entries`, {
+            menuItemId: sItems[j].id,
+            menuSectionId: sectionId,
+            displayOrder: j,
+            price: sItems[j].price ?? null,
+          });
+        }
+      }
+
+      clearPersistedSession();
+      queryClient.invalidateQueries({ queryKey: ["/api/menus"] });
+      toast({
+        title: `"${name}" created`,
+        description: `${summary.items.length} item${summary.items.length !== 1 ? "s" : ""} across ${sectionOrder.length} section${sectionOrder.length !== 1 ? "s" : ""}.`,
+      });
+      navigate(`/menus/${menuId}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create menu";
+      toast({ title: "Creation failed", description: message, variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const totalItems = summary.items.length;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold" data-testid="text-create-menu-title">Create Menu</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Review your sections, name the menu, then create it.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-md bg-primary/10 shrink-0">
+                <UtensilsCrossed className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Items</p>
+                <p className="text-2xl font-bold leading-tight" data-testid="stat-items-create">{totalItems}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-md bg-primary/10 shrink-0">
+                <LayoutGrid className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Sections</p>
+                <p className="text-2xl font-bold leading-tight" data-testid="stat-sections-create">{sectionOrder.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-md bg-primary/10 shrink-0">
+                <DollarSign className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">With prices</p>
+                <p className="text-2xl font-bold leading-tight" data-testid="stat-with-prices-create">{summary.withPrices}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {sectionOrder.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Sections</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {sectionOrder.map((section) => {
+              const count = sectionItems.get(section)?.length ?? 0;
+              return (
+                <div key={section} className="flex items-center justify-between py-1" data-testid={`create-section-row-${section}`}>
+                  <span className="text-sm">{section}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 sm:w-40 bg-muted rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-1.5 bg-primary rounded-full"
+                        style={{ width: `${Math.round((count / totalItems) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground w-8 text-right">{count}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium" htmlFor="input-menu-name-create">
+          Menu name
+        </label>
+        <Input
+          id="input-menu-name-create"
+          value={menuName}
+          onChange={e => setMenuName(e.target.value)}
+          placeholder="e.g. Dinner Menu, Brunch…"
+          data-testid="input-menu-name-create"
+          onKeyDown={e => { if (e.key === "Enter" && menuName.trim() && !creating) handleCreate(); }}
+        />
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2 pt-2">
+        <Button
+          onClick={handleCreate}
+          disabled={creating || !menuName.trim()}
+          data-testid="button-create-menu-from-scan"
+        >
+          {creating ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</>
+          ) : (
+            <>Create Menu <ChevronRight className="h-4 w-4 ml-1" /></>
+          )}
+        </Button>
+        <Button variant="ghost" onClick={onBack} disabled={creating} data-testid="button-back-to-scan-from-create">
+          Back to scan
         </Button>
       </div>
     </div>
@@ -841,6 +1033,10 @@ export default function MenuScanTool() {
   const [summary, setSummary] = useState<ImportedSummary | null>(null);
   const [savedSession, setSavedSession] = useState<SavedSession | null>(null);
 
+  // Detect menu-creation mode from ?mode=menu URL param
+  const isMenuMode = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("mode") === "menu";
+
   useEffect(() => {
     const session = loadSavedSession();
     if (session) setSavedSession(session);
@@ -861,15 +1057,18 @@ export default function MenuScanTool() {
       if (item.price != null && item.price > 0) withPrices++;
     }
 
-    const deptBreakdown = Array.from(deptMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([dept, count]) => ({ dept, count }));
+    // In menu mode preserve insertion order (= user's review order); legacy: sort by count desc
+    const deptBreakdown = isMenuMode
+      ? Array.from(deptMap.entries()).map(([dept, count]) => ({ dept, count }))
+      : Array.from(deptMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([dept, count]) => ({ dept, count }));
 
     const newSummary: ImportedSummary = { items, sessionId, intelligence, hasBar, deptBreakdown, withPrices };
     setSummary(newSummary);
-    persistSession(newSummary, "summary");
+    if (!isMenuMode) persistSession(newSummary, "summary");
     setSavedSession(null);
-    setScreen("summary");
+    setScreen(isMenuMode ? "create" : "summary");
   };
 
   const handleResume = () => {
@@ -890,12 +1089,10 @@ export default function MenuScanTool() {
     navigate("/menu-insights");
   };
 
-  const STEP_LABELS: Record<Screen, string> = {
-    scan: "Scan",
-    summary: "Summary",
-    matching: "Match",
-  };
-  const STEPS: Screen[] = ["scan", "summary", "matching"];
+  const STEP_LABELS: Partial<Record<Screen, string>> = isMenuMode
+    ? { scan: "Scan", create: "Create" }
+    : { scan: "Scan", summary: "Summary", matching: "Match" };
+  const STEPS: Screen[] = isMenuMode ? ["scan", "create"] : ["scan", "summary", "matching"];
   const currentIdx = STEPS.indexOf(screen);
 
   return (
@@ -907,16 +1104,19 @@ export default function MenuScanTool() {
               variant="ghost"
               size="icon"
               onClick={() => {
-                if (screen === "scan") navigate("/menu-items");
+                if (screen === "scan") navigate(isMenuMode ? "/menus" : "/menu-items");
                 else if (screen === "summary") setScreen("scan");
                 else if (screen === "matching") setScreen("summary");
+                else if (screen === "create") setScreen("scan");
               }}
               data-testid="button-back"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold">Import Menu from Image</h1>
+              <h1 className="text-2xl font-bold">
+                {isMenuMode ? "Create Menu from Image" : "Import Menu from Image"}
+              </h1>
               <p className="text-sm text-muted-foreground">
                 AI extracts your menu items automatically
               </p>
@@ -943,7 +1143,7 @@ export default function MenuScanTool() {
             ))}
           </div>
 
-          {screen === "scan" && savedSession && (
+          {screen === "scan" && !isMenuMode && savedSession && (
             <Card data-testid="card-resume-session">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -968,7 +1168,7 @@ export default function MenuScanTool() {
           )}
 
           {screen === "scan" && (
-            <MenuScanStep onComplete={handleScanComplete} />
+            <MenuScanStep onComplete={handleScanComplete} menuMode={isMenuMode} />
           )}
 
           {screen === "summary" && summary && (
@@ -985,7 +1185,14 @@ export default function MenuScanTool() {
             />
           )}
 
-          {screen === "matching" && summary && (
+          {screen === "create" && isMenuMode && summary && (
+            <CreateMenuScreen
+              summary={summary}
+              onBack={() => setScreen("scan")}
+            />
+          )}
+
+          {screen === "matching" && !isMenuMode && summary && (
             <MatchingScreen
               summary={summary}
               onFinish={handleFinish}

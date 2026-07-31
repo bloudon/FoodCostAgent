@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ShoppingBag,
+  Camera,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -622,10 +623,16 @@ function EmptyStateNoMenus({ onNew }: { onNew: () => void }) {
       <p className="text-sm text-muted-foreground max-w-xs mb-6">
         Create your first menu to organise items into sections with location assignments and pricing.
       </p>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3">
         <Button onClick={onNew} data-testid="button-first-new-menu">
           <Plus className="h-4 w-4 mr-2" />
           Create Menu
+        </Button>
+        <Button variant="outline" asChild data-testid="button-scan-from-image-empty">
+          <Link href="/menu-scan?mode=menu">
+            <Camera className="h-4 w-4 mr-2" />
+            Scan from Image
+          </Link>
         </Button>
         <Button variant="outline" asChild>
           <Link href="/menu-items">
@@ -849,6 +856,13 @@ export default function MenusPage() {
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Browse Item Catalog</span>
                 <span className="sm:hidden">Catalog</span>
+              </Link>
+            </Button>
+            <Button variant="outline" asChild data-testid="button-scan-from-image">
+              <Link href="/menu-scan?mode=menu">
+                <Camera className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Scan from Image</span>
+                <span className="sm:hidden">Scan</span>
               </Link>
             </Button>
             <Button

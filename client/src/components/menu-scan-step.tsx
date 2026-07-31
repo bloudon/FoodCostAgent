@@ -48,10 +48,12 @@ export function MenuScanStep({
   storeId,
   initialHasBar,
   onComplete,
+  menuMode,
 }: {
   storeId?: string;
   initialHasBar?: number | null;
   onComplete: (items: ApprovedMenuItem[], sessionId: string, intelligence: MenuIntelligence, hasBar?: boolean) => void;
+  menuMode?: boolean;
 }) {
   const { toast } = useToast();
   const [subStep, setSubStep] = useState<"upload" | "bar-question" | "review">("upload");
@@ -71,6 +73,8 @@ export function MenuScanStep({
   const [barSaving, setBarSaving] = useState(false);
   const [disabledVariantGroups, setDisabledVariantGroups] = useState<Set<string>>(new Set());
   const [showZeroPriceConfirm, setShowZeroPriceConfirm] = useState(false);
+  // menuMode only: tracks user-edited section labels keyed by original dept value
+  const [sectionLabels, setSectionLabels] = useState<Map<string, string>>(new Map());
 
   const handleUpload = async (objectPath: string) => {
     setUploadedImages([objectPath]);
@@ -171,17 +175,23 @@ export function MenuScanStep({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       const validItems = items.filter(i => i.name.trim());
-      const named: ApprovedMenuItem[] = (data.menuItemIds || []).map((id, idx) => ({
-        id,
-        name: validItems[idx]?.name?.trim() || `Item ${idx + 1}`,
-        department: validItems[idx]?.department,
-        price: validItems[idx]?.price,
-      }));
+      const named: ApprovedMenuItem[] = (data.menuItemIds || []).map((id, idx) => {
+        const originalDept = validItems[idx]?.department;
+        const resolvedDept = menuMode && originalDept
+          ? (sectionLabels.get(originalDept) ?? originalDept)
+          : originalDept;
+        return {
+          id,
+          name: validItems[idx]?.name?.trim() || `Item ${idx + 1}`,
+          department: resolvedDept,
+          price: validItems[idx]?.price,
+        };
+      });
       const variantNote = data.variantGroupsLinked && data.variantGroupsLinked > 0
         ? ` ${data.variantGroupsLinked} size variant group${data.variantGroupsLinked !== 1 ? "s" : ""} linked automatically.`
         : "";
       toast({
-        title: "Menu imported!",
+        title: menuMode ? "Items ready" : "Menu imported!",
         description: `${data.menuItemsCreated} menu item${data.menuItemsCreated !== 1 ? "s" : ""} added.${variantNote}`,
       });
       onComplete(named, sessionId, intelligence, barAnswer);
@@ -378,7 +388,17 @@ export function MenuScanStep({
               return (
                 <Fragment key={dept}>
                   <div className="flex items-center justify-between px-3 py-1.5 bg-muted/40 sticky top-0">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{dept}</span>
+                    {menuMode ? (
+                      <input
+                        className="text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-transparent border-0 border-b border-dashed border-muted-foreground/40 focus:outline-none focus:border-primary px-0 min-w-0 max-w-[180px]"
+                        value={sectionLabels.get(dept) ?? dept}
+                        onChange={e => setSectionLabels(prev => new Map(prev).set(dept, e.target.value))}
+                        data-testid={`input-section-name-${dept}`}
+                        title="Edit section name"
+                      />
+                    ) : (
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{dept}</span>
+                    )}
                     <Badge variant="secondary" className="text-xs">
                       {indices.length} {indices.length === 1 ? "item" : "items"}
                     </Badge>
@@ -528,9 +548,14 @@ export function MenuScanStep({
               data-testid="button-import-items"
             >
               {approveMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing…</>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {menuMode ? "Creating…" : "Importing…"}</>
               ) : (
-                <>{`Import ${items.filter(i => i.name.trim()).length} Items`} <ArrowRight className="w-4 h-4 ml-2" /></>
+                <>
+                  {menuMode
+                    ? `Create Menu from ${items.filter(i => i.name.trim()).length} Items`
+                    : `Import ${items.filter(i => i.name.trim()).length} Items`}
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </>
               )}
             </Button>
           )}
