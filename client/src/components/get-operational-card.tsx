@@ -125,6 +125,13 @@ export function GetOperationalCard() {
   if (milestonesLoading || !milestonesData) return null;
   // Shared dismiss flag with SetupMilestoneTracker
   if (milestonesData.dismissed) return null;
+  // Optimistic hide: if the server already reports all milestones complete AND
+  // the orderly step (tracked separately on the client) is also done, the next
+  // GET will auto-dismiss.  Hiding here prevents a brief flash of the card
+  // while the refetch is in-flight (stale cached data may still carry
+  // dismissed: false even though the server is about to flip it to true).
+  const orderlyAlreadyDone = (orderlyBatches as any[]).length > 0;
+  if (milestonesData.completedCount === milestonesData.totalCount && orderlyAlreadyDone) return null;
 
   // ── Build per-step completion ─────────────────────────────────────────────
 
