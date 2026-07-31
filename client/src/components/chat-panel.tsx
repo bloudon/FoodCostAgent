@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MessageCircle, Send, Sparkles, Lock, UserCheck, PhoneCall, ChevronDown } from "lucide-react";
+import { Send, Sparkles, Lock, UserCheck, PhoneCall, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -236,7 +236,7 @@ export function ChatPanel() {
         style={{ visibility: open ? "hidden" : "visible" }}
         data-testid="button-chat-open"
       >
-        <MessageCircle className="h-6 w-6" />
+        <img src="/chefq-icon.png" alt="ChefQ" className="h-10 w-10 rounded-full object-cover" />
       </button>
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
