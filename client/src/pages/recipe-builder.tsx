@@ -959,6 +959,7 @@ function RecipeBuilderContent() {
   const [instructions, setInstructions] = useState("");
   const [recipeImagePath, setRecipeImagePath] = useState<string | null>(null);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [photoExpanded, setPhotoExpanded] = useState(false);
   const [isScanningInstructions, setIsScanningInstructions] = useState(false);
 
   // Component management state
@@ -2526,22 +2527,24 @@ function RecipeBuilderContent() {
                 <CardContent className="pt-4 pb-3 space-y-3">
                   {/* Top row: photo thumbnail on left, name + cost + yield summary on right */}
                   <div className="flex items-start gap-3">
-                    {/* Compact photo thumbnail — always visible above the fold */}
+                    {/* Photo thumbnail — click to toggle between compact (80px) and expanded (240px); full-size opens the lightbox */}
                     <div className="flex-shrink-0">
                       {recipeImagePath ? (
-                        <div className="relative group w-20 h-20">
+                        <div className={`relative group ${photoExpanded ? "w-60" : "w-20 h-20"}`}>
                           <img
                             src={recipeImagePath}
                             alt="Recipe"
-                            className="w-20 h-20 rounded-md object-contain border cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => setPhotoLightboxOpen(true)}
-                            title="Click to view full size"
+                            className={`rounded-md object-contain border cursor-pointer hover:opacity-90 transition-all duration-200 ${photoExpanded ? "w-60 max-h-60" : "w-20 h-20"}`}
+                            onClick={() => setPhotoExpanded((prev) => !prev)}
+                            title={photoExpanded ? "Click to collapse" : "Click to expand"}
                             data-testid="img-recipe-photo"
                           />
+                          {/* Remove button — always visible on compact; always visible when expanded */}
                           <button
-                            className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center bg-black/60 rounded-full hover:bg-black/80"
+                            className={`absolute -top-1.5 -right-1.5 h-5 w-5 flex items-center justify-center bg-black/60 rounded-full hover:bg-black/80 transition-opacity ${photoExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                             onClick={() => {
                               setRecipeImagePath(null);
+                              setPhotoExpanded(false);
                               if (!isNew && id) {
                                 patchRecipeFieldsMutation.mutate({ imagePath: null });
                               }
@@ -2551,6 +2554,18 @@ function RecipeBuilderContent() {
                           >
                             <X className="h-3 w-3 text-white" />
                           </button>
+                          {/* Full-size lightbox button — always visible when expanded so touch users can reach it */}
+                          {photoExpanded && (
+                            <button
+                              className="absolute bottom-1 right-1 flex items-center gap-1 px-1.5 py-0.5 bg-black/60 rounded text-white text-xs hover:bg-black/80"
+                              onClick={() => setPhotoLightboxOpen(true)}
+                              data-testid="button-fullsize-recipe-photo"
+                              title="View full size"
+                            >
+                              <ImageIcon className="h-3 w-3" />
+                              Full size
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="w-20 h-20 rounded-md border-2 border-dashed border-muted-foreground/25 hover:border-primary/40 transition-colors overflow-hidden [&>div]:h-full [&>div]:w-full [&_button]:h-full [&_button]:w-full [&_button]:p-0 [&_button]:rounded-md">
