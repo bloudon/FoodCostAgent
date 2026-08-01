@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { db } from "./db";
 import { companies } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { PLAN_CATALOG, ADDITIONAL_LOCATION_PRICING } from "@shared/plan-catalog";
 
 interface SubscriptionEventData extends Stripe.Event.Data {
   previous_attributes?: Partial<Stripe.Subscription>;
@@ -20,24 +21,76 @@ function getStripe(): Stripe {
 
 const TRIAL_DAYS = 14;
 
-const LOOKUP_KEY: Record<string, string> = {
-  "platform:monthly": "fnb_platform_monthly",
-  "platform:annual":  "fnb_platform_annual",
-  // Legacy keys kept for backward compat during transition
-  "basic:monthly":   "fnb_platform_monthly",
-  "basic:quarterly": "fnb_platform_monthly",
-  "basic:annual":    "fnb_platform_annual",
-  "starter:monthly": "fnb_platform_monthly",
-  "starter:quarterly": "fnb_platform_monthly",
-  "starter:annual":  "fnb_platform_annual",
-  "pro:monthly":     "fnb_platform_monthly",
-  "pro:quarterly":   "fnb_platform_monthly",
-  "pro:annual":      "fnb_platform_annual",
+/** Canonical lookup keys for the platform base price, sourced from PLAN_CATALOG. */
+const PLATFORM_LOOKUP_KEYS = {
+  monthly: PLAN_CATALOG.platform.stripeLookupKeys.monthly!,
+  annual:  PLAN_CATALOG.platform.stripeLookupKeys.annual!,
 };
+
+/** Canonical lookup keys for per-additional-location price items. */
+const LOCATION_LOOKUP_KEYS = {
+  monthly: ADDITIONAL_LOCATION_PRICING.stripeLookupKeys.monthly,
+  annual:  ADDITIONAL_LOCATION_PRICING.stripeLookupKeys.annual,
+};
+
+/** All valid new lookup keys (used for filtering /api/billing/plans response). */
+const VALID_LOOKUP_KEYS = new Set([
+  PLATFORM_LOOKUP_KEYS.monthly,
+  PLATFORM_LOOKUP_KEYS.annual,
+  LOCATION_LOOKUP_KEYS.monthly,
+  LOCATION_LOOKUP_KEYS.annual,
+]);
+
+/**
+ * Resolves the Stripe Price object for a given lookup key.
+ * Returns undefined if no active price is found.
+ */
+async function findPriceByLookupKey(lookupKey: string): Promise<Stripe.Price | undefined> {
+  const result = await getStripe().prices.search({
+    query: `lookup_key:'${lookupKey}' AND active:'true'`,
+    limit: 1,
+  });
+  return result.data[0];
+}
+
+/**
+ * Extracts the additional-location quantity from a Stripe subscription's line items.
+ * Returns 0 if no additional-location item is found.
+ */
+function extractAdditionalLocationQty(subscription: Stripe.Subscription): number {
+  for (const item of subscription.items.data) {
+    const lk = item.price?.lookup_key ?? "";
+    if (lk === LOCATION_LOOKUP_KEYS.monthly || lk === LOCATION_LOOKUP_KEYS.annual) {
+      return item.quantity ?? 0;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Extracts the billing interval ("monthly" | "annual") from a Stripe subscription.
+ */
+function extractBillingInterval(subscription: Stripe.Subscription): "monthly" | "annual" | null {
+  for (const item of subscription.items.data) {
+    const lk = item.price?.lookup_key ?? "";
+    if (lk === PLATFORM_LOOKUP_KEYS.annual || lk === LOCATION_LOOKUP_KEYS.annual) {
+      return "annual";
+    }
+    if (lk === PLATFORM_LOOKUP_KEYS.monthly || lk === LOCATION_LOOKUP_KEYS.monthly) {
+      return "monthly";
+    }
+  }
+  // Fall back to recurring interval from first item
+  const interval = subscription.items.data[0]?.price?.recurring?.interval;
+  if (interval === "year") return "annual";
+  if (interval === "month") return "monthly";
+  return null;
+}
 
 /**
  * GET /api/billing/plans
- * Returns all active prices from Stripe for plan selection UI.
+ * Returns Platform and Additional Location prices from Stripe.
+ * Only prices with lookup keys defined in PLAN_CATALOG / ADDITIONAL_LOCATION_PRICING are returned.
  */
 export async function getPlans(_req: Request, res: Response) {
   try {
@@ -48,10 +101,7 @@ export async function getPlans(_req: Request, res: Response) {
     });
 
     const plans = prices.data
-      .filter((p) => {
-        const lookupKey = p.lookup_key || "";
-        return lookupKey.startsWith("fnb_");
-      })
+      .filter((p) => VALID_LOOKUP_KEYS.has(p.lookup_key ?? ""))
       .map((p) => ({
         id: p.id,
         lookupKey: p.lookup_key,
@@ -61,6 +111,8 @@ export async function getPlans(_req: Request, res: Response) {
         intervalCount: p.recurring?.interval_count,
         productName: typeof p.product === "object" && p.product !== null ? (p.product as Stripe.Product).name : "",
         productDescription: typeof p.product === "object" && p.product !== null ? (p.product as Stripe.Product).description : "",
+        // Categorise for the UI
+        priceType: (p.lookup_key ?? "").includes("location") ? "additional_location" : "platform",
       }));
 
     return res.json({ plans });
@@ -76,7 +128,12 @@ export async function getPlans(_req: Request, res: Response) {
 
 /**
  * POST /api/billing/checkout
- * Body: { tier: "platform"|"enterprise", term: "monthly"|"annual" }
+ * Body: { plan: "platform"|"enterprise", term: "monthly"|"annual", additionalLocations?: number, returnTo?: string }
+ *
+ * Builds a Stripe Checkout session with:
+ *   - One Platform base-price line item
+ *   - Zero or more additional-location quantity items when additionalLocations > 0
+ *
  * Returns: { url }
  */
 export async function createCheckoutSession(req: Request, res: Response) {
@@ -89,25 +146,62 @@ export async function createCheckoutSession(req: Request, res: Response) {
       process.env.APP_BASE_URL ||
       `${req.protocol}://${req.get("host")}`;
 
-    const { tier, term, returnTo } = req.body ?? {};
-    if (!tier || !term) return res.status(400).json({ message: "tier and term are required" });
+    // Accept both "plan" (new) and "tier" (legacy) body keys
+    const rawPlan = req.body?.plan ?? req.body?.tier ?? null;
+    const term: string | undefined = req.body?.term;
+    const returnTo: string | undefined = req.body?.returnTo;
+    const additionalLocations: number = Math.max(0, parseInt(req.body?.additionalLocations ?? "0", 10) || 0);
 
-    const key = `${tier}:${term}`;
-    const lookupKey = LOOKUP_KEY[key];
-    if (!lookupKey) return res.status(400).json({ message: `Invalid tier/term combination: ${key}` });
+    if (!rawPlan || !term) {
+      return res.status(400).json({ message: "plan and term are required" });
+    }
+
+    // Reject quarterly billing — not supported in the new model
+    if (term === "quarterly") {
+      return res.status(400).json({ message: "Quarterly billing is no longer supported. Please use monthly or annual." });
+    }
+
+    if (term !== "monthly" && term !== "annual") {
+      return res.status(400).json({ message: "term must be monthly or annual" });
+    }
+
+    // Normalize legacy tier names to platform
+    const plan = (rawPlan === "basic" || rawPlan === "pro" || rawPlan === "starter") ? "platform" : rawPlan;
+
+    if (plan === "enterprise") {
+      return res.status(400).json({ message: "Enterprise plans require direct sales contact. Please use the enterprise inquiry form." });
+    }
+
+    if (plan !== "platform") {
+      return res.status(400).json({ message: `Unknown plan: ${plan}` });
+    }
 
     // Validate returnTo — only allow relative internal paths to prevent open redirects.
     const safeReturnTo = typeof returnTo === "string" && /^\/[a-zA-Z0-9/_?&=-]*$/.test(returnTo)
       ? returnTo
       : null;
 
-    // Fetch price by lookup_key
-    const prices = await getStripe().prices.search({
-      query: `lookup_key:'${lookupKey}' AND active:'true'`,
-      limit: 1,
-    });
-    const price = prices.data[0];
-    if (!price) return res.status(404).json({ message: `No active price found for ${lookupKey}` });
+    // Resolve platform base price
+    const platformLookupKey = PLATFORM_LOOKUP_KEYS[term as "monthly" | "annual"];
+    const platformPrice = await findPriceByLookupKey(platformLookupKey);
+    if (!platformPrice) {
+      return res.status(404).json({ message: `No active price found for ${platformLookupKey}` });
+    }
+
+    // Build line_items — always start with the platform base
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      { price: platformPrice.id, quantity: 1 },
+    ];
+
+    // Add additional-location items if requested (> 0 additional locations beyond the included first)
+    if (additionalLocations > 0) {
+      const locationLookupKey = LOCATION_LOOKUP_KEYS[term as "monthly" | "annual"];
+      const locationPrice = await findPriceByLookupKey(locationLookupKey);
+      if (!locationPrice) {
+        return res.status(404).json({ message: `No active price found for ${locationLookupKey}` });
+      }
+      lineItems.push({ price: locationPrice.id, quantity: additionalLocations });
+    }
 
     // Look up existing Stripe customer ID for this company (if any)
     const [company] = await db.select({ stripeCustomerId: companies.stripeCustomerId, contactEmail: companies.contactEmail })
@@ -123,12 +217,9 @@ export async function createCheckoutSession(req: Request, res: Response) {
         })()
       : `${baseUrl}/menu-insights?welcome=true`;
 
-    // Normalize tier to platform/enterprise for metadata
-    const normalizedPlan = (tier === "basic" || tier === "pro" || tier === "starter") ? "platform" : tier;
-
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: price.id, quantity: 1 }],
+      line_items: lineItems,
       subscription_data: {
         trial_period_days: TRIAL_DAYS,
       },
@@ -137,7 +228,13 @@ export async function createCheckoutSession(req: Request, res: Response) {
       customer: company?.stripeCustomerId || undefined,
       customer_email: company?.stripeCustomerId ? undefined : (company?.contactEmail || undefined),
       client_reference_id: companyId,
-      metadata: { plan: normalizedPlan, term, lookup_key: lookupKey, companyId },
+      metadata: {
+        plan,
+        term,
+        lookup_key: platformLookupKey,
+        additionalLocations: String(additionalLocations),
+        companyId,
+      },
     });
 
     return res.json({ url: session.url });
@@ -190,6 +287,10 @@ export async function stripeWebhook(req: Request, res: Response) {
         const term = session.metadata?.term || null;
         const billingInterval = term === "annual" ? "annual" : term === "monthly" ? "monthly" : null;
 
+        // licensedLocationCount comes from metadata set at checkout time
+        const additionalLocationsFromMeta = parseInt(session.metadata?.additionalLocations ?? "0", 10) || 0;
+        const licensedLocationCount = 1 + additionalLocationsFromMeta;
+
         await db.update(companies)
           .set({
             stripeCustomerId: stripeCustomerId || undefined,
@@ -197,10 +298,11 @@ export async function stripeWebhook(req: Request, res: Response) {
             subscriptionStatus: "trialing",
             subscriptionPlan: plan,
             billingInterval: billingInterval || undefined,
+            licensedLocationCount,
           })
           .where(eq(companies.id, companyId));
 
-        console.log(`[Billing] checkout.session.completed: company=${companyId} plan=${plan} term=${term} status=trialing`);
+        console.log(`[Billing] checkout.session.completed: company=${companyId} plan=${plan} term=${term} status=trialing licensedLocationCount=${licensedLocationCount}`);
         break;
       }
 
@@ -236,29 +338,62 @@ export async function stripeWebhook(req: Request, res: Response) {
         break;
       }
 
+      case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = typeof subscription.customer === "string" ? subscription.customer : null;
         if (!customerId) break;
 
-        const eventData = event.data as SubscriptionEventData;
-        const wasTrialing = eventData.previous_attributes?.status === "trialing";
-        const nowTerminalOrUnpaid =
-          subscription.status === "canceled" ||
-          subscription.status === "incomplete_expired" ||
-          subscription.status === "past_due" ||
-          subscription.status === "unpaid";
-
-        if (wasTrialing && nowTerminalOrUnpaid) {
+        // For enterprise subscriptions, set plan to enterprise and skip location count
+        const isEnterprise = subscription.items.data.some((item) => {
+          const lk = item.price?.lookup_key ?? "";
+          return lk.startsWith("fnb_enterprise");
+        });
+        if (isEnterprise) {
           await db.update(companies)
-            .set({
-              subscriptionStatus: "canceled",
-              stripeSubscriptionId: null,
-            })
+            .set({ subscriptionPlan: "enterprise" })
             .where(eq(companies.stripeCustomerId, customerId));
-
-          console.log(`[Billing] customer.subscription.updated: trial expired without payment, subscription canceled customer=${customerId}`);
+          console.log(`[Billing] ${event.type}: enterprise subscription customer=${customerId}`);
+          break;
         }
+
+        // Compute licensedLocationCount from additional-location line item
+        const additionalLocationQty = extractAdditionalLocationQty(subscription);
+        const licensedLocationCount = 1 + additionalLocationQty;
+        const billingInterval = extractBillingInterval(subscription);
+
+        // Handle trial-expired-without-payment case on .updated
+        if (event.type === "customer.subscription.updated") {
+          const eventData = event.data as SubscriptionEventData;
+          const wasTrialing = eventData.previous_attributes?.status === "trialing";
+          const nowTerminalOrUnpaid =
+            subscription.status === "canceled" ||
+            subscription.status === "incomplete_expired" ||
+            subscription.status === "past_due" ||
+            subscription.status === "unpaid";
+
+          if (wasTrialing && nowTerminalOrUnpaid) {
+            await db.update(companies)
+              .set({
+                subscriptionStatus: "canceled",
+                stripeSubscriptionId: null,
+              })
+              .where(eq(companies.stripeCustomerId, customerId));
+
+            console.log(`[Billing] customer.subscription.updated: trial expired without payment, subscription canceled customer=${customerId}`);
+            break;
+          }
+        }
+
+        // Write licensedLocationCount and billingInterval
+        await db.update(companies)
+          .set({
+            licensedLocationCount,
+            ...(billingInterval ? { billingInterval } : {}),
+          })
+          .where(eq(companies.stripeCustomerId, customerId));
+
+        console.log(`[Billing] ${event.type}: customer=${customerId} licensedLocationCount=${licensedLocationCount} billingInterval=${billingInterval}`);
         break;
       }
 

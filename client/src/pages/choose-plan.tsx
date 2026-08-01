@@ -88,9 +88,12 @@ export default function ChoosePlan() {
 
   const checkoutMutation = useMutation({
     mutationFn: async ({ tier, term }: { tier: "platform"; term: Term }) => {
+      // additionalLocations = locations beyond the 1 included in the base platform price
+      const additionalLocations = Math.max(0, locationCount - 1);
       const res = await apiRequest("POST", "/api/billing/checkout", {
-        tier,
+        plan: tier,
         term,
+        ...(additionalLocations > 0 ? { additionalLocations } : {}),
         ...(returnTo ? { returnTo } : {}),
       });
       return res.json() as Promise<{ url: string }>;

@@ -35,6 +35,7 @@ export const companies = pgTable("companies", {
   subscriptionTerm: text("subscription_term"), // monthly, quarterly, annual (legacy — superseded by billing_interval)
   subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
   hasBar: integer("has_bar"), // 0 = no, 1 = yes, null = not yet answered
+  licensedLocationCount: integer("licensed_location_count").notNull().default(1), // number of licensed operating locations (1 = base platform, >1 = additional seats purchased)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

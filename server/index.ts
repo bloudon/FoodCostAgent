@@ -1254,6 +1254,10 @@ async function runStartupMigrations() {
     // Drop legacy column (no live customers; clean cut-over)
     await db.execute(sql`ALTER TABLE companies DROP COLUMN IF EXISTS subscription_tier`);
 
+    // Task #809: licensed_location_count — number of licensed operating locations
+    // (1 = base platform seat included, >1 = additional location seats purchased)
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS licensed_location_count INTEGER NOT NULL DEFAULT 1`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
