@@ -510,13 +510,18 @@ function ResolutionPreviewStep({
   const [approving, setApproving] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(0);
+
+  const PAGE_SIZE = 100;
 
   function toggleCategory(cat: string) {
     setSelectedCategories(prev => toggleSetValue(prev, cat));
+    setCurrentPage(0);
   }
 
   function toggleConfidence(conf: string) {
     setSelectedConfidences(prev => toggleSetValue(prev, conf));
+    setCurrentPage(0);
   }
 
   const { data: preview, isLoading, isError } = useQuery<ResolutionPreview>({
@@ -709,8 +714,12 @@ function ResolutionPreviewStep({
 
           const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
 
-          const displayRows = filteredRows.slice(0, 100);
+          const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
+          const safePage = Math.min(currentPage, Math.max(0, totalPages - 1));
+          const displayRows = filteredRows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
           const isFiltered = selectedCategories.size > 0 || selectedConfidences.size > 0;
+          const firstRow = filteredRows.length === 0 ? 0 : safePage * PAGE_SIZE + 1;
+          const lastRow = Math.min((safePage + 1) * PAGE_SIZE, filteredRows.length);
 
           return (
             <>
@@ -720,7 +729,7 @@ function ResolutionPreviewStep({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-muted-foreground font-medium shrink-0">Category:</span>
                     <button
-                      onClick={() => setSelectedCategories(new Set())}
+                      onClick={() => { setSelectedCategories(new Set()); setCurrentPage(0); }}
                       className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                         selectedCategories.size === 0
                           ? "bg-primary text-primary-foreground border-primary"
@@ -752,7 +761,7 @@ function ResolutionPreviewStep({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-muted-foreground font-medium shrink-0">Confidence:</span>
                     <button
-                      onClick={() => setSelectedConfidences(new Set())}
+                      onClick={() => { setSelectedConfidences(new Set()); setCurrentPage(0); }}
                       className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
                         selectedConfidences.size === 0
                           ? "bg-primary text-primary-foreground border-primary"
@@ -779,9 +788,11 @@ function ResolutionPreviewStep({
               )}
 
               <p className="text-xs text-muted-foreground mb-2">
-                {isFiltered
-                  ? `Showing ${Math.min(100, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
-                  : `Showing first ${Math.min(100, preview.rows.length).toLocaleString()} of ${s.totalRows.toLocaleString()} rows`
+                {filteredRows.length === 0
+                  ? "No matching rows"
+                  : isFiltered
+                    ? `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
+                    : `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${s.totalRows.toLocaleString()} rows`
                 }
               </p>
               <div className="rounded-md border overflow-auto max-h-96">
@@ -834,6 +845,29 @@ function ResolutionPreviewStep({
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-3">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                    disabled={safePage === 0}
+                    className="text-xs px-3 py-1.5 rounded border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Previous
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    Page {safePage + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={safePage >= totalPages - 1}
+                    className="text-xs px-3 py-1.5 rounded border border-border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
             </>
           );
         })()}
