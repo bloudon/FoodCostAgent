@@ -117,7 +117,7 @@ export function computeMilestones(
       id: "menu_scan",
       label: "Scan Your Menu",
       completed: data.hasMenuItems || reviewedSteps.includes("menu_scan"),
-      path: "/onboarding/setup",
+      path: "/menu-scan",
     },
     {
       id: "plan",
@@ -129,7 +129,7 @@ export function computeMilestones(
       id: "invoice_scan",
       label: "Scan an Invoice",
       completed: data.hasInventoryItems || reviewedSteps.includes("invoice_scan"),
-      path: "/onboarding/setup",
+      path: "/inventory-items",
     },
     {
       id: "categories",
@@ -142,26 +142,26 @@ export function computeMilestones(
       id: "storage_locations",
       label: "Set Up Storage",
       completed: data.hasStorageLocations || reviewedSteps.includes("storage_locations"),
-      path: "/onboarding/setup",
+      path: "/storage-locations",
     },
     {
       id: "recipes",
       label: "Build Recipes",
       completed: data.hasRecipes || reviewedSteps.includes("recipes"),
-      path: "/onboarding/setup",
+      path: "/recipes",
     },
     {
       id: "review",
       label: "Review Setup",
       // No data fallback — only review-step can complete this milestone.
       completed: reviewedSteps.includes("review"),
-      path: "/onboarding/setup",
+      path: "/",
     },
     {
       id: "inventory_count",
       label: "First Count",
       completed: data.hasInventoryCount || reviewedSteps.includes("inventory_count"),
-      path: "/onboarding/setup",
+      path: "/new-count",
     },
   ];
 
