@@ -2,16 +2,18 @@
  * GetOperationalCard — full-width "Get Operational" checklist shown at the
  * top of the dashboard when a new company hasn't finished basic setup yet.
  *
- * Shows 4 required steps + 1 optional step:
+ * Shows 3 required steps + 1 optional step:
  *   1. Scan your menu          (required)
  *   2. Set up store & storage  (required)
  *   3. Upload a vendor invoice  (required)
- *   4. Import Orderly data      (required)
- *   5. Run your first inventory count  (optional — don't count before you
+ *   4. Run your first inventory count  (optional — don't count before you
  *      know what you're counting; users can do this later)
  *
- * Step completion is driven by the onboarding milestones API (steps 1-3, 5)
- * and the Orderly batches API (step 4).
+ * A secondary "Other import options" section surfaces the Orderly importer
+ * for the small number of operators who use it, without blocking the card
+ * for everyone else.
+ *
+ * Step completion is driven by the onboarding milestones API.
  * Dismiss state is shared with SetupMilestoneTracker via the milestones API.
  * The card auto-hides when all REQUIRED steps are complete.
  */
@@ -47,8 +49,8 @@ interface MilestonesResponse {
 
 interface OperationalStep {
   id: string;
-  /** Onboarding milestone ID to check for completion, or null for custom logic */
-  milestoneId: string | null;
+  /** Onboarding milestone ID to check for completion */
+  milestoneId: string;
   label: string;
   description: string;
   Icon: React.ComponentType<{ className?: string }>;
@@ -83,14 +85,6 @@ const STEPS: OperationalStep[] = [
     href: "/onboarding",
   },
   {
-    id: "orderly",
-    milestoneId: null, // completion driven by orderly batches API
-    label: "Import Orderly inventory data",
-    description: "Pull in historical count sessions from Orderly",
-    Icon: Package,
-    href: "/orderly-import",
-  },
-  {
     id: "count",
     milestoneId: "inventory_count",
     label: "Run your first inventory count",
@@ -98,8 +92,28 @@ const STEPS: OperationalStep[] = [
     Icon: ClipboardList,
     href: "/inventory-sessions",
     // Optional: don't count before you know what you're counting.
-    // Card auto-hides when the 4 required steps above are complete.
+    // Card auto-hides when the 3 required steps above are complete.
     optional: true,
+  },
+];
+
+// ── Other import options (niche / not universal) ───────────────────────────
+
+interface OtherImportOption {
+  id: string;
+  label: string;
+  description: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  href: string;
+}
+
+const OTHER_IMPORTERS: OtherImportOption[] = [
+  {
+    id: "orderly",
+    label: "Import Orderly inventory data",
+    description: "Pull in historical count sessions from Orderly",
+    Icon: Package,
+    href: "/orderly-import",
   },
 ];
 
@@ -114,12 +128,6 @@ export function GetOperationalCard() {
       refetchOnMount: "always",
     });
 
-  const { data: orderlyBatches = [] } = useQuery<any[]>({
-    queryKey: ["/api/inventory-import/orderly/batches"],
-    retry: false,
-    staleTime: 30_000,
-  });
-
   const dismissMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/onboarding/milestones/dismiss"),
     onSuccess: () => {
@@ -132,13 +140,6 @@ export function GetOperationalCard() {
   if (milestonesLoading || !milestonesData) return null;
   // Shared dismiss flag with SetupMilestoneTracker
   if (milestonesData.dismissed) return null;
-  // Optimistic hide: if the server already reports all milestones complete AND
-  // the orderly step (tracked separately on the client) is also done, the next
-  // GET will auto-dismiss.  Hiding here prevents a brief flash of the card
-  // while the refetch is in-flight (stale cached data may still carry
-  // dismissed: false even though the server is about to flip it to true).
-  const orderlyAlreadyDone = (orderlyBatches as any[]).length > 0;
-  if (milestonesData.completedCount === milestonesData.totalCount && orderlyAlreadyDone) return null;
 
   // ── Build per-step completion ─────────────────────────────────────────────
 
@@ -146,17 +147,10 @@ export function GetOperationalCard() {
     milestonesData.milestones.map((m) => [m.id, m.completed])
   );
 
-  const stepsWithStatus = STEPS.map((step) => {
-    let done: boolean;
-    if (step.id === "orderly") {
-      done = (orderlyBatches as any[]).length > 0;
-    } else if (step.milestoneId) {
-      done = milestoneMap.get(step.milestoneId) ?? false;
-    } else {
-      done = false;
-    }
-    return { ...step, done };
-  });
+  const stepsWithStatus = STEPS.map((step) => ({
+    ...step,
+    done: milestoneMap.get(step.milestoneId) ?? false,
+  }));
 
   // Required steps drive progress, auto-hide, and the "Next" / "Continue" flow.
   // Optional steps are shown at the bottom but don't block card dismissal.
@@ -293,8 +287,43 @@ export function GetOperationalCard() {
             })}
           </div>
 
+          {/* Other import options — niche integrations that aren't part of every store's critical path */}
+          <div className="mt-3 pt-3 border-t" data-testid="operational-other-importers">
+            <p className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide px-2 mb-1">
+              Other import options
+            </p>
+            {OTHER_IMPORTERS.map((option) => {
+              const { Icon } = option;
+              return (
+                <div
+                  key={option.id}
+                  className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md"
+                  data-testid={`operational-other-${option.id}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground/70 leading-snug">
+                      {option.label}
+                    </p>
+                  </div>
+                  <Link href={option.href}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
+                      data-testid={`button-go-operational-other-${option.id}`}
+                    >
+                      Go
+                      <ArrowRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+
           {nextStep && (
-            <div className="mt-4 pt-3 border-t">
+            <div className="mt-3 pt-3 border-t">
               <Link href={nextStep.href}>
                 <Button
                   className="w-full text-white"
