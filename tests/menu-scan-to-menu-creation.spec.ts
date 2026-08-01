@@ -303,12 +303,9 @@ test.describe('Scan-to-menu creation — UI path', () => {
       buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]),
     });
 
-    // ── 4. Skip the bar question ──────────────────────────────────────────────
-
-    await expect(page.getByTestId('card-step-bar-question')).toBeVisible({ timeout: 10000 });
-    await page.getByTestId('button-skip-bar-question').click();
-
-    // ── 5. Review step — edit the section label ───────────────────────────────
+    // ── 4. Review step — edit the section label ───────────────────────────────
+    // Note: ?mode=menu sets menuMode=true in MenuScanStep, which skips the
+    // bar-question step entirely and advances directly to "review" after scan.
 
     await expect(page.getByTestId('card-step-menu-review')).toBeVisible({ timeout: 8000 });
 
@@ -326,14 +323,14 @@ test.describe('Scan-to-menu creation — UI path', () => {
     await expect(page.getByTestId('input-item-name-0')).toHaveValue(ITEM_1_NAME);
     await expect(page.getByTestId('input-item-name-1')).toHaveValue(ITEM_2_NAME);
 
-    // ── 6. Click "Create Menu from 2 Items" ──────────────────────────────────
+    // ── 5. Click "Create Menu from 2 Items" ──────────────────────────────────
 
     const importBtn = page.getByTestId('button-import-items');
     await expect(importBtn).toBeVisible();
     await expect(importBtn).toContainText('Create Menu from');
     await importBtn.click();
 
-    // ── 7. CreateMenuScreen — verify edited label, name the menu, create it ──
+    // ── 6. CreateMenuScreen — verify edited label, name the menu, create it ──
 
     await expect(page.getByTestId('text-create-menu-title')).toBeVisible({ timeout: 8000 });
 
@@ -360,7 +357,7 @@ test.describe('Scan-to-menu creation — UI path', () => {
     // Click "Create Menu"
     await page.getByTestId('button-create-menu-from-scan').click();
 
-    // ── 8. Assert: navigation lands on /menus/:id ─────────────────────────────
+    // ── 7. Assert: navigation lands on /menus/:id ─────────────────────────────
 
     await page.waitForURL(
       (url: URL) => url.pathname === `/menus/${MOCK_MENU_ID}`,
@@ -368,7 +365,7 @@ test.describe('Scan-to-menu creation — UI path', () => {
     );
     expect(page.url()).toContain(`/menus/${MOCK_MENU_ID}`);
 
-    // ── 9. Assert: section POST bodies used the edited label ──────────────────
+    // ── 8. Assert: section POST bodies used the edited label ──────────────────
 
     // Two sections should have been posted
     expect(sectionPostBodies.length, 'Two section POST calls expected').toBe(2);
@@ -388,7 +385,7 @@ test.describe('Scan-to-menu creation — UI path', () => {
     expect(firstSection.displayOrder).toBe(0);
     expect(secondSection.displayOrder).toBe(1);
 
-    // ── 10. Assert: entry POST bodies carry the scanned prices ─────────────────
+    // ── 9. Assert: entry POST bodies carry the scanned prices ─────────────────
 
     expect(entryPostBodies.length, 'Two entry POST calls expected').toBe(2);
 
