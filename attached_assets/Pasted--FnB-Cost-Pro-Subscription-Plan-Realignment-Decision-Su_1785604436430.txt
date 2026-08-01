@@ -1,0 +1,624 @@
+# FnB Cost Pro Subscription & Plan Realignment
+
+## Decision Summary
+
+FnB Cost Pro will launch with one complete core platform rather than traditional Starter, Pro, and Enterprise feature tiers.
+
+The public offering will present three customer paths:
+
+1. **Single Location**
+2. **Multi-Location**
+3. **Enterprise Operations**
+
+Technically, the billing model only needs two subscription types:
+
+* **Platform**
+* **Enterprise**
+
+Multi-Location is the standard Platform subscription with additional licensed locations and the related cross-location capabilities enabled.
+
+## Core Commercial Principle
+
+> **Every core capability is included from day one. Pricing grows with the scale and complexity of the operation—not through an artificial ladder of locked features.**
+
+A sophisticated independent restaurant should not have to upgrade to access vendor comparison, predictive ordering, theoretical food cost, variance reporting, or advanced inventory tools.
+
+The distinction is operational:
+
+* One location operates as a single-location business.
+* Two or more locations require connected multi-location tools.
+* Complex clubs, resorts, hotels, and multi-outlet organizations require tailored Enterprise configuration.
+
+---
+
+# Public Plan Structure
+
+## Single Location
+
+For an independent restaurant or one operating location.
+
+Includes the complete FnB Cost Pro platform:
+
+* Recipe and sub-recipe costing
+* Theoretical food cost
+* Actual-versus-theoretical variance reporting
+* AI-assisted menu, recipe, invoice, inventory, and spreadsheet capture
+* Inventory management
+* Multiple storage areas within the location
+* Mobile inventory counting
+* Shelf and catch-weight counting
+* Vendor management
+* Vendor price comparison
+* Vendor connectivity
+* Predictive ordering
+* Purchase orders and receiving
+* Order guides
+* Prep and production planning
+* POS sales imports
+* QuickBooks integration
+* Standard roles and permissions
+* Smart dashboards and reporting
+
+### Important definition
+
+A single operating location may contain many internal storage locations, such as:
+
+* Walk-in
+* Freezer
+* Dry storage
+* Bar
+* Prep kitchen
+* Wine storage
+
+These are not separately billable locations.
+
+The message should be:
+
+> **One location. One price. Every core tool included.**
+
+---
+
+## Multi-Location
+
+For operators managing two or more separate restaurant locations.
+
+Includes everything in Single Location, plus:
+
+* Multiple licensed operating locations
+* Company-wide and location-specific dashboards
+* Inventory transfers between locations
+* Cross-location inventory visibility
+* Consolidated reporting
+* Location performance comparisons
+* Shared recipe management
+* Shared menu management
+* Location-specific recipes and pricing where needed
+* Location-specific vendor accounts and pricing
+* Central purchasing visibility
+* Cross-location permissions and oversight
+* Multi-location predictive ordering
+
+Multi-Location is not a different or “better” version of the product. It is the organizational layer required when multiple operating locations need to work together.
+
+Adding the second licensed location activates the multi-location capabilities.
+
+---
+
+## Enterprise Operations
+
+For complex food-and-beverage organizations requiring tailored configuration and implementation.
+
+Target organizations include:
+
+* Clubs
+* Resorts
+* Hotels
+* Multi-outlet properties
+* Large restaurant groups
+* Commissary operations
+* Franchise organizations
+* Central production kitchens
+
+Enterprise may include:
+
+* Multiple outlets within one property
+* Central storerooms serving several outlets
+* Outlet and storage-location hierarchies
+* Central purchasing and replenishment
+* Custom approval workflows
+* Advanced permissions and governance
+* Organization-wide recipe and menu standards
+* Specialized integrations
+* Existing-system migration
+* Custom analytics and reporting
+* Tailored implementation
+* Training and operational advisory support
+* Negotiated service and support requirements
+
+Enterprise is defined by **operational complexity**, not simply by the number of locations.
+
+A straightforward five-location restaurant group may use Multi-Location. A single resort with ten outlets, central storage, banquets, and custom workflows may require Enterprise.
+
+---
+
+# Recommended Billing Model
+
+## Subscription products
+
+Technically support:
+
+```text
+platform
+enterprise
+```
+
+Do not maintain separate `single_location` and `multi_location` subscription products unless Stripe or billing requirements make that necessary.
+
+## Platform subscription
+
+Includes:
+
+* Full core product
+* One licensed operating location
+* Vendor connectivity
+* Standard support
+
+## Additional locations
+
+Each additional licensed operating location is billed separately.
+
+When the account has two or more licensed locations, multi-location capabilities become available automatically.
+
+## Guided implementation
+
+Guided Implementation remains a separate one-time service rather than a feature tier.
+
+It may include:
+
+* Importing existing inventory
+* Importing recipes
+* Importing vendor catalogs and pricing
+* POS data onboarding
+* Storage-location setup
+* Data validation
+* Exception review
+* Training
+* Initial operational configuration
+
+## Enterprise
+
+Enterprise uses custom pricing and scope.
+
+---
+
+# Suggested Pricing Presentation
+
+Use the existing intended structure unless pricing is revised separately:
+
+## FnB Cost Pro Platform
+
+**$228/month**
+or **$198/month billed annually**
+
+Includes the first operating location and all core platform capabilities.
+
+## Additional Locations
+
+**$149/month per additional location**
+or **$129/month per location billed annually**
+
+Adding a second location activates the Multi-Location operating experience.
+
+## Guided Implementation
+
+**Starting at $250**
+
+Final implementation pricing may vary based on migration size and operational complexity.
+
+## Enterprise Operations
+
+**Custom scope and pricing**
+
+CTA:
+
+> Schedule a Culinary Review
+
+---
+
+# Internal Subscription Model
+
+Recommended company fields or equivalent:
+
+```ts
+subscription_plan: "platform" | "enterprise";
+subscription_status:
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete";
+
+billing_interval: "monthly" | "annual";
+licensed_location_count: number;
+stripe_customer_id: string | null;
+subscription_current_period_end: Date | null;
+```
+
+Trial is a subscription status, not a plan.
+
+## Derived operating mode
+
+```ts
+function getOperatingMode(company) {
+  if (company.subscription_plan === "enterprise") {
+    return "enterprise";
+  }
+
+  if (company.licensed_location_count >= 2) {
+    return "multi_location";
+  }
+
+  return "single_location";
+}
+```
+
+This avoids requiring a plan change when a customer adds another location.
+
+---
+
+# Entitlement Structure
+
+## Core platform capabilities
+
+Enabled for every paid Platform and Enterprise account:
+
+```text
+recipe_costing
+sub_recipes
+theoretical_food_cost
+variance_reporting
+ai_capture
+menu_capture
+recipe_capture
+invoice_capture
+inventory_import
+inventory_management
+inventory_counting
+catch_weight_counting
+vendor_management
+vendor_price_comparison
+vendor_connectivity
+predictive_ordering
+order_guides
+purchase_orders
+receiving
+prep_planning
+pos_import
+quickbooks_integration
+standard_roles
+smart_dashboard
+```
+
+Do not gate these behind Single versus Multi-Location.
+
+## Multi-location capabilities
+
+Enabled when:
+
+```text
+licensed_location_count >= 2
+```
+
+Capabilities:
+
+```text
+multi_location_dashboard
+inventory_transfers
+cross_location_reporting
+location_comparison
+shared_recipe_management
+shared_menu_management
+central_purchasing_views
+location_specific_vendor_accounts
+location_specific_pricing
+cross_location_permissions
+```
+
+## Enterprise capabilities
+
+Enabled through the Enterprise plan and configuration:
+
+```text
+outlet_hierarchies
+central_storeroom_replenishment
+custom_approval_workflows
+advanced_security
+custom_integrations
+enterprise_analytics
+tailored_reporting
+enterprise_support
+custom_data_migration
+organization_governance
+```
+
+Enterprise capabilities may require configuration rather than simple boolean gates.
+
+---
+
+# Required Cleanup Before Launch
+
+Because there are no live customers, remove the old tier structure cleanly rather than preserving backward compatibility.
+
+## Retire these internal keys
+
+```text
+free
+basic
+pro
+```
+
+Replace them with:
+
+```text
+platform
+enterprise
+```
+
+There is no need for a Legacy plan.
+
+Internal development or test accounts should use explicit test flags or administrative subscription overrides rather than a fake public tier.
+
+## Consolidate plan configuration
+
+Pricing and entitlement data should not remain split between:
+
+* `pricing-constants.ts`
+* `tier-config.ts`
+* marketing-page constants
+* onboarding comparison data
+* Stripe mapping files
+
+Create one authoritative plan catalog on the server.
+
+Example:
+
+```ts
+type PlanDefinition = {
+  key: "platform" | "enterprise";
+  displayName: string;
+  public: boolean;
+  monthlyPrice?: number;
+  annualPrice?: number;
+  includedLocations: number | null;
+  stripeLookupKeys?: {
+    monthly?: string;
+    annual?: string;
+  };
+  capabilities: FeatureKey[];
+};
+
+export const PLAN_CATALOG: Record<string, PlanDefinition> = {
+  platform: {
+    key: "platform",
+    displayName: "FnB Cost Pro Platform",
+    public: true,
+    monthlyPrice: 228,
+    annualPrice: 198,
+    includedLocations: 1,
+    stripeLookupKeys: {
+      monthly: "fnb_platform_monthly",
+      annual: "fnb_platform_annual",
+    },
+    capabilities: CORE_PLATFORM_CAPABILITIES,
+  },
+
+  enterprise: {
+    key: "enterprise",
+    displayName: "Enterprise Operations",
+    public: true,
+    includedLocations: null,
+    capabilities: [
+      ...CORE_PLATFORM_CAPABILITIES,
+      ...MULTI_LOCATION_CAPABILITIES,
+      ...ENTERPRISE_CAPABILITIES,
+    ],
+  },
+};
+```
+
+Also define additional-location Stripe prices centrally:
+
+```ts
+export const ADDITIONAL_LOCATION_PRICING = {
+  monthly: {
+    amount: 149,
+    lookupKey: "fnb_additional_location_monthly",
+  },
+  annual: {
+    amount: 129,
+    lookupKey: "fnb_additional_location_annual",
+  },
+};
+```
+
+Marketing, billing, onboarding, upgrade flows, and feature gates should consume this shared source of truth or an API generated from it.
+
+---
+
+# Stripe Product Structure
+
+Recommended Stripe prices:
+
+```text
+fnb_platform_monthly
+fnb_platform_annual
+fnb_additional_location_monthly
+fnb_additional_location_annual
+```
+
+Enterprise remains custom and may use manually created subscriptions, quotes, or negotiated Stripe prices.
+
+The Stripe subscription should use:
+
+* One Platform base-price item
+* Zero or more additional-location quantity items
+
+Example:
+
+```text
+Platform monthly × 1
+Additional location monthly × 3
+```
+
+This represents four total licensed locations.
+
+---
+
+# Changes to Existing Tasks
+
+## #121 — Stripe pricing alignment
+
+Revise to:
+
+* Remove Starter and Pro Stripe products.
+* Create Platform monthly and annual prices.
+* Create Additional Location monthly and annual prices.
+* Support quantity-based additional-location billing.
+* Preserve Enterprise as custom.
+* Update lookup keys in the centralized plan catalog.
+* Verify webhook handling updates `licensed_location_count`.
+
+## #120 — Spanish pricing and messaging
+
+Revise the Spanish marketing site around:
+
+> Una plataforma completa para una ubicación, con ubicaciones adicionales a medida que crece la operación.
+
+Translate the three public paths:
+
+* Single Location
+* Multi-Location
+* Enterprise Operations
+
+Do not present feature-lock differences between Single and Multi-Location beyond the capabilities that inherently require multiple locations.
+
+## #806 — Onboarding consolidation
+
+Keep the onboarding cleanup but change the plan milestone.
+
+Replace:
+
+> Choose a Plan
+
+With:
+
+> Review Your Account
+
+The onboarding flow should not sell locked features because all core tools are already included.
+
+## #807 — Replace the original upgrade pitch
+
+The original locked-feature comparison page should be canceled or rewritten.
+
+### Revised task name
+
+**#807 — Account & Locations Overview**
+
+### Purpose
+
+Show the customer:
+
+* Current Platform or Enterprise subscription
+* Billing interval
+* Trial or subscription status
+* Included location
+* Licensed location count
+* Guided Implementation status
+* All included core capabilities
+* Additional-location pricing
+* Add Location action
+* Enterprise consultation path
+
+### Single-location expansion message
+
+> Add a second location to activate connected multi-location views, transfers, and consolidated reporting.
+
+### Enterprise message
+
+> Operating a club, resort, hotel, or complex multi-outlet organization? Schedule a Culinary Review to discuss a tailored Enterprise configuration.
+
+Do not show a grid of core capabilities as locked.
+
+## #122 — Trial countdown
+
+Continue using the 14-day trial if that remains the launch decision.
+
+The trial banner and Account page should read from the same centralized subscription state.
+
+---
+
+# Onboarding Implications
+
+The simplified commercial model makes onboarding more operational and less sales-driven.
+
+## Quick Start
+
+* Bring in menu or POS data
+* Set up or import storage locations
+* Add vendor pricing through invoice, order guide, portal, or migration
+
+## Complete Your Setup
+
+* Review your account
+* Review categories
+* Build or validate recipes
+* Review setup exceptions
+* Run the first inventory count
+
+The Account step confirms the subscription and locations; it does not ask a customer to select among artificially restricted feature tiers.
+
+---
+
+# Marketing Language
+
+## Core promise
+
+> **Every core capability is included. You pay for the scale and complexity of your operation—not for a collection of locked features.**
+
+## Single Location
+
+> **One location. One price. Every core tool included.**
+
+## Multi-Location
+
+> **Add locations as you grow, with connected views, transfers, and centralized control.**
+
+## Enterprise Operations
+
+> **A tailored operating model for clubs, resorts, hotels, and complex food-and-beverage organizations.**
+
+## Pricing-page explanation
+
+> FnB Cost Pro includes the complete culinary, inventory, costing, vendor, and predictive-ordering platform for one location. Add operating locations as your business grows. Complex multi-outlet organizations can work with us on a tailored Enterprise implementation.
+
+---
+
+# Acceptance Criteria for the Realignment
+
+* Old `free`, `basic`, and `pro` plan keys are removed.
+* `platform` and `enterprise` are the only subscription-plan values.
+* Trial is represented only through subscription status.
+* One Platform subscription includes one licensed location.
+* Additional locations are billed as a recurring quantity.
+* Multi-location capabilities activate at two licensed locations.
+* Core capabilities are available to all paid Platform customers.
+* Storage locations within one restaurant do not count as billable operating locations.
+* Enterprise is determined through subscription and configuration, not only location count.
+* Pricing, Stripe lookup keys, feature entitlements, onboarding, and marketing use one authoritative plan catalog.
+* The in-app Account page replaces the locked-feature upgrade grid.
+* English and Spanish pricing and subscription messaging remain aligned.
+* No page refers to Starter or Pro at launch.
+
+## Final Product Principle
+
+> **FnB Cost Pro is one complete platform. The customer pays more only when the operation adds locations or requires a more complex, tailored organizational model.**

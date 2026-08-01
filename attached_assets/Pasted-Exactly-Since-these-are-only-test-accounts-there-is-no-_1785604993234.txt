@@ -1,0 +1,124 @@
+Exactly. Since these are only test accounts, there is no need to preserve or infer old tier entitlements.
+
+The migration can be much simpler:
+
+* Set every existing company to `subscription_plan = 'platform'`.
+* Determine Single versus Multi-Location from the company’s existing **active operating-location records**.
+* Do not use storage locations in that count.
+* Set `enterprise` manually only for test companies specifically intended to exercise Enterprise functionality.
+
+## Revised model
+
+The database only needs:
+
+```ts
+subscriptionPlan: "platform" | "enterprise";
+subscriptionStatus:
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete";
+billingInterval: "monthly" | "annual" | "custom";
+```
+
+The operating mode can initially be derived:
+
+```ts
+function getOperatingMode({
+  subscriptionPlan,
+  activeOperatingLocationCount,
+}: {
+  subscriptionPlan: "platform" | "enterprise";
+  activeOperatingLocationCount: number;
+}) {
+  if (subscriptionPlan === "enterprise") {
+    return "enterprise";
+  }
+
+  return activeOperatingLocationCount >= 2
+    ? "multi_location"
+    : "single_location";
+}
+```
+
+## Important distinction
+
+Count only actual operating locations or stores:
+
+* Restaurant locations
+* Branches
+* Separately operated units
+
+Do not count:
+
+* Walk-ins
+* Freezers
+* Dry storage
+* Bars
+* Wine cellars
+* Prep rooms
+* Other inventory storage locations
+
+A single restaurant with 20 storage locations is still a Single Location customer.
+
+## What this changes in #808
+
+I would revise the migration section to:
+
+> Add `subscription_plan` and `billing_interval`. Set every existing company to `subscription_plan = 'platform'`. Remove the legacy `subscription_tier` column and all `free`, `basic`, and `pro` values. Determine operating mode from the number of active operating locations already associated with the company. Enterprise test accounts may be explicitly marked `enterprise` after migration.
+
+You likely do **not need `licensed_location_count` yet** for the schema migration.
+
+That field becomes necessary when Stripe billing is live because the system must distinguish:
+
+* Locations the customer has created
+* Locations the customer has purchased permission to operate
+
+Before launch, the actual location records are enough to determine the application experience.
+
+## What this changes in #810
+
+Multi-location feature activation becomes:
+
+```ts
+activeOperatingLocationCount >= 2
+```
+
+Enterprise activation remains:
+
+```ts
+subscriptionPlan === "enterprise"
+```
+
+All platform accounts receive the complete core capability set.
+
+## What this changes in #809
+
+When Stripe billing is implemented, introduce licensed capacity there:
+
+```ts
+licensedLocationCount = 1 + additionalLocationQuantity;
+```
+
+Then the rules become:
+
+* `licensedLocationCount` controls how many operating locations may be active.
+* Actual active locations determine whether multi-location screens are currently useful.
+* Multi-location capability is entitled when licensed for at least two locations.
+* The UI activates once the company has created at least two active locations.
+
+Conceptually:
+
+```ts
+isMultiLocationEntitled = licensedLocationCount >= 2;
+hasMultipleActiveLocations = activeOperatingLocationCount >= 2;
+```
+
+The first controls permission. The second controls usable state.
+
+## Simplified migration instruction for Replit
+
+> There are no production customers or grandfathered entitlements. Migrate every existing company to the standard `platform` subscription. Remove all legacy `free`, `basic`, `pro`, and Starter/Pro logic. Derive the current Single Location or Multi-Location experience from each company’s active operating-location count; do not include inventory storage locations. Mark only specifically designated test companies as `enterprise`. Licensed-location capacity can be introduced with the Stripe billing task, where it becomes commercially meaningful.
+
+That removes unnecessary migration complexity and gives you a clean launch foundation.
