@@ -90,6 +90,7 @@ interface RowPreview {
   itemCodeStatus: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
+  sourceCategory: string | null;
   caseQuantity: number | null;
   packagePrice: number | null;
   totalCost: number | null;
@@ -689,6 +690,7 @@ function ResolutionPreviewStep({
                 <TableHead>Description</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Vendor</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>Item match</TableHead>
                 <TableHead>Strategy</TableHead>
               </TableRow>
@@ -711,6 +713,9 @@ function ResolutionPreviewStep({
                     {row.vendorMatch.isNew && row.supplierRaw && (
                       <Badge className="ml-1 text-[10px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">new</Badge>
                     )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {row.sourceCategory || "—"}
                   </TableCell>
                   <TableCell>{confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{strategyLabel(row.itemMatch.strategy)}</TableCell>
