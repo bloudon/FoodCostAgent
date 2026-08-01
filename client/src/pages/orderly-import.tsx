@@ -61,6 +61,12 @@ import {
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  rowConfidenceKey,
+  uniqueCategories as computeUniqueCategories,
+  applyFilters,
+  toggleSetValue,
+} from "@/lib/orderlyImportFilterUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -506,27 +512,11 @@ function ResolutionPreviewStep({
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
 
   function toggleCategory(cat: string) {
-    setSelectedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
+    setSelectedCategories(prev => toggleSetValue(prev, cat));
   }
 
   function toggleConfidence(conf: string) {
-    setSelectedConfidences(prev => {
-      const next = new Set(prev);
-      if (next.has(conf)) next.delete(conf);
-      else next.add(conf);
-      return next;
-    });
-  }
-
-  // Canonical confidence key for a row (mirrors confidenceBadge logic)
-  function rowConfidenceKey(row: RowPreview): string {
-    if (row.itemMatch.strategy === "none") return "new";
-    return row.itemMatch.confidence; // "high" | "medium" | "low" | "ambiguous"
+    setSelectedConfidences(prev => toggleSetValue(prev, conf));
   }
 
   const { data: preview, isLoading, isError } = useQuery<ResolutionPreview>({
@@ -706,9 +696,7 @@ function ResolutionPreviewStep({
       {/* Row table — category + confidence filters + first 100 of filtered set */}
       <div>
         {(() => {
-          const uniqueCategories = Array.from(
-            new Set(preview.rows.map(r => r.sourceCategory ?? "").filter(Boolean))
-          ).sort();
+          const uniqueCategories = computeUniqueCategories(preview.rows);
 
           // Confidence levels present in this batch, in display order
           const confidenceLevels: { key: string; label: string }[] = [
@@ -719,11 +707,7 @@ function ResolutionPreviewStep({
             { key: "new",       label: "New"       },
           ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
 
-          const filteredRows = preview.rows.filter(r => {
-            const catOk = selectedCategories.size === 0 || selectedCategories.has(r.sourceCategory ?? "");
-            const confOk = selectedConfidences.size === 0 || selectedConfidences.has(rowConfidenceKey(r));
-            return catOk && confOk;
-          });
+          const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
 
           const displayRows = filteredRows.slice(0, 100);
           const isFiltered = selectedCategories.size > 0 || selectedConfidences.size > 0;
