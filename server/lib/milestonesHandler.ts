@@ -136,7 +136,7 @@ export function computeMilestones(
       label: "Review Categories",
       // No data fallback — only review-step can complete this milestone.
       completed: reviewedSteps.includes("categories"),
-      path: "/onboarding/setup",
+      path: "/categories",
     },
     {
       id: "storage_locations",
