@@ -153,8 +153,16 @@ export function computeMilestones(
     {
       id: "review",
       label: "Review Setup",
-      // No data fallback — only review-step can complete this milestone.
-      completed: reviewedSteps.includes("review"),
+      // Auto-completes when all data-backed milestones are done; no dedicated page needed.
+      completed:
+        reviewedSteps.includes("review") ||
+        (
+          (data.hasMenuItems || reviewedSteps.includes("menu_scan")) &&
+          (data.hasPlan || reviewedSteps.includes("plan")) &&
+          (data.hasInventoryItems || reviewedSteps.includes("invoice_scan")) &&
+          (data.hasStorageLocations || reviewedSteps.includes("storage_locations")) &&
+          (data.hasRecipes || reviewedSteps.includes("recipes"))
+        ),
       path: "/",
     },
     {
@@ -212,7 +220,7 @@ export function createGetMilestonesHandler(deps: GetMilestonesDeps) {
 }
 
 /** Milestones that can only be completed via review-step (no data fallback). */
-export const REVIEW_ONLY_MILESTONES = new Set(["categories", "review"]);
+export const REVIEW_ONLY_MILESTONES = new Set(["categories"]);
 
 /** Returns true if the milestone is completed via reviewed steps or existing data. */
 export function isMilestoneCompleted(
