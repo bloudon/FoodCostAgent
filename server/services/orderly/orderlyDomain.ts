@@ -17,7 +17,7 @@
  */
 
 import { db } from '../../db';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import {
   inventoryItems,
   vendors,
@@ -28,6 +28,7 @@ import {
   inventoryImportBatches,
   inventoryImportRows,
   units,
+  categories,
   type InventoryItem,
   type Vendor,
   type InventoryLocation,
@@ -90,6 +91,7 @@ export interface ResolutionPreviewResult {
     itemCodeStatus: string | null;
     cleanedDescription: string | null;
     supplierRaw: string | null;
+    sourceCategory: string | null;
     caseQuantity: number | null;
     packagePrice: number | null;
     totalCost: number | null;
@@ -101,6 +103,74 @@ export interface ResolutionPreviewResult {
   newLocations: string[];
   /** Unique vendors that will be created on approval */
   newVendors: string[];
+}
+
+// ─── Category find-or-create ──────────────────────────────────────────────────
+
+/**
+ * Find an existing active category (case-insensitive) or create a new one.
+ * Returns null when name is blank/whitespace — no blank categories are created.
+ * Restores a soft-deleted (isActive=0) category instead of creating a duplicate.
+ * Must be called inside an open DB transaction (`tx`).
+ */
+export async function resolveOrCreateCategoryId(
+  tx: any,
+  companyId: string,
+  name: string,
+): Promise<string | null> {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  const normName = trimmed.toLowerCase();
+
+  // 1. Existing active category (case-insensitive exact match)
+  const [existing] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(
+      and(
+        eq(categories.companyId, companyId),
+        sql`lower(${categories.name}) = ${normName}`,
+        eq(categories.isActive, 1),
+      ),
+    )
+    .limit(1);
+  if (existing) return existing.id;
+
+  // 2. Soft-deleted category — restore rather than duplicate
+  const [softDeleted] = await tx
+    .select({ id: categories.id })
+    .from(categories)
+    .where(
+      and(
+        eq(categories.companyId, companyId),
+        sql`lower(${categories.name}) = ${normName}`,
+        eq(categories.isActive, 0),
+      ),
+    )
+    .limit(1);
+  if (softDeleted) {
+    await tx
+      .update(categories)
+      .set({ isActive: 1 })
+      .where(eq(categories.id, softDeleted.id));
+    return softDeleted.id;
+  }
+
+  // 3. Create new category
+  const [newCat] = await tx
+    .insert(categories)
+    .values({
+      companyId,
+      name: trimmed,
+      sortOrder: 0,
+      showAsIngredient: 1,
+      isCatchWeightCategory: 0,
+      isActive: 1,
+    })
+    .returning({ id: categories.id });
+
+  return newCat.id;
 }
 
 // ─── Unit lookup cache ────────────────────────────────────────────────────────
@@ -251,6 +321,7 @@ export async function runResolutionPreview(
     itemCodeStatus: row.itemCodeStatus,
     cleanedDescription: row.cleanedDescription,
     supplierRaw: row.supplierRaw,
+    sourceCategory: (row as any).sourceCategory ?? null,
     caseQuantity: row.caseQuantity,
     packagePrice: row.packagePrice,
     totalCost: row.totalCost,
@@ -386,6 +457,20 @@ export async function applyBatchApproval(
       .where(and(eq(vendors.companyId, companyId), eq(vendors.active, 1)));
     for (const v of existingVendors) vendorCache.set(normalizeForMatch(v.name), v.id);
 
+    // ── Category pass (deduplicated across all rows) ─────────────────────
+    // Collect all unique non-blank sourceCategory values, then find-or-create
+    // each one once — avoiding one round-trip per row.
+    const categoryCache = new Map<string, string>(); // lowerCased name → categoryId
+    const uniqueCategoryNames = new Set<string>(
+      preview.rows
+        .map(r => r.sourceCategory?.trim() ?? '')
+        .filter(s => s.length > 0),
+    );
+    for (const catName of uniqueCategoryNames) {
+      const catId = await resolveOrCreateCategoryId(tx, companyId, catName);
+      if (catId) categoryCache.set(catName.toLowerCase(), catId);
+    }
+
     // ── Row-by-row pass ──────────────────────────────────────────────────
     for (const rowPreview of preview.rows) {
       rowsProcessed++;
@@ -398,7 +483,13 @@ export async function applyBatchApproval(
       }
 
       // ── Item resolution ──────────────────────────────────────────────
+      // Resolve category for this row upfront — used in both the new-item
+      // INSERT and the matched-item conditional UPDATE below.
+      const rowCatKey = (rowPreview.sourceCategory?.trim() ?? '').toLowerCase();
+      const resolvedCategoryId = rowCatKey ? (categoryCache.get(rowCatKey) ?? null) : null;
+
       let resolvedItemId: string | null = null;
+      let isNewItem = false;
 
       if (dec?.inventoryItemId !== undefined) {
         // User override (validated to belong to this company above)
@@ -430,11 +521,29 @@ export async function applyBatchApproval(
               avgCostPerUnit: rowPreview.packagePrice ?? 0,
               active: 1,
               yieldPercent: 100,
+              categoryId: resolvedCategoryId,
             })
             .returning({ id: inventoryItems.id });
           resolvedItemId = newItem.id;
           itemsCreated++;
+          isNewItem = true;
         }
+      }
+
+      // ── Category assignment for matched items ────────────────────────
+      // New items already have categoryId set in the INSERT above.
+      // For matched (existing) items: set only when currently uncategorized
+      // so a manager's manual category choice is never overwritten.
+      if (!isNewItem && resolvedItemId && resolvedCategoryId) {
+        await tx
+          .update(inventoryItems)
+          .set({ categoryId: resolvedCategoryId })
+          .where(
+            and(
+              eq(inventoryItems.id, resolvedItemId),
+              sql`${inventoryItems.categoryId} IS NULL`,
+            ),
+          );
       }
 
       // ── Persist resolved item ID back to the import row ──────────────
