@@ -115,3 +115,116 @@ test.describe('Get Operational card — hidden after all steps completed', () =>
     ).not.toBeVisible();
   });
 });
+
+/**
+ * Mocks /api/stores/accessible with a single valid store so the dashboard
+ * renders past the "No Accessible Stores" guard and mounts GetOperationalCard.
+ * Must be called before page.goto() so the route intercept is active on first load.
+ */
+async function mockAccessibleStore(page: import('playwright/test').Page): Promise<void> {
+  await page.route('**/api/stores/accessible', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          id: 'store-mock-001',
+          companyId: TEST_COMPANY_ID,
+          name: 'Test Store',
+          address: null,
+          city: null,
+          state: null,
+          zip: null,
+          phone: null,
+          tccLocationId: null,
+          status: 'active',
+        },
+      ]),
+    }),
+  );
+}
+
+/**
+ * Mocks the three endpoints that drive the 3-of-4-required-steps-done scenario:
+ * milestones (menu + storage + invoice done, inventory_count NOT done) and the
+ * orderly batches response (caller chooses empty vs non-empty).
+ */
+async function mockThreeRequiredStepsDone(
+  page: import('playwright/test').Page,
+  orderlyBatches: any[],
+): Promise<void> {
+  await page.route('**/api/onboarding/milestones', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        dismissed: false,
+        completedCount: 3,
+        totalCount: 4,
+        milestones: [
+          { id: 'menu_scan', label: 'Scan your menu', completed: true, path: '/menu-scan' },
+          { id: 'storage_locations', label: 'Set up store & storage areas', completed: true, path: '/onboarding' },
+          { id: 'invoice_scan', label: 'Upload a vendor invoice', completed: true, path: '/onboarding' },
+          { id: 'inventory_count', label: 'Run your first inventory count', completed: false, path: '/inventory-sessions' },
+        ],
+      }),
+    }),
+  );
+
+  await page.route('**/api/inventory-import/orderly/batches', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(orderlyBatches),
+    }),
+  );
+}
+
+test.describe('Get Operational card — optional inventory count skipped', () => {
+  test.beforeEach(async ({ page }) => {
+    await enableAppMode(page);
+    await login(page);
+  });
+
+  /**
+   * The 4 required steps (menu_scan, storage_locations, invoice_scan, orderly)
+   * are all done but inventory_count (optional) is NOT done.
+   * The card should auto-hide because all REQUIRED steps are complete.
+   */
+  test('card hides when 4 required steps are done even if inventory count is skipped', async ({ page }) => {
+    // Ensure dashboard renders past the "no stores" guard
+    await mockAccessibleStore(page);
+    // 3 milestone steps done + orderly done → all 4 required done, inventory_count skipped
+    await mockThreeRequiredStepsDone(page, [{ id: 'batch-1' }]);
+
+    await page.goto(`${BASE_URL}/`);
+    await page.waitForTimeout(2000);
+
+    await expect(
+      page.getByTestId('get-operational-card'),
+      'Card should be hidden when all 4 required steps are done even if inventory count is skipped',
+    ).not.toBeVisible();
+  });
+
+  /**
+   * Only 3 of 4 required steps are done (orderly import NOT done).
+   * The card must still be visible because a required step is outstanding.
+   */
+  test('card remains visible when only 3 of 4 required steps are done (orderly missing)', async ({ page }) => {
+    // Ensure dashboard renders past the "no stores" guard
+    await mockAccessibleStore(page);
+    // 3 milestone steps done + orderly NOT done → only 3 of 4 required done
+    await mockThreeRequiredStepsDone(page, []);
+
+    await page.goto(`${BASE_URL}/`);
+    await page.waitForTimeout(2000);
+
+    // Precondition: confirm the card is present before asserting it is visible.
+    // If this fails, the dashboard didn't reach the GetOperationalCard render
+    // path — check whether additional API mocks are needed.
+    await expect(
+      page.getByTestId('get-operational-card'),
+      'Card should still be visible when orderly import (a required step) is not yet done',
+    ).toBeVisible();
+  });
+});
