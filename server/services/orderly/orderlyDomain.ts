@@ -69,6 +69,7 @@ export interface ApprovalResult {
   approvedAt: string;
   itemsCreated: number;
   itemsLinked: number;
+  categoriesCreated: number;
   vendorsCreated: number;
   vendorsLinked: number;
   locationsCreated: number;
@@ -117,7 +118,7 @@ export async function resolveOrCreateCategoryId(
   tx: any,
   companyId: string,
   name: string,
-): Promise<string | null> {
+): Promise<{ id: string; created: boolean } | null> {
   const trimmed = name.trim();
   if (!trimmed) return null;
 
@@ -135,7 +136,7 @@ export async function resolveOrCreateCategoryId(
       ),
     )
     .limit(1);
-  if (existing) return existing.id;
+  if (existing) return { id: existing.id, created: false };
 
   // 2. Soft-deleted category — restore rather than duplicate
   const [softDeleted] = await tx
@@ -154,7 +155,7 @@ export async function resolveOrCreateCategoryId(
       .update(categories)
       .set({ isActive: 1 })
       .where(eq(categories.id, softDeleted.id));
-    return softDeleted.id;
+    return { id: softDeleted.id, created: false };
   }
 
   // 3. Create new category
@@ -170,7 +171,7 @@ export async function resolveOrCreateCategoryId(
     })
     .returning({ id: categories.id });
 
-  return newCat.id;
+  return { id: newCat.id, created: true };
 }
 
 // ─── Unit lookup cache ────────────────────────────────────────────────────────
@@ -461,14 +462,18 @@ export async function applyBatchApproval(
     // Collect all unique non-blank sourceCategory values, then find-or-create
     // each one once — avoiding one round-trip per row.
     const categoryCache = new Map<string, string>(); // lowerCased name → categoryId
+    let categoriesCreated = 0;
     const uniqueCategoryNames = new Set<string>(
       preview.rows
         .map(r => r.sourceCategory?.trim() ?? '')
         .filter(s => s.length > 0),
     );
     for (const catName of uniqueCategoryNames) {
-      const catId = await resolveOrCreateCategoryId(tx, companyId, catName);
-      if (catId) categoryCache.set(catName.toLowerCase(), catId);
+      const result = await resolveOrCreateCategoryId(tx, companyId, catName);
+      if (result) {
+        categoryCache.set(catName.toLowerCase(), result.id);
+        if (result.created) categoriesCreated++;
+      }
     }
 
     // ── Row-by-row pass ──────────────────────────────────────────────────
@@ -694,6 +699,7 @@ export async function applyBatchApproval(
       approvedAt: new Date().toISOString(),
       itemsCreated,
       itemsLinked,
+      categoriesCreated,
       vendorsCreated,
       vendorsLinked,
       locationsCreated,

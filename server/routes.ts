@@ -677,8 +677,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await db.execute(sql`
         ALTER TABLE inventory_import_rows
-          ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR;
-
+          ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR
+      `);
+      await db.execute(sql`
+        ALTER TABLE inventory_import_rows
+          ADD COLUMN IF NOT EXISTS source_category TEXT
+      `);
+      await db.execute(sql`
         ALTER TABLE inventory_counts
           ADD COLUMN IF NOT EXISTS source_system TEXT;
         ALTER TABLE inventory_counts

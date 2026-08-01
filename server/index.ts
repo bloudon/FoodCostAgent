@@ -1258,6 +1258,9 @@ async function runStartupMigrations() {
     // (1 = base platform seat included, >1 = additional location seats purchased)
     await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS licensed_location_count INTEGER NOT NULL DEFAULT 1`);
 
+    // Orderly category ingestion — column was in CREATE TABLE but never ALTER'd onto existing tables
+    await db.execute(sql`ALTER TABLE inventory_import_rows ADD COLUMN IF NOT EXISTS source_category TEXT`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

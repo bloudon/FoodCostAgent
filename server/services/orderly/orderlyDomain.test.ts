@@ -68,7 +68,7 @@ describe('resolveOrCreateCategoryId', () => {
     };
 
     const result = await resolveOrCreateCategoryId(tx, 'company-1', 'Produce');
-    expect(result).toBe('cat-active-1');
+    expect(result).toEqual({ id: 'cat-active-1', created: false });
     // Should not query soft-deleted or insert
     expect(tx.select).toHaveBeenCalledTimes(1);
     expect(tx.insert).not.toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe('resolveOrCreateCategoryId', () => {
     };
 
     const result = await resolveOrCreateCategoryId(tx, 'company-1', 'PRODUCE');
-    expect(result).toBe('cat-2');
+    expect(result).toEqual({ id: 'cat-2', created: false });
     expect(tx.insert).not.toHaveBeenCalled();
   });
 
@@ -97,7 +97,7 @@ describe('resolveOrCreateCategoryId', () => {
     };
 
     const result = await resolveOrCreateCategoryId(tx, 'company-1', 'Dairy');
-    expect(result).toBe('cat-soft');
+    expect(result).toEqual({ id: 'cat-soft', created: false });
     expect(tx.update).toHaveBeenCalledTimes(1); // restore
     expect(tx.insert).not.toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe('resolveOrCreateCategoryId', () => {
     };
 
     const result = await resolveOrCreateCategoryId(tx, 'company-1', 'Frozen');
-    expect(result).toBe('cat-new');
+    expect(result).toEqual({ id: 'cat-new', created: true });
     expect(tx.insert).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +129,7 @@ describe('resolveOrCreateCategoryId', () => {
     };
 
     const result = await resolveOrCreateCategoryId(tx, 'company-1', '  Beverages  ');
-    expect(result).toBe('cat-trimmed');
+    expect(result).toEqual({ id: 'cat-trimmed', created: true });
 
     // The `name` passed to INSERT values should be the trimmed string
     const valuesArg = insertValues.mock.calls[0][0];

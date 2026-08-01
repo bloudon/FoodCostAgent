@@ -132,6 +132,7 @@ interface ApprovalResult {
   approvedAt: string;
   itemsCreated: number;
   itemsLinked: number;
+  categoriesCreated: number;
   vendorsCreated: number;
   vendorsLinked: number;
   locationsCreated: number;
@@ -1488,6 +1489,7 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
           { label: "Rows skipped", value: result.rowsSkipped },
           { label: "Items created", value: result.itemsCreated },
           { label: "Items linked", value: result.itemsLinked },
+          { label: "Categories assigned", value: result.categoriesCreated },
           { label: "Vendors created", value: result.vendorsCreated },
           { label: "Vendors linked", value: result.vendorsLinked },
           { label: "Locations created", value: result.locationsCreated },
