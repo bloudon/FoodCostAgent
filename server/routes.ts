@@ -262,44 +262,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Seed on startup (runs once, no-op if already populated)
   seedDefaultBackgroundImages().catch(console.error);
 
-  (async function migrateCompanyTiers() {
-    try {
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS _migrations (
-          name TEXT PRIMARY KEY,
-          applied_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-
-      const existingRows = await db.execute(
-        sql`SELECT name FROM _migrations WHERE name = 'tier_system_init'`
-      );
-      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
-      if (!existing) {
-        const result = await db
-          .update(companiesTable)
-          .set({ subscriptionTier: "pro", subscriptionStatus: "active" })
-          .returning({ id: companiesTable.id });
-        await db.execute(
-          sql`INSERT INTO _migrations (name) VALUES ('tier_system_init')`
-        );
-        console.log(`[TierMigration] First deploy: set all ${result.length} companies to pro/active`);
-      } else {
-        console.log("[TierMigration] Already applied (tier_system_init)");
-      }
-
-      const nullTierResult = await db
-        .update(companiesTable)
-        .set({ subscriptionTier: "free", subscriptionStatus: "active" })
-        .where(sql`${companiesTable.subscriptionTier} IS NULL`)
-        .returning({ id: companiesTable.id });
-      if (nullTierResult.length > 0) {
-        console.log(`[TierMigration] Set ${nullTierResult.length} companies with null tier to free/active`);
-      }
-    } catch (err) {
-      console.error("[TierMigration] Error:", err);
-    }
-  })();
+  // migrateCompanyTiers — superseded by Task #808 plan-catalog migration in server/index.ts.
+  // The subscription_tier column has been dropped; subscription_plan (platform/enterprise) is canonical.
 
   (async function migrateReceiveByUnit() {
     try {
@@ -822,7 +786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (companyId) {
         const [company] = await db.select({
           brandImagePath: companiesTable.brandImagePath,
-          subscriptionTier: companiesTable.subscriptionTier,
+          subscriptionPlan: companiesTable.subscriptionPlan,
         })
           .from(companiesTable)
           .where(eq(companiesTable.id, companyId));
@@ -834,8 +798,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        const effectiveTier = company?.subscriptionTier || "free";
-        if (effectiveTier === "free") {
+        const effectivePlan = company?.subscriptionPlan;
+        if (!effectivePlan) {
           const [freeImg] = await db.select()
             .from(backgroundImages)
             .where(and(eq(backgroundImages.isFreeBackground, 1), eq(backgroundImages.isActive, 1)))
@@ -1087,7 +1051,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // PUT /api/companies/:id/brand-image — set company brand background
   // imageUrl is the objectPath returned by /api/objects/upload
-  app.put("/api/companies/:id/brand-image", requireAuth, requireTier("basic"), async (req, res) => {
+  app.put("/api/companies/:id/brand-image", requireAuth, requireTier("platform"), async (req, res) => {
     const user = (req as any).user;
     if (user?.role !== "global_admin" && user?.role !== "company_admin") {
       return res.status(403).json({ error: "Admin access required" });
@@ -1110,7 +1074,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // DELETE /api/companies/:id/brand-image — clear company brand background
-  app.delete("/api/companies/:id/brand-image", requireAuth, requireTier("basic"), async (req, res) => {
+  app.delete("/api/companies/:id/brand-image", requireAuth, requireTier("platform"), async (req, res) => {
     const user = (req as any).user;
     if (user?.role !== "global_admin" && user?.role !== "company_admin") {
       return res.status(403).json({ error: "Admin access required" });
@@ -2077,7 +2041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async getDataPresence(companyId) {
       const [menuRows, companiesRow, inventoryRows, storageRows, recipeRows, inventoryCountRows, ingredientComponentRows] = await Promise.all([
         db.select().from(menuItems).where(eq(menuItems.companyId, companyId)).limit(1),
-        db.select({ subscriptionTier: companiesTable.subscriptionTier }).from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1),
+        db.select({ subscriptionPlan: companiesTable.subscriptionPlan }).from(companiesTable).where(eq(companiesTable.id, companyId)).limit(1),
         db.select().from(inventoryItems).where(eq(inventoryItems.companyId, companyId)).limit(1),
         db.select().from(storageLocations).where(eq(storageLocations.companyId, companyId)).limit(1),
         db.select().from(recipes).where(eq(recipes.companyId, companyId)).limit(1),
@@ -2088,10 +2052,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(and(eq(recipes.companyId, companyId), isNotNull(recipeComponents.missingItemName)))
           .limit(1),
       ]);
-      const tier = companiesRow[0]?.subscriptionTier;
+      const plan = companiesRow[0]?.subscriptionPlan;
       return {
         hasMenuItems: menuRows.length > 0,
-        hasPlan: !!(tier && tier !== "free"),
+        hasPlan: !!plan,
         hasInventoryItems: inventoryRows.length > 0,
         hasStorageLocations: storageRows.length > 0,
         hasRecipes: recipeRows.length > 0,
@@ -3073,10 +3037,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.cookie("session", token, sessionCookieOptions());
 
-      let loginSubscriptionTier: string | null = null;
+      let loginSubscriptionPlan: string | null = null;
       if (user.companyId) {
         const loginCompany = await storage.getCompany(user.companyId);
-        loginSubscriptionTier = loginCompany?.subscriptionTier || "free";
+        loginSubscriptionPlan = loginCompany?.subscriptionPlan || null;
       }
 
       res.json({ 
@@ -3087,7 +3051,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           companyId: user.companyId,
           firstName: user.firstName,
           lastName: user.lastName,
-          subscriptionTier: loginSubscriptionTier,
+          subscriptionPlan: loginSubscriptionPlan,
         } 
       });
     } catch (error: any) {
@@ -3150,14 +3114,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    let subscriptionTier: string | null = null;
+    let subscriptionPlan: string | null = null;
     let companyName: string | null = null;
     const effectiveCompanyId = user.role === "global_admin"
       ? selectedCompanyId
       : (user.companyId || null);
     if (effectiveCompanyId) {
       const company = await storage.getCompany(effectiveCompanyId);
-      subscriptionTier = company?.subscriptionTier || "free";
+      subscriptionPlan = company?.subscriptionPlan || null;
       companyName = company?.name || null;
     }
 
@@ -3173,7 +3137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ssoId: user.ssoId,
       profileImageUrl: user.profileImageUrl,
       selectedCompanyId,
-      subscriptionTier,
+      subscriptionPlan,
       preferredLanguage: user.preferredLanguage || "en",
       lastSeenVersion: user.lastSeenVersion || null,
     });
@@ -6246,7 +6210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Accepts raw CSV text and returns an AI-proposed column mapping.
    * Falls back to pattern-based detection if OpenAI is unavailable.
    */
-  app.post("/api/inventory-import/analyze", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/inventory-import/analyze", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { csvContent } = req.body;
       if (!csvContent || typeof csvContent !== 'string') {
@@ -6267,7 +6231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Parses a CSV with the confirmed column mapping, runs fuzzy matching,
    * stores results as a generic order guide, and returns the guide ID + summary.
    */
-  app.post("/api/inventory-import/preview", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/inventory-import/preview", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const storeId = (req as any).storeId;
@@ -6385,7 +6349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Approves the generic CSV import — creates inventory items, vendor items,
    * and store assignments. Delegates to OrderGuideProcessor.approve().
    */
-  app.post("/api/inventory-import/:id/approve", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/inventory-import/:id/approve", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = (req as any).companyId;
@@ -6549,7 +6513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *   - Appends to an existing pending session when `sessionId` is provided
    *     (multi-page scanning: new items are merged onto the end of existing ones)
    */
-  app.post("/api/menu-import/scan", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/menu-import/scan", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const bodySchema = z.object({
@@ -6688,7 +6652,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * GET /api/menu-import/:sessionId
    * Returns the session and its extracted items.
    */
-  app.get("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/menu-import/:sessionId", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const [session] = await db.select().from(menuImportSessions)
@@ -6711,7 +6675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Persists user edits (edited/added/deleted rows) back to session staging data.
    * Called automatically as the user edits items in Step 2 (debounced autosave).
    */
-  app.patch("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.patch("/api/menu-import/:sessionId", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { sessionId } = req.params;
@@ -6756,7 +6720,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * User-confirmed items → creates menu_items (with parent/variant structure for
    * multi-size items) + store_menu_items rows. Marks the session as approved.
    */
-  app.post("/api/menu-import/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/menu-import/:sessionId/approve", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { sessionId } = req.params;
@@ -7033,7 +6997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * DELETE /api/menu-import/:sessionId
    * Cancels/cleans up a pending session.
    */
-  app.delete("/api/menu-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.delete("/api/menu-import/:sessionId", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       // Only cancel sessions that are still pending (preserve audit integrity for approved/cancelled)
@@ -7068,7 +7032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * POST /api/recipe-import/scan
    * Upload image → GPT-4o extracts recipe name/yield/ingredients → fuzzy-match inventory → create session
    */
-  app.post("/api/recipe-import/scan", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipe-import/scan", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const userId = (req as any).user?.id;
@@ -7166,7 +7130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Returns session data for URL-based rehydration.
    * Returns 409 if session is already approved (non-re-enterable).
    */
-  app.get("/api/recipe-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipe-import/:sessionId", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const [session] = await db.select().from(recipeImportSessions)
@@ -7190,7 +7154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Persists user edits back to the session's extractedData (staged state).
    * Only allowed on pending sessions.
    */
-  app.patch("/api/recipe-import/:sessionId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.patch("/api/recipe-import/:sessionId", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { sessionId } = req.params;
@@ -7250,7 +7214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Creates a recipe + recipe_components from user-confirmed data.
    * Body: { recipeName, yieldQty, yieldUnit, canBeIngredient?, ingredients: [{ name, qty, unit, inventoryItemId, include }] }
    */
-  app.post("/api/recipe-import/:sessionId/approve", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipe-import/:sessionId/approve", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { sessionId } = req.params;
@@ -9129,7 +9093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPES ============
-  app.get("/api/recipes", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipes", requireAuth, requireTier("platform"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const companyId = (req as any).companyId;
     const canBeIngredientFilter = req.query.canBeIngredient === "1" || req.query.canBeIngredient === "true";
@@ -9201,7 +9165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/recipes/missing-ingredients — list recipes that have missing components
   // IMPORTANT: must be registered BEFORE /api/recipes/:id to avoid route conflict
-  app.get("/api/recipes/missing-ingredients", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipes/missing-ingredients", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const allRecipes = await storage.getRecipes(companyId);
@@ -9237,7 +9201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipes/:id", requireAuth, requireTier("platform"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
     if (!recipe) {
@@ -9279,7 +9243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/recipes", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const data = insertRecipeSchema.parse(req.body);
       const companyId = (req as any).companyId!;
@@ -9294,7 +9258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
+  app.patch("/api/recipes/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
       if (!recipe) {
@@ -9329,7 +9293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Extract step-by-step instructions from a recipe image using GPT-4o Vision
-  app.post("/api/recipes/extract-instructions", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/extract-instructions", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const userId = (req as any).user?.id;
@@ -9355,7 +9319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check if recipe can be deleted (no sales history, not used as sub-recipe)
-  app.get("/api/recipes/:id/can-delete", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipes/:id/can-delete", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -9380,7 +9344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete recipe (only if no sales history and not used as sub-recipe)
-  app.delete("/api/recipes/:id", requireAuth, requireTier("basic"), async (req, res) => {
+  app.delete("/api/recipes/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -9427,7 +9391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Deactivate recipe (soft delete - for recipes with sales history)
-  app.post("/api/recipes/:id/deactivate", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/:id/deactivate", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -9450,7 +9414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reactivate recipe
-  app.post("/api/recipes/:id/reactivate", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/:id/reactivate", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const recipeId = req.params.id;
@@ -9473,7 +9437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Clone recipe as size variant
-  app.post("/api/recipes/:id/clone", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/:id/clone", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId!;
       const sourceRecipeId = req.params.id;
@@ -9598,7 +9562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/recipes/:id/components", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/:id/components", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       // Verify recipe belongs to user's company
       const recipe = await storage.getRecipe(req.params.id, (req as any).companyId);
@@ -9639,7 +9603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ RECIPE COMPONENTS ============
-  app.get("/api/recipe-components/:recipeId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipe-components/:recipeId", requireAuth, requireTier("platform"), async (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     // Verify recipe belongs to user's company
     const recipe = await storage.getRecipe(req.params.recipeId, (req as any).companyId);
@@ -9692,7 +9656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.post("/api/recipe-components", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipe-components", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const data = insertRecipeComponentSchema.parse(req.body);
       
@@ -9731,7 +9695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/recipe-components/:id", requireAuth, requireTier("basic"), async (req, res) => {
+  app.patch("/api/recipe-components/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
@@ -9788,7 +9752,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/recipe-components/:id", requireAuth, requireTier("basic"), async (req, res) => {
+  app.delete("/api/recipe-components/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const component = await storage.getRecipeComponent(req.params.id);
       if (!component) {
@@ -9819,7 +9783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ BULK INGREDIENT REPLACEMENT ============
 
   // Preview: scan all recipe_components and return impact info before committing
-  app.post("/api/recipes/replace-component/preview", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/replace-component/preview", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId as string;
       const { fromType, fromId, toType, toId } = req.body;
@@ -9916,7 +9880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Execute: perform the bulk swap atomically, then recalculate costs
-  app.post("/api/recipes/replace-component/execute", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/replace-component/execute", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId as string;
       const userId: string | null = (req as any).userId ?? null;
@@ -10068,7 +10032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ============ RECIPE CLEANUP ============
   // Get orphaned recipes (recipes with no menu item link, not used as sub-recipes)
-  app.get("/api/recipes/orphaned", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipes/orphaned", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.companyId!;
       
@@ -10158,7 +10122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Archive (soft-delete) an orphaned recipe
-  app.post("/api/recipes/:id/archive", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipes/:id/archive", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = req.companyId!;
@@ -10213,7 +10177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Permanently delete an archived/orphaned recipe
-  app.delete("/api/recipes/:id/permanent", requireAuth, requireTier("basic"), async (req, res) => {
+  app.delete("/api/recipes/:id/permanent", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { id } = req.params;
       const companyId = req.companyId!;
@@ -10991,10 +10955,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const companyId = (req as any).companyId;
           if (companyId) {
             const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
-            const currentTier = company?.subscriptionTier ?? "free";
+            const currentPlan = company?.subscriptionPlan ?? "platform";
             const minTier = featureMinTier("power_inventory");
-            if (minTier && !tierMeetsMinimum(currentTier, minTier)) {
-              return res.status(403).json({ error: "tier_required", currentTier, requiredTier: minTier });
+            if (minTier && !tierMeetsMinimum(currentPlan, minTier)) {
+              return res.status(403).json({ error: "tier_required", currentTier: currentPlan, requiredTier: minTier });
             }
           }
         }
@@ -15420,12 +15384,12 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // ============ RECIPE VERSIONS ============
-  app.get("/api/recipe-versions/:recipeId", requireAuth, requireTier("basic"), async (req, res) => {
+  app.get("/api/recipe-versions/:recipeId", requireAuth, requireTier("platform"), async (req, res) => {
     const versions = await storage.getRecipeVersions(req.params.recipeId);
     res.json(versions);
   });
 
-  app.post("/api/recipe-versions", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/recipe-versions", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const data = insertRecipeVersionSchema.parse(req.body);
       const version = await storage.createRecipeVersion(data);
@@ -15436,7 +15400,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // ============ TRANSFER LOGS ============
-  app.get("/api/transfers", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/transfers", requireAuth, requireTier("platform"), async (req, res) => {
     const productId = req.query.product_id as string | undefined;
     const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
     const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
@@ -15444,7 +15408,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     res.json(transfers);
   });
 
-  app.post("/api/transfers", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/transfers", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const data = insertTransferLogSchema.parse(req.body);
       
@@ -15653,7 +15617,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // ============ TRANSFER ORDERS ============
-  app.get("/api/transfer-orders", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/transfer-orders", requireAuth, requireTier("platform"), async (req, res) => {
     const orders = await storage.getTransferOrders(req.companyId!);
     const stores = await storage.getCompanyStores(req.companyId!);
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
@@ -15702,7 +15666,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     res.json(ordersWithDetails);
   });
 
-  app.get("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/transfer-orders/:id", requireAuth, requireTier("platform"), async (req, res) => {
     const order = await storage.getTransferOrder(req.params.id);
     if (!order) {
       return res.status(404).json({ error: "Transfer order not found" });
@@ -15750,7 +15714,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     });
   });
 
-  app.post("/api/transfer-orders", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/transfer-orders", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { insertTransferOrderSchema } = await import("@shared/schema");
       const orderData = insertTransferOrderSchema.parse(req.body);
@@ -15766,7 +15730,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  app.patch("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/transfer-orders/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -15794,7 +15758,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  app.delete("/api/transfer-orders/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/transfer-orders/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -15814,7 +15778,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Transfer Order Lines
-  app.get("/api/transfer-order-lines", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/transfer-order-lines", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const transferOrderId = req.query.transferOrderId as string;
       if (!transferOrderId) {
@@ -15827,7 +15791,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  app.post("/api/transfer-order-lines", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/transfer-order-lines", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { insertTransferOrderLineSchema } = await import("@shared/schema");
       const lineData = insertTransferOrderLineSchema.parse(req.body);
@@ -15853,7 +15817,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  app.patch("/api/transfer-order-lines/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/transfer-order-lines/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const line = await storage.updateTransferOrderLine(req.params.id, req.body);
       if (!line) {
@@ -15865,7 +15829,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  app.delete("/api/transfer-order-lines/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/transfer-order-lines/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       await storage.deleteTransferOrderLine(req.params.id);
       res.status(204).send();
@@ -15875,7 +15839,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Execute transfer (ship from source store)
-  app.post("/api/transfer-orders/:id/execute", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/transfer-orders/:id/execute", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -15991,7 +15955,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Receive transfer (receive at destination store)
-  app.post("/api/transfer-orders/:id/receive", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/transfer-orders/:id/receive", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const order = await storage.getTransferOrder(req.params.id);
       if (!order) {
@@ -16993,7 +16957,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
 
       const { tier, status } = req.body;
-      const validTiers = ["free", "basic", "pro"];
+      const validTiers = ["platform", "enterprise"];
       const validStatuses = ["active", "past_due", "canceled", "trialing", "incomplete"];
 
       if (tier && !validTiers.includes(tier)) {
@@ -17004,7 +16968,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
 
       const updates: Record<string, any> = {};
-      if (tier) updates.subscriptionTier = tier;
+      if (tier) updates.subscriptionPlan = tier;
       if (status) updates.subscriptionStatus = status;
 
       if (Object.keys(updates).length === 0) {
@@ -17242,7 +17206,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       created_at: string;
       company_id: string | null;
       company_name: string | null;
-      subscription_tier: string | null;
+      subscription_plan: string | null;
       last_login_at: string | null;
       active_session_count: string;
     };
@@ -17258,7 +17222,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
       const result = await db.execute(
         sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
-                   c.id as company_id, c.name as company_name, c.subscription_tier,
+                   c.id as company_id, c.name as company_name, c.subscription_plan,
                    MAX(s.last_active_at) as last_login_at,
                    COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() THEN 1 END) as active_session_count,
                    COUNT(CASE WHEN s.revoked_at IS NULL AND s.expires_at > NOW() AND s.source = 'mobile' THEN 1 END) as mobile_session_count
@@ -17267,7 +17231,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
             LEFT JOIN auth_sessions s ON s.user_id = u.id
             WHERE (u.company_id IS NULL OR c.id IS NOT NULL)
             GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active, u.created_at,
-                     c.id, c.name, c.subscription_tier
+                     c.id, c.name, c.subscription_plan
             ORDER BY u.created_at DESC`
       );
 
@@ -17781,7 +17745,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     },
   });
 
-  app.post("/api/tfc/sales/upload", requireAuth, requireTier("pro"), upload.single('file'), async (req, res) => {
+  app.post("/api/tfc/sales/upload", requireAuth, requireTier("platform"), upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -17922,7 +17886,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get theoretical usage runs (batch history)
-  app.get("/api/tfc/usage-runs", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/usage-runs", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const storeId = req.query.store_id as string | undefined;
@@ -17949,7 +17913,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get detailed theoretical usage for a specific run
-  app.get("/api/tfc/usage-runs/:runId/details", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/usage-runs/:runId/details", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { runId } = req.params;
@@ -18032,7 +17996,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get variance summaries for all count periods
-  app.get("/api/tfc/variance/summaries", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/variance/summaries", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { storeId } = req.query;
@@ -18200,7 +18164,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get the single highest-variance item from the most recent period (for Analyze landing)
-  app.get("/api/tfc/variance/top-item", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/variance/top-item", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { storeId } = req.query;
@@ -18336,7 +18300,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get variance report between two inventory counts
-  app.get("/api/tfc/variance", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/variance", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { previousCountId, currentCountId, storeId, categoryId, search } = req.query;
@@ -18754,7 +18718,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // Get theoretical usage detail for a specific ingredient
-  app.get("/api/tfc/variance/theoretical-detail", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/tfc/variance/theoretical-detail", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = (req as any).companyId;
       const { previousCountId, currentCountId, storeId, inventoryItemId } = req.query;
@@ -19404,7 +19368,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // GET /api/purchase-orders/:id/reconciliation - Get reconciliation data for a PO
-  app.get("/api/purchase-orders/:id/reconciliation", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/purchase-orders/:id/reconciliation", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { companyId } = req.user!;
       const { id } = req.params;
@@ -19422,7 +19386,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // POST /api/purchase-orders/:id/reconcile - Save reconciliation data (invoice # + totals + initials)
-  app.post("/api/purchase-orders/:id/reconcile", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/purchase-orders/:id/reconcile", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { companyId, id: userId } = req.user!;
       const { id: purchaseOrderId } = req.params;
@@ -19509,7 +19473,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   });
 
   // POST /api/quickbooks/export-bills - Export one or more reconciled POs as QB Bills
-  app.post("/api/quickbooks/export-bills", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/quickbooks/export-bills", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const { companyId } = req.user!;
       const { purchaseOrderIds } = req.body as { purchaseOrderIds: string[] };
@@ -19637,7 +19601,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   // ============ AI CHAT ASSISTANT ============
   const chatRateLimits = new Map<string, { count: number; resetAt: number }>();
 
-  app.post("/api/chat", requireAuth, requireTier("basic"), async (req, res) => {
+  app.post("/api/chat", requireAuth, requireTier("platform"), async (req, res) => {
     const companyId = (req as any).companyId;
 
     if (!companyId) {
@@ -19680,12 +19644,12 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
     try {
       const companyResult = await db.execute(
-        sql`SELECT name, subscription_tier FROM companies WHERE id = ${companyId} LIMIT 1`
+        sql`SELECT name, subscription_plan FROM companies WHERE id = ${companyId} LIMIT 1`
       );
-      const companyRow = ((companyResult as any).rows?.[0] || (companyResult as any)[0]) as { name?: string; subscription_tier?: string } | undefined;
+      const companyRow = ((companyResult as any).rows?.[0] || (companyResult as any)[0]) as { name?: string; subscription_plan?: string } | undefined;
 
       const companyName = companyRow?.name || "your company";
-      const tier = companyRow?.subscription_tier || "free";
+      const tier = companyRow?.subscription_plan || "platform";
 
       const recipeCountResult = await db.execute(
         sql`SELECT count(*)::int as count FROM recipes WHERE company_id = ${companyId}`
@@ -20016,9 +19980,10 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
 
       let tfcSummary = "";
-      const tierHierarchy = ["free", "basic", "pro", "enterprise"];
+      // Enterprise and platform both get TFC data; enterprise gets it by plan, platform always qualifies
+      const tierHierarchy = ["platform", "enterprise"];
       const tierIndex = tierHierarchy.indexOf(tier);
-      if (tierIndex >= tierHierarchy.indexOf("pro")) {
+      if (tierIndex >= 0) {
         try {
           const tfcResult = await db.execute(
             sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, cs.name as store_name
@@ -20396,18 +20361,18 @@ Human Handoff:
 
     try {
       let companyName = "Unknown Company";
-      let subscriptionTier = "unknown";
+      let subscriptionPlan = "unknown";
       let userEmail = user?.email || "Unknown";
       let userName = user?.name || user?.email || "Unknown";
 
       if (companyId) {
         const companyResult = await db.execute(
-          sql`SELECT name, subscription_tier FROM companies WHERE id = ${companyId} LIMIT 1`
+          sql`SELECT name, subscription_plan FROM companies WHERE id = ${companyId} LIMIT 1`
         );
-        const row = ((companyResult as any).rows?.[0] || (companyResult as any)[0]) as { name?: string; subscription_tier?: string } | undefined;
+        const row = ((companyResult as any).rows?.[0] || (companyResult as any)[0]) as { name?: string; subscription_plan?: string } | undefined;
         if (row) {
           companyName = row.name || companyName;
-          subscriptionTier = row.subscription_tier || subscriptionTier;
+          subscriptionPlan = row.subscription_plan || subscriptionPlan;
         }
       }
 
@@ -20452,7 +20417,7 @@ Human Handoff:
               { type: "mrkdwn", text: `*User:*\n${userName}` },
               { type: "mrkdwn", text: `*Email:*\n${userEmail}` },
               { type: "mrkdwn", text: `*Company:*\n${companyName}` },
-              { type: "mrkdwn", text: `*Subscription Tier:*\n${subscriptionTier}` },
+              { type: "mrkdwn", text: `*Subscription Plan:*\n${subscriptionPlan}` },
             ],
           },
           ...transcriptBlocks,
@@ -20481,7 +20446,7 @@ Human Handoff:
   // ============ PREP CHART MODULE (Pro tier) ============
 
   // Stations
-  app.get("/api/stations", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/stations", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const stationsList = await storage.getStations(companyId);
@@ -20492,7 +20457,7 @@ Human Handoff:
     }
   });
 
-  app.post("/api/stations", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/stations", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { name } = req.body as { name: string };
@@ -20505,7 +20470,7 @@ Human Handoff:
     }
   });
 
-  app.patch("/api/stations/reorder", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/stations/reorder", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { orderedIds } = req.body as { orderedIds: string[] };
@@ -20518,7 +20483,7 @@ Human Handoff:
     }
   });
 
-  app.patch("/api/stations/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/stations/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { id } = req.params;
@@ -20531,7 +20496,7 @@ Human Handoff:
     }
   });
 
-  app.delete("/api/stations/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/stations/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       await storage.deleteStation(req.params.id, companyId);
@@ -20543,7 +20508,7 @@ Human Handoff:
   });
 
   // Prep Items
-  app.get("/api/prep-items", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-items", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const items = await storage.getPrepItems(companyId);
@@ -20554,7 +20519,7 @@ Human Handoff:
     }
   });
 
-  app.get("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-items/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const item = await storage.getPrepItem(req.params.id, companyId);
@@ -20615,7 +20580,7 @@ Human Handoff:
     unitId: string | null;
   }
 
-  app.post("/api/prep-items", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/prep-items", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { ingredients = [], usages = [], ...itemData } = req.body as {
@@ -20661,7 +20626,7 @@ Human Handoff:
     }
   });
 
-  app.patch("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/prep-items/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { id } = req.params;
@@ -20708,7 +20673,7 @@ Human Handoff:
     }
   });
 
-  app.delete("/api/prep-items/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/prep-items/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       await storage.deletePrepItem(req.params.id, companyId);
@@ -20720,7 +20685,7 @@ Human Handoff:
   });
 
   // Prep Item Ingredients (standalone CRUD)
-  app.get("/api/prep-item-ingredients", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-item-ingredients", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { prepItemId } = req.query as Record<string, string>;
@@ -20733,7 +20698,7 @@ Human Handoff:
     }
   });
 
-  app.post("/api/prep-item-ingredients", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/prep-item-ingredients", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { prepItemId, sourceType, sourceId, quantity, unitId, sortOrder } = req.body as {
@@ -20763,7 +20728,7 @@ Human Handoff:
     }
   });
 
-  app.patch("/api/prep-item-ingredients/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.patch("/api/prep-item-ingredients/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { id } = req.params;
@@ -20776,7 +20741,7 @@ Human Handoff:
     }
   });
 
-  app.delete("/api/prep-item-ingredients/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/prep-item-ingredients/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       await storage.deletePrepItemIngredient(req.params.id, companyId);
@@ -20788,7 +20753,7 @@ Human Handoff:
   });
 
   // Menu Item Prep Usages (standalone CRUD)
-  app.get("/api/menu-item-prep-usages", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/menu-item-prep-usages", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { prepItemId, menuItemId } = req.query as Record<string, string>;
@@ -20804,7 +20769,7 @@ Human Handoff:
     }
   });
 
-  app.post("/api/menu-item-prep-usages", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/menu-item-prep-usages", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { prepItemId, menuItemId, quantityPerSale, unitId } = req.body as {
@@ -20830,7 +20795,7 @@ Human Handoff:
     }
   });
 
-  app.delete("/api/menu-item-prep-usages/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/menu-item-prep-usages/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       await storage.deleteMenuItemPrepUsage(req.params.id, companyId);
@@ -20841,7 +20806,7 @@ Human Handoff:
   });
 
   // Prep Production Records
-  app.get("/api/prep-production-records", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-production-records", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { storeId, prepItemId, startDate, endDate } = req.query as Record<string, string>;
@@ -20859,7 +20824,7 @@ Human Handoff:
     }
   });
 
-  app.post("/api/prep-production-records", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/prep-production-records", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const userId = req.user!.id;
@@ -20885,7 +20850,7 @@ Human Handoff:
   });
 
   // Prep On Hand
-  app.get("/api/prep-on-hand", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-on-hand", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { storeId, prepItemId } = req.query as Record<string, string>;
@@ -20898,7 +20863,7 @@ Human Handoff:
     }
   });
 
-  app.post("/api/prep-on-hand", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/prep-on-hand", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { prepItemId, storeId, quantityOnHand, preparedAt, locationId } = req.body;
@@ -20926,7 +20891,7 @@ Human Handoff:
     }
   });
 
-  app.delete("/api/prep-on-hand/:id", requireAuth, requireTier("pro"), async (req, res) => {
+  app.delete("/api/prep-on-hand/:id", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       await storage.deletePrepOnHand(req.params.id, companyId);
@@ -20938,7 +20903,7 @@ Human Handoff:
   });
 
   // Prep Chart — Generate
-  app.post("/api/prep-chart/generate", requireAuth, requireTier("pro"), async (req, res) => {
+  app.post("/api/prep-chart/generate", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { storeId, businessDate, daypartId, bufferPercent, weeksLookback } = req.body;
@@ -21013,7 +20978,7 @@ Human Handoff:
     }
   });
 
-  app.get("/api/prep-chart/runs", requireAuth, requireTier("pro"), async (req, res) => {
+  app.get("/api/prep-chart/runs", requireAuth, requireTier("platform"), async (req, res) => {
     try {
       const companyId = req.user!.companyId!;
       const { storeId, businessDate, daypartId } = req.query as Record<string, string>;

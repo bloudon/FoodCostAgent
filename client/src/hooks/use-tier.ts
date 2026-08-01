@@ -5,9 +5,11 @@ export function useTier() {
   const { user } = useAuth();
 
   const isGlobalAdmin = user?.role === "global_admin";
+  // subscriptionPlan is the canonical field (Task #808); fall back to legacy subscriptionTier if present
+  const rawPlan = (user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier ?? null;
   const dbTier: DbTier | null = isGlobalAdmin
     ? "enterprise"
-    : ((user?.subscriptionTier as DbTier) ?? null);
+    : (rawPlan as DbTier) ?? null;
 
   return {
     tier: dbTier,

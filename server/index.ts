@@ -1245,6 +1245,15 @@ async function runStartupMigrations() {
       }
     });
 
+    // Task #808: Platform/Enterprise plan model — add subscription_plan and billing_interval,
+    // backfill existing companies to 'platform', drop legacy subscription_tier column.
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS subscription_plan text CHECK (subscription_plan IN ('platform','enterprise'))`);
+    await db.execute(sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS billing_interval text CHECK (billing_interval IN ('monthly','annual','custom'))`);
+    // Backfill: all existing companies become 'platform'
+    await db.execute(sql`UPDATE companies SET subscription_plan = 'platform' WHERE subscription_plan IS NULL`);
+    // Drop legacy column (no live customers; clean cut-over)
+    await db.execute(sql`ALTER TABLE companies DROP COLUMN IF EXISTS subscription_tier`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);

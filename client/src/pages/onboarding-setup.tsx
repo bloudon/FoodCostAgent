@@ -193,7 +193,7 @@ function PlanStep({
   locationCount,
   onContinue,
 }: {
-  company: { subscriptionTier?: string; name?: string } | null;
+  company: { subscriptionPlan?: string | null; subscriptionTier?: string | null; name?: string | null } | null;
   planActivated: boolean;
   locationCount: number;
   onContinue: () => void;
@@ -203,16 +203,18 @@ function PlanStep({
   const [checking, setChecking] = useState(false);
   const [polling, setPolling] = useState(false);
   const [planConfirmed, setPlanConfirmed] = useState(false);
-  const [confirmedTier, setConfirmedTier] = useState("");
-  const hasPlan = !!(company?.subscriptionTier && company.subscriptionTier !== "free");
+  const [confirmedPlan, setConfirmedPlan] = useState("");
+  // subscriptionPlan is canonical; fall back to legacy subscriptionTier for compat
+  const activePlan = company?.subscriptionPlan || company?.subscriptionTier || null;
+  const hasPlan = !!(activePlan && activePlan !== "free");
 
   // When a paid plan is already on the company record, surface the celebration card.
   useEffect(() => {
     if (hasPlan) {
       setPlanConfirmed(true);
-      setConfirmedTier(company?.subscriptionTier || "");
+      setConfirmedPlan(activePlan || "");
     }
-  }, [hasPlan, company?.subscriptionTier]);
+  }, [hasPlan, activePlan]);
 
   // When returning from Stripe (?planActivated=true), poll until the
   // subscription webhook has propagated (max ~20 seconds / 10 polls).
@@ -228,8 +230,9 @@ function PlanStep({
       try {
         const res = await apiRequest("GET", "/api/auth/me");
         if (res.ok) {
-          const data = await res.json() as { subscriptionTier?: string };
-          if (data.subscriptionTier && data.subscriptionTier !== "free") {
+          const data = await res.json() as { subscriptionPlan?: string; subscriptionTier?: string };
+          const plan = data.subscriptionPlan || data.subscriptionTier;
+          if (plan && plan !== "free") {
             clearInterval(interval);
             setPolling(false);
             queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -251,10 +254,12 @@ function PlanStep({
   }, [planActivated, hasPlan]);
 
   if (planConfirmed) {
-    const tierDisplay: Record<string, string> = {
-      basic: "Basic", pro: "Pro", enterprise: "Enterprise", starter: "Starter",
+    const planDisplay: Record<string, string> = {
+      platform: "Platform", enterprise: "Enterprise",
+      // legacy values for compat
+      basic: "Basic", pro: "Pro", starter: "Starter",
     };
-    const planName = tierDisplay[confirmedTier] || confirmedTier || "Pro";
+    const planName = planDisplay[confirmedPlan] || confirmedPlan || "Platform";
     return (
       <Card data-testid="card-plan-celebration">
         <CardContent className="py-10 text-center space-y-5">
@@ -298,8 +303,9 @@ function PlanStep({
     try {
       const res = await apiRequest("GET", "/api/auth/me");
       if (res.ok) {
-        const data = await res.json() as { subscriptionTier?: string };
-        if (data.subscriptionTier && data.subscriptionTier !== "free") {
+        const data = await res.json() as { subscriptionPlan?: string; subscriptionTier?: string };
+        const plan = data.subscriptionPlan || data.subscriptionTier;
+        if (plan && plan !== "free") {
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           onContinue();
         } else {
@@ -1903,7 +1909,7 @@ export default function OnboardingSetup() {
 
         {step === 2 && (
           <PlanStep
-            company={company}
+            company={company ?? null}
             planActivated={planActivated}
             locationCount={wizardState.scannedIntelligence?.locationCount ?? 1}
             onContinue={() => advance(2)}

@@ -363,16 +363,16 @@ export default function CompanyDetail() {
                 <div className="flex items-center gap-2">
                   <Badge
                     variant={
-                      (company.subscriptionTier as Tier) === "pro" ? "destructive"
-                      : (company.subscriptionTier as Tier) === "basic" ? "default"
+                      (company.subscriptionPlan as Tier) === "enterprise" ? "destructive"
+                      : (company.subscriptionPlan as Tier) === "platform" ? "default"
                       : "secondary"
                     }
                     data-testid="badge-subscription-tier"
                   >
-                    {getTierLabel(company.subscriptionTier as DbTier)}
+                    {getTierLabel(company.subscriptionPlan as DbTier)}
                   </Badge>
                   <Select
-                    value={TIERS.includes(company.subscriptionTier as Tier) ? (company.subscriptionTier as Tier) : "basic"}
+                    value={TIERS.includes(company.subscriptionPlan as Tier) ? (company.subscriptionPlan as Tier) : "platform"}
                     onValueChange={(value) => updateTierMutation.mutate({ tier: value })}
                   >
                     <SelectTrigger className="h-7 w-24 text-xs" data-testid="select-tier">

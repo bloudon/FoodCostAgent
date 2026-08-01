@@ -6,6 +6,8 @@ import type { User } from "@shared/schema";
 // Extended user type with selectedCompanyId from session
 type AuthUser = User & {
   selectedCompanyId?: string | null;
+  subscriptionPlan?: string | null;
+  /** @deprecated use subscriptionPlan instead (Task #808) */
   subscriptionTier?: string | null;
   companyName?: string | null;
   lastSeenVersion?: string | null;

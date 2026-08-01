@@ -21,15 +21,18 @@ function getStripe(): Stripe {
 const TRIAL_DAYS = 14;
 
 const LOOKUP_KEY: Record<string, string> = {
-  "basic:monthly": "fnb_basic_monthly",
-  "basic:quarterly": "fnb_basic_quarterly",
-  "basic:annual": "fnb_basic_annual",
-  "starter:monthly": "fnb_basic_monthly",
-  "starter:quarterly": "fnb_basic_quarterly",
-  "starter:annual": "fnb_basic_annual",
-  "pro:monthly": "fnb_pro_monthly",
-  "pro:quarterly": "fnb_pro_quarterly",
-  "pro:annual": "fnb_pro_annual",
+  "platform:monthly": "fnb_platform_monthly",
+  "platform:annual":  "fnb_platform_annual",
+  // Legacy keys kept for backward compat during transition
+  "basic:monthly":   "fnb_platform_monthly",
+  "basic:quarterly": "fnb_platform_monthly",
+  "basic:annual":    "fnb_platform_annual",
+  "starter:monthly": "fnb_platform_monthly",
+  "starter:quarterly": "fnb_platform_monthly",
+  "starter:annual":  "fnb_platform_annual",
+  "pro:monthly":     "fnb_platform_monthly",
+  "pro:quarterly":   "fnb_platform_monthly",
+  "pro:annual":      "fnb_platform_annual",
 };
 
 /**
@@ -73,7 +76,7 @@ export async function getPlans(_req: Request, res: Response) {
 
 /**
  * POST /api/billing/checkout
- * Body: { tier: "basic"|"pro", term: "monthly"|"quarterly"|"annual" }
+ * Body: { tier: "platform"|"enterprise", term: "monthly"|"annual" }
  * Returns: { url }
  */
 export async function createCheckoutSession(req: Request, res: Response) {
@@ -120,6 +123,9 @@ export async function createCheckoutSession(req: Request, res: Response) {
         })()
       : `${baseUrl}/menu-insights?welcome=true`;
 
+    // Normalize tier to platform/enterprise for metadata
+    const normalizedPlan = (tier === "basic" || tier === "pro" || tier === "starter") ? "platform" : tier;
+
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: price.id, quantity: 1 }],
@@ -131,7 +137,7 @@ export async function createCheckoutSession(req: Request, res: Response) {
       customer: company?.stripeCustomerId || undefined,
       customer_email: company?.stripeCustomerId ? undefined : (company?.contactEmail || undefined),
       client_reference_id: companyId,
-      metadata: { tier, term, lookup_key: lookupKey, companyId },
+      metadata: { plan: normalizedPlan, term, lookup_key: lookupKey, companyId },
     });
 
     return res.json({ url: session.url });
@@ -174,21 +180,27 @@ export async function stripeWebhook(req: Request, res: Response) {
 
         const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
         const stripeSubscriptionId = typeof session.subscription === "string" ? session.subscription : null;
-        const rawTier = session.metadata?.tier || null;
-        const tier = rawTier === "starter" ? "basic" : rawTier;
+
+        // Support both new "plan" metadata key and legacy "tier" key
+        const rawPlan = session.metadata?.plan || session.metadata?.tier || null;
+        // Normalize legacy tier values to platform
+        const plan = (rawPlan === "basic" || rawPlan === "pro" || rawPlan === "starter" || rawPlan === "free")
+          ? "platform"
+          : (rawPlan || "platform");
         const term = session.metadata?.term || null;
+        const billingInterval = term === "annual" ? "annual" : term === "monthly" ? "monthly" : null;
 
         await db.update(companies)
           .set({
             stripeCustomerId: stripeCustomerId || undefined,
             stripeSubscriptionId: stripeSubscriptionId || undefined,
             subscriptionStatus: "trialing",
-            subscriptionTier: tier || undefined,
-            subscriptionTerm: term || undefined,
+            subscriptionPlan: plan,
+            billingInterval: billingInterval || undefined,
           })
           .where(eq(companies.id, companyId));
 
-        console.log(`[Billing] checkout.session.completed: company=${companyId} tier=${tier} term=${term} status=trialing`);
+        console.log(`[Billing] checkout.session.completed: company=${companyId} plan=${plan} term=${term} status=trialing`);
         break;
       }
 

@@ -185,7 +185,7 @@ function QbSyncHistoryCard() {
   };
 
   // Only Pro tier users can use QB export — guard the card
-  if (!hasFeature((user as any)?.subscriptionTier, "transfer_orders")) return null;
+  if (!hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders")) return null;
 
   return (
     <Card>

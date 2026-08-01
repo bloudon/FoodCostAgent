@@ -1123,15 +1123,15 @@ export default function Companies() {
                       <Badge variant={company.status === "active" ? "default" : "secondary"} className="text-xs">
                         {company.status}
                       </Badge>
-                      <TierBadge tier={(company.subscriptionTier as DbTier) || "basic"} />
+                      <TierBadge tier={(company.subscriptionPlan as DbTier) || "platform"} />
                     </div>
                   </div>
 
                   <div className="flex items-center gap-4 ml-8 mb-2 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Tier:</span>
+                      <span className="text-xs text-muted-foreground">Plan:</span>
                       <Select
-                        value={TIERS.includes(company.subscriptionTier as Tier) ? (company.subscriptionTier as Tier) : "basic"}
+                        value={TIERS.includes(company.subscriptionPlan as Tier) ? (company.subscriptionPlan as Tier) : "platform"}
                         onValueChange={(value) => {
                           updateTierMutation.mutate({ companyId: company.id, tier: value });
                         }}
@@ -1359,7 +1359,7 @@ function StatCard({
 }
 
 function TierBadge({ tier }: { tier: DbTier }) {
-  const variant = tier === "pro" ? "destructive" : tier === "basic" ? "default" : "secondary";
+  const variant = tier === "enterprise" ? "destructive" : tier === "platform" ? "default" : "secondary";
   return (
     <Badge variant={variant} className="text-xs" data-testid={`badge-tier-${tier}`}>
       {getTierLabel(tier)}

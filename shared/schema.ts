@@ -30,8 +30,9 @@ export const companies = pgTable("companies", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status"), // active, past_due, canceled, trialing, incomplete
-  subscriptionTier: text("subscription_tier"), // free, basic, pro
-  subscriptionTerm: text("subscription_term"), // monthly, quarterly, annual
+  subscriptionPlan: text("subscription_plan"), // platform, enterprise
+  billingInterval: text("billing_interval"), // monthly, annual, custom
+  subscriptionTerm: text("subscription_term"), // monthly, quarterly, annual (legacy — superseded by billing_interval)
   subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
   hasBar: integer("has_bar"), // 0 = no, 1 = yes, null = not yet answered
   createdAt: timestamp("created_at").notNull().defaultNow(),

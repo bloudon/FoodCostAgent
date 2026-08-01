@@ -16,7 +16,7 @@ import { PRICING, type BillingTerm } from "@/lib/pricing-constants";
 const TRIAL_DAYS = 14;
 
 type Term = BillingTerm;
-type AppTier = "basic" | "pro";  // internal DB values
+type AppTier = "platform";  // internal DB value (Task #808: retired basic/pro in favour of platform)
 
 const TERM_LABELS: Record<Term, string> = {
   monthly: "Monthly",
@@ -73,7 +73,7 @@ export default function ChoosePlan() {
   const { toast } = useToast();
   const { selectedCompanyId } = useCompany();
   const [selectedTerm, setSelectedTerm] = useState<Term>("monthly");
-  const [loadingTier, setLoadingTier] = useState<AppTier | null>(null);
+  const [loadingTier, setLoadingTier] = useState<"platform" | null>(null);
 
   const { locationCount, returnTo } = useMemo(() => {
     const params = new URLSearchParams(searchString);
@@ -87,7 +87,7 @@ export default function ChoosePlan() {
   const isMultiLocation = locationCount > 1;
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ tier, term }: { tier: AppTier; term: Term }) => {
+    mutationFn: async ({ tier, term }: { tier: "platform"; term: Term }) => {
       const res = await apiRequest("POST", "/api/billing/checkout", {
         tier,
         term,
@@ -111,7 +111,7 @@ export default function ChoosePlan() {
     },
   });
 
-  const handleSelectPlan = (tier: AppTier) => {
+  const handleSelectPlan = (tier: "platform") => {
     setLoadingTier(tier);
     checkoutMutation.mutate({ tier, term: selectedTerm });
   };
@@ -124,8 +124,7 @@ export default function ChoosePlan() {
     year: "numeric",
   });
 
-  const starterPrice = PRICING.starter[selectedTerm];
-  const proData = PRICING.pro[selectedTerm];
+  const platformPrice = PRICING.platform[selectedTerm];
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -203,12 +202,12 @@ export default function ChoosePlan() {
 
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">${starterPrice}</span>
+                  <span className="text-3xl font-bold">${platformPrice}</span>
                   <span className="text-muted-foreground text-sm">/mo</span>
                 </div>
                 {selectedTerm === "annual" && (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Billed ${starterPrice * 12}/year
+                    Billed ${platformPrice * 12}/year
                   </p>
                 )}
               </div>
@@ -224,11 +223,11 @@ export default function ChoosePlan() {
 
               <Button
                 data-testid="button-select-starter"
-                onClick={() => handleSelectPlan("basic")}
+                onClick={() => handleSelectPlan("platform")}
                 disabled={loadingTier !== null}
                 variant="outline"
               >
-                {loadingTier === "basic" ? (
+                {loadingTier === "platform" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Starting...
@@ -261,15 +260,15 @@ export default function ChoosePlan() {
 
               <div className="mb-1">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">${proData.total}</span>
-                  <span className="text-muted-foreground text-sm">/mo</span>
+                  <span className="text-3xl font-bold">${platformPrice}</span>
+                  <span className="text-muted-foreground text-sm">/mo · first location</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  ${proData.platform} platform + ${proData.perStore}/location
+                  +${platformPrice}/mo per additional location
                 </p>
                 {selectedTerm === "annual" && (
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Billed ${proData.total * 12}/year for first location
+                    Billed ${platformPrice * 12}/year for first location
                   </p>
                 )}
               </div>
@@ -287,11 +286,11 @@ export default function ChoosePlan() {
 
               <Button
                 data-testid="button-select-pro"
-                onClick={() => handleSelectPlan("pro")}
+                onClick={() => handleSelectPlan("platform")}
                 disabled={loadingTier !== null}
                 className="bg-[#f2690d] border-[#f2690d] text-white"
               >
-                {loadingTier === "pro" ? (
+                {loadingTier === "platform" ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Starting...

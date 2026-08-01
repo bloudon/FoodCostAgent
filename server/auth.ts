@@ -5,6 +5,7 @@ import { cache, CacheKeys, CacheTTL } from "./cache";
 import type { Request, Response, NextFunction } from "express";
 import type { AuthSession, User } from "@shared/schema";
 import { type Tier, tierMeetsMinimum, TIER_LABELS } from "@shared/tier-config";
+// Note: subscriptionPlan replaces subscriptionTier as of Task #808
 
 const TOKEN_LENGTH = 32;
 const SESSION_DURATION_DAYS = 30;
@@ -347,13 +348,13 @@ export function requireTier(minTier: Tier) {
       return res.status(404).json({ error: "Company not found" });
     }
 
-    const currentTier = (company.subscriptionTier as Tier) || "free";
-    if (!tierMeetsMinimum(currentTier, minTier)) {
+    const currentPlan = (company.subscriptionPlan as Tier) || (company as any).subscriptionTier as Tier || "platform";
+    if (!tierMeetsMinimum(currentPlan, minTier)) {
       return res.status(403).json({
         error: "tier_required",
-        currentTier,
+        currentTier: currentPlan,
         requiredTier: minTier,
-        message: `This feature requires a ${TIER_LABELS[minTier]} plan or higher. You are currently on the ${TIER_LABELS[currentTier]} plan.`,
+        message: `This feature requires a ${TIER_LABELS[minTier]} plan or higher. You are currently on the ${TIER_LABELS[currentPlan] ?? currentPlan} plan.`,
       });
     }
 

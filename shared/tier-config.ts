@@ -1,18 +1,34 @@
-export const TIERS = ["basic", "pro", "enterprise"] as const;
+/**
+ * tier-config.ts — re-exports from plan-catalog.ts for the new platform/enterprise model.
+ *
+ * The old "basic" / "pro" / "free" tier keys have been retired.
+ * All subscription gating now uses "platform" and "enterprise".
+ *
+ * Feature-gate mechanics (#810) will be refactored in a follow-up task.
+ * Until then, this file provides a thin compatibility layer so existing
+ * call-sites continue to compile.
+ */
+
+export { type SubscriptionPlan, type BillingInterval, PLAN_CATALOG } from "./plan-catalog";
+
+export const TIERS = ["platform", "enterprise"] as const;
 export type Tier = (typeof TIERS)[number];
 
-export type DbTier = Tier | "free";
+/** DbTier is now identical to Tier — "free" has been retired. */
+export type DbTier = Tier;
 
-const TIER_RANK: Record<DbTier, number> = {
+const TIER_RANK: Record<string, number> = {
+  platform: 1,
+  enterprise: 2,
+  // Legacy values mapped for backward compatibility during cut-over
   free: 0,
   basic: 1,
-  pro: 2,
-  enterprise: 3,
+  pro: 1,
 };
 
-export function tierMeetsMinimum(current: DbTier | null | undefined, minimum: Tier): boolean {
+export function tierMeetsMinimum(current: DbTier | string | null | undefined, minimum: Tier): boolean {
   if (!current) return false;
-  const rank = TIER_RANK[current as DbTier] ?? 0;
+  const rank = TIER_RANK[current as string] ?? 0;
   return rank >= TIER_RANK[minimum];
 }
 
@@ -34,46 +50,46 @@ export type Feature =
   | "prep_chart"
   | "quickbooks_integration";
 
+// All features now require at minimum the "platform" plan.
+// enterprise_analytics is the only enterprise-only feature.
 const FEATURE_MIN_TIER: Record<Feature, Tier> = {
-  order_reminders: "basic",
-  recipe_costing: "basic",
-  brand_background: "basic",
-  no_ads: "basic",
-  tfc_variance: "basic",
-  pos_import: "basic",
-  smart_dashboard: "basic",
-  power_inventory: "pro",
-  transfer_orders: "pro",
-  cross_shop_vendor_pricing: "pro",
-  unlimited_locations: "pro",
-  custom_security_levels: "pro",
-  prep_chart: "pro",
-  quickbooks_integration: "pro",
+  order_reminders: "platform",
+  recipe_costing: "platform",
+  brand_background: "platform",
+  no_ads: "platform",
+  tfc_variance: "platform",
+  pos_import: "platform",
+  smart_dashboard: "platform",
+  power_inventory: "platform",
+  transfer_orders: "platform",
+  cross_shop_vendor_pricing: "platform",
+  unlimited_locations: "platform",
+  custom_security_levels: "platform",
+  prep_chart: "platform",
+  quickbooks_integration: "platform",
   enterprise_analytics: "enterprise",
-  ai_assistant: "basic",
+  ai_assistant: "platform",
 };
 
 export function featureMinTier(feature: Feature): Tier {
   return FEATURE_MIN_TIER[feature];
 }
 
-export function hasFeature(currentTier: DbTier | null | undefined, feature: Feature): boolean {
+export function hasFeature(currentTier: DbTier | string | null | undefined, feature: Feature): boolean {
   return tierMeetsMinimum(currentTier, FEATURE_MIN_TIER[feature]);
 }
 
 export const TIER_LABELS: Record<Tier, string> = {
-  basic: "Starter",
-  pro: "Pro",
+  platform: "Platform",
   enterprise: "Enterprise",
 };
 
 export const TIER_COLORS: Record<Tier, string> = {
-  basic: "default",
-  pro: "destructive",
+  platform: "default",
   enterprise: "outline",
 };
 
-export function getTierLabel(tier: DbTier | null | undefined): string {
-  if (!tier || tier === "free") return "Legacy";
-  return TIER_LABELS[tier] ?? tier;
+export function getTierLabel(tier: DbTier | string | null | undefined): string {
+  if (!tier) return "No Plan";
+  return TIER_LABELS[tier as Tier] ?? tier;
 }

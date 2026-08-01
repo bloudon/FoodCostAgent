@@ -943,7 +943,7 @@ export default function ReceivingDetail() {
         </Card>
 
         {/* QuickBooks Reconcile & Export — shown when receipt is completed, Pro tier + QB connected */}
-        {isCompleted && hasFeature((user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected && (
+        {isCompleted && hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected && (
           (() => {
             const existing = reconciliationData?.data;
             const syncLog = reconciliationData?.syncLog;

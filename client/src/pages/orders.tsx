@@ -132,7 +132,7 @@ export default function Orders() {
     retry: false,
   });
 
-  const isQbPro = hasFeature((user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected;
+  const isQbPro = hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected;
 
   // Orders awaiting QB export (Pro + QB connected only)
   const pendingQbOrders = isQbPro

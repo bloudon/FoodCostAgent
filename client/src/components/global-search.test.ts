@@ -259,7 +259,7 @@ describe("global_admin", () => {
 
 // ── Feature-gated routes ───────────────────────────────────────────────────
 
-describe("feature-gated routes (prep_chart requires pro tier)", () => {
+describe("feature-gated routes (prep_chart requires platform tier)", () => {
   const prepRoutes = ROUTE_CONFIG
     .filter((r) => r.requiredFeature === "prep_chart" && !r.route.includes(":"))
     .map((r) => r.route);
@@ -270,14 +270,17 @@ describe("feature-gated routes (prep_chart requires pro tier)", () => {
     expect(prepRoutes).toContain("/prep-chart");
   });
 
-  it("hides prep routes when tier is 'basic' (below pro)", () => {
-    const routes = visibleRoutes(undefined, "basic");
+  it("shows prep routes when tier is 'platform'", () => {
+    const routes = visibleRoutes(undefined, "platform");
     for (const r of prepRoutes) {
-      expect(routes).not.toContain(r);
+      const rc = ROUTE_CONFIG.find((c) => c.route === r);
+      if (rc?.requiredFeature === "prep_chart") {
+        expect(routes).toContain(r);
+      }
     }
   });
 
-  it("hides prep routes when tier is 'free'", () => {
+  it("hides prep routes when tier is 'free' (legacy, rank 0)", () => {
     const routes = visibleRoutes(undefined, "free");
     for (const r of prepRoutes) {
       expect(routes).not.toContain(r);
@@ -288,17 +291,6 @@ describe("feature-gated routes (prep_chart requires pro tier)", () => {
     const routes = visibleRoutes(undefined, null);
     for (const r of prepRoutes) {
       expect(routes).not.toContain(r);
-    }
-  });
-
-  it("shows prep routes when tier is 'pro'", () => {
-    const routes = visibleRoutes(undefined, "pro");
-    for (const r of prepRoutes) {
-      // /prep-chart/on-hand has no requiredFeature, only check those that do
-      const rc = ROUTE_CONFIG.find((c) => c.route === r);
-      if (rc?.requiredFeature === "prep_chart") {
-        expect(routes).toContain(r);
-      }
     }
   });
 
