@@ -1,4 +1,5 @@
 import { TierGate } from "@/components/tier-gate";
+import { RecipePhotoLightbox } from "@/components/recipe-photo-lightbox";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { useLocation, useParams, Link } from "wouter";
@@ -955,6 +956,7 @@ function RecipeBuilderContent() {
   // Instructions & photo state
   const [instructions, setInstructions] = useState("");
   const [recipeImagePath, setRecipeImagePath] = useState<string | null>(null);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
   const [isScanningInstructions, setIsScanningInstructions] = useState(false);
 
   // Component management state
@@ -2858,12 +2860,16 @@ function RecipeBuilderContent() {
                     )}
                   </div>
                   {recipeImagePath ? (
-                    <img
-                      src={recipeImagePath}
-                      alt="Recipe"
-                      className="w-full max-h-48 object-cover rounded-md"
-                      data-testid="img-recipe-photo"
-                    />
+                    <div className="flex justify-center">
+                      <img
+                        src={recipeImagePath}
+                        alt="Recipe"
+                        className="max-w-full max-h-64 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                        data-testid="img-recipe-photo"
+                        onClick={() => setPhotoLightboxOpen(true)}
+                        title="Click to view full size"
+                      />
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-24 rounded-md border-2 border-dashed border-muted-foreground/25 text-muted-foreground/50">
                       <ImageIcon className="h-8 w-8" />
@@ -2875,6 +2881,14 @@ function RecipeBuilderContent() {
           </div>
         </div>
       </div>
+
+      {photoLightboxOpen && recipeImagePath && (
+        <RecipePhotoLightbox
+          src={recipeImagePath}
+          alt="Recipe"
+          onClose={() => setPhotoLightboxOpen(false)}
+        />
+      )}
 
       {/* Add ingredient dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

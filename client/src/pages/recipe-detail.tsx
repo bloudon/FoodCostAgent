@@ -1,5 +1,6 @@
 import { TierGate } from "@/components/tier-gate";
 import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { RecipePhotoLightbox } from "@/components/recipe-photo-lightbox";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { useState } from "react";
@@ -23,6 +24,7 @@ function RecipeDetailContent() {
   const [, params] = useRoute("/recipes/:id");
   const recipeId = params?.id;
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
 
   const { data: recipe, isLoading: recipeLoading } = useQuery<any>({
     queryKey: ["/api/recipes", recipeId],
@@ -314,14 +316,25 @@ function RecipeDetailContent() {
                 <CardTitle className="text-base">Recipe Photo</CardTitle>
               </CardHeader>
               <CardContent>
-                <img
-                  src={recipe.imagePath}
-                  alt={`Photo of ${recipe.name}`}
-                  className="rounded-md w-full object-cover max-h-72"
-                  data-testid="img-recipe-photo"
-                />
+                <div className="flex justify-center">
+                  <img
+                    src={recipe.imagePath}
+                    alt={`Photo of ${recipe.name}`}
+                    className="max-w-full max-h-96 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                    data-testid="img-recipe-photo"
+                    onClick={() => setPhotoLightboxOpen(true)}
+                    title="Click to view full size"
+                  />
+                </div>
               </CardContent>
             </Card>
+          )}
+          {photoLightboxOpen && recipe.imagePath && (
+            <RecipePhotoLightbox
+              src={recipe.imagePath}
+              alt={`Photo of ${recipe.name}`}
+              onClose={() => setPhotoLightboxOpen(false)}
+            />
           )}
           {recipe.instructions && (
             <Card data-testid="card-recipe-instructions">
