@@ -39,7 +39,7 @@ const BASE_COMPANY = {
   logoImagePath:      null,
   brandImagePath:     null,
   costingMethod:      'last_cost',
-  subscriptionTier:   'pro',
+  subscriptionPlan:   'platform',
   status:             'active',
   createdAt:          '2024-01-01T00:00:00.000Z',
 };
@@ -75,7 +75,7 @@ async function mockCompanyPage(
         firstName:        'Test',
         lastName:         'Admin',
         active:           1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );

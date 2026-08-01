@@ -42,7 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDateString } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { hasFeature } from "@shared/tier-config";
+import { useTier } from "@/hooks/use-tier";
 
 type UnifiedOrder = {
   id: string;
@@ -114,6 +114,7 @@ export default function Orders() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
+  const { hasFeature } = useTier();
   
   // Use the global store context from the header filter
   const { selectedStoreId } = useStoreContext();
@@ -132,9 +133,9 @@ export default function Orders() {
     retry: false,
   });
 
-  const isQbPro = hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected;
+  const isQbPro = hasFeature("quickbooks_integration") && qbStatus?.connected;
 
-  // Orders awaiting QB export (Pro + QB connected only)
+  // Orders awaiting QB export (QB connected only)
   const pendingQbOrders = isQbPro
     ? (orders?.filter(o => o.type === "purchase" && o.status === "pending_qb_export") || [])
     : [];

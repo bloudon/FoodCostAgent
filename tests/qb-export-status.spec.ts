@@ -131,7 +131,7 @@ async function mockReceivingPage(
   poStatus: string,
   syncLog: Record<string, unknown> | null = null,
 ): Promise<void> {
-  // Auth — Pro-tier user so hasFeature("transfer_orders") returns true
+  // Auth — platform-plan user so hasFeature("quickbooks_integration") returns true
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({
       status: 200,
@@ -145,7 +145,7 @@ async function mockReceivingPage(
         firstName: 'Test',
         lastName: 'Admin',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );

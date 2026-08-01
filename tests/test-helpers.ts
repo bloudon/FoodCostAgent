@@ -51,7 +51,7 @@ export async function mockReviewPageShell(page: Page): Promise<void> {
         firstName: 'Test',
         lastName: 'User',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );

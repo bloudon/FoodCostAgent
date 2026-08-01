@@ -52,7 +52,7 @@ async function mockAuth(page: Page) {
         firstName: 'Test',
         lastName: 'Admin',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );
@@ -83,7 +83,7 @@ async function mockCompany(page: Page) {
         name: 'Test Co 673',
         posProvider: 'none',
         costingMethod: 'last_cost',
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     });
   });

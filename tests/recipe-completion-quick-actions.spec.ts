@@ -87,7 +87,7 @@ async function mockAuth(page: Page): Promise<void> {
         firstName: 'Test',
         lastName: 'Admin',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     });
   });

@@ -65,15 +65,15 @@ async function run() {
       legalName: "Brian's Pizza LLC",
       contactEmail: "brian@brianspizza.com",
       status: "active",
-      subscriptionTier: "pro",
+      subscriptionPlan: "platform",
     });
     console.log("  ✅ Company A (Brian's Pizza) created");
   } else {
     await db
       .update(companies)
-      .set({ subscriptionTier: "pro" })
+      .set({ subscriptionPlan: "platform" })
       .where(eq(companies.id, COMPANY_A_ID));
-    console.log("  ⏭  Company A exists — subscriptionTier ensured pro");
+    console.log("  ⏭  Company A exists — subscriptionPlan ensured platform");
   }
 
   // ── 2. Company B — The Breakfast Nook ────────────────────────────────────
@@ -88,15 +88,15 @@ async function run() {
       name: "The Breakfast Nook",
       contactEmail: "hello@breakfastnook.com",
       status: "active",
-      subscriptionTier: "pro",
+      subscriptionPlan: "platform",
     });
     console.log("  ✅ Company B (The Breakfast Nook) created");
   } else {
     await db
       .update(companies)
-      .set({ subscriptionTier: "pro" })
+      .set({ subscriptionPlan: "platform" })
       .where(eq(companies.id, COMPANY_B_ID));
-    console.log("  ⏭  Company B exists — subscriptionTier ensured pro");
+    console.log("  ⏭  Company B exists — subscriptionPlan ensured platform");
   }
 
   // ── 3. Store A ────────────────────────────────────────────────────────────

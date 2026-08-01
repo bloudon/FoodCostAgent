@@ -267,7 +267,7 @@ test.describe('Onboarding plan step — wizard Step 2', () => {
           id: 'test-user-id',
           email: TEST_EMAIL,
           companyId: TEST_COMPANY_ID,
-          subscriptionTier: 'pro',
+          subscriptionPlan: 'platform',
           role: 'global_admin',
         }),
       });

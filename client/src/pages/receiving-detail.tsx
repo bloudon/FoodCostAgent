@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatUnitName, formatDateString } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { hasFeature } from "@shared/tier-config";
+import { useTier } from "@/hooks/use-tier";
 
 type PurchaseOrderDetail = {
   id: string;
@@ -108,6 +108,7 @@ export default function ReceivingDetail() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { hasFeature } = useTier();
   
   // Get receiptId from query parameter if present
   const searchParams = new URLSearchParams(location.split('?')[1]);
@@ -942,8 +943,8 @@ export default function ReceivingDetail() {
           </CardContent>
         </Card>
 
-        {/* QuickBooks Reconcile & Export — shown when receipt is completed, Pro tier + QB connected */}
-        {isCompleted && hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders") && qbStatus?.connected && (
+        {/* QuickBooks Reconcile & Export — shown when receipt is completed and QB is connected */}
+        {isCompleted && hasFeature("quickbooks_integration") && qbStatus?.connected && (
           (() => {
             const existing = reconciliationData?.data;
             const syncLog = reconciliationData?.syncLog;

@@ -65,7 +65,7 @@ async function mockAdminPage(page: Page): Promise<void> {
         firstName: 'Admin',
         lastName: 'User',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );

@@ -40,7 +40,7 @@ test.describe('Purchase order detail — SKU search in Misc Grocery item picker'
           firstName: 'Test',
           lastName: 'User',
           active: 1,
-          subscriptionTier: 'pro',
+          subscriptionPlan: 'platform',
         }),
       })
     );

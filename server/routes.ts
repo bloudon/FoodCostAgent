@@ -10949,16 +10949,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const countInput = insertInventoryCountSchema.parse(req.body);
 
       if (countInput.isPowerSession === 1) {
-        const { tierMeetsMinimum, featureMinTier } = await import("@shared/tier-config");
+        // power_inventory is a core platform capability — available on all paid plans.
+        // Global admins always pass; for other users, verify the company has an active paid plan.
+        // Normalize legacy tier values: "pro"/"basic" → "platform", "free"/unknown → null (not paid).
         const user = (req as any).user;
         if (user?.role !== "global_admin") {
           const companyId = (req as any).companyId;
           if (companyId) {
             const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
-            const currentPlan = company?.subscriptionPlan ?? "platform";
-            const minTier = featureMinTier("power_inventory");
-            if (minTier && !tierMeetsMinimum(currentPlan, minTier)) {
-              return res.status(403).json({ error: "tier_required", currentTier: currentPlan, requiredTier: minTier });
+            const rawPlan = company?.subscriptionPlan ?? null;
+            const PAID_PLANS = ["platform", "enterprise", "pro", "basic"] as const;
+            const isPaidPlan = rawPlan && (PAID_PLANS as readonly string[]).includes(rawPlan) && rawPlan !== "free";
+            if (!isPaidPlan) {
+              return res.status(403).json({ error: "tier_required", message: "An active paid plan is required to use Power Inventory sessions." });
             }
           }
         }
@@ -19980,10 +19983,8 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
 
       let tfcSummary = "";
-      // Enterprise and platform both get TFC data; enterprise gets it by plan, platform always qualifies
-      const tierHierarchy = ["platform", "enterprise"];
-      const tierIndex = tierHierarchy.indexOf(tier);
-      if (tierIndex >= 0) {
+      // All paid plans (platform and enterprise) get TFC data
+      if (tier) {
         try {
           const tfcResult = await db.execute(
             sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, cs.name as store_name
@@ -20070,19 +20071,19 @@ APP NAVIGATION — when users ask how to do something, direct them to the correc
 - Vendors: Open the hamburger menu → "Vendors". Here they can add suppliers, manage contact info, and attach order guides. Available on ALL plans.
 - Inventory: Hamburger menu → "Inventory Items". Add ingredients with unit costs, yield %, and category. Available on ALL plans.
 - Categories: Hamburger menu → "Categories". Organize inventory into groups. Available on ALL plans.
-- Recipes: Hamburger menu → "Recipes". Build recipes with costed ingredients, nested sub-recipes, and yield. Requires Basic plan or higher.
-- Menu Items: Hamburger menu → "Menu Items". Track individual menu item prices and link to recipes for margin calculation. Available on ALL plans.
-- Menu Portfolio: Hamburger menu → "Menus". Manage full menus with sections and entries, control the publication status (draft → ready → scheduled → live → retired), assign menus to specific store locations, set effective dates and weekly recurrence schedules, and enter forecast quantities to project revenue and food cost %. Available on ALL plans.
-- Waste Log: Hamburger menu → "Waste Log". Record spoilage and waste events. Available on ALL plans.
-- Order Guides: Hamburger menu → "Vendors" then select a vendor → "Order Guide". Set up reorder templates. Available on ALL plans.
-- Store Locations: Gear icon → "Locations". Add and manage store locations. Available on ALL plans.
-- TFC Variance: Hamburger menu → "TFC Variance". Theoretical food cost vs. actual sales analysis. Requires Pro plan.
-- Inventory Transfers: Hamburger menu → "Transfers". Move stock between locations. Requires Pro plan.
+- Recipes: Hamburger menu → "Recipes". Build recipes with costed ingredients, nested sub-recipes, and yield. Available on all plans.
+- Menu Items: Hamburger menu → "Menu Items". Track individual menu item prices and link to recipes for margin calculation. Available on all plans.
+- Menu Portfolio: Hamburger menu → "Menus". Manage full menus with sections and entries, control the publication status (draft → ready → scheduled → live → retired), assign menus to specific store locations, set effective dates and weekly recurrence schedules, and enter forecast quantities to project revenue and food cost %. Available on all plans.
+- Waste Log: Hamburger menu → "Waste Log". Record spoilage and waste events. Available on all plans.
+- Order Guides: Hamburger menu → "Vendors" then select a vendor → "Order Guide". Set up reorder templates. Available on all plans.
+- Store Locations: Gear icon → "Locations". Add and manage store locations. Available on all plans.
+- TFC Variance: Hamburger menu → "TFC Variance". Theoretical food cost vs. actual sales analysis. Available on all plans.
+- Inventory Transfers: Hamburger menu → "Transfers". Move stock between locations. Available on all plans.
 - Settings: Gear icon → "Settings". Company-wide configuration.
-- Invoice Scanner: Hamburger menu → "Vendors" → select a vendor → "Scan Invoice" button. Requires Basic plan.
-- Recipe Scanner: Hamburger menu → "Recipes" → "Scan Recipe" button. Upload or take a photo of a handwritten or printed recipe; the AI extracts ingredients and quantities automatically. Requires Basic plan.
-- Menu Scanner: Hamburger menu → "Menu Items" → "Scan Menu" button. Upload a photo of a physical menu or menu board; the AI imports all items at once. Requires Basic plan.
-- AI CSV Inventory Import: Hamburger menu → "Inventory Items" → "Import CSV" button → 3-step wizard (upload file → map columns → confirm import). Best for importing a vendor spreadsheet or existing inventory list. Requires Basic plan.
+- Invoice Scanner: Hamburger menu → "Vendors" → select a vendor → "Scan Invoice" button. Available on all plans.
+- Recipe Scanner: Hamburger menu → "Recipes" → "Scan Recipe" button. Upload or take a photo of a handwritten or printed recipe; the AI extracts ingredients and quantities automatically. Available on all plans.
+- Menu Scanner: Hamburger menu → "Menu Items" → "Scan Menu" button. Upload a photo of a physical menu or menu board; the AI imports all items at once. Available on all plans.
+- AI CSV Inventory Import: Hamburger menu → "Inventory Items" → "Import CSV" button → 3-step wizard (upload file → map columns → confirm import). Best for importing a vendor spreadsheet or existing inventory list. Available on all plans.
 
 AI-POWERED FEATURES — step-by-step flows and when to suggest them:
 
@@ -20106,11 +20107,10 @@ AI-POWERED FEATURES — step-by-step flows and when to suggest them:
    Flow: Step 1 — upload a CSV or spreadsheet file. Step 2 — map spreadsheet columns to app fields (name, unit, cost, category, etc.). Step 3 — review the preview and confirm the import.
    Proactively suggest when: a user mentions a vendor spreadsheet, an existing inventory list, a CSV file, or says they want to import items in bulk rather than entering them one by one.
 
-PLAN TIER FEATURES — be precise about what each tier includes; never invent restrictions:
-- Free: Vendors, inventory items, categories, stores, order guides, waste logs, basic menu items, Menu Portfolio (full menu management with scheduling and forecasting). No recipes, no AI.
-- Basic: Everything in Free, PLUS recipes & recipe costing, nested sub-recipes, yield tracking, AI assistant (this chat), AI invoice scan, AI recipe photo scan, AI menu import scan, AI CSV inventory import, brand background images.
-- Pro: Everything in Basic, PLUS TFC variance analysis, POS sales data import, QuickBooks export, inventory transfers between locations, unlimited store locations.
-- Enterprise: Everything in Pro plus custom integrations and dedicated support. Contact sales.
+PLAN MODEL — be precise about what each plan includes; never invent restrictions:
+- Platform: All core capabilities included — recipes & recipe costing, AI assistant (this chat), AI invoice / recipe / menu scanning, inventory management, TFC variance analysis, POS sales data import, QuickBooks integration, inventory transfers, prep charts, waste tracking, and more. There is no "Basic" or "Pro" tier.
+- Enterprise: All Platform capabilities, plus custom pricing & terms, dedicated onboarding manager, enterprise analytics & reporting, priority support SLA, custom integrations, and SSO / SAML support.
+- Multi-location mode (2 or more active operating locations): Cross-location inventory visibility, inventory transfers between locations, per-location cost reporting, and centralized vendor pricing. Activates automatically when a second operating location is added.
 
 Current account data:
 - Plan: ${tier}
@@ -20122,7 +20122,7 @@ IMPORTANT — This is a brand-new account with no data yet. Shift your role to o
 2. Set up categories (hamburger menu → Categories)
 3. Add vendors / suppliers (hamburger menu → Vendors)
 4. Add inventory items with costs (hamburger menu → Inventory Items)
-5. Build recipes (hamburger menu → Recipes) — requires Basic plan
+5. Build recipes (hamburger menu → Recipes)
 6. Add menu items and link to recipes (hamburger menu → Menu Items)
 Be encouraging and guide them to the right section for their next step.` : ""}
 

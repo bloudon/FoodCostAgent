@@ -44,7 +44,6 @@ import {
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { UsersManagement } from "@/components/UsersManagement";
 import { useAuth } from "@/lib/auth-context";
-import { hasFeature } from "@shared/tier-config";
 import { useTier } from "@/hooks/use-tier";
 import { PosSalesDataSection } from "@/components/PosSalesDataSection";
 
@@ -57,8 +56,6 @@ function QbIntegrationCard({
   qbStatusLoading: boolean;
   qbDisconnectMutation: any;
 }) {
-  const { hasFeature } = useTier();
-
   return (
     <Card>
       <CardHeader>
@@ -68,22 +65,7 @@ function QbIntegrationCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {!hasFeature("quickbooks_integration") ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-              <Lock className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-medium">Pro Plan Required</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                QuickBooks integration is available on the Pro plan and above.
-              </p>
-            </div>
-            <Button asChild size="sm" data-testid="button-upgrade-qb">
-              <a href="/choose-plan">Upgrade to Pro</a>
-            </Button>
-          </div>
-        ) : qbStatusLoading ? (
+        {qbStatusLoading ? (
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Checking connection status...</span>
@@ -147,6 +129,7 @@ function QbIntegrationCard({
 
 function QbSyncHistoryCard() {
   const { user } = useAuth();
+  const { hasFeature } = useTier();
   const { toast } = useToast();
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { data: syncLogs = [], isLoading } = useQuery<any[]>({
@@ -184,8 +167,8 @@ function QbSyncHistoryCard() {
     return <Badge variant="outline">{status}</Badge>;
   };
 
-  // Only Pro tier users can use QB export — guard the card
-  if (!hasFeature((user as any)?.subscriptionPlan ?? (user as any)?.subscriptionTier, "transfer_orders")) return null;
+  // Guard: only show when QuickBooks integration is available on the current plan
+  if (!hasFeature("quickbooks_integration")) return null;
 
   return (
     <Card>

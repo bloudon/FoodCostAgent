@@ -58,8 +58,8 @@ const SUMMARIES_FIXTURE = [
 // ---------------------------------------------------------------------------
 
 /**
- * Mock /api/auth/me with a pro-tier company_admin.
- * subscriptionTier: 'pro' unlocks tfc_variance (basic+) and pos_import (basic+).
+ * Mock /api/auth/me with a platform-plan company_admin.
+ * subscriptionPlan: 'platform' unlocks all core capabilities including tfc_variance and pos_import.
  */
 async function mockAuth(page: Page): Promise<void> {
   await page.route('**/api/auth/me', (route) =>
@@ -75,7 +75,7 @@ async function mockAuth(page: Page): Promise<void> {
         firstName: 'Test',
         lastName: 'Admin',
         active: 1,
-        subscriptionTier: 'pro',
+        subscriptionPlan: 'platform',
       }),
     }),
   );
@@ -130,7 +130,7 @@ async function mockShellCalls(page: Page): Promise<void> {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ id: 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1', name: "Brian's Pizza", subscriptionTier: 'pro' }),
+      body: JSON.stringify({ id: 'ad95ecda-74a9-49d7-833b-6d7d2f48efd1', name: "Brian's Pizza", subscriptionPlan: 'platform' }),
     }),
   );
 }
