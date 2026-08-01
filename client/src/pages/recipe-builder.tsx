@@ -91,6 +91,8 @@ import {
   Loader2,
   Lock,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Info,
   CheckCircle2,
   SkipForward,
@@ -995,6 +997,24 @@ function RecipeBuilderContent() {
   // Clone as Size Variant dialog state
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [mobileIngredientsOpen, setMobileIngredientsOpen] = useState(true);
+  const [desktopIngredientPanelOpen, setDesktopIngredientPanelOpen] = useState<boolean>(() => {
+    if (isNew) return true;
+    try {
+      const stored = localStorage.getItem(`recipe-ingredient-panel-${id}`);
+      return stored === null ? true : stored === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const toggleDesktopPanel = () => {
+    setDesktopIngredientPanelOpen(prev => {
+      const next = !prev;
+      if (!isNew && id) {
+        try { localStorage.setItem(`recipe-ingredient-panel-${id}`, String(next)); } catch {}
+      }
+      return next;
+    });
+  };
   const [cloneSizeName, setCloneSizeName] = useState("");
   const [cloneScaleFactor, setCloneScaleFactor] = useState("1.0");
   const [cloneCreateMenuItem, setCloneCreateMenuItem] = useState(false);
@@ -2392,7 +2412,7 @@ function RecipeBuilderContent() {
           )}
           <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
             {/* Right panel - Source items (shows below recipe form on mobile) */}
-            <div className="order-2 md:order-2 md:col-span-4 flex flex-col gap-2 md:overflow-hidden">
+            <div className={`order-2 md:order-2 ${desktopIngredientPanelOpen ? "md:col-span-4" : "md:hidden"} flex flex-col gap-2 md:overflow-hidden`}>
               {/* Mobile collapsible toggle */}
               <button
                 className="md:hidden flex items-center justify-between w-full py-2.5 px-3 border rounded-lg bg-muted/30 text-left"
@@ -2405,9 +2425,21 @@ function RecipeBuilderContent() {
                 <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${mobileIngredientsOpen ? "rotate-180" : ""}`} />
               </button>
 
+              {/* Desktop header with collapse toggle */}
+              <div className="hidden md:flex items-center justify-between py-0.5">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Ingredients</h2>
+                <button
+                  onClick={toggleDesktopPanel}
+                  className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Hide ingredient panel"
+                  data-testid="button-collapse-ingredient-panel"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
               <div className={`${mobileIngredientsOpen ? "flex flex-col gap-2" : "hidden"} md:flex md:flex-col md:gap-2 md:flex-1 md:overflow-hidden`}>
               <div className="space-y-2 md:space-y-2">
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide hidden md:block">Available Ingredients</h2>
                 
                 {/* Category filter */}
                 <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
@@ -2488,37 +2520,106 @@ function RecipeBuilderContent() {
             </div>
 
             {/* Left panel - Recipe canvas (shows first on mobile) */}
-            <div className="order-1 md:order-1 md:col-span-8 flex flex-col gap-4 md:overflow-y-auto">
+            <div className={`order-1 md:order-1 ${desktopIngredientPanelOpen ? "md:col-span-8" : "md:col-span-12"} flex flex-col gap-4 md:overflow-y-auto`}>
               {/* Recipe metadata - compact */}
               <Card className="flex-shrink-0">
                 <CardContent className="pt-4 pb-3 space-y-3">
-                  {/* Recipe name and cost */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="flex-1 space-y-1">
-                      <label className="text-sm font-medium">Recipe Name</label>
-                      <Input
-                        value={recipeName}
-                        onChange={(e) => setRecipeName(e.target.value)}
-                        placeholder="e.g., Margherita Pizza"
-                        data-testid="input-recipe-name"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between sm:block sm:w-40 sm:text-right">
-                      <label className="text-sm font-medium text-muted-foreground">Total Cost:</label>
-                      <div className="flex items-baseline gap-2 sm:justify-end flex-wrap">
-                        <div
-                          className="text-xl sm:text-2xl font-bold text-primary"
-                          data-testid="text-total-cost"
-                        >
-                          ${totalCost.toFixed(2)}
+                  {/* Top row: photo thumbnail on left, name + cost + yield summary on right */}
+                  <div className="flex items-start gap-3">
+                    {/* Compact photo thumbnail — always visible above the fold */}
+                    <div className="flex-shrink-0">
+                      {recipeImagePath ? (
+                        <div className="relative group w-20 h-20">
+                          <img
+                            src={recipeImagePath}
+                            alt="Recipe"
+                            className="w-20 h-20 rounded-md object-contain border cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setPhotoLightboxOpen(true)}
+                            title="Click to view full size"
+                            data-testid="img-recipe-photo"
+                          />
+                          <button
+                            className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 flex items-center justify-center bg-black/60 rounded-full hover:bg-black/80"
+                            onClick={() => {
+                              setRecipeImagePath(null);
+                              if (!isNew && id) {
+                                patchRecipeFieldsMutation.mutate({ imagePath: null });
+                              }
+                            }}
+                            data-testid="button-remove-recipe-photo"
+                            title="Remove photo"
+                          >
+                            <X className="h-3 w-3 text-white" />
+                          </button>
                         </div>
-                        <CostingMethodBadge />
+                      ) : (
+                        <div className="w-20 h-20 rounded-md border-2 border-dashed border-muted-foreground/25 hover:border-primary/40 transition-colors overflow-hidden [&>div]:h-full [&>div]:w-full [&_button]:h-full [&_button]:w-full [&_button]:p-0 [&_button]:rounded-md">
+                          <ObjectUploader
+                            onUploadComplete={(path) => {
+                              setRecipeImagePath(path);
+                              if (!isNew && id) {
+                                patchRecipeFieldsMutation.mutate({ imagePath: path });
+                              }
+                            }}
+                            buttonText=""
+                            buttonVariant="ghost"
+                            visibility="private"
+                            dataTestId="button-upload-recipe-photo"
+                            capture="environment"
+                            icon={<ImageIcon className="h-5 w-5 text-muted-foreground/40" />}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Recipe name, cost and yield summary */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-sm font-medium">Recipe Name</label>
+                          <Input
+                            value={recipeName}
+                            onChange={(e) => setRecipeName(e.target.value)}
+                            placeholder="e.g., Margherita Pizza"
+                            data-testid="input-recipe-name"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between sm:block sm:w-40 sm:text-right">
+                          <label className="text-sm font-medium text-muted-foreground">Total Cost:</label>
+                          <div className="flex items-baseline gap-2 sm:justify-end flex-wrap">
+                            <div
+                              className="text-xl sm:text-2xl font-bold text-primary"
+                              data-testid="text-total-cost"
+                            >
+                              ${totalCost.toFixed(2)}
+                            </div>
+                            <CostingMethodBadge />
+                          </div>
+                        </div>
                       </div>
+                      {/* Compact yield summary — always visible even when accordion is closed */}
+                      {(yieldQty || selectedStores.length > 0) && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                          {yieldQty && (
+                            <span>
+                              Yield: {yieldQty}
+                              {(() => {
+                                const u = units?.find(u => u.id === yieldUnitId);
+                                return u ? ` ${formatUnitName(u.name)}` : '';
+                              })()}
+                            </span>
+                          )}
+                          {yieldQty && selectedStores.length > 0 && <span>·</span>}
+                          {selectedStores.length > 0 && (
+                            <span>{selectedStores.length} store{selectedStores.length !== 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Yield and canBeIngredient - open by default */}
-                  <Accordion type="single" collapsible defaultValue="yield-details" className="-mb-2">
+                  {/* Yield and canBeIngredient - collapsed by default to save vertical space */}
+                  <Accordion type="single" collapsible className="-mb-2">
                     <AccordionItem value="yield-details" className="border-0">
                       <AccordionTrigger className="text-sm font-medium py-2">
                         Recipe Yield & Options
@@ -2630,11 +2731,25 @@ function RecipeBuilderContent() {
               >
                 <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Ingredients ({components.length})</h3>
-                  {components.length > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      Drag to reorder
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Expand ingredient panel — shown on desktop only when right panel is hidden */}
+                    {!desktopIngredientPanelOpen && (
+                      <button
+                        className="hidden md:flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border rounded px-2 py-1 hover:bg-muted/50 transition-colors"
+                        onClick={toggleDesktopPanel}
+                        title="Show ingredient panel"
+                        data-testid="button-expand-ingredient-panel"
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                        Add ingredients
+                      </button>
+                    )}
+                    {components.length > 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        Drag to reorder
+                      </span>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-auto">
                   {/* Banner: components whose unit can't be costed. Each
@@ -2818,65 +2933,7 @@ function RecipeBuilderContent() {
                 </Accordion>
               </Card>
 
-              {/* Recipe photo card */}
-              <Card className="flex-shrink-0">
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center justify-between gap-4 mb-3">
-                    <h3 className="text-sm font-medium flex items-center gap-2">
-                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                      Recipe Photo
-                    </h3>
-                    {!recipeImagePath && (
-                      <ObjectUploader
-                        onUploadComplete={(path) => {
-                          setRecipeImagePath(path);
-                          if (!isNew && id) {
-                            patchRecipeFieldsMutation.mutate({ imagePath: path });
-                          }
-                        }}
-                        buttonText="Upload Photo"
-                        buttonVariant="outline"
-                        visibility="private"
-                        dataTestId="button-upload-recipe-photo"
-                        capture="environment"
-                        icon={<ImageIcon className="h-4 w-4" />}
-                      />
-                    )}
-                    {recipeImagePath && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setRecipeImagePath(null);
-                          if (!isNew && id) {
-                            patchRecipeFieldsMutation.mutate({ imagePath: null });
-                          }
-                        }}
-                        data-testid="button-remove-recipe-photo"
-                        title="Remove photo"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  {recipeImagePath ? (
-                    <div className="flex justify-center">
-                      <img
-                        src={recipeImagePath}
-                        alt="Recipe"
-                        className="max-w-full max-h-64 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                        data-testid="img-recipe-photo"
-                        onClick={() => setPhotoLightboxOpen(true)}
-                        title="Click to view full size"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-24 rounded-md border-2 border-dashed border-muted-foreground/25 text-muted-foreground/50">
-                      <ImageIcon className="h-8 w-8" />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Recipe photo is now embedded in the metadata card above for above-the-fold visibility */}
             </div>
           </div>
         </div>
