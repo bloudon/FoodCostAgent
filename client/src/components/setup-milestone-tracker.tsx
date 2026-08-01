@@ -101,6 +101,14 @@ export function SetupMilestoneTracker() {
     return null;
   }
 
+  // Hide while the Quick Start operational steps (GetOperationalCard) aren't done yet.
+  // This prevents both cards from showing simultaneously with overlapping steps.
+  const QUICK_START_IDS = ["menu_scan", "storage_locations", "invoice_scan"];
+  const quickStartDone = QUICK_START_IDS.every(
+    (id) => data.milestones.find((m) => m.id === id)?.completed
+  );
+  if (!quickStartDone) return null;
+
   if (data.dismissed && data.completedCount < data.totalCount) {
     return (
       <div className="mb-4 flex items-center justify-between gap-2 px-1 py-2" data-testid="setup-guide-recall">

@@ -26,7 +26,7 @@ interface MilestonesResponse {
 
 const milestoneLabels: Record<string, string> = {
   menu_scan: "Menu Scan",
-  plan: "Plan",
+  plan: "Review Your Account",
   invoice_scan: "Invoice Scan",
   categories: "Categories",
   storage_locations: "Storage",

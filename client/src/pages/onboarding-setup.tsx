@@ -97,7 +97,7 @@ function clearWizardState(companyId: string) {
 // ---- Step definitions ----
 const STEPS = [
   { id: "menu_scan", label: "Menu", icon: Camera },
-  { id: "plan", label: "Plan", icon: Zap },
+  { id: "plan", label: "Account", icon: Zap },
   { id: "store_setup", label: "Store", icon: Building2 },
   { id: "storage", label: "Storage", icon: Warehouse },
   { id: "invoice_scan", label: "Invoice", icon: FileText },
@@ -182,11 +182,12 @@ function StepperBar({ currentStep }: { currentStep: number }) {
   );
 }
 
-// ---- Step 2: Plan Selection ----
-// Users must actively click to go to /choose-plan — no auto-redirect.
+// ---- Step 2: Account Review ----
+// Directs the user to /choose-plan (Account & Locations Overview) to start
+// their Opportunity Review or confirm their existing subscription.
 // On return from Stripe with ?planActivated=true the wizard polls for
-// plan status automatically (up to ~20s). The "I've selected a plan"
-// button is always available for manual re-check.
+// plan status automatically (up to ~20s). The "I've reviewed my account"
+// button is always available for a manual re-check.
 function PlanStep({
   company,
   planActivated,
@@ -309,7 +310,7 @@ function PlanStep({
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           onContinue();
         } else {
-          toast({ title: "No active plan found", description: "Complete your plan selection to continue.", variant: "destructive" });
+          toast({ title: "No active subscription found", description: "Start your Opportunity Review to continue.", variant: "destructive" });
         }
       }
     } catch {
@@ -322,10 +323,11 @@ function PlanStep({
   return (
     <Card data-testid="card-step-plan">
       <CardHeader>
-        <CardTitle>Choose your plan</CardTitle>
+        <CardTitle>Review Your Account</CardTitle>
         <CardDescription>
-          A plan is required to unlock recipe costing, invoice scanning, and more.
-          Click below to review options — you'll return here automatically after selecting.
+          Start your 14-day Opportunity Review to get recipe costing, invoice scanning, and food cost
+          reports configured — or confirm your existing subscription if you've already set one up.
+          You'll return here automatically once your account is active.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -338,7 +340,7 @@ function PlanStep({
           }}
           data-testid="button-choose-plan"
         >
-          View Plans &amp; Pricing
+          Review Your Account
           <ChevronRight className="w-4 h-4 ml-1" />
         </Button>
         <Button
@@ -350,7 +352,7 @@ function PlanStep({
         >
           {checking
             ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Checking…</>
-            : <><RefreshCw className="w-4 h-4 mr-2" /> I've selected a plan — continue</>}
+            : <><RefreshCw className="w-4 h-4 mr-2" /> I've reviewed my account — continue</>}
         </Button>
       </CardContent>
     </Card>
