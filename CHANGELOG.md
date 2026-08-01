@@ -2,6 +2,51 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.12.1] — 2026-08-01
+
+### Billing & Account
+
+- **Account & Locations overview** — `/choose-plan` replaced with a purpose-built account dashboard. Active subscribers see plan name, live status badge (Trial · N days left / Active / Past Due), billing interval, renewal date, licensed vs. active location count, and a full capabilities checklist. New users see the 14-day Opportunity Review trial signup with monthly/annual toggle. Fetch failures surface a blocking error instead of silently showing a checkout form to existing subscribers.
+- **`GET /api/billing/subscription`** — new endpoint returning plan, subscription status, billing interval, current-period-end, licensed location count, and active location count (inactive and closed stores excluded from the count).
+- **Plan catalog** (`shared/plan-catalog.ts`) — single source of truth for `PLAN_CATALOG`, `ADDITIONAL_LOCATION_PRICING`, `CORE_PLATFORM_CAPABILITIES`, `MULTI_LOCATION_CAPABILITIES`, `ENTERPRISE_CAPABILITIES`, `getOperatingMode`, `PRICING`, and `MARKETING_PRICING`. Retires the legacy basic/pro tier keys.
+- **Stripe billing alignment** — checkout sessions and webhook handling updated to the platform + additional-location seat model.
+- **Feature gate refactor** — all entitlement checks now driven by plan-catalog operating mode rather than raw tier strings.
+
+### Recipe Builder
+
+- **Compact metadata layout** — photo thumbnail (80 × 80 px) sits inline with name, yield, and cost in the metadata card so the fold is useful on first load. Yield accordion is collapsed by default.
+- **Click-to-expand photo** — clicking the thumbnail toggles it between 80 px and 240 px in-card; a separate lightbox button still opens the full image. Expanded state persists to `localStorage`.
+- **Collapsible ingredient panel** — desktop ingredient list has a collapse toggle; open/closed state is persisted to `localStorage` under `desktopIngredientPanelOpen`.
+
+### Onboarding
+
+- **Get Operational card streamlined** — reduced to 3 required steps (menu scan, storage locations, first invoice). Orderly moved to an optional "Other import options" row so it no longer blocks the checklist for non-Orderly operators.
+- **Getting Started milestone** — "Review Your Account" step now links directly to `/choose-plan` (account overview) instead of routing through the guided wizard.
+
+### Security
+
+- **28 Replit proxy URLs scrubbed from `package-lock.json`** — removed internal CDN references that were leaking into the lockfile.
+
+---
+
+## [1.12.0] — 2026-07-30
+
+### Search & Analytics
+
+- **Global search** — unified search across 10 entity types (inventory items, recipes, menu items, vendors, purchase orders, waste logs, categories, storage locations, staff, and count sessions). Keyboard shortcut `⌘K` / `Ctrl+K` opens the command palette from anywhere in the app.
+- **GA4 analytics integration** — page views and key user actions tracked via Google Analytics 4 for product insight.
+
+### Internationalisation
+
+- **Spanish translations** — full UI translation for navigation, onboarding wizard, marketing pages (Platform, About, Industries), and all new-page copy. Language toggle (EN / ES) in the top nav.
+
+### Import & Data
+
+- **Orderly snapshot → count session import** (Task #679) — paste an Orderly inventory snapshot export and the app creates a matching count session with quantities pre-filled, preserving item names and storage location mapping.
+- **Vendor pack geometry normalisation** (Task #724) — 7 new columns on `vendor_items` (`canonical_qty_per_purchase_unit`, `normalized_price_per_canonical_unit`, `pack_geometry_status`, `pack_geometry_source`, `pack_geometry_updated_at`, `pricing_basis`, `is_variable_weight`) to standardise how mixed-unit distributor packs are costed.
+
+---
+
 ## [1.11.0] — 2026-07-24
 
 ### Dashboard & Alerts

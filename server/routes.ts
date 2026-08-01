@@ -220,6 +220,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/billing/checkout", requireAuth, createCheckoutSession);
   app.post("/api/billing/webhook", stripeWebhook);
 
+  /**
+   * GET /api/billing/subscription
+   * Returns the current company's subscription details: plan, status, billing
+   * interval, period end, licensed vs. active location counts.
+   */
+  app.get("/api/billing/subscription", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const companyId = getEffectiveCompanyId(req) || user?.companyId || null;
+      if (!companyId) {
+        return res.status(400).json({ error: "No company context" });
+      }
+
+      const [company, stores] = await Promise.all([
+        storage.getCompany(companyId),
+        storage.getCompanyStores(companyId),
+      ]);
+
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Only count operating locations that are currently active (status = 'active').
+      // closed and inactive stores must not inflate the location count shown in billing UI.
+      const activeLocationCount = stores.filter((s) => s.status === "active").length;
+
+      return res.json({
+        plan: company.subscriptionPlan ?? null,
+        status: company.subscriptionStatus ?? null,
+        billingInterval: company.billingInterval ?? null,
+        currentPeriodEnd: company.subscriptionCurrentPeriodEnd ?? null,
+        licensedLocationCount: company.licensedLocationCount ?? 1,
+        activeLocationCount,
+      });
+    } catch (err: any) {
+      console.error("GET /api/billing/subscription error:", err);
+      return res.status(500).json({ error: "Failed to fetch subscription" });
+    }
+  });
+
   // ============ BACKGROUND IMAGES ============
   // Default Unsplash IDs for auto-seeding
   const DEFAULT_UNSPLASH_IDS = [

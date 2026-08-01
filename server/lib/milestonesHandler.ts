@@ -121,9 +121,9 @@ export function computeMilestones(
     },
     {
       id: "plan",
-      label: "Choose a Plan",
+      label: "Review Your Account",
       completed: data.hasPlan || reviewedSteps.includes("plan"),
-      path: "/onboarding/setup",
+      path: "/choose-plan",
     },
     {
       id: "invoice_scan",

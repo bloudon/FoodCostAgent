@@ -1,15 +1,26 @@
 ---
 name: App versioning & migration state
-description: Current app version, CHANGELOG history, schema migration tags, and how the version/migration system works.
+description: Current app version, CHANGELOG history, schema migration tags, patch-versioning convention, and how the version/migration system works.
 ---
 
 # App Versioning & Migration State
 
-## Current state (as of 2026-07-30)
+## Current state (as of 2026-08-01)
 
-- **App version**: `1.12.0` (set in `package.json:3`; imported as `APP_VERSION` in `server/routes.ts:6`)
-- **CHANGELOG**: exists at `CHANGELOG.md`; documented from `1.5.0` (2025-04-01) through `1.11.0` (2026-07-24). **1.12.0 is not yet written into CHANGELOG.**
-- **Test suite**: 1377 passing / 50 files (as of 2026-07-30)
+- **App version**: `1.12.1` (set in `package.json:3`; imported as `APP_VERSION` in `server/routes.ts:6`)
+- **CHANGELOG**: exists at `CHANGELOG.md`; documented from `1.5.0` (2025-04-01) through `1.12.1` (2026-08-01).
+
+---
+
+## Versioning convention (established 2026-08-01)
+
+**Always use 3-part semver: `MAJOR.MINOR.PATCH`**
+
+- **PATCH** (`1.12.x`) — bump after every batch of shipped work in a session, even small changes. Do not wait for a "big release".
+- **MINOR** (`1.x.0`) — bump when a meaningful new capability ships (new page, new integration, major workflow change).
+- **MAJOR** — reserved for architecture breaks.
+
+**Rule:** Every session that ships code should end with a version bump + CHANGELOG entry. Do not accumulate work across multiple sessions without bumping.
 
 ---
 
@@ -24,7 +35,8 @@ description: Current app version, CHANGELOG history, schema migration tags, and 
 | 1.9.0 | 2026-05-28 | Name-count hint system (amber inline hints, suspicious ratio banner), 60+ new unit tests, Playwright Firefox |
 | 1.10.0 | 2026-07-10 | PFS & SOFO connectors, detectConnectorFromVendorName, Drizzle ANY() batch bug fix |
 | 1.11.0 | 2026-07-24 | Operating console dashboard, overdue PO alerts, stale-price warnings, route consolidation, PRICE_MAINTENANCE_ALERT_DAYS constant |
-| 1.12.0 | 2026-07-30 | Global search (10 entity types), GA4 analytics, marketing page translations (Spanish), Orderly snapshot → count session import (Task #679), vendor pack geometry normalization (Task #724) |
+| 1.12.0 | 2026-07-30 | Global search (10 entity types), GA4 analytics, marketing page translations (Spanish), Orderly snapshot → count session import, vendor pack geometry normalization |
+| 1.12.1 | 2026-08-01 | Recipe builder compact layout, account & locations overview (/choose-plan rewrite), plan-catalog.ts, Stripe billing alignment, feature gate refactor, Get Operational card streamlined, security lockfile scrub |
 
 **How to bump the version**: update `package.json` `"version"` and add the matching entry to `CHANGELOG.md`.
 
@@ -72,7 +84,8 @@ These are `// Task #NNN` comments on individual `ALTER TABLE` / `CREATE TABLE` s
 | #632 | `pos_item_mappings.ignored integer` |
 | #635 | `menus`, `menu_sections`, `menu_entries` tables + Main Menu seed |
 | #679 | Orderly snapshot import infrastructure |
-| #724 | `vendor_items`: 7 pack-geometry columns (`canonical_qty_per_purchase_unit`, `normalized_price_per_canonical_unit`, `pack_geometry_status`, `pack_geometry_source`, `pack_geometry_updated_at`, `pricing_basis`, `is_variable_weight`) |
+| #724 | `vendor_items`: 7 pack-geometry columns |
+| #808 | `companies.subscriptionPlan`, `billingInterval` columns; backfill existing companies to `'platform'` |
 
 ---
 
@@ -92,4 +105,4 @@ These are `// Task #NNN` comments on individual `ALTER TABLE` / `CREATE TABLE` s
 
 - File: `CHANGELOG.md` (root)
 - Format: `## [X.Y.Z] — YYYY-MM-DD` header, `### Feature Area` sub-headers, bullet points
-- Currently missing: 1.12.0 entry (should be added before next release announcement)
+- Fully up to date through `1.12.1`
