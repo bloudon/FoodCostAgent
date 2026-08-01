@@ -496,7 +496,7 @@ function ConfirmDateStep({
 
 // ─── Step: Resolution preview ─────────────────────────────────────────────────
 
-function ResolutionPreviewStep({
+export function ResolutionPreviewStep({
   batchId,
   onApproved,
   onBack,
