@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -236,6 +237,7 @@ export default function NewCountSession() {
           </Button>
         </div>
       </div>
+      <SetupProgressBanner currentMilestoneId="inventory_count" hasEntries={false} />
     </div>
   );
 }

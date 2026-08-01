@@ -16,6 +16,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { MenuScanStep } from "@/components/menu-scan-step";
 import type { ApprovedMenuItem, MenuIntelligence } from "@/components/menu-scan-step";
 import { TierGate } from "@/components/tier-gate";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import {
   Command,
   CommandEmpty,
@@ -1200,6 +1201,7 @@ export default function MenuScanTool() {
           )}
         </div>
       </div>
+      <SetupProgressBanner currentMilestoneId="menu_scan" hasEntries={!!summary} />
     </TierGate>
   );
 }

@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -477,6 +478,7 @@ export default function StorageLocations() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SetupProgressBanner currentMilestoneId="storage_locations" hasEntries={(locations?.length ?? 0) > 0} />
     </div>
   );
 }

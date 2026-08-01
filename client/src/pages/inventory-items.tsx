@@ -676,7 +676,7 @@ export default function InventoryItems() {
         open={!!breakdownItemId}
         onClose={() => setBreakdownItemId(null)}
       />
-      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={(inventoryItems?.length ?? 0) > 0} />
+      <SetupProgressBanner currentMilestoneId="invoice_scan" hasEntries={(inventoryItems?.length ?? 0) > 0} />
     </div>
   );
 }
