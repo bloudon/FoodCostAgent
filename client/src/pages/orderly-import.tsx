@@ -502,6 +502,16 @@ function ResolutionPreviewStep({
   const { toast } = useToast();
   const qc = useQueryClient();
   const [approving, setApproving] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+
+  function toggleCategory(cat: string) {
+    setSelectedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
 
   const { data: preview, isLoading, isError } = useQuery<ResolutionPreview>({
     queryKey: [`/api/inventory-import/orderly/batches/${batchId}/resolution-preview`],
@@ -677,53 +687,112 @@ function ResolutionPreviewStep({
         </div>
       )}
 
-      {/* Row table — first 100 */}
+      {/* Row table — category filter + first 100 of filtered set */}
       <div>
-        <p className="text-xs text-muted-foreground mb-2">
-          Showing first 100 of {s.totalRows.toLocaleString()} rows
-        </p>
-        <div className="rounded-md border overflow-auto max-h-96">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">#</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Item match</TableHead>
-                <TableHead>Strategy</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {preview.rows.slice(0, 100).map((row) => (
-                <TableRow key={row.rowIndex}>
-                  <TableCell className="text-muted-foreground text-xs">{row.rowIndex}</TableCell>
-                  <TableCell className="text-xs max-w-[220px] truncate">
-                    {row.cleanedDescription || <span className="text-muted-foreground/50 italic">blank</span>}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {row.storageLocation || "—"}
-                    {row.locationMatch.isNew && (
-                      <Badge className="ml-1 text-[10px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">new</Badge>
+        {/* Category filter */}
+        {(() => {
+          const uniqueCategories = Array.from(
+            new Set(preview.rows.map(r => r.sourceCategory ?? "").filter(Boolean))
+          ).sort();
+
+          const filteredRows = selectedCategories.size === 0
+            ? preview.rows
+            : preview.rows.filter(r => selectedCategories.has(r.sourceCategory ?? ""));
+
+          const displayRows = filteredRows.slice(0, 100);
+
+          return (
+            <>
+              {uniqueCategories.length > 0 && (
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground font-medium shrink-0">Filter by category:</span>
+                    <button
+                      onClick={() => setSelectedCategories(new Set())}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        selectedCategories.size === 0
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                      }`}
+                    >
+                      All categories
+                    </button>
+                    {uniqueCategories.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => toggleCategory(cat)}
+                        className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                          selectedCategories.has(cat)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground mb-2">
+                {selectedCategories.size === 0
+                  ? `Showing first ${Math.min(100, preview.rows.length).toLocaleString()} of ${s.totalRows.toLocaleString()} rows`
+                  : `Showing ${Math.min(100, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
+                }
+              </p>
+              <div className="rounded-md border overflow-auto max-h-96">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Item match</TableHead>
+                      <TableHead>Strategy</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayRows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-8">
+                          No rows match the selected categories.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      displayRows.map((row) => (
+                        <TableRow key={row.rowIndex}>
+                          <TableCell className="text-muted-foreground text-xs">{row.rowIndex}</TableCell>
+                          <TableCell className="text-xs max-w-[220px] truncate">
+                            {row.cleanedDescription || <span className="text-muted-foreground/50 italic">blank</span>}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.storageLocation || "—"}
+                            {row.locationMatch.isNew && (
+                              <Badge className="ml-1 text-[10px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">new</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.supplierRaw || "—"}
+                            {row.vendorMatch.isNew && row.supplierRaw && (
+                              <Badge className="ml-1 text-[10px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">new</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.sourceCategory || "—"}
+                          </TableCell>
+                          <TableCell>{confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{strategyLabel(row.itemMatch.strategy)}</TableCell>
+                        </TableRow>
+                      ))
                     )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {row.supplierRaw || "—"}
-                    {row.vendorMatch.isNew && row.supplierRaw && (
-                      <Badge className="ml-1 text-[10px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">new</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {row.sourceCategory || "—"}
-                  </TableCell>
-                  <TableCell>{confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{strategyLabel(row.itemMatch.strategy)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <div className="flex justify-end pt-2">
