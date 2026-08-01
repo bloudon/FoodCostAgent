@@ -503,6 +503,7 @@ function ResolutionPreviewStep({
   const qc = useQueryClient();
   const [approving, setApproving] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
 
   function toggleCategory(cat: string) {
     setSelectedCategories(prev => {
@@ -511,6 +512,21 @@ function ResolutionPreviewStep({
       else next.add(cat);
       return next;
     });
+  }
+
+  function toggleConfidence(conf: string) {
+    setSelectedConfidences(prev => {
+      const next = new Set(prev);
+      if (next.has(conf)) next.delete(conf);
+      else next.add(conf);
+      return next;
+    });
+  }
+
+  // Canonical confidence key for a row (mirrors confidenceBadge logic)
+  function rowConfidenceKey(row: RowPreview): string {
+    if (row.itemMatch.strategy === "none") return "new";
+    return row.itemMatch.confidence; // "high" | "medium" | "low" | "ambiguous"
   }
 
   const { data: preview, isLoading, isError } = useQuery<ResolutionPreview>({
@@ -687,26 +703,38 @@ function ResolutionPreviewStep({
         </div>
       )}
 
-      {/* Row table — category filter + first 100 of filtered set */}
+      {/* Row table — category + confidence filters + first 100 of filtered set */}
       <div>
-        {/* Category filter */}
         {(() => {
           const uniqueCategories = Array.from(
             new Set(preview.rows.map(r => r.sourceCategory ?? "").filter(Boolean))
           ).sort();
 
-          const filteredRows = selectedCategories.size === 0
-            ? preview.rows
-            : preview.rows.filter(r => selectedCategories.has(r.sourceCategory ?? ""));
+          // Confidence levels present in this batch, in display order
+          const confidenceLevels: { key: string; label: string }[] = [
+            { key: "high",      label: "Matched"   },
+            { key: "medium",    label: "Likely"    },
+            { key: "low",       label: "Fuzzy"     },
+            { key: "ambiguous", label: "Ambiguous" },
+            { key: "new",       label: "New"       },
+          ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
+
+          const filteredRows = preview.rows.filter(r => {
+            const catOk = selectedCategories.size === 0 || selectedCategories.has(r.sourceCategory ?? "");
+            const confOk = selectedConfidences.size === 0 || selectedConfidences.has(rowConfidenceKey(r));
+            return catOk && confOk;
+          });
 
           const displayRows = filteredRows.slice(0, 100);
+          const isFiltered = selectedCategories.size > 0 || selectedConfidences.size > 0;
 
           return (
             <>
+              {/* Category filter */}
               {uniqueCategories.length > 0 && (
-                <div className="mb-3">
+                <div className="mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground font-medium shrink-0">Filter by category:</span>
+                    <span className="text-xs text-muted-foreground font-medium shrink-0">Category:</span>
                     <button
                       onClick={() => setSelectedCategories(new Set())}
                       className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
@@ -715,7 +743,7 @@ function ResolutionPreviewStep({
                           : "bg-background text-muted-foreground border-border hover:border-primary/50"
                       }`}
                     >
-                      All categories
+                      All
                     </button>
                     {uniqueCategories.map(cat => (
                       <button
@@ -734,10 +762,42 @@ function ResolutionPreviewStep({
                 </div>
               )}
 
+              {/* Confidence filter */}
+              {confidenceLevels.length > 0 && (
+                <div className="mb-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-muted-foreground font-medium shrink-0">Confidence:</span>
+                    <button
+                      onClick={() => setSelectedConfidences(new Set())}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                        selectedConfidences.size === 0
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                      }`}
+                    >
+                      All
+                    </button>
+                    {confidenceLevels.map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => toggleConfidence(key)}
+                        className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                          selectedConfidences.has(key)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground mb-2">
-                {selectedCategories.size === 0
-                  ? `Showing first ${Math.min(100, preview.rows.length).toLocaleString()} of ${s.totalRows.toLocaleString()} rows`
-                  : `Showing ${Math.min(100, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
+                {isFiltered
+                  ? `Showing ${Math.min(100, filteredRows.length).toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
+                  : `Showing first ${Math.min(100, preview.rows.length).toLocaleString()} of ${s.totalRows.toLocaleString()} rows`
                 }
               </p>
               <div className="rounded-md border overflow-auto max-h-96">
@@ -757,7 +817,7 @@ function ResolutionPreviewStep({
                     {displayRows.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-8">
-                          No rows match the selected categories.
+                          No rows match the selected filters.
                         </TableCell>
                       </TableRow>
                     ) : (
