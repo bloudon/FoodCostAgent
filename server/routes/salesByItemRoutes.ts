@@ -188,6 +188,14 @@ export function registerSalesByItemRoutes(app: Express): void {
           return res.status(422).json({ error: 'No sales items found. Is this a Sales by Item report?' });
         }
 
+        if (parsed.unrecognizedPrefixCategories.length > 0) {
+          console.warn(
+            '[SalesByItemImport] preview: %d unrecognised QAC prefix(es) routed to "Unassigned": %s',
+            parsed.unrecognizedPrefixCategories.length,
+            parsed.unrecognizedPrefixCategories.join(', '),
+          );
+        }
+
         return res.json({
           reportStart: parsed.reportStart,
           reportEnd: parsed.reportEnd,
@@ -199,6 +207,7 @@ export function registerSalesByItemRoutes(app: Express): void {
           totalNet: parsed.totalNet,
           uniqueOutlets: Object.keys(parsed.outletCounts).length,
           uniqueCategories: Object.keys(parsed.categoryCounts).length,
+          unrecognizedPrefixCategories: parsed.unrecognizedPrefixCategories,
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -237,6 +246,14 @@ export function registerSalesByItemRoutes(app: Express): void {
 
         if (parsed.rows.length === 0) {
           return res.status(422).json({ error: 'No sales items found.' });
+        }
+
+        if (parsed.unrecognizedPrefixCategories.length > 0) {
+          console.warn(
+            '[SalesByItemImport] approve: %d unrecognised QAC prefix(es) will be placed in "Unassigned" outlet: %s',
+            parsed.unrecognizedPrefixCategories.length,
+            parsed.unrecognizedPrefixCategories.join(', '),
+          );
         }
 
         // Resolve store

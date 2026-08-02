@@ -49,6 +49,14 @@ export interface SalesByItemParseResult {
   categoryCounts: Record<string, number>;
   totalQty: number;
   totalNet: number;
+  /**
+   * Category strings whose QAC prefix was not recognised by inferOutlet().
+   * Rows in these categories are placed into the "Unassigned" outlet so they
+   * are visibly separate from known outlets rather than silently folded into
+   * "Bay Window".  A non-empty list is a signal to the operator that the
+   * prefix table needs updating.
+   */
+  unrecognizedPrefixCategories: string[];
 }
 
 // ─── Date parsing ──────────────────────────────────────────────────────────────
@@ -96,7 +104,8 @@ export function inferOutlet(category: string): string {
   if (c.startsWith('FW-')) return 'Member Lounge';
   if (c.startsWith('FB-')) return 'Beverage Cart';
   if (c.startsWith('SPECIALTY')) return 'Member Lounge';
-  return 'Bay Window'; // sensible fallback for this report
+  // Unknown prefix — caller tracks this so the operator is warned.
+  return 'Unassigned';
 }
 
 // ─── Main parser ───────────────────────────────────────────────────────────────
@@ -137,6 +146,7 @@ export function parseSalesByItemWorkbook(
   const rows: SalesByItemRow[] = [];
   const outletCounts: Record<string, number> = {};
   const categoryCounts: Record<string, number> = {};
+  const unrecognizedPrefixCategories: string[] = [];
   let currentCategory = '';
   let currentOutlet = '';
   let totalQty = 0;
@@ -159,6 +169,9 @@ export function parseSalesByItemWorkbook(
     if (nonEmpty.length === 1 && nonEmpty[0].idx <= 2) {
       currentCategory = nonEmpty[0].v;
       currentOutlet = inferOutlet(currentCategory);
+      if (currentOutlet === 'Unassigned' && !unrecognizedPrefixCategories.includes(currentCategory)) {
+        unrecognizedPrefixCategories.push(currentCategory);
+      }
       categoryCounts[currentCategory] = categoryCounts[currentCategory] ?? 0;
       continue;
     }
@@ -211,5 +224,6 @@ export function parseSalesByItemWorkbook(
     categoryCounts,
     totalQty,
     totalNet,
+    unrecognizedPrefixCategories,
   };
 }

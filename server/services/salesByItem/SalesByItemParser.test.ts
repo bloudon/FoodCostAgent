@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'path';
 import { readFileSync } from 'fs';
+import * as XLSX from 'xlsx';
 import { parseSalesByItemWorkbook, inferOutlet } from './SalesByItemParser';
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
@@ -119,6 +120,10 @@ describe('parseSalesByItemWorkbook — Bay Hill June 2026 report', () => {
     const empty = parseSalesByItemWorkbook(Buffer.from(''), 'bad.xlsx');
     expect(empty.rows).toHaveLength(0);
   });
+
+  it('unrecognizedPrefixCategories is empty for the real Bay Hill report (all prefixes known)', () => {
+    expect(result.unrecognizedPrefixCategories).toHaveLength(0);
+  });
 });
 
 // ─── 2. inferOutlet — prefix routing rules ────────────────────────────────────
@@ -158,14 +163,112 @@ describe('inferOutlet — category prefix rules', () => {
     expect(inferOutlet(category)).toBe(expected);
   });
 
-  it('falls back to Bay Window for unknown prefixes', () => {
-    expect(inferOutlet('UNKNOWN Category')).toBe('Bay Window');
-    expect(inferOutlet('')).toBe('Bay Window');
+  it('returns "Unassigned" for unknown prefixes instead of silently routing to Bay Window', () => {
+    expect(inferOutlet('UNKNOWN Category')).toBe('Unassigned');
+    expect(inferOutlet('POOLBAR Drinks')).toBe('Unassigned');
+    expect(inferOutlet('TERRACE Lunch')).toBe('Unassigned');
+    expect(inferOutlet('')).toBe('Unassigned');
   });
 
   it('is case-insensitive (uppercases internally)', () => {
     expect(inferOutlet('ff-bw favorites')).toBe('Bay Window');
     expect(inferOutlet('aps breakfast')).toBe('API');
+  });
+});
+
+// ─── 2b. unrecognizedPrefixCategories — warning bucket ────────────────────────
+
+describe('parseSalesByItemWorkbook — unrecognizedPrefixCategories', () => {
+  /**
+   * Build a minimal workbook buffer with controlled section headers so we can
+   * inject unknown prefixes without needing a real xlsx file.
+   *
+   * The parser reads fixed row indices (0-based):
+   *   row  8, col 10 → start date  (XLSX address K9)
+   *   row 12, col 11 → end date    (XLSX address L13)
+   *   row 29+        → data rows (section headers then item rows)
+   *
+   * We assign cells directly to the worksheet object so there is no
+   * ambiguity about how sparse / empty-string values round-trip through
+   * `aoa_to_sheet` → `sheet_to_json`.
+   */
+  function buildMinimalWorkbook(categoryRows: string[]): Buffer {
+    /** Convert 0-based (row, col) to an XLSX cell address like "C30". */
+    function addr(row0: number, col0: number): string {
+      return XLSX.utils.encode_cell({ r: row0, c: col0 });
+    }
+
+    const ws: XLSX.WorkSheet = {};
+
+    // Start date at row index 8, col 10
+    ws[addr(8, 10)] = { t: 's', v: 'Jun 01, 2026' };
+    // End date at row index 12, col 11
+    ws[addr(12, 11)] = { t: 's', v: 'Jun 30, 2026' };
+
+    let maxRow = 28; // parser starts at row index 29
+
+    for (let i = 0; i < categoryRows.length; i++) {
+      const cat = categoryRows[i];
+      const sectionRowIdx = 29 + i * 2;
+      const itemRowIdx    = 30 + i * 2;
+
+      // Section header: single cell at col 2 only
+      ws[addr(sectionRowIdx, 2)] = { t: 's', v: cat };
+
+      // Item row: QAC at col 2, description at col 5, qty/net at cols 14/20
+      ws[addr(itemRowIdx, 2)]  = { t: 's', v: `TST-${String(i).padStart(4, '0')}` };
+      ws[addr(itemRowIdx, 5)]  = { t: 's', v: 'Test Item' };
+      ws[addr(itemRowIdx, 14)] = { t: 'n', v: 2 };
+      ws[addr(itemRowIdx, 15)] = { t: 'n', v: 10.0 };
+      ws[addr(itemRowIdx, 20)] = { t: 'n', v: 10.0 };
+
+      maxRow = itemRowIdx;
+    }
+
+    // Set the sheet reference range so sheet_to_json knows the boundaries
+    ws['!ref'] = XLSX.utils.encode_range(
+      { r: 0, c: 0 },
+      { r: maxRow, c: 20 },
+    );
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  it('populates unrecognizedPrefixCategories when an unknown prefix is present', () => {
+    const buf = buildMinimalWorkbook(['FF-BW Favorites', 'POOLBAR Drinks', 'TERRACE Lunch']);
+    const result = parseSalesByItemWorkbook(buf, 'test.xlsx');
+
+    // POOLBAR and TERRACE are unknown; FF-BW is known → only two unrecognised
+    expect(result.unrecognizedPrefixCategories).toContain('POOLBAR Drinks');
+    expect(result.unrecognizedPrefixCategories).toContain('TERRACE Lunch');
+    expect(result.unrecognizedPrefixCategories).not.toContain('FF-BW Favorites');
+    expect(result.unrecognizedPrefixCategories).toHaveLength(2);
+  });
+
+  it('routes unrecognised-prefix rows to the "Unassigned" outlet', () => {
+    const buf = buildMinimalWorkbook(['POOLBAR Drinks']);
+    const result = parseSalesByItemWorkbook(buf, 'test.xlsx');
+
+    expect(result.outletCounts['Unassigned']).toBeGreaterThan(0);
+    expect(result.outletCounts['Bay Window']).toBeUndefined();
+  });
+
+  it('keeps unrecognizedPrefixCategories empty when all prefixes are known', () => {
+    const buf = buildMinimalWorkbook(['FF-BW Favorites', 'FF-GR Burger', 'APS Breakfast']);
+    const result = parseSalesByItemWorkbook(buf, 'test.xlsx');
+
+    expect(result.unrecognizedPrefixCategories).toHaveLength(0);
+    expect(result.outletCounts['Unassigned']).toBeUndefined();
+  });
+
+  it('does not duplicate a category in unrecognizedPrefixCategories when it appears multiple times', () => {
+    const buf = buildMinimalWorkbook(['POOLBAR Drinks', 'POOLBAR Drinks']);
+    const result = parseSalesByItemWorkbook(buf, 'test.xlsx');
+
+    const count = result.unrecognizedPrefixCategories.filter((c) => c === 'POOLBAR Drinks').length;
+    expect(count).toBe(1);
   });
 });
 
@@ -228,6 +331,10 @@ describe('POST /api/imports/sales-by-item/preview — response shape', () => {
     // outletCounts is an object with the expected keys
     expect(typeof res.body.outletCounts).toBe('object');
     expect(Object.keys(res.body.outletCounts)).toHaveLength(9);
+
+    // unrecognizedPrefixCategories is present; empty for the known Bay Hill report
+    expect(Array.isArray(res.body.unrecognizedPrefixCategories)).toBe(true);
+    expect(res.body.unrecognizedPrefixCategories).toHaveLength(0);
   });
 
   it('returns 422 when no file is attached', async () => {
