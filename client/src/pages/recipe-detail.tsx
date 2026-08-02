@@ -137,13 +137,27 @@ function RecipeDetailContent() {
         )}
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">
-              {formatRecipeName(recipe.name)}
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Recipe details and cost history
-            </p>
+          <div className="flex items-start gap-4">
+            {recipe.imagePath && (
+              <div className="relative group flex-shrink-0">
+                <img
+                  src={recipe.imagePath}
+                  alt={`Photo of ${recipe.name}`}
+                  className="w-20 h-20 rounded-md object-cover border cursor-pointer hover:opacity-90 transition-opacity"
+                  data-testid="img-recipe-photo"
+                  onClick={() => setPhotoLightboxOpen(true)}
+                  title="Click to view full size"
+                />
+              </div>
+            )}
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">
+                {formatRecipeName(recipe.name)}
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Recipe details and cost history
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
@@ -307,35 +321,15 @@ function RecipeDetailContent() {
         </Card>
       </div>
 
-      {(recipe.imagePath || recipe.instructions) && (
+      {photoLightboxOpen && recipe.imagePath && (
+        <RecipePhotoLightbox
+          src={recipe.imagePath}
+          alt={`Photo of ${recipe.name}`}
+          onClose={() => setPhotoLightboxOpen(false)}
+        />
+      )}
+      {recipe.instructions && (
         <div className="grid gap-6 lg:grid-cols-2 mb-8">
-          {recipe.imagePath && (
-            <Card data-testid="card-recipe-photo">
-              <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-base">Recipe Photo</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-center">
-                  <img
-                    src={recipe.imagePath}
-                    alt={`Photo of ${recipe.name}`}
-                    className="max-w-full max-h-96 rounded-md object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                    data-testid="img-recipe-photo"
-                    onClick={() => setPhotoLightboxOpen(true)}
-                    title="Click to view full size"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {photoLightboxOpen && recipe.imagePath && (
-            <RecipePhotoLightbox
-              src={recipe.imagePath}
-              alt={`Photo of ${recipe.name}`}
-              onClose={() => setPhotoLightboxOpen(false)}
-            />
-          )}
           {recipe.instructions && (
             <Card data-testid="card-recipe-instructions">
               <CardHeader className="flex flex-row items-center gap-2 pb-2">
