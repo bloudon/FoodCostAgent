@@ -52,6 +52,7 @@ type WasteLog = {
   wastedAt: string;
   totalValue: number;
   storeName: string;
+  noRecipeLinked?: boolean;
 };
 
 type Unit = {
@@ -263,9 +264,11 @@ export default function WasteEntry() {
       const response = await apiRequest("POST", "/api/waste", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/waste"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+
+      const noRecipeLinked = result?.noRecipeLinked === true;
 
       // Mark the currently loaded voice draft as submitted and find the next one
       const currentDraftId = loadedDraftIdRef.current;
@@ -300,6 +303,12 @@ export default function WasteEntry() {
         // Defer prefill so the state updates above settle first
         const draft = nextDraft;
         setTimeout(() => prefillFromDraft(draft), 0);
+      } else if (noRecipeLinked) {
+        toast({
+          title: "Waste logged — cost recorded as $0.00",
+          description: "This menu item has no linked recipe. Link a recipe to track its food cost.",
+          variant: "default",
+        });
       } else {
         toast({
           title: "Waste logged",
@@ -1056,6 +1065,14 @@ export default function WasteEntry() {
                                       {new Date(log.wastedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                       {' · '}{log.reasonCode.replace(/_/g, ' ')}
                                     </div>
+                                    {log.noRecipeLinked && (
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400 gap-1 py-0">
+                                          <AlertTriangle className="h-3 w-3" />
+                                          No recipe linked
+                                        </Badge>
+                                      </div>
+                                    )}
                                     {log.notes && (
                                       <div className="text-sm text-muted-foreground italic">
                                         {log.notes}

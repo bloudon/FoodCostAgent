@@ -15686,11 +15686,33 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
     const userMap = await storage.getUsersByIds(userIds, req.companyId!);
     
-    // Enrich with user names
-    const enriched = filtered.map(log => ({
-      ...log,
-      loggedByName: log.loggedBy ? userMap.get(log.loggedBy)?.fullName || null : null,
-    }));
+    // Build a menu-item recipeId lookup for noRecipeLinked annotation
+    const menuItemWasteIds = Array.from(
+      new Set(filtered.filter(l => l.wasteType === "menu_item" && l.menuItemId).map(l => l.menuItemId!))
+    );
+    let menuItemRecipeMap = new Map<string, string | null>();
+    if (menuItemWasteIds.length > 0) {
+      const allMenuItems = await storage.getMenuItems(req.companyId!);
+      for (const mi of allMenuItems) {
+        if (menuItemWasteIds.includes(mi.id)) {
+          menuItemRecipeMap.set(mi.id, mi.recipeId ?? null);
+        }
+      }
+    }
+
+    // Enrich with user names and noRecipeLinked flag
+    const enriched = filtered.map(log => {
+      const noRecipeLinked =
+        log.wasteType === "menu_item" &&
+        log.menuItemId != null &&
+        log.totalValue === 0 &&
+        menuItemRecipeMap.get(log.menuItemId!) === null;
+      return {
+        ...log,
+        loggedByName: log.loggedBy ? userMap.get(log.loggedBy)?.fullName || null : null,
+        noRecipeLinked: noRecipeLinked || false,
+      };
+    });
     
     res.json(enriched);
   });
@@ -15762,7 +15784,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           loggedBy: req.user!.id,
         });
         
-        res.status(201).json(wasteLog);
+        res.status(201).json({ ...wasteLog, noRecipeLinked: !menuItem.recipeId });
         
       } else {
         return res.status(400).json({ error: "Invalid waste type. Must be 'inventory' or 'menu_item'" });
