@@ -15812,6 +15812,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         const base = file.mimetype.split(";")[0].trim();
         const ext = mimeExtMap[base] ?? "webm";
 
+        // Reject zero-byte uploads before hitting the transcription API
+        const { validateAudioBuffer } = await import("./lib/audioValidation");
+        const audioErr = validateAudioBuffer(file.buffer);
+        if (audioErr) {
+          return res.status(audioErr.status).json({ error: audioErr.error });
+        }
+
         const result = await transcribeAudio(file.buffer, file.mimetype, ext);
         transcript = result.transcript;
         transcriptionModel = result.model;
