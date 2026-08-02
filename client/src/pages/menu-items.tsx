@@ -1281,6 +1281,24 @@ export default function MenuItemsPage() {
     return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore && matchesNoRecipe;
   }) || [];
 
+  // Count items with no recipe that match all other active filters (used for the chip badge)
+  const noRecipeCount = menuItems?.filter((item) => {
+    const matchesSearch = item.name?.toLowerCase().includes(search.toLowerCase()) ||
+      item.pluSku?.toLowerCase().includes(search.toLowerCase());
+    const matchesActive =
+      activeFilter === "all" ? true :
+      activeFilter === "active" ? item.active === 1 :
+      item.active === 0;
+    const matchesDepartment = itemMatchesDeptFilter(item);
+    const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+    const matchesType =
+      typeFilter === "all" ? true :
+      typeFilter === "recipe" ? item.isRecipeItem === 1 :
+      item.isRecipeItem === 0;
+    const matchesStore = selectedStore === "all" || (item.storeIds && item.storeIds.includes(selectedStore));
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore && !item.recipeId;
+  })?.length ?? 0;
+
   // Apply sorting for flat view
   const sortedItems = [...filteredItems].sort((a, b) => {
     if (!sortField) return 0;
@@ -2455,18 +2473,31 @@ export default function MenuItemsPage() {
                 </SelectContent>
               </Select>
 
-              <button
-                onClick={() => setNoRecipeFilter(!noRecipeFilter)}
-                data-testid="button-no-recipe-filter"
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
-                  noRecipeFilter
-                    ? "bg-amber-50 border-amber-400 text-amber-700 dark:bg-amber-950/40 dark:border-amber-600 dark:text-amber-400"
-                    : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <BookOpen className="h-3.5 w-3.5" />
-                No recipe
-              </button>
+              {(noRecipeCount > 0 || noRecipeFilter) && (
+                <button
+                  onClick={() => setNoRecipeFilter(!noRecipeFilter)}
+                  data-testid="button-no-recipe-filter"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                    noRecipeFilter
+                      ? "bg-amber-50 border-amber-400 text-amber-700 dark:bg-amber-950/40 dark:border-amber-600 dark:text-amber-400"
+                      : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  No recipe
+                  {noRecipeCount > 0 && (
+                    <span
+                      className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-semibold ${
+                        noRecipeFilter
+                          ? "bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-100"
+                          : "bg-muted-foreground/20 text-foreground"
+                      }`}
+                    >
+                      {noRecipeCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               <Select value={activeFilter} onValueChange={(val) => setActiveFilter(val as any)}>
                 <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
