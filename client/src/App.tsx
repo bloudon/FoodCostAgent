@@ -525,6 +525,14 @@ function ProtectedLayoutContent() {
           <Route path="/count/:id" component={CountSession} />
           <Route path="/item-count/:id" component={ItemCount} />
           <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
+          {/* Quick Access tiles — mobile dashboard shortcuts */}
+          <Route path="/inventory-items" component={InventoryItems} />
+          <Route path="/inventory-items/:id" component={InventoryItemDetail} />
+          <Route path="/recipes" component={Recipes} />
+          <Route path="/shelf-scans" component={ShelfScans} />
+          <Route path="/tfc/variance" component={TfcVariance} />
+          <Route path="/stores" component={Stores} />
+          <Route path="/waste" component={WasteEntry} />
           <Route component={NotFound} />
         </Switch>
       </main>

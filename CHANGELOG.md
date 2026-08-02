@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.2] — 2026-08-02
+
+### Mobile
+
+- **Unblocked Quick Access tiles** — `/inventory-items`, `/recipes`, `/shelf-scans`, `/tfc/variance`, `/stores`, and `/waste` are now registered in the embedded (`mobileToken`) router. All six Quick Access tiles on the mobile dashboard open their pages inside the app instead of rendering a 404. `/inventory-items/:id` is also included so tapping into item detail works without dropping back to NotFound.
+
+---
+
 ## [1.14.1] — 2026-08-02
 
 ### Waste
