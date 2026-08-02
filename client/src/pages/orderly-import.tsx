@@ -2001,24 +2001,6 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
         ))}
       </div>
 
-      {/* POS Sales Report callout */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-4 text-left space-y-2">
-        <p className="text-sm font-medium text-blue-900 flex items-center gap-2">
-          <BarChart2 className="h-4 w-4 text-blue-600 shrink-0" />
-          Optional: seed outlet locations &amp; menu items
-        </p>
-        <p className="text-xs text-blue-700">
-          If your club uses a Northstar / Jones Lang LaSalle POS system, upload a{" "}
-          <strong>Sales by Item</strong> report to automatically create outlet locations
-          (Bay Window, Grill, Banquet, etc.) and all menu items with their Quick Access Codes.
-        </p>
-        <a
-          href="/sales-by-item-import"
-          className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900"
-        >
-          Upload POS Sales Report →
-        </a>
-      </div>
 
       <div className="flex flex-col gap-3">
         <Button onClick={onConvertNow} className="w-full" size="lg">

@@ -585,8 +585,12 @@ export function MarketingLayout({ children }: { children: React.ReactNode }) {
           <div className="mt-10 pt-6 border-t border-gray-800 flex flex-wrap items-center justify-between gap-4">
             <p className="text-xs text-gray-500">&copy; {new Date().getFullYear()} FnB Cost Pro. {t.footer.rights}</p>
             <div className="flex gap-4">
-              <span className="text-xs text-gray-500">{t.footer.privacy}</span>
-              <span className="text-xs text-gray-500">{t.footer.terms}</span>
+              <Link href={lang === "es" ? "/es/privacy" : "/privacy"} className="text-xs text-gray-500 hover:text-white transition-colors">
+                {t.footer.privacy}
+              </Link>
+              <Link href={lang === "es" ? "/es/terms" : "/terms"} className="text-xs text-gray-500 hover:text-white transition-colors">
+                {t.footer.terms}
+              </Link>
             </div>
           </div>
         </div>

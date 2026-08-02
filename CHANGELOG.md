@@ -2,6 +2,16 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.4] — 2026-08-02
+
+### Marketing site
+
+- **Privacy Policy and Terms of Service pages** — `/privacy` and `/terms` (and `/es/privacy`, `/es/terms`) now render real content pages inside the marketing layout instead of 404ing
+- **Footer links fixed** — Privacy Policy and Terms of Service were `<span>` elements that looked like links but did nothing; both are now proper `<Link>` elements pointing to their respective pages
+- **Removed Northstar POS callout from Orderly import** — the "seed outlet locations & menu items" card was hardcoded for Northstar/JLL accounts and shown to all users after every Orderly import; removed until a POS-type-gated version is built
+
+---
+
 ## [1.14.3] — 2026-08-02
 
 ### Mobile

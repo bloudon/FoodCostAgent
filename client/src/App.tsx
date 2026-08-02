@@ -129,6 +129,8 @@ import WebsiteForFbLeaders from "@/pages/website/for-fb-leaders";
 import WebsiteIndustryChefLed from "@/pages/website/industry-chef-led";
 import WebsiteIndustryGroups from "@/pages/website/industry-groups";
 import WebsiteIndustryClubs from "@/pages/website/industry-clubs";
+import WebsitePrivacy from "@/pages/website/privacy";
+import WebsiteTerms from "@/pages/website/terms";
 import { LanguageContext } from "@/lib/language-context";
 import { translations } from "@/lib/marketing-translations";
 import type { Language } from "@/lib/marketing-translations";
@@ -208,6 +210,10 @@ function WebsiteRouter() {
       <Route path="/es/industries/chef-led-restaurants" component={EsIndustryChefLed} />
       <Route path="/es/industries/restaurant-groups" component={EsIndustryGroups} />
       <Route path="/es/industries/clubs-resorts" component={EsIndustryClubs} />
+      <Route path="/privacy" component={WebsitePrivacy} />
+      <Route path="/terms" component={WebsiteTerms} />
+      <Route path="/es/privacy" component={WebsitePrivacy} />
+      <Route path="/es/terms" component={WebsiteTerms} />
       <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
       <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
       <Route path="/login" component={Login} />
