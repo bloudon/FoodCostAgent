@@ -273,6 +273,66 @@ test.describe('Spanish footer Company column links', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Spanish "Nosotros" footer link from additional marketing pages
+//
+// The tasks requires verifying the Company column "Nosotros" link works from
+// /es/platform, /es/pricing, and /es/for-fb-leaders (not just /es/for-chefs).
+// "Contacto" is also verified from /es/platform as an additional start page.
+// ---------------------------------------------------------------------------
+
+test.describe('Spanish footer Company column links from additional pages', () => {
+  const nosotrosStartPages = [
+    { path: '/es/platform', label: '/es/platform' },
+    { path: '/es/pricing', label: '/es/pricing' },
+    { path: '/es/for-fb-leaders', label: '/es/for-fb-leaders' },
+  ];
+
+  for (const { path } of nosotrosStartPages) {
+    test(`Spanish footer "Nosotros" link → /es/about (from ${path})`, async ({ page }) => {
+      await stubAuthEndpoint(page);
+      await goToMarketingPage(page, path);
+
+      const footer = page.locator('footer');
+      const companySection = footer.locator('div', { has: page.locator('h4', { hasText: 'Empresa' }) });
+
+      const link = companySection.getByRole('link', { name: 'Nosotros', exact: true });
+      await expect(link).toBeVisible({ timeout: 10000 });
+      await link.scrollIntoViewIfNeeded();
+      await link.click();
+
+      await expect(page).toHaveURL(new RegExp('/es/about$'), { timeout: 10000 });
+      const h1 = page.locator('h1').first();
+      await expect(h1).toContainText('La cocina no debería adaptarse al software', { timeout: 10000 });
+    });
+  }
+
+  const contactoStartPages = [
+    { path: '/es/platform', label: '/es/platform' },
+    { path: '/es/pricing', label: '/es/pricing' },
+    { path: '/es/for-fb-leaders', label: '/es/for-fb-leaders' },
+  ];
+
+  for (const { path } of contactoStartPages) {
+    test(`Spanish footer "Contacto" link → /es/contact (from ${path})`, async ({ page }) => {
+      await stubAuthEndpoint(page);
+      await goToMarketingPage(page, path);
+
+      const footer = page.locator('footer');
+      const companySection = footer.locator('div', { has: page.locator('h4', { hasText: 'Empresa' }) });
+
+      const link = companySection.getByRole('link', { name: 'Contacto', exact: true });
+      await expect(link).toBeVisible({ timeout: 10000 });
+      await link.scrollIntoViewIfNeeded();
+      await link.click();
+
+      await expect(page).toHaveURL(new RegExp('/es/contact$'), { timeout: 10000 });
+      const h1 = page.locator('h1').first();
+      await expect(h1).toContainText('Agendar una Revisión Culinaria', { timeout: 10000 });
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Suite: footer links produce a URL change (not a scroll-to-top no-op)
 // ---------------------------------------------------------------------------
 
