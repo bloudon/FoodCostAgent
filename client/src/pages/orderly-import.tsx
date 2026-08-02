@@ -256,11 +256,35 @@ function BatchList({
   onCreateCountSession: (batch: ImportBatch) => void;
 }) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [discardTarget, setDiscardTarget] = useState<ImportBatch | null>(null);
+
   const { data: batches = [], isLoading } = useQuery<ImportBatch[]>({
     queryKey: ["/api/inventory-import/orderly/batches"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/inventory-import/orderly/batches");
       return res.json();
+    },
+  });
+
+  const discardMutation = useMutation({
+    mutationFn: async (batchId: string) => {
+      const res = await apiRequest("DELETE", `/api/inventory-import/orderly/batches/${batchId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to discard import");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-import/orderly/batches"] });
+      toast({ title: "Import discarded" });
+      setDiscardTarget(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not discard import", description: err.message, variant: "destructive" });
+      setDiscardTarget(null);
     },
   });
 
@@ -334,9 +358,19 @@ function BatchList({
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {b.status !== "approved" && (
-                        <Button size="sm" variant="outline" onClick={() => onSelect(b)}>
-                          Review <ArrowRight className="h-3 w-3 ml-1" />
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => onSelect(b)}>
+                            Review <ArrowRight className="h-3 w-3 ml-1" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setDiscardTarget(b)}
+                          >
+                            Discard
+                          </Button>
+                        </>
                       )}
                       {b.status === "approved" && (
                         <Button
@@ -357,6 +391,28 @@ function BatchList({
           </Table>
         </div>
       )}
+
+      <AlertDialog open={!!discardTarget} onOpenChange={(open) => { if (!open) setDiscardTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard this import?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{discardTarget?.originalFilename}</strong> and all its staged rows will be
+              permanently deleted. This cannot be undone. You can re-upload the same file afterwards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discardMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={discardMutation.isPending}
+              onClick={() => discardTarget && discardMutation.mutate(discardTarget.id)}
+            >
+              {discardMutation.isPending ? "Discarding…" : "Discard"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

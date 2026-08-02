@@ -547,6 +547,54 @@ export function registerOrderlyImportRoutes(app: Express): void {
   );
 
   /**
+   * DELETE /api/inventory-import/orderly/batches/:batchId
+   *
+   * Permanently removes a pending-review batch and all its rows.
+   * Returns 409 if the batch has already been approved — approved data is never deleted.
+   */
+  app.delete(
+    '/api/inventory-import/orderly/batches/:batchId',
+    requireAuth,
+    requireTier('basic'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const { batchId } = req.params;
+
+        const [batch] = await db
+          .select({ id: inventoryImportBatches.id, status: inventoryImportBatches.status })
+          .from(inventoryImportBatches)
+          .where(
+            and(
+              eq(inventoryImportBatches.id, batchId),
+              eq(inventoryImportBatches.companyId, companyId),
+            ),
+          )
+          .limit(1);
+
+        if (!batch) {
+          return res.status(404).json({ error: 'Batch not found' });
+        }
+        if (batch.status === 'approved') {
+          return res.status(409).json({ error: 'Approved batches cannot be discarded' });
+        }
+
+        await db.transaction(async (tx) => {
+          await tx.delete(inventoryImportRows)
+            .where(eq(inventoryImportRows.batchId, batchId));
+          await tx.delete(inventoryImportBatches)
+            .where(eq(inventoryImportBatches.id, batchId));
+        });
+
+        res.json({ deleted: true });
+      } catch (err: any) {
+        console.error('[OrderlyImport] discard error:', err);
+        res.status(500).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
    * GET /api/inventory-import/orderly/batches/:batchId/count-session-preview
    *
    * Pre-conversion review before creating a historical count session.
