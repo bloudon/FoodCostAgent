@@ -15,6 +15,8 @@ import path from 'path';
 import { readFileSync } from 'fs';
 import * as XLSX from 'xlsx';
 import { parseSalesByItemWorkbook, inferOutlet } from './SalesByItemParser';
+import { db } from '../../db';
+import { getAccessibleStores } from '../../permissions';
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
 
@@ -725,5 +727,645 @@ describe('approve re-upload idempotency — find-or-create logic', () => {
     }
 
     expect(newItemCount).toBe(uniqueCodes.size);
+  });
+});
+
+// ─── 5. Full approve stats — all fields, first upload and re-upload ────────────
+
+/**
+ * This suite verifies the complete stats object returned by the approve route:
+ *   { outletsCreated, outletsLinked, departmentsCreated, departmentsLinked,
+ *     itemsCreated, itemsLinked, storeItemsCreated, salesRowsInserted }
+ *
+ * It uses in-memory DB stand-ins that mirror every find-or-create step in the
+ * approve transaction, then runs two simulated approvals and checks all eight
+ * counters are correct on both passes.
+ *
+ * salesRowsInserted is also tested for the ON CONFLICT DO NOTHING behaviour:
+ * the route sets it to the number of rows *attempted* (aggMap.size), not the
+ * number actually written.  On re-upload with the same batchId the route still
+ * builds the same aggMap and reports the same salesRowsInserted count — the
+ * caller is responsible for knowing that a reused batchId means the rows were
+ * skipped by the unique index.
+ */
+describe('approve stats — all eight fields, first upload and re-upload', () => {
+  type Stats = {
+    outletsCreated: number;
+    outletsLinked: number;
+    departmentsCreated: number;
+    departmentsLinked: number;
+    itemsCreated: number;
+    itemsLinked: number;
+    storeItemsCreated: number;
+    salesRowsInserted: number;
+  };
+
+  /**
+   * In-memory DB state shared across both approve calls (mirrors persistent DB).
+   */
+  interface DbState {
+    outlets: Set<string>;        // normalised outlet names
+    departments: Set<string>;    // normalised department names
+    items: Map<string, string>;  // pluSku → id
+    storeLinks: Set<string>;     // menuItemId
+    batches: Map<string, string>;// batchKey → batchId
+    salesRows: Set<string>;      // "batchId|code|outlet"
+  }
+
+  /**
+   * Simulates a single approve transaction for the given parsed result.
+   * Mirrors the route logic step-by-step and returns the stats object.
+   */
+  function simulateApprove(
+    parsed: ReturnType<typeof parseSalesByItemWorkbook>,
+    db: DbState,
+  ): Stats {
+    const COMPANY_ID = 'co-test';
+    const STORE_ID   = 'st-test';
+    const USER_ID    = 'u-test';
+
+    const stats: Stats = {
+      outletsCreated: 0,
+      outletsLinked: 0,
+      departmentsCreated: 0,
+      departmentsLinked: 0,
+      itemsCreated: 0,
+      itemsLinked: 0,
+      storeItemsCreated: 0,
+      salesRowsInserted: 0,
+    };
+
+    // Step 1: find-or-create batch
+    const batchKey = `${COMPANY_ID}|${STORE_ID}|${parsed.reportStart}`;
+    let batchId = db.batches.get(batchKey);
+    if (!batchId) {
+      batchId = `batch-${db.batches.size + 1}`;
+      db.batches.set(batchKey, batchId);
+    }
+
+    // Step 2: find-or-create outlets
+    const uniqueOutlets = Array.from(new Set(parsed.rows.map((r) => r.outlet)));
+    const outletIdMap = new Map<string, string>();
+    for (const name of uniqueOutlets) {
+      const norm = name.toLowerCase().trim();
+      if (db.outlets.has(norm)) {
+        outletIdMap.set(name, norm); // use normalised name as stand-in id
+        stats.outletsLinked++;
+      } else {
+        db.outlets.add(norm);
+        outletIdMap.set(name, norm);
+        stats.outletsCreated++;
+      }
+    }
+
+    // Step 3: find-or-create departments
+    const uniqueCategories = Array.from(new Set(parsed.rows.map((r) => r.category)));
+    const deptIdMap = new Map<string, string>();
+    for (const cat of uniqueCategories) {
+      const norm = cat.toLowerCase().trim();
+      if (db.departments.has(norm)) {
+        deptIdMap.set(cat, norm);
+        stats.departmentsLinked++;
+      } else {
+        db.departments.add(norm);
+        deptIdMap.set(cat, norm);
+        stats.departmentsCreated++;
+      }
+    }
+
+    // Step 4: find-or-create menu items (deduplicated by QAC)
+    const menuItemIdMap = new Map<string, string>();
+    const seenCodes = new Set<string>();
+    const newItems: Array<{ code: string }> = [];
+
+    for (const row of parsed.rows) {
+      if (seenCodes.has(row.code)) continue;
+      seenCodes.add(row.code);
+
+      if (db.items.has(row.code)) {
+        menuItemIdMap.set(row.code, db.items.get(row.code)!);
+        stats.itemsLinked++;
+      } else {
+        newItems.push({ code: row.code });
+      }
+    }
+
+    // Batch insert new items (onConflictDoNothing → only truly new ones are returned)
+    for (const { code } of newItems) {
+      if (!db.items.has(code)) { // mirrors onConflictDoNothing
+        const id = `item-${db.items.size + 1}`;
+        db.items.set(code, id);
+        menuItemIdMap.set(code, id);
+        stats.itemsCreated++;
+      }
+    }
+
+    // Step 5: find-or-create store_menu_items
+    const menuItemIds = Array.from(menuItemIdMap.values());
+    const toLink = menuItemIds.filter((id) => !db.storeLinks.has(id));
+    for (const id of toLink) {
+      if (!db.storeLinks.has(id)) { // mirrors onConflictDoNothing
+        db.storeLinks.add(id);
+        stats.storeItemsCreated++;
+      }
+    }
+
+    // Step 6: aggregate and insert sales rows (onConflictDoNothing)
+    const aggMap = new Map<string, { qty: number; net: number }>();
+    for (const row of parsed.rows) {
+      const key = `${row.code}|${row.outlet}`;
+      const existing = aggMap.get(key);
+      if (existing) {
+        aggMap.set(key, { qty: existing.qty + row.qty, net: existing.net + row.netAmount });
+      } else {
+        aggMap.set(key, { qty: row.qty, net: row.netAmount });
+      }
+    }
+
+    // The route sets salesRowsInserted = salesRows.length BEFORE the DO NOTHING check.
+    // It reflects the number of rows *attempted*, not the number actually written.
+    stats.salesRowsInserted = aggMap.size;
+
+    // Simulate the unique-index DO NOTHING (mirrors dmis_csv_aggregate_uniq)
+    for (const [key] of aggMap.entries()) {
+      const rowKey = `${batchId}|${key}`;
+      db.salesRows.add(rowKey); // no-op on second run (Set.add is idempotent)
+    }
+
+    return stats;
+  }
+
+  it('first upload: every created counter is non-zero, linked counters are zero', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const stats = simulateApprove(parsed, db);
+
+    expect(stats.outletsCreated).toBeGreaterThan(0);
+    expect(stats.outletsLinked).toBe(0);
+
+    expect(stats.departmentsCreated).toBeGreaterThan(0);
+    expect(stats.departmentsLinked).toBe(0);
+
+    expect(stats.itemsCreated).toBeGreaterThan(0);
+    expect(stats.itemsLinked).toBe(0);
+
+    expect(stats.storeItemsCreated).toBeGreaterThan(0);
+
+    expect(stats.salesRowsInserted).toBeGreaterThan(0);
+  });
+
+  it('first upload: outlet, department, item counts match the parsed data', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const stats = simulateApprove(parsed, db);
+
+    const uniqueOutlets = new Set(parsed.rows.map((r) => r.outlet)).size;
+    const uniqueCategories = new Set(parsed.rows.map((r) => r.category)).size;
+    const uniqueItemCodes = new Set(parsed.rows.map((r) => r.code)).size;
+
+    expect(stats.outletsCreated).toBe(uniqueOutlets);
+    expect(stats.departmentsCreated).toBe(uniqueCategories);
+    expect(stats.itemsCreated).toBe(uniqueItemCodes);
+    expect(stats.storeItemsCreated).toBe(uniqueItemCodes);
+  });
+
+  it('first upload: salesRowsInserted equals the number of unique code×outlet aggregates', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const stats = simulateApprove(parsed, db);
+
+    // The route aggregates by code|outlet, so salesRowsInserted = unique (code, outlet) pairs.
+    const uniquePairs = new Set(parsed.rows.map((r) => `${r.code}|${r.outlet}`)).size;
+    expect(stats.salesRowsInserted).toBe(uniquePairs);
+  });
+
+  it('re-upload: all created counters are zero, all linked counters match originals', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const first = simulateApprove(parsed, db);
+    const second = simulateApprove(parsed, db);
+
+    // Nothing new should be created on re-upload.
+    expect(second.outletsCreated).toBe(0);
+    expect(second.departmentsCreated).toBe(0);
+    expect(second.itemsCreated).toBe(0);
+    expect(second.storeItemsCreated).toBe(0);
+
+    // Everything that was created in the first run is now linked.
+    expect(second.outletsLinked).toBe(first.outletsCreated);
+    expect(second.departmentsLinked).toBe(first.departmentsCreated);
+    expect(second.itemsLinked).toBe(first.itemsCreated);
+  });
+
+  it('re-upload: salesRowsInserted reflects attempted rows (same batchId → DO NOTHING skips)', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const salesRowsBefore = db.salesRows.size; // 0
+    const first  = simulateApprove(parsed, db);
+    const salesRowsAfterFirst = db.salesRows.size;
+
+    const second = simulateApprove(parsed, db);
+    const salesRowsAfterSecond = db.salesRows.size;
+
+    // The route always reports salesRowsInserted = aggMap.size regardless of DO NOTHING.
+    expect(second.salesRowsInserted).toBe(first.salesRowsInserted);
+
+    // But the actual DB table size must not grow on re-upload.
+    expect(salesRowsAfterFirst).toBeGreaterThan(salesRowsBefore);
+    expect(salesRowsAfterSecond).toBe(salesRowsAfterFirst); // no new rows written
+  });
+
+  it('all eight stats fields are present and numeric in the response shape', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const db: DbState = {
+      outlets: new Set(),
+      departments: new Set(),
+      items: new Map(),
+      storeLinks: new Set(),
+      batches: new Map(),
+      salesRows: new Set(),
+    };
+
+    const stats = simulateApprove(parsed, db);
+
+    const requiredFields: (keyof Stats)[] = [
+      'outletsCreated',
+      'outletsLinked',
+      'departmentsCreated',
+      'departmentsLinked',
+      'itemsCreated',
+      'itemsLinked',
+      'storeItemsCreated',
+      'salesRowsInserted',
+    ];
+
+    for (const field of requiredFields) {
+      expect(typeof stats[field]).toBe('number');
+      expect(stats[field]).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+// ─── 6. Approve endpoint — HTTP integration with mocked db.transaction ─────────
+
+/**
+ * These tests call POST /api/imports/sales-by-item/approve via supertest and
+ * assert the actual HTTP response body.  db.transaction is mocked to invoke the
+ * callback with a controlled tx whose responses are pre-queued in order, so we
+ * exercise the real route handler without a live database.
+ *
+ * The workbook used is a 2-item minimal fixture (Bay Window + Grill outlets,
+ * 2 departments, 2 items, 2 aggregate sales rows) so the expected counts are
+ * small and easy to reason about.
+ *
+ * First-upload expected stats:
+ *   outletsCreated:2, outletsLinked:0,
+ *   departmentsCreated:2, departmentsLinked:0,
+ *   itemsCreated:2, itemsLinked:0,
+ *   storeItemsCreated:2, salesRowsInserted:2
+ *
+ * Re-upload expected stats (same file, same batchId reused):
+ *   outletsCreated:0, outletsLinked:2,
+ *   departmentsCreated:0, departmentsLinked:2,
+ *   itemsCreated:0, itemsLinked:2,
+ *   storeItemsCreated:0, salesRowsInserted:2   ← attempted, not actual DB writes
+ */
+describe('POST /api/imports/sales-by-item/approve — full stats HTTP integration', () => {
+
+  // ── Minimal 2-item workbook ─────────────────────────────────────────────────
+  // Two categories → 2 departments, 2 outlets (Bay Window, Grill), 2 items,
+  // 2 aggregate sales rows (one per code×outlet pair).
+  function build2ItemWorkbook(): Buffer {
+    function addr(r: number, c: number) {
+      return XLSX.utils.encode_cell({ r, c });
+    }
+    const ws: XLSX.WorkSheet = {};
+    ws[addr(8, 10)]  = { t: 's', v: 'Jun 01, 2026' };
+    ws[addr(12, 11)] = { t: 's', v: 'Jun 30, 2026' };
+
+    const categories = ['FF-BW Favorites', 'FF-GR Burger'];
+    let maxRow = 28;
+    for (let i = 0; i < categories.length; i++) {
+      const sectionRow = 29 + i * 2;
+      const itemRow    = 30 + i * 2;
+      ws[addr(sectionRow, 2)] = { t: 's', v: categories[i] };
+      ws[addr(itemRow, 2)]    = { t: 's', v: `TST-000${i}` };
+      ws[addr(itemRow, 5)]    = { t: 's', v: `Test Item ${i}` };
+      ws[addr(itemRow, 14)]   = { t: 'n', v: 3 };
+      ws[addr(itemRow, 15)]   = { t: 'n', v: 9.0 };
+      ws[addr(itemRow, 20)]   = { t: 'n', v: 9.0 };
+      maxRow = itemRow;
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ r: 0, c: 0 }, { r: maxRow, c: 20 });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  const workbookBuffer = build2ItemWorkbook();
+
+  // ── Mock-tx factory ─────────────────────────────────────────────────────────
+  /**
+   * Creates a mock Drizzle transaction object (tx) whose query builder chains
+   * consume pre-registered responses from a queue in call order.
+   *
+   * Each terminal method (limit, where when directly awaited, returning, and
+   * onConflictDoNothing when directly awaited) pops the next response from the
+   * queue.  Non-terminal builder methods (from, values, …) just return a new
+   * chainable node.
+   */
+  function createMockTx(responses: any[]): any {
+    let idx = 0;
+    const next = (label: string) => {
+      if (idx >= responses.length) {
+        throw new Error(
+          `MockTx: unexpected call ${label} at position #${idx + 1}; ` +
+          `only ${responses.length} responses registered`,
+        );
+      }
+      return responses[idx++];
+    };
+
+    function makeNode(label = 'node'): any {
+      const n: any = {
+        from:  (_t: any) => makeNode(`from`),
+        where: (_c: any) => makeNode(`where`),
+        limit: (_l: any) => Promise.resolve(next(`limit`)),
+        values:(_v: any) => makeNode(`values`),
+        returning: (_c: any) => Promise.resolve(next(`returning`)),
+        onConflictDoNothing: () => ({
+          // may be followed by .returning() or awaited directly
+          returning: (_c: any) => Promise.resolve(next(`onConflict.returning`)),
+          then: (ok: any, fail: any) =>
+            Promise.resolve(next(`onConflict.then`)).then(ok, fail),
+        }),
+        // select chains without .limit() are awaited directly
+        then: (ok: any, fail: any) =>
+          Promise.resolve(next(`${label}.then`)).then(ok, fail),
+      };
+      return n;
+    }
+
+    return {
+      select: (_c: any) => makeNode('select'),
+      insert: (_t: any) => makeNode('insert'),
+    };
+  }
+
+  // ── Shared request helper ───────────────────────────────────────────────────
+  async function runApprove(buf: Buffer) {
+    const express = (await import('express')).default;
+    const { registerSalesByItemRoutes } =
+      await import('../../routes/salesByItemRoutes');
+
+    const app = express();
+    // Inject companyId and userId so the route can proceed past guard checks
+    app.use((req: any, _res: any, next: any) => {
+      req.companyId = 'company-1';
+      req.userId    = 'user-1';
+      next();
+    });
+    registerSalesByItemRoutes(app);
+
+    const request = (await import('supertest')).default;
+    return request(app)
+      .post('/api/imports/sales-by-item/approve')
+      .attach('file', buf, {
+        filename: 'test.xlsx',
+        contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+  }
+
+  // ── Per-test mock setup ─────────────────────────────────────────────────────
+  beforeEach(() => {
+    // One accessible store → resolveTargetStore picks it automatically
+    vi.mocked(getAccessibleStores).mockResolvedValue(['store-1']);
+
+    // Module-level db.select — used only by resolveTargetStore to load store names
+    vi.mocked(db.select as any).mockReturnValue({
+      from: () => ({
+        where: () =>
+          Promise.resolve([{ id: 'store-1', name: 'Test Store' }]),
+      }),
+    });
+  });
+
+  // ── First-upload ────────────────────────────────────────────────────────────
+  it('first upload: HTTP 200 and all 8 stats fields with correct counts', async () => {
+    /**
+     * Response queue — one entry per terminal DB call in the approve transaction:
+     *  1  select existing batch        → []             (none found → create)
+     *  2  insert batch returning       → [{id}]
+     *  3  select outlet Bay Window     → []             (new)
+     *  4  insert outlet BW returning   → [{id}]
+     *  5  select outlet Grill          → []             (new)
+     *  6  insert outlet GR returning   → [{id}]
+     *  7  select dept FF-BW Favorites  → []             (new)
+     *  8  insert dept BW returning     → [{id}]
+     *  9  select dept FF-GR Burger     → []             (new)
+     * 10  insert dept GR returning     → [{id}]
+     * 11  select all menu items        → []             (none exist)
+     * 12  insert items returning       → 2 rows
+     * 13  select store links           → []             (none exist)
+     * 14  insert store links returning → 2 rows
+     * 15  insert sales (onConflict)    → []             (terminal, no returning)
+     */
+    const responses = [
+      [],                                                       //  1
+      [{ id: 'batch-1' }],                                     //  2
+      [],                                                       //  3
+      [{ id: 'loc-1' }],                                       //  4
+      [],                                                       //  5
+      [{ id: 'loc-2' }],                                       //  6
+      [],                                                       //  7
+      [{ id: 'dept-1' }],                                      //  8
+      [],                                                       //  9
+      [{ id: 'dept-2' }],                                      // 10
+      [],                                                       // 11
+      [{ id: 'item-1', pluSku: 'TST-0000' },
+       { id: 'item-2', pluSku: 'TST-0001' }],                  // 12
+      [],                                                       // 13
+      [{ menuItemId: 'item-1' }, { menuItemId: 'item-2' }],    // 14
+      [],                                                       // 15
+    ];
+
+    vi.mocked(db.transaction as any).mockImplementation(
+      async (callback: any) => callback(createMockTx(responses)),
+    );
+
+    const res = await runApprove(workbookBuffer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Date range present
+    expect(res.body.reportStart).toBe('2026-06-01');
+    expect(res.body.reportEnd).toBe('2026-06-30');
+
+    // All 8 stats fields — first upload
+    expect(res.body.outletsCreated).toBe(2);
+    expect(res.body.outletsLinked).toBe(0);
+    expect(res.body.departmentsCreated).toBe(2);
+    expect(res.body.departmentsLinked).toBe(0);
+    expect(res.body.itemsCreated).toBe(2);
+    expect(res.body.itemsLinked).toBe(0);
+    expect(res.body.storeItemsCreated).toBe(2);
+    expect(res.body.salesRowsInserted).toBe(2); // 2 unique code×outlet pairs
+  });
+
+  // ── Re-upload ───────────────────────────────────────────────────────────────
+  it('re-upload: HTTP 200 and all created counters are zero', async () => {
+    /**
+     * Re-upload response queue — batch already exists so it is reused;
+     * all outlets/departments/items already exist so linked counters reflect
+     * the originals and created counters are zero.  No item insert, no store
+     * link insert (toLink is empty).  Sales insert still runs (batchId+storeId
+     * present) but ON CONFLICT DO NOTHING skips every row.
+     *
+     *  1  select existing batch            → [{id: 'batch-1'}]   (found → reuse)
+     *  2  select outlet Bay Window         → [{id: 'loc-1'}]     (linked)
+     *  3  select outlet Grill              → [{id: 'loc-2'}]     (linked)
+     *  4  select dept FF-BW Favorites      → [{id: 'dept-1'}]    (linked)
+     *  5  select dept FF-GR Burger         → [{id: 'dept-2'}]    (linked)
+     *  6  select all menu items            → 2 rows              (all exist)
+     *  7  select store links               → 2 rows              (all exist)
+     *  8  insert sales (onConflict)        → []                  (all skipped)
+     */
+    const responses = [
+      [{ id: 'batch-1' }],                                          //  1
+      [{ id: 'loc-1' }],                                            //  2
+      [{ id: 'loc-2' }],                                            //  3
+      [{ id: 'dept-1' }],                                           //  4
+      [{ id: 'dept-2' }],                                           //  5
+      [{ id: 'item-1', pluSku: 'TST-0000' },
+       { id: 'item-2', pluSku: 'TST-0001' }],                       //  6
+      [{ menuItemId: 'item-1' }, { menuItemId: 'item-2' }],         //  7
+      [],                                                            //  8
+    ];
+
+    vi.mocked(db.transaction as any).mockImplementation(
+      async (callback: any) => callback(createMockTx(responses)),
+    );
+
+    const res = await runApprove(workbookBuffer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Nothing new created
+    expect(res.body.outletsCreated).toBe(0);
+    expect(res.body.departmentsCreated).toBe(0);
+    expect(res.body.itemsCreated).toBe(0);
+    expect(res.body.storeItemsCreated).toBe(0);
+
+    // Everything that was created first time is now linked
+    expect(res.body.outletsLinked).toBe(2);
+    expect(res.body.departmentsLinked).toBe(2);
+    expect(res.body.itemsLinked).toBe(2);
+  });
+
+  it('re-upload: salesRowsInserted reports attempted rows even when DO NOTHING skips all', async () => {
+    /**
+     * On re-upload the route builds the same aggMap (2 code×outlet pairs) and
+     * sets salesRowsInserted = salesRows.length = 2, regardless of the fact that
+     * the unique index skips every insert.  The caller must check whether the
+     * batchId was reused to interpret this correctly.
+     */
+    const responses = [
+      [{ id: 'batch-1' }],
+      [{ id: 'loc-1' }],
+      [{ id: 'loc-2' }],
+      [{ id: 'dept-1' }],
+      [{ id: 'dept-2' }],
+      [{ id: 'item-1', pluSku: 'TST-0000' },
+       { id: 'item-2', pluSku: 'TST-0001' }],
+      [{ menuItemId: 'item-1' }, { menuItemId: 'item-2' }],
+      [],
+    ];
+
+    vi.mocked(db.transaction as any).mockImplementation(
+      async (callback: any) => callback(createMockTx(responses)),
+    );
+
+    const res = await runApprove(workbookBuffer);
+
+    expect(res.status).toBe(200);
+    // Route reports attempted count (2), not 0 actual DB inserts.
+    expect(res.body.salesRowsInserted).toBe(2);
+  });
+
+  it('response shape contains every expected top-level key', async () => {
+    const responses = [
+      [], [{ id: 'batch-1' }],
+      [], [{ id: 'loc-1' }],
+      [], [{ id: 'loc-2' }],
+      [], [{ id: 'dept-1' }],
+      [], [{ id: 'dept-2' }],
+      [],
+      [{ id: 'item-1', pluSku: 'TST-0000' }, { id: 'item-2', pluSku: 'TST-0001' }],
+      [],
+      [{ menuItemId: 'item-1' }, { menuItemId: 'item-2' }],
+      [],
+    ];
+
+    vi.mocked(db.transaction as any).mockImplementation(
+      async (callback: any) => callback(createMockTx(responses)),
+    );
+
+    const res = await runApprove(workbookBuffer);
+
+    expect(res.status).toBe(200);
+
+    const requiredKeys = [
+      'success', 'reportStart', 'reportEnd',
+      'outletsCreated', 'outletsLinked',
+      'departmentsCreated', 'departmentsLinked',
+      'itemsCreated', 'itemsLinked',
+      'storeItemsCreated', 'salesRowsInserted',
+    ];
+    for (const key of requiredKeys) {
+      expect(res.body).toHaveProperty(key);
+    }
   });
 });
