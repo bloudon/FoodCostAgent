@@ -8,6 +8,7 @@ import {
   UtensilsCrossed,
   BarChart3,
   FileBarChart2,
+  Trash2,
   MoreHorizontal,
   Pin,
   PinOff,
@@ -59,10 +60,10 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/new-count") ||
     loc.startsWith("/item-count") ||
     loc.startsWith("/shelf-scans") ||
-    loc === "/waste" ||
-    loc.startsWith("/waste/") ||
     loc.startsWith("/prep-chart/on-hand")
   ) return "count";
+
+  if (loc === "/waste" || loc.startsWith("/waste/")) return "waste";
 
   if (
     loc === "/order" ||
@@ -123,6 +124,7 @@ const RAIL: RailItem[] = [
   { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menus",       testId: "nav-menu" },
   { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
   { id: "reports",   label: "Reports",   icon: FileBarChart2,    href: "/reports",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-reports" },
+  { id: "waste",     label: "Waste",     icon: Trash2,           href: "/waste",      testId: "nav-waste" },
   { id: "more",      label: "More",      icon: MoreHorizontal,   href: "/more",       testId: "nav-more" },
 ];
 
