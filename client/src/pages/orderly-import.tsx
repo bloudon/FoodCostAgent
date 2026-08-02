@@ -60,7 +60,18 @@ import {
   FileText,
   ChevronDown,
   Link2,
+  ShieldAlert,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -435,6 +446,12 @@ function UploadStep({ onUploaded, onBack }: { onUploaded: (batchId: string) => v
 
 // ─── Step: Confirm date ───────────────────────────────────────────────────────
 
+interface DuplicateDateWarning {
+  inventoryDate: string | null;
+  approvedAt: string | null;
+  priorBatchId: string;
+}
+
 function ConfirmDateStep({
   batchId,
   detectedDate,
@@ -449,6 +466,7 @@ function ConfirmDateStep({
   const { toast } = useToast();
   const [dateValue, setDateValue] = useState(detectedDate ?? "");
   const [saving, setSaving] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateDateWarning | null>(null);
 
   async function handleConfirm() {
     if (!dateValue) return;
@@ -460,6 +478,12 @@ function ConfirmDateStep({
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error ?? "Failed to confirm date");
+      }
+      const data = await res.json();
+      if (data.duplicateDateWarning) {
+        // Show warning and wait for explicit user acknowledgement before advancing.
+        setDuplicateWarning(data.duplicateDateWarning);
+        return;
       }
       onConfirmed();
     } catch (err: any) {
@@ -488,22 +512,52 @@ function ConfirmDateStep({
         </AlertDescription>
       </Alert>
 
+      {duplicateWarning && (
+        <Alert variant="destructive">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertDescription>
+            An import for <strong>{formatDate(duplicateWarning.inventoryDate)}</strong> was already
+            approved{duplicateWarning.approvedAt ? ` on ${formatDate(duplicateWarning.approvedAt)}` : ""}.
+            Approving again will create duplicate items. Use a different date, or continue if you're sure.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="space-y-2">
         <Label htmlFor="inv-date">Inventory Date</Label>
         <Input
           id="inv-date"
           type="date"
           value={dateValue}
-          onChange={(e) => setDateValue(e.target.value)}
+          onChange={(e) => {
+            setDateValue(e.target.value);
+            setDuplicateWarning(null);
+          }}
           className="max-w-xs"
         />
       </div>
 
-      <Button onClick={handleConfirm} disabled={!dateValue || saving}>
-        {saving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : null}
-        Confirm Date & Preview Matches
-        <ArrowRight className="h-4 w-4 ml-2" />
-      </Button>
+      {duplicateWarning ? (
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setDuplicateWarning(null)}>
+            Change Date
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={onConfirmed}
+          >
+            <ShieldAlert className="h-4 w-4 mr-2" />
+            Continue Anyway
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        </div>
+      ) : (
+        <Button onClick={handleConfirm} disabled={!dateValue || saving}>
+          {saving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : null}
+          Confirm Date & Preview Matches
+          <ArrowRight className="h-4 w-4 ml-2" />
+        </Button>
+      )}
     </div>
   );
 }
@@ -641,6 +695,7 @@ export function ResolutionPreviewStep({
   // rowIndex → string (link to item) | null (create new) | undefined (system default)
   const [rowDecisions, setRowDecisions] = useState<Map<number, string | null>>(() => new Map());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
+  const [duplicateDialogWarning, setDuplicateDialogWarning] = useState<DuplicateDateWarning | null>(null);
 
   const PAGE_SIZE = 100;
 
@@ -684,21 +739,35 @@ export function ResolutionPreviewStep({
     });
   }
 
-  async function handleApprove() {
+  async function submitApproval(force = false) {
     setApproving(true);
     try {
       const decisions = Array.from(rowDecisions.entries()).map(([rowIndex, inventoryItemId]) => ({
         rowIndex,
         inventoryItemId,
       }));
-      const res = await apiRequest("POST", `/api/inventory-import/orderly/batches/${batchId}/approve`, {
-        rowDecisions: decisions,
+      // Use fetch directly so we can inspect 409 bodies before throwing.
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          rowDecisions: decisions,
+          ...(force ? { force: true } : {}),
+        }),
       });
+
+      const body = await res.json();
+
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "Approval failed");
+        if (res.status === 409 && body.duplicateDateWarning) {
+          setDuplicateDialogWarning(body.duplicateDateWarning);
+          return;
+        }
+        throw new Error(body.error ?? "Approval failed");
       }
-      const result: ApprovalResult = await res.json();
+
+      const result: ApprovalResult = body;
       qc.invalidateQueries({ queryKey: ["/api/inventory-import/orderly/batches"] });
       qc.invalidateQueries({ queryKey: ["/api/inventory-items"] });
       qc.invalidateQueries({ queryKey: ["/api/vendors"] });
@@ -708,6 +777,10 @@ export function ResolutionPreviewStep({
     } finally {
       setApproving(false);
     }
+  }
+
+  function handleApprove() {
+    submitApproval(false);
   }
 
   if (isLoading) {
@@ -735,6 +808,48 @@ export function ResolutionPreviewStep({
 
   return (
     <div className="space-y-5">
+      {/* Duplicate-date confirmation dialog */}
+      <AlertDialog
+        open={duplicateDialogWarning !== null}
+        onOpenChange={(open) => { if (!open) setDuplicateDialogWarning(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-destructive" />
+              Duplicate Import Warning
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  An import for <strong className="text-foreground">{formatDate(duplicateDialogWarning?.inventoryDate ?? null)}</strong> was
+                  already approved{duplicateDialogWarning?.approvedAt
+                    ? <> on <strong className="text-foreground">{formatDate(duplicateDialogWarning.approvedAt)}</strong></>
+                    : ""}.
+                </p>
+                <p>
+                  Approving again will create <strong className="text-foreground">duplicate items</strong>. Are you sure you want to continue?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateDialogWarning(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setDuplicateDialogWarning(null);
+                submitApproval(true);
+              }}
+            >
+              Approve Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={onBack} className="-ml-1">
           <ChevronLeft className="h-4 w-4 mr-1" /> Back

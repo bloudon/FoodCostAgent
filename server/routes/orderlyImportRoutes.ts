@@ -36,7 +36,7 @@ import {
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
 import { db } from '../db';
-import { sql, eq, and, isNull } from 'drizzle-orm';
+import { sql, eq, and, isNull, ne } from 'drizzle-orm';
 import {
   inventoryImportBatches,
   inventoryImportRows,
@@ -469,6 +469,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
    *
    * Body (optional):
    *   rowDecisions: RowDecision[]  — per-row overrides for ambiguous matches
+   *   force: boolean               — skip the duplicate-date guard when true
    */
   app.post(
     '/api/inventory-import/orderly/batches/:batchId/approve',
@@ -480,6 +481,57 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const userId = (req as any).userId as string | null ?? null;
         const { batchId } = req.params;
         const rowDecisions: RowDecision[] = req.body?.rowDecisions ?? [];
+        const force: boolean = req.body?.force === true;
+
+        // Look up the current batch to get its inventoryDate.
+        const [currentBatch] = await db
+          .select({
+            id: inventoryImportBatches.id,
+            inventoryDate: inventoryImportBatches.inventoryDate,
+          })
+          .from(inventoryImportBatches)
+          .where(
+            and(
+              eq(inventoryImportBatches.id, batchId),
+              eq(inventoryImportBatches.companyId, companyId),
+            ),
+          )
+          .limit(1);
+
+        if (!currentBatch) {
+          return res.status(404).json({ error: 'Batch not found' });
+        }
+
+        // Guard: check for another already-approved batch with the same inventory date.
+        if (!force && currentBatch.inventoryDate) {
+          const [prior] = await db
+            .select({
+              id: inventoryImportBatches.id,
+              inventoryDate: inventoryImportBatches.inventoryDate,
+              approvedAt: inventoryImportBatches.approvedAt,
+            })
+            .from(inventoryImportBatches)
+            .where(
+              and(
+                eq(inventoryImportBatches.companyId, companyId),
+                eq(inventoryImportBatches.inventoryDate, currentBatch.inventoryDate),
+                eq(inventoryImportBatches.status, 'approved'),
+                ne(inventoryImportBatches.id, batchId),
+              ),
+            )
+            .limit(1);
+
+          if (prior) {
+            return res.status(409).json({
+              error: 'duplicate_date',
+              duplicateDateWarning: {
+                inventoryDate: prior.inventoryDate,
+                approvedAt: prior.approvedAt,
+                priorBatchId: prior.id,
+              },
+            });
+          }
+        }
 
         const result = await applyBatchApproval(batchId, companyId, userId, rowDecisions);
         res.json(result);
@@ -606,6 +658,11 @@ export function registerOrderlyImportRoutes(app: Express): void {
   /**
    * PATCH /api/inventory-import/orderly/batches/:batchId/confirm-date
    * Body: { inventoryDate: "YYYY-MM-DD" }
+   *
+   * Returns: { batchId, inventoryDate, confirmed, duplicateDateWarning? }
+   * duplicateDateWarning is set when another approved batch for this
+   * company + inventoryDate already exists, so the UI can warn the user
+   * before they advance to the 5,000-row review step.
    */
   app.patch(
     '/api/inventory-import/orderly/batches/:batchId/confirm-date',
@@ -638,7 +695,34 @@ export function registerOrderlyImportRoutes(app: Express): void {
           return res.status(404).json({ error: 'Batch not found' });
         }
 
-        res.json({ batchId, inventoryDate, confirmed: true });
+        // Warn if another approved batch already covers this date.
+        const [prior] = await db
+          .select({
+            id: inventoryImportBatches.id,
+            inventoryDate: inventoryImportBatches.inventoryDate,
+            approvedAt: inventoryImportBatches.approvedAt,
+          })
+          .from(inventoryImportBatches)
+          .where(
+            and(
+              eq(inventoryImportBatches.companyId, companyId),
+              eq(inventoryImportBatches.inventoryDate, inventoryDate),
+              eq(inventoryImportBatches.status, 'approved'),
+              ne(inventoryImportBatches.id, batchId),
+            ),
+          )
+          .limit(1);
+
+        const response: Record<string, unknown> = { batchId, inventoryDate, confirmed: true };
+        if (prior) {
+          response.duplicateDateWarning = {
+            inventoryDate: prior.inventoryDate,
+            approvedAt: prior.approvedAt,
+            priorBatchId: prior.id,
+          };
+        }
+
+        res.json(response);
       } catch (err: any) {
         console.error('[OrderlyImport] confirm-date error:', err);
         res.status(500).json({ error: err.message });
