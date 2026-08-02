@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.6] — 2026-08-02
+
+### Sales import
+
+- **Jonas Encore banner on TFC Sales Import page** — clubs using Jonas Encore now see a contextual callout on the CSV Sales Import page pointing them to the correct Sales by Item importer at `/sales-by-item-import`, preventing the wrong-page confusion
+
+---
+
 ## [1.14.5] — 2026-08-02
 
 ### Sales import
