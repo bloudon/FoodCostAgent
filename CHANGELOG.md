@@ -2,6 +2,17 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.0] — 2026-08-02
+
+### Waste
+
+- **Voice waste entry** — kitchen staff can record spoken waste events directly from the Waste page. A mic button opens a recording modal (idle → recording → transcribing → resolving → results). Audio is transcribed via Whisper, structured entries extracted with GPT-4o, then resolved against the live inventory and menu catalog using weighted fuzzy matching (exact / prefix / substring / Levenshtein). Each entry gets a resolution status: *resolved*, *ambiguous*, *needs\_unit*, or *unresolved*. Tapping "Load into form" prefills the waste wizard to the appropriate step.
+- **Voice draft queue** — after loading entries from the modal a persistent banner above the wizard tracks all voice drafts. Each chip shows item name, qty, and resolution status; "Load" prefills the next draft while "×" skips it. The queue survives React Query invalidations and persists until all entries are submitted or dismissed.
+- **Unit-safe prefill** — when the spoken unit differs from the item's canonical unit (e.g. "cases" for an item tracked in lbs) the quantity field is cleared and an inline warning prompts the user to re-enter in the correct unit, preventing silently wrong waste quantities.
+- **`POST /api/waste/interpret`** — new endpoint accepting either `multipart/form-data` (audio, 10 MB max) or `application/json` (pre-transcribed text). Returns structured, store-verified waste entries with candidates, match scores, and unit metadata. Accessible to mobile API consumers.
+
+---
+
 ## [1.13.0] — 2026-08-02
 
 ### Admin Dashboard
