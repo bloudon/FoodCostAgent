@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 type AdminStats = {
   totalCompanies: number;
@@ -126,6 +126,8 @@ export default function Companies() {
   const [qbDetailsOpen, setQbDetailsOpen] = useState(false);
   const [chatLogsExpanded, setChatLogsExpanded] = useState(false);
   const [companySearch, setCompanySearch] = useState("");
+  const [companyTierFilter, setCompanyTierFilter] = useState<"all" | Tier>("all");
+  const [companyStatusFilter, setCompanyStatusFilter] = useState<"all" | "active" | "inactive" | "suspended">("all");
   const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
   const [chatLogCompanyFilter, setChatLogCompanyFilter] = useState<string>("all");
   const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
@@ -136,6 +138,21 @@ export default function Companies() {
   const { data: companies, isLoading } = useQuery<CompanyWithActivity[]>({
     queryKey: ["/api/companies"],
   });
+
+  // Single canonical filter computation — reused for badge, list, and empty state
+  const filteredCompanies = useMemo(() => {
+    if (!companies) return [];
+    return companies.filter(c => {
+      const matchesSearch = !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase());
+      // Normalize legacy/unknown plan values the same way the tier selector does
+      const canonicalTier: Tier = TIERS.includes(c.subscriptionPlan as Tier) ? (c.subscriptionPlan as Tier) : "platform";
+      const matchesTier = companyTierFilter === "all" || canonicalTier === companyTierFilter;
+      const matchesStatus = companyStatusFilter === "all" || c.status === companyStatusFilter;
+      return matchesSearch && matchesTier && matchesStatus;
+    });
+  }, [companies, companySearch, companyTierFilter, companyStatusFilter]);
+
+  const isFiltered = companySearch !== "" || companyTierFilter !== "all" || companyStatusFilter !== "all";
 
   const qbAppStatusQuery = useQuery<{ data: { configured: boolean; hasClientId: boolean; hasClientSecret: boolean; environment: string } }>({
     queryKey: ["/api/admin/quickbooks/app-status"],
@@ -1134,42 +1151,72 @@ export default function Companies() {
       </Card>
 
       {/* Companies list */}
-      <div className="mb-3 flex items-center gap-3 flex-wrap">
-        <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          All Companies
-        </h2>
-        <div className="relative w-56">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search companies…"
-            value={companySearch}
-            onChange={e => setCompanySearch(e.target.value)}
-            className="pl-8 pr-7 h-8 text-sm"
-            data-testid="input-company-search"
-          />
-          {companySearch && (
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => setCompanySearch("")}
-              aria-label="Clear search"
-              data-testid="button-clear-company-search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            All Companies
+          </h2>
+          {isFiltered && (
+            <Badge variant="secondary" className="text-xs" data-testid="badge-company-filter-count">
+              {filteredCompanies.length} of {companies?.length ?? 0}
+            </Badge>
           )}
         </div>
-        {companySearch && (
-          <Badge variant="secondary" className="text-xs">
-            {companies?.filter(c => c.name.toLowerCase().includes(companySearch.toLowerCase())).length ?? 0} of {companies?.length ?? 0}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select
+            value={companyTierFilter}
+            onValueChange={(v) => setCompanyTierFilter(v as "all" | Tier)}
+          >
+            <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-company-tier-filter">
+              <SelectValue placeholder="All tiers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tiers</SelectItem>
+              {TIERS.map((t) => (
+                <SelectItem key={t} value={t}>{TIER_LABELS[t]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={companyStatusFilter}
+            onValueChange={(v) => setCompanyStatusFilter(v as "all" | "active" | "inactive" | "suspended")}
+          >
+            <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-company-status-filter">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="suspended">Suspended</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search companies…"
+              value={companySearch}
+              onChange={e => setCompanySearch(e.target.value)}
+              className="pl-8 pr-7 h-8 text-sm"
+              data-testid="input-company-search"
+            />
+            {companySearch && (
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setCompanySearch("")}
+                aria-label="Clear search"
+                data-testid="button-clear-company-search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2">
-        {companies?.filter(c =>
-          !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase())
-        ).map((company) => (
+        {filteredCompanies.map((company) => (
           <Card
             key={company.id}
             className="hover-elevate transition-all"
@@ -1367,16 +1414,16 @@ export default function Companies() {
           <p className="text-muted-foreground">No companies have been created yet.</p>
         </div>
       )}
-      {(companies?.length ?? 0) > 0 && companySearch &&
-        companies!.filter(c => c.name.toLowerCase().includes(companySearch.toLowerCase())).length === 0 && (
+      {(companies?.length ?? 0) > 0 && isFiltered && filteredCompanies.length === 0 && (
         <div className="text-center py-12">
           <Search className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-          <h3 className="text-base font-semibold mb-1">No matches for "{companySearch}"</h3>
+          <h3 className="text-base font-semibold mb-1">No companies match the current filters</h3>
           <button
             className="text-sm text-primary underline"
-            onClick={() => setCompanySearch("")}
+            onClick={() => { setCompanySearch(""); setCompanyTierFilter("all"); setCompanyStatusFilter("all"); }}
+            data-testid="button-clear-company-filters"
           >
-            Clear search
+            Clear filters
           </button>
         </div>
       )}
