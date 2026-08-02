@@ -802,6 +802,25 @@ export default function WasteEntry() {
                 </p>
               </div>
 
+              {/* No-recipe warning — shown inline before submit so the user can link a recipe first */}
+              {wasteType === 'menu_item' && selectedItem && (selectedItem as MenuItem).recipeId === null && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="no-recipe-warning">
+                  <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="flex-1">
+                    <p className="font-medium">This item has no linked recipe — cost will be recorded as $0.00.</p>
+                    <p className="mt-0.5 text-amber-800">
+                      Link a recipe to track food cost.{" "}
+                      <Link
+                        href={`/menu-items/${selectedItemId}`}
+                        className="underline font-medium hover:text-amber-700"
+                      >
+                        Go to recipe setup
+                      </Link>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Quantity with Number Pad */}
               <div>
                 <Label htmlFor="quantity" className="text-xl mb-3 block">
