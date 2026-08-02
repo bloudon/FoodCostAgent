@@ -7371,6 +7371,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           canBeIngredient: parsed.data.canBeIngredient,
           isActive: 1,
           instructions: parsed.data.instructions || null,
+          // Carry the scanned photo over as the recipe image (only set if not already provided)
+          imagePath: session.rawImagePath ?? null,
         }).returning();
 
         // Create recipe components for matched ingredients
