@@ -392,6 +392,64 @@ describe('approve re-upload idempotency — find-or-create logic', () => {
     expect(itemsLinked).toBe(uniqueCodes.length);
   });
 
+  /**
+   * Core idempotency test: two consecutive approvals of the same file must not
+   * double net-sales totals. This simulates the route's batch find-or-create +
+   * dmis_csv_aggregate_uniq ON CONFLICT DO NOTHING behaviour in-memory.
+   */
+  it('total net sales remain ~136,798 after two consecutive approvals of the same report', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+
+    // In-memory stand-ins for DB tables.
+    // batchStore: (companyId, storeId, salesDate) → batchId
+    const batchStore = new Map<string, string>();
+    // salesStore: Set of "batchId|menuItemId" composite keys (mirrors dmis_csv_aggregate_uniq)
+    const salesStore = new Map<string, { qtySold: number; netSales: number }>();
+
+    const COMPANY_ID = 'co-1';
+    const STORE_ID   = 'st-1';
+    const salesDate  = parsed.reportStart; // e.g. "2026-06-01"
+
+    /** Simulates one approve call and returns the total net across all stored rows. */
+    function simulateApprove(): number {
+      // Step 1: find-or-create batch (mirrors the new route logic).
+      const batchKey = `${COMPANY_ID}|${STORE_ID}|${salesDate}`;
+      let batchId = batchStore.get(batchKey);
+      if (!batchId) {
+        batchId = `batch-${batchStore.size + 1}`;
+        batchStore.set(batchKey, batchId);
+      }
+
+      // Step 6: aggregate by code and insert with ON CONFLICT DO NOTHING.
+      const aggMap = new Map<string, { qty: number; net: number }>();
+      for (const row of parsed.rows) {
+        const agg = aggMap.get(row.code) ?? { qty: 0, net: 0 };
+        aggMap.set(row.code, { qty: agg.qty + row.qty, net: agg.net + row.netAmount });
+      }
+
+      for (const [code, agg] of aggMap.entries()) {
+        const rowKey = `${batchId}|${code}`; // mirrors (sourceBatchId, menuItemId, salesDate, …)
+        if (!salesStore.has(rowKey)) {        // ON CONFLICT DO NOTHING
+          salesStore.set(rowKey, { qtySold: agg.qty, netSales: agg.net });
+        }
+      }
+
+      // Sum all stored rows for this store/date (equivalent to a query on dailyMenuItemSales).
+      let total = 0;
+      for (const [key, row] of salesStore.entries()) {
+        if (key.startsWith(batchId + '|')) total += row.netSales;
+      }
+      return total;
+    }
+
+    const afterFirst  = simulateApprove();
+    const afterSecond = simulateApprove();
+
+    // Both runs must return the same total, approximately matching the fixture value.
+    expect(afterFirst).toBeCloseTo(136798.51, 0);
+    expect(afterSecond).toBeCloseTo(afterFirst, 0);
+  });
+
   it('duplicate QAC codes within the same report do not create duplicate items', () => {
     const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
 

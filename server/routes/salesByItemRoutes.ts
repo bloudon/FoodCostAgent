@@ -264,23 +264,45 @@ export function registerSalesByItemRoutes(app: Express): void {
             salesRowsInserted: 0,
           };
 
-          // 1. Create the upload batch record (required FK for daily_menu_item_sales)
+          // 1. Find-or-create the upload batch record (idempotent: reuse existing
+          //    batch for the same company/store/date so that the dmis_csv_aggregate_uniq
+          //    partial index can prevent duplicate sales rows on re-upload).
+          const salesDate = new Date(parsed.reportStart + 'T00:00:00');
           let batchId: string | null = null;
           if (storeId && userId) {
-            const [batch] = await tx
-              .insert(salesUploadBatches)
-              .values({
-                companyId,
-                storeId,
-                uploadedBy: userId,
-                fileName: req.file!.originalname,
-                salesDate: new Date(parsed.reportStart + 'T00:00:00'),
-                status: 'completed',
-                rowsProcessed: parsed.rows.length,
-                rowsFailed: 0,
-              })
-              .returning({ id: salesUploadBatches.id });
-            batchId = batch.id;
+            // Check whether a batch already exists for this company/store/report-date.
+            const [existingBatch] = await tx
+              .select({ id: salesUploadBatches.id })
+              .from(salesUploadBatches)
+              .where(
+                and(
+                  eq(salesUploadBatches.companyId, companyId),
+                  eq(salesUploadBatches.storeId, storeId),
+                  eq(salesUploadBatches.salesDate, salesDate),
+                ),
+              )
+              .limit(1);
+
+            if (existingBatch) {
+              // Reuse existing batch — sales rows with this batchId are already in
+              // daily_menu_item_sales; the ON CONFLICT DO NOTHING below will skip them.
+              batchId = existingBatch.id;
+            } else {
+              const [batch] = await tx
+                .insert(salesUploadBatches)
+                .values({
+                  companyId,
+                  storeId,
+                  uploadedBy: userId,
+                  fileName: req.file!.originalname,
+                  salesDate,
+                  status: 'completed',
+                  rowsProcessed: parsed.rows.length,
+                  rowsFailed: 0,
+                })
+                .returning({ id: salesUploadBatches.id });
+              batchId = batch.id;
+            }
           }
 
           // 2. Find-or-create inventory_locations (outlet type) for each unique outlet
@@ -467,7 +489,7 @@ export function registerSalesByItemRoutes(app: Express): void {
               });
             }
 
-            const salesDate = new Date(parsed.reportStart + 'T00:00:00');
+            // salesDate is defined in step 1 (batch find-or-create) above.
             type SalesRow = {
               companyId: string;
               storeId: string;
