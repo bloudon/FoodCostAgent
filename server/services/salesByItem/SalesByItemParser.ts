@@ -82,9 +82,11 @@ export function inferOutlet(category: string): string {
   if (c.startsWith('APS') || c.startsWith('API')) return 'API';
   if (c.startsWith('BQT') || c.startsWith('BTQ')) return 'Banquet';
   if (c.startsWith('EV-')) return 'Member Events';
+  if (c.startsWith('FF-AR')) return "Arnie's";
   if (c.startsWith('FF-BW') || c.startsWith('BW ') || c === 'BW BREAKFAST'
       || c === 'BW LUNCH' || c === 'BW LUNCH ADD ONS') return 'Bay Window';
   if (c.startsWith('FF-GR')) return 'Grill';
+  if (c.startsWith('FF-ML') || c.startsWith('FF-MLR')) return "Men's Locker Room";
   if (c.startsWith('FF-HWH') || c.startsWith('BC/HWH') || c.startsWith('FB-HWH')) return 'Halfway House';
   if (c.startsWith('FF-SPLASH') || c.startsWith('FF-SPLASH ')) return 'Spa Cafe';
   if (c.startsWith('FF-$ ') || c.startsWith('FF-$$') || c.startsWith('FF-BREAKFAST')
