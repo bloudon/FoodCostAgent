@@ -14,6 +14,7 @@
  *  PUT  /api/report-subscriptions/:id    — update
  *  DELETE /api/report-subscriptions/:id  — delete
  *  GET  /api/report-subscriptions/:id/logs — recent run logs
+ *  POST /api/report-subscriptions/:id/run  — trigger immediate delivery
  */
 import type { Express } from "express";
 import { requireAuth } from "../auth";
@@ -21,7 +22,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getEffectiveCompanyId } from "../lib/milestonesHandler";
 import { runReport, generateReportBuffer } from "../reportGenerators";
-import { reloadReportScheduler } from "../reportScheduler";
+import { reloadReportScheduler, runSubscription } from "../reportScheduler";
 import { reportFiltersSchema, insertSavedReportSchema, insertReportSubscriptionSchema } from "@shared/schema";
 import { getAccessibleStores } from "../permissions";
 
@@ -329,6 +330,30 @@ export function registerReportRoutes(app: Express) {
       const { id } = req.params;
       await db.execute(sql`DELETE FROM report_subscriptions WHERE id = ${id} AND company_id = ${companyId}`);
       await reloadReportScheduler();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Run subscription immediately ─────────────────────────────────────────
+  app.post("/api/report-subscriptions/:id/run", requireAuth, async (req, res) => {
+    try {
+      if (!requireManager(req, res)) return;
+      const user = req.user as any;
+      const companyId = getEffectiveCompanyId(req) || user?.companyId;
+      if (!companyId) return res.status(400).json({ error: "No company context" });
+      const { id } = req.params;
+      // Verify subscription belongs to company
+      const check = await db.execute(sql`
+        SELECT id, company_id, name, report_type, filters,
+               schedule_frequency, schedule_hour, email_recipients, last_run_at
+        FROM report_subscriptions WHERE id = ${id} AND company_id = ${companyId}
+      `);
+      const sub = ((check as any).rows ?? [])[0];
+      if (!sub) return res.status(404).json({ error: "Not found" });
+      // Run asynchronously — don't await so we can return immediately
+      runSubscription(sub).catch(console.error);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

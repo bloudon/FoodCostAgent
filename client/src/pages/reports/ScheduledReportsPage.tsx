@@ -108,6 +108,16 @@ export default function ScheduledReportsPage() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const runNowMut = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/report-subscriptions/${id}/run`),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/report-subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/report-subscriptions/${id}/logs`] });
+      toast({ title: "Report queued", description: "The report is being sent now." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   function openCreate() {
     setEditSub(null);
     setForm({ ...defaultForm });
@@ -203,6 +213,15 @@ export default function ScheduledReportsPage() {
               )}
             </div>
             <div className="flex gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => runNowMut.mutate(sub.id)}
+                disabled={runNowMut.isPending && runNowMut.variables === sub.id}
+                title="Send now"
+              >
+                <Play className="h-4 w-4 text-emerald-600" />
+              </Button>
               <Button variant="ghost" size="icon" onClick={() => setLogsFor(logsFor?.id === sub.id ? null : sub)} title="View logs">
                 <Clock className="h-4 w-4" />
               </Button>
