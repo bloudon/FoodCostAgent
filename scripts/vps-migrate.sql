@@ -2614,3 +2614,18 @@ DO $$ BEGIN
       VALUES ('v067', 'Add is_suspected_catch_weight column to order_guide_lines');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v068 — Task #862: target_store_id on inventory_import_batches
+-- Binds a target store at upload time so approved Orderly items are written
+-- into store_inventory_items and appear in the Inventory Items page.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v068') THEN
+    ALTER TABLE inventory_import_batches
+      ADD COLUMN IF NOT EXISTS target_store_id VARCHAR;
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v068', 'Task #862: add target_store_id to inventory_import_batches');
+  END IF;
+END $$;

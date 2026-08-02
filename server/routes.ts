@@ -600,6 +600,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         CREATE INDEX IF NOT EXISTS inv_import_rows_batch_row_idx
           ON inventory_import_rows(batch_id, row_index);
       `);
+      // target_store_id — added in task #862 to bind a store at upload time
+      await db.execute(sql`
+        ALTER TABLE inventory_import_batches
+          ADD COLUMN IF NOT EXISTS target_store_id VARCHAR;
+      `);
       console.log("[Migration] inventory_import_batches / inventory_import_rows tables ready");
     } catch (err) {
       console.error("[Migration] orderly_import_tables error:", err);

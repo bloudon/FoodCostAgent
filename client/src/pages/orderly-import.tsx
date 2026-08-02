@@ -157,6 +157,7 @@ interface ResolutionPreview {
 interface ApprovalResult {
   batchId: string;
   approvedAt: string;
+  targetStoreId: string | null;
   itemsCreated: number;
   itemsLinked: number;
   categoriesCreated: number;
@@ -167,6 +168,10 @@ interface ApprovalResult {
   vendorItemsCreated: number;
   rowsSkipped: number;
   rowsProcessed: number;
+  storeItemsCreated: number;
+  storeItemsReactivated: number;
+  storeItemsAlreadyLinked: number;
+  storeItemsSkipped: number;
 }
 
 interface CountSessionPreviewRow {
@@ -424,13 +429,32 @@ function UploadStep({ onUploaded, onBack }: { onUploaded: (batchId: string) => v
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
 
-  async function handleFile(file: File) {
+  const { data: stores = [] } = useQuery<Store[]>({
+    queryKey: ["/api/stores/accessible"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/stores/accessible");
+      return res.json();
+    },
+  });
+
+  const isMultiStore = stores.length > 1;
+  const canUpload = !isMultiStore || !!selectedStoreId;
+
+  async function handleFile(file: File, action?: string, reason?: string) {
     if (!file) return;
+    if (isMultiStore && !selectedStoreId) {
+      toast({ title: "Select a store first", description: "Choose which store this import belongs to.", variant: "destructive" });
+      return;
+    }
     setUploading(true);
     try {
       const form = new FormData();
       form.append("file", file);
+      if (selectedStoreId) form.append("storeId", selectedStoreId);
+      if (action) form.append("action", action);
+      if (reason) form.append("reason", reason);
       const res = await fetch("/api/inventory-import/orderly/preview", {
         method: "POST",
         credentials: "include",
@@ -440,6 +464,25 @@ function UploadStep({ onUploaded, onBack }: { onUploaded: (batchId: string) => v
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
 
       if (data.duplicateWarning) {
+        if (data.storeMismatch) {
+          const existingStatus: string = data.existingBatch.status ?? "";
+          if (existingStatus === "approved") {
+            // Approved batches must not be deleted — create a new parallel batch for this store.
+            toast({
+              title: "Creating new import for selected store",
+              description: "The original import (for another store) was already approved and will be kept. Staging a new batch…",
+            });
+            await handleFile(file, "force_new", "Store reassignment: staging for a different store");
+            return;
+          }
+          // Pending batch targeting a different store — safe to reprocess (replaces only the pending rows).
+          toast({
+            title: "Re-staging for selected store",
+            description: "This file was previously staged for a different store. Re-staging now…",
+          });
+          await handleFile(file, "reprocess");
+          return;
+        }
         toast({
           title: "Duplicate file detected",
           description: `This file was already imported (batch from ${formatDate(data.existingBatch.uploadedAt)}). Opening existing batch.`,
@@ -464,16 +507,36 @@ function UploadStep({ onUploaded, onBack }: { onUploaded: (batchId: string) => v
       <h2 className="text-lg font-semibold">Upload Orderly Export</h2>
       <p className="text-sm text-muted-foreground">Upload the .xlsx file exported from Orderly. The file is parsed server-side and staged for review before any items are created.</p>
 
+      {/* Store selector — shown only for multi-store companies */}
+      {isMultiStore && (
+        <div className="space-y-2">
+          <Label htmlFor="upload-store">
+            Import into store <span className="text-destructive">*</span>
+          </Label>
+          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+            <SelectTrigger id="upload-store" className="max-w-xs">
+              <SelectValue placeholder="Select a store…" />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Items from this import will be linked to the selected store.</p>
+        </div>
+      )}
+
       <div
-        className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${dragOver ? "border-primary bg-primary/5" : "border-border"} ${uploading ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${dragOver ? "border-primary bg-primary/5" : "border-border"} ${uploading || !canUpload ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
+        onClick={() => canUpload && fileRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); if (canUpload) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => {
           e.preventDefault();
           setDragOver(false);
           const f = e.dataTransfer.files[0];
-          if (f) handleFile(f);
+          if (f && canUpload) handleFile(f);
         }}
       >
         {uploading ? (
@@ -484,8 +547,8 @@ function UploadStep({ onUploaded, onBack }: { onUploaded: (batchId: string) => v
         ) : (
           <>
             <FileSpreadsheet className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
-            <p className="font-medium">Drop your .xlsx file here</p>
-            <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
+            <p className="font-medium">{isMultiStore && !selectedStoreId ? "Select a store above to continue" : "Drop your .xlsx file here"}</p>
+            <p className="text-sm text-muted-foreground mt-1">{isMultiStore && !selectedStoreId ? "" : "or click to browse"}</p>
           </>
         )}
       </div>
@@ -761,6 +824,9 @@ export function ResolutionPreviewStep({
   const [rowDecisions, setRowDecisions] = useState<Map<number, string | null>>(() => new Map());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
   const [duplicateDialogWarning, setDuplicateDialogWarning] = useState<DuplicateDateWarning | null>(null);
+  // Legacy batches created before store-selection was required may need a store assigned at approval time.
+  const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
+  const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
 
   const PAGE_SIZE = 100;
 
@@ -811,7 +877,7 @@ export function ResolutionPreviewStep({
         rowIndex,
         inventoryItemId,
       }));
-      // Use fetch directly so we can inspect 409 bodies before throwing.
+      // Use fetch directly so we can inspect 409/400 bodies before throwing.
       const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -819,6 +885,7 @@ export function ResolutionPreviewStep({
         body: JSON.stringify({
           rowDecisions: decisions,
           ...(force ? { force: true } : {}),
+          ...(legacyApprovalStoreId ? { storeId: legacyApprovalStoreId } : {}),
         }),
       });
 
@@ -827,6 +894,15 @@ export function ResolutionPreviewStep({
       if (!res.ok) {
         if (res.status === 409 && body.duplicateDateWarning) {
           setDuplicateDialogWarning(body.duplicateDateWarning);
+          return;
+        }
+        // Legacy batch: server requires a store to be selected before approval.
+        if (res.status === 400 && body.requiresStoreSelection && body.stores) {
+          setLegacyApprovalStores(body.stores);
+          toast({
+            title: "Select a store to continue",
+            description: "This import was created before store selection was required. Choose a store below to approve.",
+          });
           return;
         }
         throw new Error(body.error ?? "Approval failed");
@@ -1255,8 +1331,33 @@ export function ResolutionPreviewStep({
         })()}
       </div>
 
+      {/* Legacy store picker — shown when the server requires a store for an older batch */}
+      {legacyApprovalStores && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+          <p className="text-sm font-medium text-amber-800">
+            This import was created before store selection was required. Choose a store to link the approved items to:
+          </p>
+          <div className="flex items-center gap-3">
+            <Select value={legacyApprovalStoreId} onValueChange={setLegacyApprovalStoreId}>
+              <SelectTrigger className="max-w-xs">
+                <SelectValue placeholder="Select a store…" />
+              </SelectTrigger>
+              <SelectContent>
+                {legacyApprovalStores.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end pt-2">
-        <Button size="lg" onClick={handleApprove} disabled={approving}>
+        <Button
+          size="lg"
+          onClick={handleApprove}
+          disabled={approving || (legacyApprovalStores !== null && !legacyApprovalStoreId)}
+        >
           {approving
             ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
             : <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -1854,6 +1955,7 @@ function ConvertedSummary({
 // ─── Step: Approved summary ───────────────────────────────────────────────────
 
 function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalResult; onDone: () => void; onConvertNow: () => void }) {
+  const storeLinked = result.storeItemsCreated + result.storeItemsReactivated + result.storeItemsAlreadyLinked;
   return (
     <div className="space-y-6 max-w-lg mx-auto text-center">
       <div>
@@ -1863,6 +1965,21 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
           All rows have been committed to your inventory catalog.
         </p>
       </div>
+
+      {/* Store linkage summary — shown when items were linked to a store */}
+      {storeLinked > 0 && (
+        <div className="rounded-lg border border-green-200 bg-green-50/60 p-4 text-left space-y-1">
+          <p className="text-sm font-medium text-green-800 flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            {storeLinked.toLocaleString()} items are now visible in the Inventory Items list
+          </p>
+          <div className="text-xs text-green-700 space-y-0.5 pl-6">
+            {result.storeItemsCreated > 0 && <p>{result.storeItemsCreated.toLocaleString()} newly added to store</p>}
+            {result.storeItemsReactivated > 0 && <p>{result.storeItemsReactivated.toLocaleString()} reactivated at store</p>}
+            {result.storeItemsAlreadyLinked > 0 && <p>{result.storeItemsAlreadyLinked.toLocaleString()} already linked</p>}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 text-left">
         {[

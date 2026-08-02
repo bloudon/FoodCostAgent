@@ -2299,6 +2299,7 @@ export const inventoryImportBatches = pgTable("inventory_import_batches", {
   approvedAt: timestamp("approved_at"),
   approvedBy: varchar("approved_by"),
   forceNewBatchReason: text("force_new_batch_reason"), // set when admin forces duplicate
+  targetStoreId: varchar("target_store_id"), // company_stores.id — store this batch is imported into
 }, (t) => ({
   companySystemIdx: index("inv_import_batches_company_system_idx").on(t.companyId, t.sourceSystem),
   hashIdx: index("inv_import_batches_hash_idx").on(t.companyId, t.fileHash),

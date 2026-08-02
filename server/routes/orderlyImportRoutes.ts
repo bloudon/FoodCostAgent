@@ -35,6 +35,7 @@ import {
 } from '../services/orderly/orderlyCountSession';
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
+import { getAccessibleStores } from '../permissions';
 import { db } from '../db';
 import { sql, eq, and, isNull, ne } from 'drizzle-orm';
 import {
@@ -136,9 +137,10 @@ async function stageBatchInTransaction(
     filename: string;
     parseResult: OrderlyParseResult;
     forceNewBatchReason?: string | null;
+    targetStoreId?: string | null;
   },
 ) {
-  const { companyId, userId, fileHash, filename, parseResult, forceNewBatchReason } = params;
+  const { companyId, userId, fileHash, filename, parseResult, forceNewBatchReason, targetStoreId } = params;
 
   const [batch] = await tx
     .insert(inventoryImportBatches)
@@ -157,6 +159,7 @@ async function stageBatchInTransaction(
       sourceRowCount: parseResult.sourceRowCount,
       snapshotTotal: parseResult.snapshotTotal,
       forceNewBatchReason: forceNewBatchReason ?? null,
+      targetStoreId: targetStoreId ?? null,
     })
     .returning();
 
@@ -257,6 +260,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const fileHash = computeFileHash(buffer);
         const action = (req.body?.action as string | undefined)?.trim() ?? null;
         const reason = (req.body?.reason as string | undefined)?.trim() ?? null;
+        const requestedStoreId = (req.body?.storeId as string | undefined)?.trim() ?? null;
 
         // ── Validate known actions ────────────────────────────────────────
         const VALID_ACTIONS = new Set(['reprocess', 'force_new', 'cancel', null]);
@@ -269,6 +273,53 @@ export function registerOrderlyImportRoutes(app: Express): void {
         // ── cancel ───────────────────────────────────────────────────────
         if (action === 'cancel') {
           return res.status(200).json({ cancelled: true });
+        }
+
+        // ── Resolve target store ──────────────────────────────────────────
+        // Bind the store at upload time so preview, matching, and approval all
+        // operate in the same store context.
+        // Use getAccessibleStores so users can only target stores they are authorised for.
+        const user = (req as any).user;
+        const accessibleStoreIds = await getAccessibleStores(user, companyId);
+
+        // Fetch names only for accessible stores (needed for requiresStoreSelection response).
+        const accessibleStores = accessibleStoreIds.length > 0
+          ? await db
+              .select({ id: companyStores.id, name: companyStores.name })
+              .from(companyStores)
+              .where(
+                and(
+                  eq(companyStores.companyId, companyId),
+                  eq(companyStores.status, 'active'),
+                ),
+              )
+              .then(rows => rows.filter(r => accessibleStoreIds.includes(r.id)))
+          : [];
+
+        let targetStoreId: string | null = null;
+
+        if (accessibleStores.length === 0) {
+          // No accessible stores — proceed as catalog-only import
+          targetStoreId = null;
+        } else if (accessibleStores.length === 1) {
+          // Single accessible store: auto-resolve; ignore any storeId the client sent
+          targetStoreId = accessibleStores[0].id;
+        } else {
+          // Multiple accessible stores: client must supply a valid storeId
+          if (!requestedStoreId) {
+            return res.status(400).json({
+              error: 'This company has multiple stores. Select a target store before uploading.',
+              requiresStoreSelection: true,
+              stores: accessibleStores.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })),
+            });
+          }
+          const match = accessibleStores.find((s: { id: string; name: string }) => s.id === requestedStoreId);
+          if (!match) {
+            return res.status(403).json({
+              error: 'The selected store was not found or is not accessible to you.',
+            });
+          }
+          targetStoreId = match.id;
         }
 
         // ── force_new ────────────────────────────────────────────────────
@@ -289,6 +340,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
             stageBatchInTransaction(tx, {
               companyId, userId, fileHash, filename, parseResult,
               forceNewBatchReason: reason,
+              targetStoreId,
             }),
           );
           return res.status(200).json(buildPreviewResponse(batch.id, parseResult));
@@ -306,7 +358,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
 
           // Step 2: Look up old batch id (outside tx — read-only).
           const existing = await db
-            .select({ id: inventoryImportBatches.id })
+            .select({ id: inventoryImportBatches.id, status: inventoryImportBatches.status })
             .from(inventoryImportBatches)
             .where(
               and(
@@ -316,7 +368,16 @@ export function registerOrderlyImportRoutes(app: Express): void {
               ),
             )
             .limit(1);
-          const oldBatchId = existing[0]?.id ?? null;
+          const oldBatch = existing[0] ?? null;
+          const oldBatchId = oldBatch?.id ?? null;
+
+          // Guard: never delete an approved batch — its history and downstream
+          // duplicate-date checks depend on it remaining in place.
+          if (oldBatch?.status === 'approved') {
+            return res.status(409).json({
+              error: 'Cannot reprocess an approved batch. Use force_new to create a parallel import.',
+            });
+          }
 
           // Step 3: Atomic replace — delete old + insert new in ONE transaction.
           // If the new inserts fail, the delete is rolled back and old data survives.
@@ -330,6 +391,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
             return stageBatchInTransaction(tx, {
               companyId, userId, fileHash, filename, parseResult,
               forceNewBatchReason: null,
+              targetStoreId,
             });
           });
 
@@ -346,6 +408,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
             parserVersion: inventoryImportBatches.parserVersion,
             inventoryDate: inventoryImportBatches.inventoryDate,
             sourceRowCount: inventoryImportBatches.sourceRowCount,
+            targetStoreId: inventoryImportBatches.targetStoreId,
           })
           .from(inventoryImportBatches)
           .where(
@@ -359,8 +422,11 @@ export function registerOrderlyImportRoutes(app: Express): void {
 
         if (existing.length > 0) {
           const b = existing[0];
+          // Detect store mismatch: the same file was previously staged for a different store.
+          const storeMismatch = !!targetStoreId && !!b.targetStoreId && targetStoreId !== b.targetStoreId;
           return res.status(200).json({
             duplicateWarning: true,
+            storeMismatch,
             existingBatch: {
               batchId: b.id,
               status: b.status,
@@ -368,8 +434,10 @@ export function registerOrderlyImportRoutes(app: Express): void {
               inventoryDate: b.inventoryDate,
               sourceRowCount: b.sourceRowCount,
               parserVersion: b.parserVersion,
+              targetStoreId: b.targetStoreId,
             },
             options: [
+              // 'view' is only valid when the store matches — client should hide it on mismatch.
               { action: 'view', label: 'View existing import' },
               {
                 action: 'reprocess',
@@ -396,6 +464,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const batch = await db.transaction(async (tx) =>
           stageBatchInTransaction(tx, {
             companyId, userId, fileHash, filename, parseResult,
+            targetStoreId,
           }),
         );
 
@@ -482,12 +551,16 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const { batchId } = req.params;
         const rowDecisions: RowDecision[] = req.body?.rowDecisions ?? [];
         const force: boolean = req.body?.force === true;
+        // Optional: caller may supply a storeId to assign a store to a legacy batch
+        // that was created before target_store_id was persisted at upload time.
+        const overrideStoreId = (req.body?.storeId as string | undefined)?.trim() ?? null;
 
-        // Look up the current batch to get its inventoryDate.
+        // Look up the current batch to get its inventoryDate and targetStoreId.
         const [currentBatch] = await db
           .select({
             id: inventoryImportBatches.id,
             inventoryDate: inventoryImportBatches.inventoryDate,
+            targetStoreId: inventoryImportBatches.targetStoreId,
           })
           .from(inventoryImportBatches)
           .where(
@@ -500,6 +573,57 @@ export function registerOrderlyImportRoutes(app: Express): void {
 
         if (!currentBatch) {
           return res.status(404).json({ error: 'Batch not found' });
+        }
+
+        // Resolve accessible stores once — used for both existing and null targetStoreId paths.
+        const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+
+        if (currentBatch.targetStoreId) {
+          // Guard: the batch's target store must still be accessible to the approving user.
+          if (!accessibleStoreIds.includes(currentBatch.targetStoreId)) {
+            return res.status(403).json({ error: 'You do not have access to the store this batch targets.' });
+          }
+        } else {
+          // Legacy batch: target_store_id was not set at upload time.
+          // Auto-resolve for single accessible store; require selection otherwise.
+          if (accessibleStoreIds.length > 1) {
+            if (!overrideStoreId) {
+              // Return accessible stores so the UI can show a selector.
+              const storeNames = await db
+                .select({ id: companyStores.id, name: companyStores.name })
+                .from(companyStores)
+                .where(
+                  and(
+                    eq(companyStores.companyId, companyId),
+                    eq(companyStores.status, 'active'),
+                  ),
+                )
+                .then(rows => rows.filter(r => accessibleStoreIds.includes(r.id)));
+              return res.status(400).json({
+                error: 'This import was created before store selection was required. Choose a store to continue.',
+                requiresStoreSelection: true,
+                stores: storeNames,
+              });
+            }
+            // Validate the supplied override store.
+            if (!accessibleStoreIds.includes(overrideStoreId)) {
+              return res.status(403).json({ error: 'The selected store is not accessible to you.' });
+            }
+            // Write the resolved storeId onto the batch so applyBatchApproval picks it up.
+            await db
+              .update(inventoryImportBatches)
+              .set({ targetStoreId: overrideStoreId })
+              .where(eq(inventoryImportBatches.id, batchId));
+          }
+          // Single accessible store: persist it now so applyBatchApproval doesn't need to
+          // re-resolve from all company stores (which would throw for scoped multi-store users).
+          if (accessibleStoreIds.length === 1) {
+            await db
+              .update(inventoryImportBatches)
+              .set({ targetStoreId: accessibleStoreIds[0] })
+              .where(eq(inventoryImportBatches.id, batchId));
+          }
+          // Zero accessible stores: proceed without store linkage (catalog-only).
         }
 
         // Guard: check for another already-approved batch with the same inventory date.
@@ -540,6 +664,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const status =
           err.message?.includes('not found') ? 404
           : err.message?.includes('already been approved') ? 409
+          : err.message?.includes('multiple stores') || err.message?.includes('target store') ? 400
           : 500;
         res.status(status).json({ error: err.message });
       }

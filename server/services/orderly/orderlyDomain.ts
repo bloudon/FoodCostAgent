@@ -27,6 +27,8 @@ import {
   inventoryItemExternalMappings,
   inventoryImportBatches,
   inventoryImportRows,
+  storeInventoryItems,
+  companyStores,
   units,
   categories,
   type InventoryItem,
@@ -69,6 +71,7 @@ export interface RowDecision {
 export interface ApprovalResult {
   batchId: string;
   approvedAt: string;
+  targetStoreId: string | null;
   itemsCreated: number;
   itemsLinked: number;
   categoriesCreated: number;
@@ -79,6 +82,14 @@ export interface ApprovalResult {
   vendorItemsCreated: number;
   rowsSkipped: number;
   rowsProcessed: number;
+  /** How many distinct items were newly inserted into store_inventory_items. */
+  storeItemsCreated: number;
+  /** How many items already existed but were inactive and are now reactivated. */
+  storeItemsReactivated: number;
+  /** How many items already existed and were already active (no change needed). */
+  storeItemsAlreadyLinked: number;
+  /** How many rows produced no item resolution (skipped or null) — not linked. */
+  storeItemsSkipped: number;
 }
 
 export interface ResolutionPreviewResult {
@@ -415,7 +426,11 @@ export async function applyBatchApproval(
 ): Promise<ApprovalResult> {
   // ── Guard: check batch exists and is not already approved ────────────────
   const [batch] = await db
-    .select({ id: inventoryImportBatches.id, status: inventoryImportBatches.status })
+    .select({
+      id: inventoryImportBatches.id,
+      status: inventoryImportBatches.status,
+      targetStoreId: inventoryImportBatches.targetStoreId,
+    })
     .from(inventoryImportBatches)
     .where(
       and(
@@ -428,6 +443,55 @@ export async function applyBatchApproval(
   if (!batch) throw new Error('Batch not found');
   if (batch.status === 'approved') {
     throw new Error('Batch has already been approved — use the history view to see results.');
+  }
+
+  // ── Resolve target store ──────────────────────────────────────────────────
+  // Determine which store the approved items will be linked to.
+  // Single-store companies: auto-resolve from the only store.
+  // Multi-store companies: target_store_id must already be set on the batch.
+  let resolvedTargetStoreId: string | null = batch.targetStoreId ?? null;
+
+  if (!resolvedTargetStoreId) {
+    // Auto-resolve for single-store companies
+    const allStores = await db
+      .select({ id: companyStores.id })
+      .from(companyStores)
+      .where(
+        and(
+          eq(companyStores.companyId, companyId),
+          eq(companyStores.status, 'active'),
+        ),
+      );
+
+    if (allStores.length === 0) {
+      // No stores exist — proceed without store linkage (catalog-only import)
+      resolvedTargetStoreId = null;
+    } else if (allStores.length === 1) {
+      resolvedTargetStoreId = allStores[0].id;
+    } else {
+      throw new Error(
+        'This company has multiple stores. A target store must be selected before approving this import.',
+      );
+    }
+  } else {
+    // Validate the stored target store belongs to this company and is active
+    const [targetStore] = await db
+      .select({ id: companyStores.id, status: companyStores.status })
+      .from(companyStores)
+      .where(
+        and(
+          eq(companyStores.id, resolvedTargetStoreId),
+          eq(companyStores.companyId, companyId),
+        ),
+      )
+      .limit(1);
+
+    if (!targetStore) {
+      throw new Error('Target store not found or does not belong to this company.');
+    }
+    if (targetStore.status !== 'active') {
+      throw new Error('Target store is not active. Approval is only allowed for active stores.');
+    }
   }
 
   // ── Build decision override map ──────────────────────────────────────────
@@ -492,6 +556,22 @@ export async function applyBatchApproval(
     let vendorsCreated = 0, vendorsLinked = 0;
     let locationsCreated = 0, locationsLinked = 0;
     let vendorItemsCreated = 0, rowsSkipped = 0, rowsProcessed = 0;
+    let storeItemsCreated = 0, storeItemsReactivated = 0;
+    let storeItemsAlreadyLinked = 0, storeItemsSkipped = 0;
+
+    // Track distinct resolved item IDs and their storage locations for the
+    // store_inventory_items upsert that happens after the row loop.
+    const resolvedItemIds = new Set<string>();
+    // itemId → Set of locationIds seen in this batch (for primary location rule)
+    const itemLocationSets = new Map<string, Set<string>>();
+
+    // Persist auto-resolved store ID onto the batch if it wasn't already set
+    if (resolvedTargetStoreId && !batch.targetStoreId) {
+      await tx
+        .update(inventoryImportBatches)
+        .set({ targetStoreId: resolvedTargetStoreId })
+        .where(eq(inventoryImportBatches.id, batchId));
+    }
 
     // ── Location pass (deduplicated across all rows) ─────────────────────
     const locationCache = new Map<string, string>(); // normalizedName → id
@@ -539,6 +619,7 @@ export async function applyBatchApproval(
       // Skip if user explicitly skipped
       if (dec?.skip) {
         rowsSkipped++;
+        storeItemsSkipped++;
         continue;
       }
 
@@ -588,6 +669,14 @@ export async function applyBatchApproval(
           itemsCreated++;
           isNewItem = true;
         }
+      }
+
+      // Track distinct resolved items for store_inventory_items upsert below
+      if (resolvedItemId) {
+        resolvedItemIds.add(resolvedItemId);
+      } else {
+        // Row produced no item (skipped or null-resolved) — won't be store-linked
+        storeItemsSkipped++;
       }
 
       // ── Category assignment for matched items ────────────────────────
@@ -735,9 +824,88 @@ export async function applyBatchApproval(
               active: 1,
             })
             .onConflictDoNothing();
+
+          // Track item → location associations for primary-location determination
+          if (!itemLocationSets.has(resolvedItemId)) {
+            itemLocationSets.set(resolvedItemId, new Set());
+          }
+          itemLocationSets.get(resolvedItemId)!.add(locId);
         }
       }
     } // end row loop
+
+    // ── Upsert store_inventory_items ─────────────────────────────────────
+    // Link every distinct resolved item to the target store so it appears
+    // immediately on the Inventory Items page filtered by that store.
+    // Rules:
+    //   - New rows:      onHandQty=0, active=1
+    //   - Existing rows: only active and updatedAt are touched; onHandQty,
+    //                    parLevel, reorderLevel are preserved
+    //   - primaryLocationId: set only when exactly one location in this batch
+    //                        AND the existing value is currently null
+    if (resolvedTargetStoreId && resolvedItemIds.size > 0) {
+      // Pre-query existing rows so we can bucket outcomes accurately
+      const existingRows = await tx
+        .select({
+          inventoryItemId: storeInventoryItems.inventoryItemId,
+          active: storeInventoryItems.active,
+        })
+        .from(storeInventoryItems)
+        .where(
+          and(
+            eq(storeInventoryItems.storeId, resolvedTargetStoreId),
+            inArray(storeInventoryItems.inventoryItemId, Array.from(resolvedItemIds)),
+          ),
+        );
+
+      type ExistingRow = { inventoryItemId: string; active: number | null };
+      const existingActiveSet = new Set(
+        (existingRows as ExistingRow[]).filter(r => r.active === 1).map(r => r.inventoryItemId),
+      );
+      const existingInactiveSet = new Set(
+        (existingRows as ExistingRow[]).filter(r => r.active === 0).map(r => r.inventoryItemId),
+      );
+
+      for (const itemId of Array.from(resolvedItemIds)) {
+        const locSet = itemLocationSets.get(itemId);
+        // Only supply a primary location when unambiguous (exactly one location in batch)
+        const unambiguousLocId = locSet?.size === 1 ? Array.from(locSet)[0] : null;
+
+        await tx
+          .insert(storeInventoryItems)
+          .values({
+            companyId,
+            storeId: resolvedTargetStoreId,
+            inventoryItemId: itemId,
+            onHandQty: 0,
+            active: 1,
+            primaryLocationId: unambiguousLocId ?? null,
+          })
+          .onConflictDoUpdate({
+            target: [storeInventoryItems.storeId, storeInventoryItems.inventoryItemId],
+            set: {
+              active: 1,
+              updatedAt: new Date(),
+              // Set primaryLocationId only when: existing value is null AND
+              // this batch has exactly one unambiguous location for the item.
+              primaryLocationId: unambiguousLocId
+                ? sql`CASE WHEN ${storeInventoryItems.primaryLocationId} IS NULL THEN ${unambiguousLocId} ELSE ${storeInventoryItems.primaryLocationId} END`
+                : sql`${storeInventoryItems.primaryLocationId}`,
+            },
+          });
+
+        if (existingActiveSet.has(itemId)) {
+          storeItemsAlreadyLinked++;
+        } else if (existingInactiveSet.has(itemId)) {
+          storeItemsReactivated++;
+        } else {
+          storeItemsCreated++;
+        }
+      }
+    } else if (!resolvedTargetStoreId) {
+      // No store resolved — all resolved items count as skipped for store linkage
+      storeItemsSkipped += resolvedItemIds.size;
+    }
 
     // ── Mark batch approved ──────────────────────────────────────────────
     await tx
@@ -746,12 +914,14 @@ export async function applyBatchApproval(
         status: 'approved',
         approvedAt: new Date(),
         approvedBy: userId,
+        targetStoreId: resolvedTargetStoreId ?? null,
       })
       .where(eq(inventoryImportBatches.id, batchId));
 
     return {
       batchId,
       approvedAt: new Date().toISOString(),
+      targetStoreId: resolvedTargetStoreId,
       itemsCreated,
       itemsLinked,
       categoriesCreated,
@@ -762,6 +932,10 @@ export async function applyBatchApproval(
       vendorItemsCreated,
       rowsSkipped,
       rowsProcessed,
+      storeItemsCreated,
+      storeItemsReactivated,
+      storeItemsAlreadyLinked,
+      storeItemsSkipped,
     };
   });
 
