@@ -236,28 +236,46 @@ export default function WasteEntry() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/waste"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
-      toast({
-        title: "Waste logged",
-        description: "The waste entry has been recorded.",
-      });
 
-      // Mark the currently loaded voice draft as submitted
+      // Mark the currently loaded voice draft as submitted and find the next one
       const currentDraftId = loadedDraftIdRef.current;
+      let nextDraft: VoiceDraft | null = null;
       if (currentDraftId) {
         loadedDraftIdRef.current = null;
-        setVoiceDrafts(prev =>
-          prev.map(d =>
-            d.draftId === currentDraftId ? { ...d, status: "submitted" } : d,
-          ),
+        const updatedDrafts = voiceDrafts.map(d =>
+          d.draftId === currentDraftId ? { ...d, status: "submitted" as DraftStatus } : d,
         );
+        setVoiceDrafts(updatedDrafts);
+
+        // Find the first pending draft that can be prefilled (skip unresolved)
+        nextDraft =
+          updatedDrafts.find(
+            d => d.status === "pending" && d.resolutionStatus !== "unresolved",
+          ) ?? null;
       }
-      
-      // Reset form
+
+      // Reset form fields
       setSelectedItemId(null);
       setQuantity("");
       setReasonCode("");
       setNotes("");
       setSelectedCategoryId(null);
+
+      if (nextDraft) {
+        const itemLabel = nextDraft.itemName ?? nextDraft.spokenItem;
+        toast({
+          title: `Loading next: ${itemLabel}…`,
+          description: "Auto-advanced to the next voice entry.",
+        });
+        // Defer prefill so the state updates above settle first
+        const draft = nextDraft;
+        setTimeout(() => prefillFromDraft(draft), 0);
+      } else {
+        toast({
+          title: "Waste logged",
+          description: "The waste entry has been recorded.",
+        });
+      }
     },
     onError: (error: any) => {
       toast({
