@@ -133,6 +133,7 @@ import type { Language } from "@/lib/marketing-translations";
 import { UndoProvider } from "@/contexts/undo-context";
 import { AppLanguageProvider } from "@/lib/language-context";
 import { useGa4 } from "@/hooks/use-ga4";
+import InventoryItemsDedup from "@/pages/inventory-items-dedup";
 
 const WEBSITE_DOMAINS = ["fnbcostpro.com", "www.fnbcostpro.com"];
 if (new URLSearchParams(window.location.search).has("app")) {
@@ -560,6 +561,7 @@ function ProtectedLayoutContent() {
               <Route path="/stores" component={Stores} />
               <Route path="/users" component={Users} />
               <Route path="/inventory-items" component={InventoryItems} />
+              <Route path="/inventory-items/duplicates" component={InventoryItemsDedup} />
               <Route path="/inventory-items/par-levels" component={ParLevels} />
               <Route path="/inventory-items/new" component={InventoryItemCreate} />
               <Route path="/inventory-items/:id" component={InventoryItemDetail} />

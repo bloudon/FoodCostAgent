@@ -7588,6 +7588,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============ INVENTORY ITEMS ============
+
+  // GET /api/inventory-items/duplicates — find groups of items with the same normalized name
+  app.get("/api/inventory-items/duplicates", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      const { findDuplicateGroups } = await import("./services/inventoryItemMerge");
+      const groups = await findDuplicateGroups(companyId);
+      res.json(groups);
+    } catch (error: any) {
+      console.error("[inventory-items/duplicates] error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/inventory-items/merge — merge duplicate items into a primary
+  app.post("/api/inventory-items/merge", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string;
+      const { primaryItemId, duplicateItemIds } = req.body;
+
+      if (!primaryItemId || typeof primaryItemId !== "string") {
+        return res.status(400).json({ error: "primaryItemId is required" });
+      }
+      if (!Array.isArray(duplicateItemIds) || duplicateItemIds.length === 0) {
+        return res.status(400).json({ error: "duplicateItemIds must be a non-empty array" });
+      }
+
+      const { mergeInventoryItems } = await import("./services/inventoryItemMerge");
+      const result = await mergeInventoryItems({ primaryItemId, duplicateItemIds, companyId });
+
+      // Invalidate inventory item caches
+      await cacheInvalidator.invalidateInventory(companyId);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[inventory-items/merge] error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/inventory-items", requireAuth, async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
     const storeId = req.query.store_id as string | undefined;

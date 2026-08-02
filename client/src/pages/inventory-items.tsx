@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil, BarChart2 } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil, BarChart2, Copy } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Input } from "@/components/ui/input";
@@ -302,6 +302,12 @@ export default function InventoryItems() {
               <Link href="/inventory-items/par-levels">
                 <BarChart2 className="h-4 w-4 mr-2" />
                 Par Levels
+              </Link>
+            </Button>
+            <Button asChild variant="outline" data-testid="button-find-duplicates">
+              <Link href="/inventory-items/duplicates">
+                <Copy className="h-4 w-4 mr-2" />
+                Find Duplicates
               </Link>
             </Button>
             <Button asChild variant="outline" data-testid="button-import-csv">
