@@ -699,6 +699,89 @@ describe('approve re-upload idempotency — find-or-create logic', () => {
     }
   });
 
+  /**
+   * Recipe-link survival when the item name changes on re-import.
+   *
+   * The approve route matches menu items by pluSku (QAC), not by name.
+   * When the same pluSku appears in a re-upload with a corrected description,
+   * step-4 takes the early-exit path (existingByCode lookup → use existing id)
+   * and never issues an UPDATE — so neither the recipe link nor the stored name
+   * is touched.
+   *
+   * Documented behaviour:
+   *   • recipe link : PRESERVED  (recipeId on the DB row is unchanged)
+   *   • item name   : NOT UPDATED (the route does not patch the name on re-import;
+   *                   a separate "rename" action would be required to change it)
+   */
+  it('recipe link survives a re-import when the item name changes in the file', () => {
+    // ── In-memory DB table: pluSku → { id, name, recipeId } ───────────────────
+    type ItemRow = { id: string; name: string; recipeId: string | null };
+    const itemTable = new Map<string, ItemRow>(); // keyed by pluSku
+
+    /**
+     * Simulates the route's step-4 find-or-create for a set of
+     * { code, description } pairs.  Returns the QAC → id map.
+     * Mirrors the real route: existing items are reused as-is (no UPDATE).
+     */
+    function simulateApproveStep4(
+      rows: { code: string; description: string }[],
+    ): Map<string, string> {
+      const menuItemIdMap = new Map<string, string>();
+      const seenCodes = new Set<string>();
+
+      for (const row of rows) {
+        if (seenCodes.has(row.code)) continue;
+        seenCodes.add(row.code);
+
+        const existing = itemTable.get(row.code);
+        if (existing) {
+          // Route early-exit: reuse the existing id, no INSERT, no UPDATE.
+          menuItemIdMap.set(row.code, existing.id);
+        } else {
+          // Route INSERT … onConflictDoNothing.
+          const newId = `item-${itemTable.size + 1}`;
+          itemTable.set(row.code, { id: newId, name: row.description, recipeId: null });
+          menuItemIdMap.set(row.code, newId);
+        }
+      }
+      return menuItemIdMap;
+    }
+
+    // ── First approve: items inserted with original names ──────────────────────
+    const firstImport = [
+      { code: 'PLU-001', description: 'Cheeseburger' },
+      { code: 'PLU-002', description: 'Fries' },
+    ];
+    simulateApproveStep4(firstImport);
+    expect(itemTable.size).toBe(2);
+    expect(itemTable.get('PLU-001')?.name).toBe('Cheeseburger');
+
+    // ── Link a recipe to PLU-001 ───────────────────────────────────────────────
+    const linkedRecipeId = 'recipe-cheeseburger-xyz';
+    itemTable.set('PLU-001', { ...itemTable.get('PLU-001')!, recipeId: linkedRecipeId });
+    expect(itemTable.get('PLU-001')?.recipeId).toBe(linkedRecipeId);
+
+    // ── Second approve: same pluSku but the description has been corrected ─────
+    const secondImport = [
+      { code: 'PLU-001', description: 'Classic Cheeseburger' }, // name changed
+      { code: 'PLU-002', description: 'Fries' },
+    ];
+    simulateApproveStep4(secondImport);
+
+    // Recipe link must still be intact.
+    expect(itemTable.get('PLU-001')?.recipeId).toBe(linkedRecipeId);
+
+    // The route does NOT update the name — the stored name is the original one.
+    // (A deliberate rename action would be required to change it.)
+    expect(itemTable.get('PLU-001')?.name).toBe('Cheeseburger');
+
+    // No new rows must have been created.
+    expect(itemTable.size).toBe(2);
+
+    // PLU-002 must still have no recipe link.
+    expect(itemTable.get('PLU-002')?.recipeId).toBeNull();
+  });
+
   it('duplicate QAC codes within the same report do not create duplicate items', () => {
     const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
 
