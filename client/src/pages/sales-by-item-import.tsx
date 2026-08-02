@@ -20,6 +20,7 @@ import {
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2,
   MapPin, ShoppingBag, Calendar, BarChart2, ChevronLeft, Store, Link2,
+  TriangleAlert, X,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ interface PreviewResult {
   totalNet: number;
   uniqueOutlets: number;
   uniqueCategories: number;
+  unrecognizedPrefixCategories: string[];
 }
 
 interface ApproveResult {
@@ -67,6 +69,7 @@ function SalesByItemImportContent() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [result, setResult] = useState<ApproveResult | null>(null);
+  const [unrecognizedWarningDismissed, setUnrecognizedWarningDismissed] = useState(false);
 
   // ── File selection ──────────────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
@@ -156,6 +159,7 @@ function SalesByItemImportContent() {
     setPreview(null);
     setResult(null);
     setError(null);
+    setUnrecognizedWarningDismissed(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -316,6 +320,53 @@ function SalesByItemImportContent() {
               </p>
             </Card>
           </div>
+
+          {/* Unrecognized prefix warning */}
+          {preview.unrecognizedPrefixCategories.length > 0 && !unrecognizedWarningDismissed && (
+            <Alert
+              className="border-amber-300 bg-amber-50 text-amber-900"
+              data-testid="alert-unrecognized-prefixes"
+            >
+              <TriangleAlert className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold mb-1">
+                    {preview.unrecognizedPrefixCategories.length === 1
+                      ? "1 category prefix was not recognised"
+                      : `${preview.unrecognizedPrefixCategories.length} category prefixes were not recognised`}
+                    — rows placed in "Unassigned" outlet
+                  </p>
+                  <p className="text-sm mb-2">
+                    The following categories could not be matched to a known outlet. Their sales
+                    rows have been placed in an <strong>"Unassigned"</strong> bucket. You can
+                    still import, but ask your administrator to add these prefixes to{" "}
+                    <code className="bg-amber-100 px-1 rounded text-xs">inferOutlet()</code>{" "}
+                    so future uploads route them correctly.
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {preview.unrecognizedPrefixCategories.map(cat => (
+                      <Badge
+                        key={cat}
+                        variant="outline"
+                        className="border-amber-400 text-amber-800 bg-amber-50 text-xs"
+                        data-testid={`badge-unrecognized-${cat}`}
+                      >
+                        {cat}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setUnrecognizedWarningDismissed(true)}
+                  className="shrink-0 rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  aria-label="Dismiss warning"
+                  data-testid="button-dismiss-unrecognized-warning"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Outlets breakdown */}
           <Card>
