@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,10 +65,11 @@ interface SortableCategoryProps {
   category: any;
   onEdit: (category: any) => void;
   onDeactivate: (category: any) => void;
+  onView: (category: any) => void;
   hideDragHandle?: boolean;
 }
 
-function SortableCategory({ category, onEdit, onDeactivate, hideDragHandle }: SortableCategoryProps) {
+function SortableCategory({ category, onEdit, onDeactivate, onView, hideDragHandle }: SortableCategoryProps) {
   const {
     attributes,
     listeners,
@@ -98,7 +100,11 @@ function SortableCategory({ category, onEdit, onDeactivate, hideDragHandle }: So
                 <GripVertical className="h-5 w-5 text-muted-foreground" />
               </button>
             )}
-            <div className="flex items-center gap-2 flex-1 flex-wrap">
+            <button
+              className="flex items-center gap-2 flex-1 flex-wrap text-left hover:opacity-80 transition-opacity min-w-0"
+              onClick={() => category.itemCount > 0 && onView(category)}
+              title={category.itemCount > 0 ? `View ${category.itemCount} items in ${category.name}` : undefined}
+            >
               <Tag className="h-5 w-5 text-primary shrink-0" />
               <CardTitle className="text-lg" data-testid={`text-category-name-${category.id}`}>
                 {category.name}
@@ -107,11 +113,11 @@ function SortableCategory({ category, onEdit, onDeactivate, hideDragHandle }: So
                 <Scale className="h-4 w-4 text-muted-foreground shrink-0" data-testid={`icon-catch-weight-${category.id}`} />
               )}
               {category.itemCount > 0 && (
-                <Badge variant="secondary" data-testid={`badge-item-count-${category.id}`}>
+                <Badge variant="secondary" className="hover:bg-primary hover:text-primary-foreground transition-colors" data-testid={`badge-item-count-${category.id}`}>
                   {category.itemCount} {category.itemCount === 1 ? "item" : "items"}
                 </Badge>
               )}
-            </div>
+            </button>
             <div className="flex gap-1 shrink-0">
               <Button
                 size="icon"
@@ -145,12 +151,17 @@ interface MilestonesResponse {
 }
 
 export default function Categories() {
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
   const [deactivatingCategory, setDeactivatingCategory] = useState<any | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
+
+  const handleView = (category: any) => {
+    navigate(`/inventory-items?category=${category.id}`);
+  };
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
@@ -423,6 +434,7 @@ export default function Categories() {
                   category={category}
                   onEdit={handleEdit}
                   onDeactivate={setDeactivatingCategory}
+                  onView={handleView}
                   hideDragHandle={!!showReviewButton}
                 />
               ))}

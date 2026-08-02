@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil, BarChart2, Copy } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
@@ -123,9 +123,13 @@ function getInventoryStatus(quantity: number, parLevel: number | null, reorderLe
 }
 
 export default function InventoryItems() {
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("category") ?? "all";
+  });
   const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
@@ -284,6 +288,15 @@ export default function InventoryItems() {
       <div className="flex-shrink-0 bg-background border-b px-4 pt-4 pb-3 space-y-3">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
+            {selectedCategory !== "all" && (
+              <button
+                onClick={() => navigate("/categories")}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
+              >
+                <Package className="h-3 w-3" />
+                ← Categories
+              </button>
+            )}
             <div className="flex items-center gap-3 flex-wrap">
               <Package className="h-6 w-6 text-muted-foreground" />
               <h1 className="text-2xl font-bold">
