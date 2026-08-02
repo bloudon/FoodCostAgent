@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2,
-  MapPin, ShoppingBag, Calendar, BarChart2, ChevronLeft, Store,
+  MapPin, ShoppingBag, Calendar, BarChart2, ChevronLeft, Store, Link2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -442,11 +442,18 @@ function SalesByItemImportContent() {
             </Card>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
+            <Button
+              onClick={() => setLocation("/pos-recipe-linking")}
+              data-testid="button-link-recipes"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              Link Recipes to Menu Items
+            </Button>
             <Button onClick={reset} variant="outline" data-testid="button-import-another">
               Import Another File
             </Button>
-            <Button onClick={() => setLocation("/orderly-import")} data-testid="button-go-orderly">
+            <Button onClick={() => setLocation("/orderly-import")} variant="outline" data-testid="button-go-orderly">
               Back to Orderly Import
             </Button>
           </div>

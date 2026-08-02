@@ -56,6 +56,7 @@ import InventoryImport from "@/pages/inventory-import";
 import OrderlyImport from "@/pages/orderly-import";
 import OrderlyReport from "@/pages/orderly-report";
 import SalesByItemImport from "@/pages/sales-by-item-import";
+import PosRecipeLinking from "@/pages/pos-recipe-linking";
 import RecipeImport from "@/pages/recipe-import";
 import Orders from "@/pages/orders";
 import PurchaseOrders from "@/pages/purchase-orders";
@@ -591,6 +592,7 @@ function ProtectedLayoutContent() {
               <Route path="/orderly-import" component={OrderlyImport} />
               <Route path="/orderly-report" component={OrderlyReport} />
               <Route path="/sales-by-item-import" component={SalesByItemImport} />
+              <Route path="/pos-recipe-linking" component={PosRecipeLinking} />
               <Route path="/recipe-import" component={RecipeImport} />
               <Route path="/order" component={OrderLanding} />
               <Route path="/orders" component={Orders} />

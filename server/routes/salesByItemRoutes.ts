@@ -19,7 +19,7 @@ import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
 import { getAccessibleStores } from '../permissions';
 import { db } from '../db';
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, and, isNull } from 'drizzle-orm';
 import type { User } from '@shared/schema';
 import {
   companyStores,
@@ -29,7 +29,64 @@ import {
   storeMenuItems,
   salesUploadBatches,
   dailyMenuItemSales,
+  recipes,
 } from '@shared/schema';
+
+// ─── Fuzzy Matching ──────────────────────────────────────────────────────────
+
+/**
+ * Normalise a string for comparison: lowercase, strip non-alphanumeric, collapse spaces.
+ */
+function normaliseText(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Tokenise the normalised string into a Set of words, removing common
+ * stop-words that add noise (with, the, a, an, and, or, of, &).
+ */
+function tokenise(s: string): Set<string> {
+  const stop = new Set(['with', 'the', 'a', 'an', 'and', 'or', 'of', '&', 'in', 'on', 'at']);
+  return new Set(
+    normaliseText(s)
+      .split(' ')
+      .filter((t) => t.length > 1 && !stop.has(t)),
+  );
+}
+
+/**
+ * Jaccard similarity between two token sets, boosted when one name is a
+ * prefix-substring of the other (catches "Bacon Cheeseburger" → "Bacon CheeseBurger 8oz").
+ */
+function fuzzyScore(a: string, b: string): number {
+  const ta = tokenise(a);
+  const tb = tokenise(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+
+  let intersection = 0;
+  ta.forEach((t) => { if (tb.has(t)) intersection++; });
+  const jaccard = intersection / (ta.size + tb.size - intersection);
+
+  // Substring boost: if one normalised name contains the other
+  const na = normaliseText(a);
+  const nb = normaliseText(b);
+  const substringBoost = (na.includes(nb) || nb.includes(na)) ? 0.15 : 0;
+
+  return Math.min(1, jaccard + substringBoost);
+}
+
+/** Return top-N recipe suggestions for a menu item name. */
+function suggestRecipes(
+  itemName: string,
+  allRecipes: Array<{ id: string; name: string; computedCost: number }>,
+  topN = 3,
+): Array<{ recipeId: string; recipeName: string; score: number; computedCost: number }> {
+  return allRecipes
+    .map((r) => ({ recipeId: r.id, recipeName: r.name, score: fuzzyScore(itemName, r.name), computedCost: r.computedCost }))
+    .filter((r) => r.score > 0.1)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN);
+}
 import {
   parseSalesByItemWorkbook,
   type SalesByItemParseResult,
@@ -458,6 +515,136 @@ export function registerSalesByItemRoutes(app: Express): void {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[SalesByItemImport] approve error:', err);
+        return res.status(500).json({ error: msg });
+      }
+    },
+  );
+
+  // ── Unlinked Items (menu items with pluSku but no recipeId) ───────────────
+  app.get(
+    '/api/imports/sales-by-item/unlinked-items',
+    requireAuth,
+    requireTier('platform'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        if (!companyId) return res.status(400).json({ error: 'Company context required.' });
+
+        // Fetch all POS-sourced menu items (have pluSku, no recipeId)
+        const unlinkedItems = await db
+          .select({
+            id: menuItems.id,
+            name: menuItems.name,
+            pluSku: menuItems.pluSku,
+            menuDepartmentId: menuItems.menuDepartmentId,
+          })
+          .from(menuItems)
+          .where(
+            and(
+              eq(menuItems.companyId, companyId),
+              eq(menuItems.active, 1),
+              isNull(menuItems.recipeId),
+              sql`${menuItems.pluSku} IS NOT NULL AND ${menuItems.pluSku} != ''`,
+            ),
+          )
+          .orderBy(menuItems.name);
+
+        // Fetch all departments for name lookup
+        const depts = await db
+          .select({ id: menuDepartments.id, name: menuDepartments.name })
+          .from(menuDepartments)
+          .where(eq(menuDepartments.companyId, companyId));
+        const deptMap = new Map(depts.map((d) => [d.id, d.name]));
+
+        // Fetch all active recipes (id, name, computedCost)
+        const allRecipes = await db
+          .select({ id: recipes.id, name: recipes.name, computedCost: recipes.computedCost })
+          .from(recipes)
+          .where(
+            and(
+              eq(recipes.companyId, companyId),
+              eq(recipes.isActive, 1),
+            ),
+          )
+          .orderBy(recipes.name);
+
+        // Build response with fuzzy suggestions
+        const items = unlinkedItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          pluSku: item.pluSku,
+          menuDepartmentId: item.menuDepartmentId,
+          departmentName: item.menuDepartmentId ? (deptMap.get(item.menuDepartmentId) ?? null) : null,
+          suggestions: suggestRecipes(item.name ?? '', allRecipes),
+        }));
+
+        return res.json({
+          items,
+          total: items.length,
+          recipeCount: allRecipes.length,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[SalesByItemImport] unlinked-items error:', err);
+        return res.status(500).json({ error: msg });
+      }
+    },
+  );
+
+  // ── Bulk link recipes to menu items ──────────────────────────────────────
+  app.post(
+    '/api/imports/sales-by-item/bulk-link-recipes',
+    requireAuth,
+    requireTier('platform'),
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        if (!companyId) return res.status(400).json({ error: 'Company context required.' });
+
+        const { links } = req.body as {
+          links: Array<{ menuItemId: string; recipeId: string | null }>;
+        };
+        if (!Array.isArray(links) || links.length === 0) {
+          return res.status(400).json({ error: 'links array is required.' });
+        }
+
+        let linked = 0;
+        let skipped = 0;
+
+        for (const { menuItemId, recipeId } of links) {
+          if (!menuItemId) { skipped++; continue; }
+
+          // Verify the menu item belongs to this company
+          const [item] = await db
+            .select({ id: menuItems.id })
+            .from(menuItems)
+            .where(and(eq(menuItems.id, menuItemId), eq(menuItems.companyId, companyId)))
+            .limit(1);
+
+          if (!item) { skipped++; continue; }
+
+          // Verify recipe belongs to company if provided
+          if (recipeId) {
+            const [recipe] = await db
+              .select({ id: recipes.id })
+              .from(recipes)
+              .where(and(eq(recipes.id, recipeId), eq(recipes.companyId, companyId)))
+              .limit(1);
+            if (!recipe) { skipped++; continue; }
+          }
+
+          await db
+            .update(menuItems)
+            .set({ recipeId: recipeId ?? null })
+            .where(and(eq(menuItems.id, menuItemId), eq(menuItems.companyId, companyId)));
+
+          linked++;
+        }
+
+        return res.json({ success: true, linked, skipped });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[SalesByItemImport] bulk-link-recipes error:', err);
         return res.status(500).json({ error: msg });
       }
     },
