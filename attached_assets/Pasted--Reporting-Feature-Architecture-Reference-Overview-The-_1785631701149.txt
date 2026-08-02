@@ -1,0 +1,193 @@
+
+# Reporting Feature — Architecture Reference
+## Overview
+The reporting system has three layers:
+1. **Ad-hoc reports** — user runs a report manually in the browser, exports to PDF or Excel client-side
+2. **Saved reports** — named filter configurations stored in the database, reusable
+3. **Scheduled reports** — saved reports delivered automatically by email on a cron schedule
+---
+## Database Schema
+```sql
+-- Named, reusable filter configurations
+CREATE TABLE saved_reports (
+  id          SERIAL PRIMARY KEY,
+  entity_id   INTEGER NOT NULL,           -- tenant/org scoping
+  name        TEXT NOT NULL,
+  filters     JSONB NOT NULL DEFAULT '{}', -- SavedReportFilters object
+  is_system   BOOLEAN DEFAULT FALSE        -- system-defined vs user-defined
+);
+-- Scheduled delivery subscriptions
+CREATE TABLE report_subscriptions (
+  id                  SERIAL PRIMARY KEY,
+  name                TEXT NOT NULL,
+  report_type         TEXT NOT NULL,       -- e.g. 'hold', 'projects'
+  filters             JSONB,               -- inline filters (if no savedReportId)
+  schedule_frequency  TEXT NOT NULL,       -- 'daily' | 'weekly'
+  schedule_hour       INTEGER NOT NULL,    -- 0–23 UTC
+  email_recipients    TEXT[] NOT NULL,
+  saved_report_id     INTEGER REFERENCES saved_reports(id)
+);
+-- Execution history
+CREATE TABLE report_subscription_logs (
+  id            SERIAL PRIMARY KEY,
+  subscription_id INTEGER REFERENCES report_subscriptions(id),
+  triggered_at  TIMESTAMPTZ DEFAULT NOW(),
+  status        TEXT,                      -- 'success' | 'error'
+  file_path     TEXT,
+  emails_sent   INTEGER
+);
+
+Shared Types (shared/schema.ts)
+// Zod schema — validates filter payloads from client and stored JSONB
+export const savedReportFiltersSchema = z.object({
+  permitStatuses:      z.array(z.string()).optional(),
+  inspectionStatuses:  z.array(z.string()).optional(),
+  rowTypes:            z.array(z.string()).optional(),   // 'permit' | 'inspection'
+  contractorIds:       z.array(z.number()).optional(),
+  supervisorId:        z.number().optional(),
+  officeId:            z.number().optional(),
+  permitTypeIds:       z.array(z.number()).optional(),
+  jobTypeIds:          z.array(z.number()).optional(),
+  jurisdictionIds:     z.array(z.number()).optional(),
+  privateProvider:     z.boolean().optional(),
+  dateField:           z.string().optional(),            // column to filter on
+  dateFrom:            z.string().optional(),            // ISO date string
+  dateTo:              z.string().optional(),
+});
+export type SavedReportFilters = z.infer<typeof savedReportFiltersSchema>;
+
+Server-Side
+Query Engine (server/storage.ts)
+Two entry points, both backed by the same engine:
+
+// Primary engine — accepts full filter object
+async function getProjectsReport(filters: SavedReportFilters): Promise<ReportRow[]>
+// Hold Report wrapper — hardcodes statuses to "on hold" values
+async function getHoldReport(additionalFilters?: Partial<SavedReportFilters>): Promise<ReportRow[]>
+
+Query strategy: UNION ALL across permits and inspections tables.
+Date filtering uses a column-map lookup to apply WHERE clauses to the correct column per row type:
+
+const PERMIT_DATE_COLS: Record<string, Column> = {
+  submitted:  permits.submittedDate,
+  received:   permits.receivedDate,
+  // ...
+};
+const INSPECTION_DATE_COLS: Record<string, Column> = {
+  scheduled:  inspections.scheduledDate,
+  // ...
+};
+
+API Routes (server/routes.ts)
+GET  /api/reports/hold                    → storage.getHoldReport()
+GET  /api/saved-reports                   → list saved reports for entity
+POST /api/saved-reports                   → create saved report
+PUT  /api/saved-reports/:id               → update
+DEL  /api/saved-reports/:id               → delete
+GET  /api/report-subscriptions            → list subscriptions
+POST /api/report-subscriptions            → create + reload scheduler
+PUT  /api/report-subscriptions/:id        → update + reload scheduler
+DEL  /api/report-subscriptions/:id        → delete + reload scheduler
+
+Every write to report_subscriptions calls reloadReportScheduler() to hot-reload cron jobs without restarting the server.
+
+Excel Generator (server/reportGenerators/)
+server/reportGenerators/
+├── index.ts          # dispatcher — routes reportType to correct generator
+└── holdReport.ts     # builds Excel workbook, returns Buffer
+
+// index.ts
+export async function generateReportBuffer(
+  reportType: string,
+  filters: SavedReportFilters
+): Promise<Buffer> {
+  // fetch data, call appropriate builder, return xlsx Buffer
+}
+
+Library: xlsx (SheetJS) — same package used client-side, runs in Node.js for server-side scheduled delivery.
+
+Scheduler (server/reportScheduler.ts)
+// Called once at server startup (server/index.ts)
+export function initReportScheduler(): void
+// Called after any subscription create/update/delete
+export function reloadReportScheduler(): void
+// Internal — runs one subscription
+async function runSubscription(sub: ReportSubscription): void {
+  const buffer = await generateReportBuffer(sub.reportType, sub.filters);
+  await sendReportEmail(sub.emailRecipients, buffer, sub.name);
+  await logSubscriptionRun(sub.id, 'success');
+}
+
+Cron expression is derived from scheduleFrequency + scheduleHour:
+
+daily → 0 <hour> * * *
+weekly → 0 <hour> * * 1
+Client-Side
+Pages
+client/src/pages/reports/
+├── ReportsHub.tsx          # landing — links to all report types
+├── HoldReport.tsx          # hardcoded hold report view + client-side export
+├── SavedReportRunPage.tsx  # dynamic report view driven by saved_reports config
+└── ScheduledReportsPage.tsx # manage report_subscriptions (CRUD)
+
+Column Definitions (client/src/pages/reports/reportColumnDefs.ts)
+Centralised list of every available column — used to build the column selector UI and drive both the table render and the client-side export:
+
+export interface ReportColumnDef {
+  key: string;
+  label: string;
+  group: string;    // groups columns in the selector UI
+  default: boolean; // shown by default in new saved reports
+}
+export const REPORT_COLUMN_DEFS: ReportColumnDef[] = [ ... ];
+
+Client-Side Export
+Both PDF and Excel export run entirely in the browser — no server round-trip for manual exports.
+
+Format	Library	Notes
+Excel	xlsx (SheetJS)	Mirrors server generator; shared logic where possible
+PDF	jspdf	Manually drawn layout; column widths calculated from data
+Data Flow
+Manual (ad-hoc) Report
+User sets filters in UI
+  └─► GET /api/reports/hold  (or saved report endpoint)
+        └─► storage.getProjectsReport(filters)
+              └─► UNION ALL query → PostgreSQL
+                    └─► JSON rows → browser
+                          ├─► renders HTML table (TanStack Query cache)
+                          └─► Export button → xlsx / jsPDF → file download
+
+Scheduled Report
+Server startup → initReportScheduler()
+  └─► loads report_subscriptions from DB
+        └─► registers node-cron job per subscription
+Cron fires at scheduled time
+  └─► runSubscription(sub)
+        ├─► generateReportBuffer() → storage.getProjectsReport() → xlsx Buffer
+        └─► nodemailer → SMTP → recipients' inboxes
+              └─► log result to report_subscription_logs
+
+Dependencies
+{
+  "server": {
+    "node-cron": "schedule cron jobs in-process",
+    "xlsx": "generate Excel buffers server-side for email delivery",
+    "nodemailer": "SMTP email delivery"
+  },
+  "client": {
+    "xlsx": "client-side Excel export",
+    "jspdf": "client-side PDF export",
+    "@tanstack/react-query": "data fetching and caching"
+  }
+}
+
+Key Adaptation Notes
+The query engine is the hardest part to port. getProjectsReport is tightly coupled to the permits/inspections schema. Map it to your own table structure — the filter application pattern (column-map + dynamic WHERE) is reusable as-is.
+
+The scheduler is self-contained. reportScheduler.ts only depends on the generator and nodemailer — it can be dropped into any Express app. Call initReportScheduler() at startup and reloadReportScheduler() after any subscription change.
+
+Server and client share the same xlsx library. The server generator and the browser export use identical SheetJS calls — you can extract a shared buildWorkbook(rows, columns) function used by both.
+
+savedReportFiltersSchema is the contract. Define your own Zod schema for your filter shape first — everything else (API validation, JSONB storage, query engine inputs) flows from it.
+
+No queue needed. All scheduling runs in-process via node-cron. If you need reliability across restarts, add a last_run_at column and a catch-up check in initReportScheduler.
