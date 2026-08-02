@@ -25,6 +25,7 @@ function RecipeDetailContent() {
   const recipeId = params?.id;
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [scanLightboxOpen, setScanLightboxOpen] = useState(false);
 
   const { data: recipe, isLoading: recipeLoading } = useQuery<any>({
     queryKey: ["/api/recipes", recipeId],
@@ -138,16 +139,29 @@ function RecipeDetailContent() {
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-4">
-            {recipe.imagePath && (
-              <div className="relative group flex-shrink-0">
-                <img
-                  src={recipe.imagePath}
-                  alt={`Photo of ${recipe.name}`}
-                  className="w-20 h-20 rounded-md object-cover border cursor-pointer hover:opacity-90 transition-opacity"
-                  data-testid="img-recipe-photo"
-                  onClick={() => setPhotoLightboxOpen(true)}
-                  title="Click to view full size"
-                />
+            {(recipe.imagePath || recipe.sourceImagePath) && (
+              <div className="flex-shrink-0">
+                {recipe.imagePath && (
+                  <div className="relative group">
+                    <img
+                      src={recipe.imagePath}
+                      alt={`Photo of ${recipe.name}`}
+                      className="w-20 h-20 rounded-md object-cover border cursor-pointer hover:opacity-90 transition-opacity"
+                      data-testid="img-recipe-photo"
+                      onClick={() => setPhotoLightboxOpen(true)}
+                      title="Click to view full size"
+                    />
+                  </div>
+                )}
+                {recipe.sourceImagePath && (
+                  <button
+                    onClick={() => setScanLightboxOpen(true)}
+                    className="mt-1 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors w-full text-center"
+                    data-testid="button-view-original-scan"
+                  >
+                    View original scan
+                  </button>
+                )}
               </div>
             )}
             <div>
@@ -326,6 +340,13 @@ function RecipeDetailContent() {
           src={recipe.imagePath}
           alt={`Photo of ${recipe.name}`}
           onClose={() => setPhotoLightboxOpen(false)}
+        />
+      )}
+      {scanLightboxOpen && recipe.sourceImagePath && (
+        <RecipePhotoLightbox
+          src={recipe.sourceImagePath}
+          alt={`Original scan of ${recipe.name}`}
+          onClose={() => setScanLightboxOpen(false)}
         />
       )}
       {recipe.instructions && (
