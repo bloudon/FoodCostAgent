@@ -4,6 +4,16 @@ All notable changes to FNB Cost Pro are documented here.
 
 ## [1.13.0] — 2026-08-02
 
+### Admin Dashboard
+
+- **QuickBooks in stats row** — QB connection count moved into the top stats row as a single "QB Connected" card. Clicking opens a full-detail modal (app credentials + per-company connection status). The old two-card layout is retired.
+- **Admin dashboard layout pass 2** — search input left-aligned alongside the "All Companies" heading (matches the admin-users pattern); mobile user count folded into the Users stat card as a second subtitle line; AI Chat Logs card expanded to full width with an always-visible 3-question preview; "View all history" expands the full log inline.
+- **Company tier filter** — admins can filter the company list by plan tier (Platform / Enterprise / etc.) to quickly view all accounts on a given plan.
+
+### Data Import
+
+- **Orderly import write fix** — approval-time upsert now correctly populates `store_inventory_items`. Store is resolved and bound at upload time (`targetStoreId` on the batch); legacy batches with a null `targetStoreId` now persist the correct store before calling the domain service, preventing a "multiple stores" error for scoped multi-store users.
+
 ### Item Catalog
 
 - **Duplicate-item finder and merge tool** — new catalog tool surfaces items that share a name, barcode, or vendor code. Managers can review flagged pairs side-by-side and merge them: recipe links, order guide entries, and transaction history are re-pointed to the surviving item before the duplicate is removed.
