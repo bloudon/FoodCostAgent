@@ -266,7 +266,23 @@ export default function ScheduledReportsPage() {
               >
                 <Play className="h-4 w-4 text-emerald-600" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setLogsFor(logsFor?.id === sub.id ? null : sub)} title="View logs">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (logsFor?.id === sub.id) {
+                    setLogsFor(null);
+                    setPolling(false);
+                    if (pollingTimer.current) {
+                      clearTimeout(pollingTimer.current);
+                      pollingTimer.current = null;
+                    }
+                  } else {
+                    setLogsFor(sub);
+                  }
+                }}
+                title="View logs"
+              >
                 <Clock className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="icon" onClick={() => openEdit(sub)} title="Edit">
@@ -285,7 +301,20 @@ export default function ScheduledReportsPage() {
         <div className="border rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="font-medium text-sm">Run log — {logsFor.name}</p>
-            <Button variant="ghost" size="sm" onClick={() => setLogsFor(null)}>Close</Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setLogsFor(null);
+                setPolling(false);
+                if (pollingTimer.current) {
+                  clearTimeout(pollingTimer.current);
+                  pollingTimer.current = null;
+                }
+              }}
+            >
+              Close
+            </Button>
           </div>
           {logsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {!logsLoading && logs.length === 0 && (
