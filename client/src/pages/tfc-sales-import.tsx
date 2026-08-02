@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, Eye, PackageSearch } from "lucide-react";
+import { Upload, FileText, Download, CheckCircle, AlertCircle, Loader2, Eye, PackageSearch, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -241,6 +241,17 @@ function TfcSalesImportContent() {
         <p className="text-muted-foreground mt-2">
           Upload CSV sales data to calculate theoretical food cost and variance
         </p>
+        <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800" data-testid="banner-jonas-encore">
+          <span>Using Jonas Encore? Upload your Sales by Item report instead</span>
+          <a
+            href="/sales-by-item-import"
+            className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:text-blue-600"
+            data-testid="link-sales-by-item"
+          >
+            Go to Sales by Item Import
+            <ArrowRight className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
