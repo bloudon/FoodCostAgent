@@ -11,7 +11,7 @@
  *  Step: count-session-done    — result confirmation
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +58,8 @@ import {
   Info,
   AlertCircle,
   FileText,
+  ChevronDown,
+  Link2,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -80,6 +82,13 @@ interface ImportBatch {
   approvedAt: string | null;
 }
 
+interface CandidateDetail {
+  id: string;
+  name: string;
+  pluSku?: string | null;
+  caseSize?: number | null;
+}
+
 interface MatchResult {
   strategy: string;
   confidence: string;
@@ -87,6 +96,10 @@ interface MatchResult {
   candidateIds: string[];
   requiresReview: boolean;
   score?: number;
+  /** Enriched by the server — candidate items the user can pick from (ambiguous rows). */
+  candidates: CandidateDetail[];
+  /** Enriched by the server — the auto-matched item detail (medium/high confidence rows). */
+  matchedItem?: CandidateDetail | null;
 }
 
 interface RowPreview {
@@ -495,6 +508,119 @@ function ConfirmDateStep({
   );
 }
 
+// ─── Candidate picker (for ambiguous / likely rows) ──────────────────────────
+
+function CandidatePicker({
+  row,
+  decision,
+  hasOverride,
+  onDecision,
+}: {
+  row: RowPreview;
+  decision: string | null | undefined;
+  hasOverride: boolean;
+  onDecision: (rowIndex: number, value: string | null | undefined) => void;
+}) {
+  const { confidence, candidates = [], matchedItem } = row.itemMatch;
+
+  function ItemChip({ item, selected, onClick }: { item: CandidateDetail; selected: boolean; onClick: () => void }) {
+    return (
+      <button
+        onClick={onClick}
+        className={`flex items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors w-full ${
+          selected
+            ? "border-primary bg-primary/5 text-foreground"
+            : "border-border bg-background hover:bg-muted/50 text-muted-foreground"
+        }`}
+      >
+        <div className={`mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${selected ? "border-primary bg-primary" : "border-muted-foreground/40"}`} />
+        <div className="min-w-0 flex-1">
+          <div className={`font-medium truncate ${selected ? "text-foreground" : ""}`}>{item.name}</div>
+          <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+            {item.caseSize != null && <span>Case: {item.caseSize}</span>}
+            {item.pluSku && <span>PLU: {item.pluSku}</span>}
+          </div>
+        </div>
+        {selected && <Link2 className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />}
+      </button>
+    );
+  }
+
+  if (confidence === "ambiguous") {
+    const resolvedId = hasOverride ? decision : undefined;
+    return (
+      <div className="px-4 py-3 space-y-2 border-t border-dashed border-border/60">
+        <p className="text-[11px] font-medium text-muted-foreground">
+          {candidates.length} items matched — pick one to link, or leave unresolved to create a new item:
+        </p>
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {candidates.map(c => (
+            <ItemChip
+              key={c.id}
+              item={c}
+              selected={resolvedId === c.id}
+              onClick={() => onDecision(row.rowIndex, resolvedId === c.id ? undefined : c.id)}
+            />
+          ))}
+          <button
+            onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
+            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors ${
+              resolvedId === null
+                ? "border-orange-300 bg-orange-50 text-orange-700"
+                : "border-dashed border-border bg-background hover:bg-muted/50 text-muted-foreground"
+            }`}
+          >
+            <div className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${resolvedId === null ? "border-orange-400 bg-orange-400" : "border-muted-foreground/40"}`} />
+            <span className="italic">Create new item</span>
+          </button>
+        </div>
+        {!hasOverride && (
+          <p className="text-[10px] text-muted-foreground/70">No selection → will create a new item on approval</p>
+        )}
+      </div>
+    );
+  }
+
+  if (confidence === "medium" || confidence === "low") {
+    const item = matchedItem;
+    if (!item) return null;
+    const isCreateNew = hasOverride && decision === null;
+    return (
+      <div className="px-4 py-3 space-y-2 border-t border-dashed border-border/60">
+        <p className="text-[11px] font-medium text-muted-foreground">
+          Auto-matched by {confidence === "medium" ? "name" : "fuzzy"} — confirm or override:
+        </p>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <ItemChip
+              item={item}
+              selected={!isCreateNew}
+              onClick={() => onDecision(row.rowIndex, undefined)}
+            />
+          </div>
+          <button
+            onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
+            className={`shrink-0 rounded-md border px-3 py-2 text-xs transition-colors ${
+              isCreateNew
+                ? "border-orange-300 bg-orange-50 text-orange-700 font-medium"
+                : "border-dashed border-border bg-background hover:bg-muted/50 text-muted-foreground"
+            }`}
+          >
+            {isCreateNew ? "↩ Undo" : "Create new instead"}
+          </button>
+        </div>
+        {row.caseQuantity != null && item.caseSize != null && Math.abs(row.caseQuantity - item.caseSize) > 0.01 && (
+          <p className="text-[10px] text-amber-600">
+            ⚠ Pack size differs: import has {row.caseQuantity}, catalog item has {item.caseSize}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Step: Resolution preview ─────────────────────────────────────────────────
 
 export function ResolutionPreviewStep({
@@ -512,6 +638,9 @@ export function ResolutionPreviewStep({
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
+  // rowIndex → string (link to item) | null (create new) | undefined (system default)
+  const [rowDecisions, setRowDecisions] = useState<Map<number, string | null>>(() => new Map());
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
 
   const PAGE_SIZE = 100;
 
@@ -537,11 +666,33 @@ export function ResolutionPreviewStep({
     },
   });
 
+  function toggleExpand(rowIndex: number) {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(rowIndex)) next.delete(rowIndex);
+      else next.add(rowIndex);
+      return next;
+    });
+  }
+
+  function setDecision(rowIndex: number, value: string | null | undefined) {
+    setRowDecisions(prev => {
+      const next = new Map(prev);
+      if (value === undefined) next.delete(rowIndex);
+      else next.set(rowIndex, value);
+      return next;
+    });
+  }
+
   async function handleApprove() {
     setApproving(true);
     try {
+      const decisions = Array.from(rowDecisions.entries()).map(([rowIndex, inventoryItemId]) => ({
+        rowIndex,
+        inventoryItemId,
+      }));
       const res = await apiRequest("POST", `/api/inventory-import/orderly/batches/${batchId}/approve`, {
-        rowDecisions: [],
+        rowDecisions: decisions,
       });
       if (!res.ok) {
         const d = await res.json();
@@ -800,6 +951,7 @@ export function ResolutionPreviewStep({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-6"></TableHead>
                       <TableHead className="w-10">#</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Location</TableHead>
@@ -812,36 +964,73 @@ export function ResolutionPreviewStep({
                   <TableBody>
                     {displayRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-xs text-muted-foreground py-8">
+                        <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-8">
                           No rows match the selected filters.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      displayRows.map((row) => (
-                        <TableRow key={row.rowIndex}>
-                          <TableCell className="text-muted-foreground text-xs">{row.rowIndex}</TableCell>
-                          <TableCell className="text-xs max-w-[220px] truncate">
-                            {row.cleanedDescription || <span className="text-muted-foreground/50 italic">blank</span>}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {row.storageLocation || "—"}
-                            {row.locationMatch.isNew && (
-                              <Badge className="ml-1 text-[10px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">new</Badge>
+                      displayRows.map((row) => {
+                        const needsReview = row.itemMatch.requiresReview;
+                        const isExpanded = expandedRows.has(row.rowIndex);
+                        const decision = rowDecisions.get(row.rowIndex);
+                        const hasOverride = rowDecisions.has(row.rowIndex);
+                        return (
+                          <Fragment key={row.rowIndex}>
+                            <TableRow
+                              className={needsReview ? "cursor-pointer hover:bg-muted/30 select-none" : ""}
+                              onClick={needsReview ? () => toggleExpand(row.rowIndex) : undefined}
+                            >
+                              <TableCell className="w-6 px-2">
+                                {needsReview && (
+                                  <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-180" : ""}`} />
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground text-xs">{row.rowIndex}</TableCell>
+                              <TableCell className="text-xs max-w-[220px] truncate">
+                                {row.cleanedDescription || <span className="text-muted-foreground/50 italic">blank</span>}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {row.storageLocation || "—"}
+                                {row.locationMatch.isNew && (
+                                  <Badge className="ml-1 text-[10px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200">new</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {row.supplierRaw || "—"}
+                                {row.vendorMatch.isNew && row.supplierRaw && (
+                                  <Badge className="ml-1 text-[10px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">new</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {row.sourceCategory || "—"}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1.5">
+                                  {confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}
+                                  {hasOverride && (
+                                    <Badge className="text-[9px] px-1 py-0 bg-sky-50 text-sky-700 border-sky-200">
+                                      {decision === null ? "→ new" : "→ linked"}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{strategyLabel(row.itemMatch.strategy)}</TableCell>
+                            </TableRow>
+                            {isExpanded && (
+                              <TableRow className="bg-muted/10 hover:bg-muted/10">
+                                <TableCell colSpan={8} className="p-0">
+                                  <CandidatePicker
+                                    row={row}
+                                    decision={decision}
+                                    hasOverride={hasOverride}
+                                    onDecision={setDecision}
+                                  />
+                                </TableCell>
+                              </TableRow>
                             )}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {row.supplierRaw || "—"}
-                            {row.vendorMatch.isNew && row.supplierRaw && (
-                              <Badge className="ml-1 text-[10px] px-1 py-0 bg-purple-50 text-purple-700 border-purple-200">new</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {row.sourceCategory || "—"}
-                          </TableCell>
-                          <TableCell>{confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{strategyLabel(row.itemMatch.strategy)}</TableCell>
-                        </TableRow>
-                      ))
+                          </Fragment>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>

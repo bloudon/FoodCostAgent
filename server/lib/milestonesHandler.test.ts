@@ -255,9 +255,12 @@ describe("isMilestoneCompleted", () => {
 });
 
 describe("REVIEW_ONLY_MILESTONES", () => {
-  it("contains 'categories' and 'review'", () => {
+  it("contains 'categories'", () => {
     expect(REVIEW_ONLY_MILESTONES.has("categories")).toBe(true);
-    expect(REVIEW_ONLY_MILESTONES.has("review")).toBe(true);
+  });
+
+  it("does not contain 'review' (it auto-completes from data)", () => {
+    expect(REVIEW_ONLY_MILESTONES.has("review")).toBe(false);
   });
 
   it("does not contain milestones with data fallbacks", () => {
@@ -375,10 +378,11 @@ describe("auto-dismiss: GET /api/onboarding/milestones when all milestones compl
     expect(markCompletedCallCount).toBe(0);
   });
 
-  it("does NOT auto-dismiss when review milestone is incomplete", async () => {
+  it("auto-dismisses when only 'categories' is reviewed — 'review' now completes from data", async () => {
     let markCompletedCallCount = 0;
 
-    // Only review-only 'categories' step is done, not 'review'
+    // 'review' milestone no longer requires a reviewedSteps entry — it auto-completes from data.
+    // So having only 'categories' in reviewedSteps + all data present is sufficient to auto-dismiss.
     const stepData = JSON.stringify({ reviewedSteps: ["categories"] });
     const deps: GetMilestonesDeps = {
       async getProgress() {
@@ -395,8 +399,8 @@ describe("auto-dismiss: GET /api/onboarding/milestones when all milestones compl
     const app = makeApp("co-partial-review", makeSharedStore().reviewStepDeps, deps);
     const res = await request(app).get("/api/onboarding/milestones");
 
-    expect(res.body.dismissed).toBe(false);
-    expect(markCompletedCallCount).toBe(0);
+    expect(res.body.dismissed).toBe(true);
+    expect(markCompletedCallCount).toBe(1);
   });
 });
 

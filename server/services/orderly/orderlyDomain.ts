@@ -314,22 +314,36 @@ export async function runResolutionPreview(
 
   const summary = computeResolutionSummary(resolutions);
 
-  const rows = batchRows.map((row: InventoryImportRow, i: number) => ({
-    rowId: row.id,
-    rowIndex: row.rowIndex,
-    storageLocation: row.storageLocation,
-    sourceItemCode: row.sourceItemCode,
-    itemCodeStatus: row.itemCodeStatus,
-    cleanedDescription: row.cleanedDescription,
-    supplierRaw: row.supplierRaw,
-    sourceCategory: (row as any).sourceCategory ?? null,
-    caseQuantity: row.caseQuantity,
-    packagePrice: row.packagePrice,
-    totalCost: row.totalCost,
-    itemMatch: resolutions[i].itemMatch,
-    vendorMatch: resolutions[i].vendorMatch,
-    locationMatch: resolutions[i].locationMatch,
-  }));
+  // Build id → item lookup so preview rows can carry candidate details
+  // (name / caseSize / pluSku) without an extra DB round-trip.
+  const itemById = new Map(existingItems.map(item => [item.id, item]));
+
+  const rows = batchRows.map((row: InventoryImportRow, i: number) => {
+    const rawMatch = resolutions[i].itemMatch;
+    const candidates = rawMatch.candidateIds
+      .map(id => itemById.get(id))
+      .filter((item): item is MatchableItem => item != null);
+    const matchedItem = rawMatch.matchedId
+      ? (itemById.get(rawMatch.matchedId) ?? null)
+      : null;
+
+    return {
+      rowId: row.id,
+      rowIndex: row.rowIndex,
+      storageLocation: row.storageLocation,
+      sourceItemCode: row.sourceItemCode,
+      itemCodeStatus: row.itemCodeStatus,
+      cleanedDescription: row.cleanedDescription,
+      supplierRaw: row.supplierRaw,
+      sourceCategory: (row as any).sourceCategory ?? null,
+      caseQuantity: row.caseQuantity,
+      packagePrice: row.packagePrice,
+      totalCost: row.totalCost,
+      itemMatch: { ...rawMatch, candidates, matchedItem },
+      vendorMatch: resolutions[i].vendorMatch,
+      locationMatch: resolutions[i].locationMatch,
+    };
+  });
 
   return {
     batchId,
