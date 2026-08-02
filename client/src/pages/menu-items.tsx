@@ -514,6 +514,7 @@ export default function MenuItemsPage() {
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<"recipe" | "non-recipe" | "all">("all");
+  const [noRecipeFilter, setNoRecipeFilter] = useState(false);
   const [viewMode, setViewMode] = useState<"hierarchy" | "flat">("hierarchy");
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvContent, setCsvContent] = useState("");
@@ -1254,8 +1255,11 @@ export default function MenuItemsPage() {
       group.parent.isRecipeItem === 0;
     const matchesStore = selectedStore === "all" || 
       (group.parent.storeIds && group.parent.storeIds.includes(selectedStore));
+    const matchesNoRecipe = !noRecipeFilter || (
+      !group.parent.recipeId && group.variants.every(v => !v.recipeId)
+    );
     
-    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore;
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore && matchesNoRecipe;
   }) || [];
 
   // Filter flat items for flat view
@@ -1273,7 +1277,8 @@ export default function MenuItemsPage() {
       typeFilter === "recipe" ? item.isRecipeItem === 1 :
       item.isRecipeItem === 0;
     const matchesStore = selectedStore === "all" || (item.storeIds && item.storeIds.includes(selectedStore));
-    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore;
+    const matchesNoRecipe = !noRecipeFilter || !item.recipeId;
+    return matchesSearch && matchesActive && matchesDepartment && matchesCategory && matchesType && matchesStore && matchesNoRecipe;
   }) || [];
 
   // Apply sorting for flat view
@@ -2450,6 +2455,19 @@ export default function MenuItemsPage() {
                 </SelectContent>
               </Select>
 
+              <button
+                onClick={() => setNoRecipeFilter(!noRecipeFilter)}
+                data-testid="button-no-recipe-filter"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors ${
+                  noRecipeFilter
+                    ? "bg-amber-50 border-amber-400 text-amber-700 dark:bg-amber-950/40 dark:border-amber-600 dark:text-amber-400"
+                    : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                No recipe
+              </button>
+
               <Select value={activeFilter} onValueChange={(val) => setActiveFilter(val as any)}>
                 <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
                   <Filter className="h-4 w-4 mr-2" />
@@ -2638,12 +2656,21 @@ export default function MenuItemsPage() {
                                     <PlusCircle className="h-4 w-4 mr-2" />
                                     Add Size Variant
                                   </DropdownMenuItem>
-                                  {group.parent.recipeId && (
+                                  {group.parent.recipeId ? (
                                     <DropdownMenuItem asChild>
                                       <Link href={`/recipes/${group.parent.recipeId}`} className="flex items-center">
                                         <ExternalLink className="h-4 w-4 mr-2" />
                                         View Recipe
                                       </Link>
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem
+                                      onClick={() => handleEditMenuItem(group.parent)}
+                                      data-testid={`button-link-recipe-${group.parent.id}`}
+                                      className="text-muted-foreground"
+                                    >
+                                      <BookOpen className="h-4 w-4 mr-2" />
+                                      Link recipe
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuSeparator />
@@ -2719,12 +2746,21 @@ export default function MenuItemsPage() {
                                         <DropdownMenuItem onClick={() => handleEditMenuItem(variant)}>
                                           Edit
                                         </DropdownMenuItem>
-                                        {variant.recipeId && (
+                                        {variant.recipeId ? (
                                           <DropdownMenuItem asChild>
                                             <Link href={`/recipes/${variant.recipeId}`} className="flex items-center">
                                               <ExternalLink className="h-4 w-4 mr-2" />
                                               View Recipe
                                             </Link>
+                                          </DropdownMenuItem>
+                                        ) : (
+                                          <DropdownMenuItem
+                                            onClick={() => handleEditMenuItem(variant)}
+                                            data-testid={`button-link-recipe-${variant.id}`}
+                                            className="text-muted-foreground"
+                                          >
+                                            <BookOpen className="h-4 w-4 mr-2" />
+                                            Link recipe
                                           </DropdownMenuItem>
                                         )}
                                         <DropdownMenuSeparator />
@@ -2955,6 +2991,16 @@ export default function MenuItemsPage() {
                                 >
                                   Edit
                                 </DropdownMenuItem>
+                                {!item.recipeId && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleEditMenuItem(item)}
+                                    data-testid={`button-link-recipe-${item.id}`}
+                                    className="text-muted-foreground"
+                                  >
+                                    <BookOpen className="h-4 w-4 mr-2" />
+                                    Link recipe
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleToggleActive(item)}
                                   disabled={toggleActiveMutation.isPending}
