@@ -386,6 +386,7 @@ export interface ResolutionSummary {
   locationsMatched: number;
   locationsNew: number;
   rowsRequiringReview: number;
+  itemsResolvedByLocationHistory: number;
 }
 
 export function computeResolutionSummary(rows: RowResolution[]): ResolutionSummary {
@@ -393,6 +394,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
   let vendorsMatched = 0, vendorsNew = 0;
   const locationsSeen = new Map<string, boolean>(); // normalizedName → isNew
   let rowsRequiringReview = 0;
+  let itemsResolvedByLocationHistory = 0;
 
   for (const row of rows) {
     const m = row.itemMatch;
@@ -401,6 +403,8 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     else if (m.confidence === 'ambiguous') itemsAmbiguous++;
     else if (m.strategy === 'fuzzy') itemsFuzzy++;
     else itemsNew++;
+
+    if (m.strategy === 'location_history') itemsResolvedByLocationHistory++;
 
     if (m.requiresReview) rowsRequiringReview++;
 
@@ -432,5 +436,6 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     locationsMatched,
     locationsNew,
     rowsRequiringReview,
+    itemsResolvedByLocationHistory,
   };
 }

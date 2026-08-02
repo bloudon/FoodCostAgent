@@ -147,6 +147,7 @@ interface ResolutionPreview {
     locationsMatched: number;
     locationsNew: number;
     rowsRequiringReview: number;
+    itemsResolvedByLocationHistory: number;
   };
   rows: RowPreview[];
   newLocations: string[];
@@ -921,6 +922,18 @@ export function ResolutionPreviewStep({
           </CardContent>
         </Card>
       </div>
+
+      {/* Location-history auto-resolution callout */}
+      {s.itemsResolvedByLocationHistory > 0 && (
+        <Alert className="border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 dark:border-blue-900">
+          <Database className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800 dark:text-blue-300">
+            <strong>{s.itemsResolvedByLocationHistory} {s.itemsResolvedByLocationHistory === 1 ? "row" : "rows"}</strong> resolved
+            by location history — the system remembered which item was previously counted at this storage location and
+            auto-selected it from the ambiguous candidates.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Ambiguous / review warnings */}
       {s.itemsAmbiguous > 0 && (
