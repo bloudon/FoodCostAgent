@@ -77,6 +77,7 @@ type VoiceFailureRow = {
   occurrences: number;
   avg_score: number;
   last_seen_at: string;
+  matched_item_id?: string | null;
 };
 
 export default function WasteEntry() {
@@ -1241,6 +1242,7 @@ export default function WasteEntry() {
                                 <TableHead className="text-right">Times spoken</TableHead>
                                 <TableHead className="text-right hidden sm:table-cell">Avg score</TableHead>
                                 <TableHead className="text-right hidden sm:table-cell">Last seen</TableHead>
+                                <TableHead className="w-[100px]">Action</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1261,6 +1263,18 @@ export default function WasteEntry() {
                                   </TableCell>
                                   <TableCell className="text-right text-muted-foreground text-sm hidden sm:table-cell">
                                     {new Date(row.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </TableCell>
+                                  <TableCell>
+                                    {row.matched_item_id ? (
+                                      <Link
+                                        href={`/inventory-items/${row.matched_item_id}`}
+                                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                        data-testid={`link-view-item-${i}`}
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                        View item
+                                      </Link>
+                                    ) : null}
                                   </TableCell>
                                 </TableRow>
                               ))}

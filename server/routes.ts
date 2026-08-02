@@ -16003,7 +16003,8 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           resolution_status,
           COUNT(*)::int AS occurrences,
           ROUND(AVG(match_score)::numeric, 3)::real AS avg_score,
-          MAX(created_at) AS last_seen_at
+          MAX(created_at) AS last_seen_at,
+          (ARRAY_AGG(matched_item_id ORDER BY created_at DESC))[1] AS matched_item_id
         FROM voice_interpret_logs
         WHERE company_id = ${companyId}
           AND store_id IN (${storeInClause})
@@ -16020,6 +16021,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         occurrences: number;
         avg_score: number;
         last_seen_at: string;
+        matched_item_id: string | null;
       }>;
 
       return res.json({ days, rows: data });
