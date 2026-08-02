@@ -579,12 +579,13 @@ export function registerOrderlyImportRoutes(app: Express): void {
           return res.status(409).json({ error: 'Approved batches cannot be discarded' });
         }
 
-        await db.transaction(async (tx) => {
-          await tx.delete(inventoryImportRows)
-            .where(eq(inventoryImportRows.batchId, batchId));
-          await tx.delete(inventoryImportBatches)
-            .where(eq(inventoryImportBatches.id, batchId));
-        });
+        // Two sequential deletes — no transaction needed.
+        // Rows first so the batch is never left with orphaned rows.
+        // If the batch delete fails after rows are gone, re-discarding is safe (no-op rows delete, batch deleted).
+        await db.delete(inventoryImportRows)
+          .where(eq(inventoryImportRows.batchId, batchId));
+        await db.delete(inventoryImportBatches)
+          .where(eq(inventoryImportBatches.id, batchId));
 
         res.json({ deleted: true });
       } catch (err: any) {
