@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar, Mic, CheckCircle2, HelpCircle, AlertTriangle, AlertCircle, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Link } from "wouter";
+import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar, Mic, CheckCircle2, HelpCircle, AlertTriangle, AlertCircle, X, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WasteVoiceModal, WasteInterpretEntry } from "@/components/waste-voice-modal";
@@ -1178,6 +1179,7 @@ export default function WasteEntry() {
                                 <TableHead>Spoken item</TableHead>
                                 <TableHead className="text-right">Times spoken</TableHead>
                                 <TableHead className="text-right hidden sm:table-cell">Last seen</TableHead>
+                                <TableHead className="w-[140px]">Action</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1187,6 +1189,16 @@ export default function WasteEntry() {
                                   <TableCell className="text-right tabular-nums">{row.occurrences}</TableCell>
                                   <TableCell className="text-right text-muted-foreground text-sm hidden sm:table-cell">
                                     {new Date(row.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Link
+                                      href={`/inventory-items/new?name=${encodeURIComponent(row.spoken_item)}`}
+                                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                      data-testid={`link-fix-item-${i}`}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                      Fix item name
+                                    </Link>
                                   </TableCell>
                                 </TableRow>
                               ))}

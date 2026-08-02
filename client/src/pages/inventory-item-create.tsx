@@ -56,7 +56,10 @@ export default function InventoryItemCreate() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   
-  const [name, setName] = useState("");
+  const [name, setName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("name") ?? "";
+  });
   const [manufacturer, setManufacturer] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [pluSku, setPluSku] = useState("");
