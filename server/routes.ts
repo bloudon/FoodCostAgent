@@ -43,7 +43,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations, voiceInterpretLogs } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -857,6 +857,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (err) {
       console.error("[Migration] pos_provider_check_constraint error:", err);
+    }
+  })();
+
+  (async function migrateVoiceInterpretLogs() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'voice_interpret_logs'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS voice_interpret_logs (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id VARCHAR NOT NULL,
+            store_id VARCHAR NOT NULL,
+            spoken_item TEXT NOT NULL,
+            resolution_status TEXT NOT NULL,
+            matched_item_id VARCHAR,
+            match_score REAL NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS voice_interpret_logs_company_created_idx
+            ON voice_interpret_logs (company_id, created_at);
+          CREATE INDEX IF NOT EXISTS voice_interpret_logs_status_idx
+            ON voice_interpret_logs (resolution_status);
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('voice_interpret_logs')`
+        );
+        console.log("[Migration] Applied voice_interpret_logs");
+      } else {
+        console.log("[Migration] Already applied (voice_interpret_logs)");
+      }
+    } catch (err) {
+      console.error("[Migration] voice_interpret_logs error:", err);
     }
   })();
 
@@ -15833,6 +15874,22 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         entries: spokenEntries,
       });
 
+      // ── Write interpret logs (fire-and-forget, never fail the request) ──────
+      if (resolvedEntries.length > 0) {
+        const companyId = req.companyId!;
+        const logRows = resolvedEntries.map(entry => ({
+          companyId,
+          storeId,
+          spokenItem: entry.spokenItem,
+          resolutionStatus: entry.resolutionStatus,
+          matchedItemId: entry.itemId ?? null,
+          matchScore: entry.matchScore,
+        }));
+        db.insert(voiceInterpretLogs).values(logRows).catch((logErr: unknown) => {
+          console.error("[waste/interpret] log write error:", logErr);
+        });
+      }
+
       return res.json({
         requestId,
         transcript,
@@ -15879,6 +15936,68 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       trends[wasteLog.inventoryItemId].byReason[wasteLog.reasonCode] += wasteLog.qty;
     }
     res.json(Object.values(trends));
+  });
+
+  // GET /api/reports/voice-interpret-failures
+  // Returns top unresolved/ambiguous spoken items over the last 30 days for the company.
+  // Requires store_manager, company_admin, or global_admin role.
+  // store_manager users see only aggregates from their accessible stores.
+  app.get("/api/reports/voice-interpret-failures", requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const ALLOWED_ROLES = ["store_manager", "company_admin", "global_admin"] as const;
+      if (!ALLOWED_ROLES.includes(user.role as any)) {
+        return res.status(403).json({ error: "Manager or admin access required" });
+      }
+
+      const companyId = req.companyId!;
+      const parsedDays = parseInt(String(req.query.days ?? "30"), 10);
+      const days = Math.min(Math.max(isNaN(parsedDays) ? 30 : parsedDays, 1), 90);
+      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      // Restrict to accessible stores (store_manager sees only their assigned stores)
+      const accessibleStoreIds = await getAccessibleStores(user, companyId);
+
+      if (accessibleStoreIds.length === 0) {
+        return res.json({ days, rows: [] });
+      }
+
+      // Aggregate failure statuses only — unresolved, ambiguous, needs_unit.
+      // "resolved" entries are excluded because the report exists to surface problems.
+      const storeInClause = sql.join(
+        accessibleStoreIds.map(id => sql`${id}`),
+        sql`, `,
+      );
+      const rows = await db.execute(sql`
+        SELECT
+          spoken_item,
+          resolution_status,
+          COUNT(*)::int AS occurrences,
+          ROUND(AVG(match_score)::numeric, 3)::real AS avg_score,
+          MAX(created_at) AS last_seen_at
+        FROM voice_interpret_logs
+        WHERE company_id = ${companyId}
+          AND store_id IN (${storeInClause})
+          AND resolution_status IN ('unresolved', 'ambiguous', 'needs_unit')
+          AND created_at >= ${cutoff.toISOString()}
+        GROUP BY spoken_item, resolution_status
+        ORDER BY occurrences DESC, last_seen_at DESC
+        LIMIT 50
+      `);
+
+      const data = (Array.isArray(rows) ? rows : (rows as any).rows ?? []) as Array<{
+        spoken_item: string;
+        resolution_status: string;
+        occurrences: number;
+        avg_score: number;
+        last_seen_at: string;
+      }>;
+
+      return res.json({ days, rows: data });
+    } catch (err: any) {
+      console.error("[reports/voice-interpret-failures] error:", err);
+      return res.status(500).json({ error: "Failed to fetch voice interpret failures" });
+    }
   });
 
   // ============ TRANSFER ORDERS ============

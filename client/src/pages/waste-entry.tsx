@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar, Mic, CheckCircle2, HelpCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
+import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar, Mic, CheckCircle2, HelpCircle, AlertTriangle, AlertCircle, X, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WasteVoiceModal, WasteInterpretEntry } from "@/components/waste-voice-modal";
@@ -15,6 +15,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { formatUnitName } from "@/lib/utils";
 import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
+import { useAuth } from "@/lib/auth-context";
 
 type WasteType = 'inventory' | 'menu_item' | null;
 
@@ -68,8 +69,17 @@ type VoiceDraft = WasteInterpretEntry & {
   status: DraftStatus;
 };
 
+type VoiceFailureRow = {
+  spoken_item: string;
+  resolution_status: string;
+  occurrences: number;
+  avg_score: number;
+  last_seen_at: string;
+};
+
 export default function WasteEntry() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [wasteType, setWasteType] = useState<WasteType>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -94,6 +104,8 @@ export default function WasteEntry() {
     canonicalUnitName: string;
   } | null>(null);
   
+  const [voiceFailuresOpen, setVoiceFailuresOpen] = useState(false);
+
   // Date filter state - default to last 7 days
   const defaultEndDate = useMemo(() => {
     const today = new Date();
@@ -136,6 +148,24 @@ export default function WasteEntry() {
       ? () => fetch(`/api/waste?storeId=${selectedStoreId}&startDate=${startDate}&endDate=${endDate}`).then(res => res.json())
       : undefined,
     enabled: !!selectedStoreId && !!startDate && !!endDate,
+  });
+
+  // Manager+ role check — show voice failures report to managers and above
+  const canSeeVoiceFailures = !!user && (
+    user.role === "global_admin" ||
+    user.role === "company_admin" ||
+    user.role === "store_manager"
+  );
+
+  const { data: voiceFailuresData } = useQuery<{ days: number; rows: VoiceFailureRow[] }>({
+    queryKey: ["/api/reports/voice-interpret-failures"],
+    queryFn: async () => {
+      const res = await fetch("/api/reports/voice-interpret-failures?days=30");
+      if (!res.ok) throw new Error(`Failed to fetch voice failures: ${res.status}`);
+      const data = await res.json();
+      return { days: data.days ?? 30, rows: Array.isArray(data.rows) ? data.rows : [] };
+    },
+    enabled: canSeeVoiceFailures,
   });
 
   const sortedWasteLogs = useMemo(() => {
@@ -1076,6 +1106,126 @@ export default function WasteEntry() {
         </div>
       )}
       </div>{/* end flex-1 overflow-auto */}
+
+      {/* ── Voice Interpretation Failures (managers+) ──────────────────────── */}
+      {canSeeVoiceFailures && !selectedItemId && (
+        <div className="mt-4 max-w-7xl mx-auto">
+          <Card>
+            <CardHeader
+              className="cursor-pointer select-none"
+              onClick={() => setVoiceFailuresOpen(v => !v)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Mic className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base font-semibold">
+                    Voice Interpretation Failures
+                    <span className="text-sm font-normal text-muted-foreground ml-2">(last 30 days)</span>
+                  </CardTitle>
+                  {voiceFailuresData && voiceFailuresData.rows.filter(r => r.resolution_status === "unresolved").length > 0 && (
+                    <Badge variant="destructive" className="text-xs">
+                      {voiceFailuresData.rows.filter(r => r.resolution_status === "unresolved").reduce((s, r) => s + r.occurrences, 0)} unresolved
+                    </Badge>
+                  )}
+                </div>
+                {voiceFailuresOpen ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            </CardHeader>
+            {voiceFailuresOpen && (
+              <CardContent>
+                {!voiceFailuresData || voiceFailuresData.rows.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-6 text-sm">
+                    No voice interpretation calls recorded in the last 30 days.
+                  </p>
+                ) : (() => {
+                  const unresolvedRows = voiceFailuresData.rows.filter(r => r.resolution_status === "unresolved");
+                  const otherRows = voiceFailuresData.rows.filter(r => r.resolution_status !== "unresolved");
+                  return (
+                    <div className="space-y-6">
+                      {unresolvedRows.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                            <h3 className="text-sm font-semibold text-destructive">Unresolved — no catalog match found</h3>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            These spoken names had no match in your item catalog. Consider renaming items or adding aliases.
+                          </p>
+                          <Table wrapperClassName="rounded-md border">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Spoken item</TableHead>
+                                <TableHead className="text-right">Times spoken</TableHead>
+                                <TableHead className="text-right hidden sm:table-cell">Last seen</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {unresolvedRows.map((row, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="font-medium">{row.spoken_item}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{row.occurrences}</TableCell>
+                                  <TableCell className="text-right text-muted-foreground text-sm hidden sm:table-cell">
+                                    {new Date(row.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                      {otherRows.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <HelpCircle className="h-4 w-4 text-yellow-600" />
+                            <h3 className="text-sm font-semibold">Ambiguous or unit mismatches</h3>
+                          </div>
+                          <Table wrapperClassName="rounded-md border">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Spoken item</TableHead>
+                                <TableHead className="hidden sm:table-cell">Status</TableHead>
+                                <TableHead className="text-right">Times spoken</TableHead>
+                                <TableHead className="text-right hidden sm:table-cell">Avg score</TableHead>
+                                <TableHead className="text-right hidden sm:table-cell">Last seen</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {otherRows.map((row, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="font-medium">{row.spoken_item}</TableCell>
+                                  <TableCell className="hidden sm:table-cell">
+                                    <Badge
+                                      variant={row.resolution_status === "needs_unit" ? "outline" : "secondary"}
+                                      className="text-xs"
+                                    >
+                                      {row.resolution_status.replace("_", " ")}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">{row.occurrences}</TableCell>
+                                  <TableCell className="text-right tabular-nums text-muted-foreground text-sm hidden sm:table-cell">
+                                    {row.avg_score.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground text-sm hidden sm:table-cell">
+                                    {new Date(row.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            )}
+          </Card>
+        </div>
+      )}
 
       {/* ── Voice Entry Modal ──────────────────────────────────────────────── */}
       <WasteVoiceModal

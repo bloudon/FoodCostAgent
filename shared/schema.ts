@@ -1338,6 +1338,25 @@ export const createWasteLogSchema = insertWasteLogSchema.omit({
 });
 export type CreateWasteLog = z.infer<typeof createWasteLogSchema>;
 
+// Voice Interpret Logs — one row per spoken entry from POST /api/waste/interpret
+export const voiceInterpretLogs = pgTable("voice_interpret_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  spokenItem: text("spoken_item").notNull(),
+  resolutionStatus: text("resolution_status").notNull(), // resolved | ambiguous | unresolved | needs_unit
+  matchedItemId: varchar("matched_item_id"), // nullable — only set when resolved/ambiguous
+  matchScore: real("match_score").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyCreatedIdx: index("voice_interpret_logs_company_created_idx").on(table.companyId, table.createdAt),
+  statusIdx: index("voice_interpret_logs_status_idx").on(table.resolutionStatus),
+}));
+
+export const insertVoiceInterpretLogSchema = createInsertSchema(voiceInterpretLogs).omit({ id: true, createdAt: true });
+export type InsertVoiceInterpretLog = z.infer<typeof insertVoiceInterpretLogSchema>;
+export type VoiceInterpretLog = typeof voiceInterpretLogs.$inferSelect;
+
 // Company Settings
 export const companySettings = pgTable("company_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
