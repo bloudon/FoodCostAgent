@@ -1,17 +1,21 @@
 /**
  * Pricing page — 4-component Option A architecture
  *
- * FnB Cost Pro Platform   (first operation included, vendor connectivity built in)
- * Additional Locations    (per additional operation)
- * Guided Implementation   (one-time onboarding engagement)
- * Enterprise Operations   (custom scope for clubs, resorts, hotels, complex multi-outlet)
+ * Page flow (per marketing direction):
+ *  1. Hero — premium promise
+ *  2. Benefit strip — Capture → Cost → Purchase → Control
+ *  3. Billing toggle
+ *  4. Main Platform pricing card (outcome groups + expandable detail)
+ *  5. Additional Locations / Guided Implementation / Enterprise
+ *  6. FAQs
+ *  7. Final CTA — "Your kitchen already has the data"
  *
  * Language: uses t.pricing from marketing-translations.ts
  */
 
 import { useState } from "react";
 import { usePageEvent } from "@/lib/analytics";
-import { CheckCircle2, ChevronRight, HelpCircle, Building2, MapPin, Cog, LayoutGrid } from "lucide-react";
+import { CheckCircle2, ChevronRight, HelpCircle, Building2, MapPin, Cog, LayoutGrid, ChevronDown, Camera, DollarSign, ShoppingCart, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingLayout, MarketingHead, CTAButton } from "@/components/website/marketing-layout";
 import { useLanguage } from "@/lib/language-context";
@@ -20,10 +24,13 @@ import { MARKETING_PRICING } from "@/lib/pricing-constants";
 
 type Term = "monthly" | "annual";
 
+const BENEFIT_ICONS = [Camera, DollarSign, ShoppingCart, Smartphone];
+
 export default function WebsitePricing() {
   const { lang, t } = useLanguage();
   const pricing = t.pricing;
   const [term, setTerm] = useState<Term>("monthly");
+  const [showAllFeatures, setShowAllFeatures] = useState(false);
   usePageEvent("pricing_page_viewed", { language: lang });
 
   const platformPrice =
@@ -55,9 +62,36 @@ export default function WebsitePricing() {
           <h1 className="text-4xl sm:text-5xl font-extrabold text-white mb-5 leading-tight">
             {pricing.headline}
           </h1>
-          <p className="text-lg text-gray-300 leading-relaxed max-w-2xl mx-auto">
+          <p className="text-lg text-gray-300 leading-relaxed max-w-2xl mx-auto mb-4">
             {pricing.subheadline}
           </p>
+          <p className="text-sm text-gray-400">
+            {pricing.reassuranceLine}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Benefit strip ────────────────────────────────────────────────────── */}
+      <section className="bg-gray-900 border-t border-gray-700">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {pricing.benefitStrip.map((item: { title: string; body: string }, i: number) => {
+              const Icon = BENEFIT_ICONS[i] ?? Camera;
+              return (
+                <div key={item.title} className="flex gap-4">
+                  <div className="shrink-0 mt-0.5">
+                    <div className="h-8 w-8 rounded-lg bg-green-900/60 flex items-center justify-center">
+                      <Icon className="h-4 w-4 text-green-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white leading-snug mb-1">{item.title}</p>
+                    <p className="text-xs text-gray-400 leading-relaxed">{item.body}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -133,16 +167,41 @@ export default function WebsitePricing() {
                 </p>
               </div>
 
-              {/* Right: feature list */}
+              {/* Right: outcome groups + expandable detail */}
               <div className="flex-1">
-                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-                  {pricing.platform.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm text-gray-700 leading-snug">{f}</span>
-                    </li>
+                <div className="space-y-4">
+                  {pricing.platform.outcomeGroups.map((group: { title: string; body: string }) => (
+                    <div key={group.title} className="flex gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 leading-snug">{group.title}</p>
+                        <p className="text-sm text-gray-500 leading-snug mt-0.5">{group.body}</p>
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
+
+                {/* Expandable full feature list */}
+                <div className="mt-5 border-t border-gray-200 pt-4">
+                  <button
+                    onClick={() => setShowAllFeatures(v => !v)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-green-700 hover:text-green-800 transition-colors"
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-150 ${showAllFeatures ? "rotate-180" : ""}`} />
+                    {pricing.platform.viewAll}
+                  </button>
+
+                  {showAllFeatures && (
+                    <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2.5">
+                      {pricing.platform.features.map((f: string) => (
+                        <li key={f} className="flex items-start gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 flex-shrink-0" />
+                          <span className="text-xs text-gray-600 leading-snug">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -172,7 +231,7 @@ export default function WebsitePricing() {
                 </span>
               </div>
               <ul className="space-y-2 mb-5">
-                {pricing.addOns.locations.features.map((f) => (
+                {pricing.addOns.locations.features.map((f: string) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
                     <span className="text-xs text-gray-600">{f}</span>
@@ -204,7 +263,7 @@ export default function WebsitePricing() {
                 </span>
               </div>
               <ul className="space-y-2 mb-5">
-                {pricing.addOns.implementation.features.map((f) => (
+                {pricing.addOns.implementation.features.map((f: string) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
                     <span className="text-xs text-gray-600">{f}</span>
@@ -236,7 +295,7 @@ export default function WebsitePricing() {
                 </span>
               </div>
               <ul className="space-y-2 mb-5">
-                {pricing.addOns.enterprise.features.map((f) => (
+                {pricing.addOns.enterprise.features.map((f: string) => (
                   <li key={f} className="flex items-start gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
                     <span className="text-xs text-gray-300">{f}</span>
@@ -261,7 +320,7 @@ export default function WebsitePricing() {
             {pricing.faqTitle}
           </h2>
           <div className="space-y-4">
-            {pricing.faqItems.map((item) => (
+            {pricing.faqItems.map((item: { q: string; a: string }) => (
               <div
                 key={item.q}
                 className="bg-white rounded-xl border border-gray-200 p-6"

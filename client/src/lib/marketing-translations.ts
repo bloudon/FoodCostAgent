@@ -333,24 +333,66 @@ export const translations = {
         description:
           "One platform for chef-led restaurants and F&B operations. Vendor connectivity, live recipe costing, and inventory intelligence included. First operation included in the subscription. Contact us for transparent starting rates.",
       },
-      badge: "One Platform. Every Operation.",
+      badge: "ONE PLATFORM. EVERY CORE CAPABILITY.",
       headline: "Built for the way chefs work.",
       subheadline:
-        "FnB Cost Pro is a single platform subscription — vendor connectivity, live recipe costing, and inventory intelligence are part of how it works, not optional add-ons. Your first operation is included.",
+        "Turn the recipes, photos, invoices, inventory files, and vendor information you already have into accurate costing, operational visibility, and smarter purchasing.",
+      reassuranceLine: "Start with one location. Add connected operations as you grow.",
+      benefitStrip: [
+        {
+          title: "Capture instead of retype",
+          body: "Turn handwritten recipes, menus, invoices, labels, and spreadsheets into structured records.",
+        },
+        {
+          title: "Cost with current information",
+          body: "Connect recipes to vendor pricing, yields, portions, and theoretical food cost.",
+        },
+        {
+          title: "Know what to buy",
+          body: "Compare vendors and prepare predictive orders using inventory and sales.",
+        },
+        {
+          title: "Keep the kitchen moving",
+          body: "Work from a phone while maintaining the structured data leadership needs.",
+        },
+      ],
       monthly: "Monthly",
       annual: "Annual",
       annualSavings: "Save ~14%",
       platform: {
         label: "FnB Cost Pro Platform",
-        tagline: "The complete culinary operations system for chef-led restaurants and F&B teams.",
-        firstLocation: "First operation included",
+        tagline: "A complete culinary operations platform for chef-led restaurants and food-and-beverage teams.",
+        firstLocation: "ONE LOCATION. EVERY CORE CAPABILITY.",
         from: "from",
         monthlyPrice: "$149",
         annualPrice: "$129",
         perMonth: "/month",
         perMonthAnnual: "/month, billed annually",
-        cta: "Schedule a Culinary Review",
-        ctaNote: "Independent chefs and smaller groups — ask about transparent starting rates when you connect.",
+        cta: "Start With Your Data",
+        ctaNote: "Use a menu, handwritten recipe, invoice, inventory sheet, or vendor file.",
+        viewAll: "View everything included",
+        outcomeGroups: [
+          {
+            title: "Capture without retyping",
+            body: "Menus, handwritten recipes, invoices, inventory sheets, product labels, and vendor files.",
+          },
+          {
+            title: "Cost and control",
+            body: "Recipe costing, yields, theoretical food cost, inventory, and variance visibility.",
+          },
+          {
+            title: "Purchase intelligently",
+            body: "Vendor pricing, normalized comparisons, order guides, and predictive ordering.",
+          },
+          {
+            title: "Work across the kitchen",
+            body: "Phone-first workflows, storage locations, prep tools, and inventory counting.",
+          },
+          {
+            title: "Connect the operation",
+            body: "POS imports, accounting integrations, vendor connectivity, and reporting.",
+          },
+        ],
         features: [
           "Menu scan — extract dish names, sections, and prices from a photo",
           "Recipe scan — photograph recipe cards and get costed recipes instantly",
@@ -375,7 +417,7 @@ export const translations = {
           tagline: "Each additional operation gets full platform access plus cross-location capabilities.",
           monthlyPrice: "$149/month",
           annualPrice: "$129/month, billed annually",
-          cta: "Ask about multi-location",
+          cta: "Add Locations as You Grow",
           features: [
             "Full platform access per location",
             "Cross-location variance reporting",
@@ -388,7 +430,7 @@ export const translations = {
           label: "Guided Implementation",
           tagline: "Structured onboarding, data migration, configuration, and team training — done with you, not handed off.",
           price: "One-time engagement",
-          cta: "Schedule a Culinary Review",
+          cta: "Discuss Your Setup",
           features: [
             "Account configuration and initial setup",
             "Menu, recipe, and inventory migration",
@@ -401,7 +443,7 @@ export const translations = {
           label: "Enterprise Operations",
           tagline: "For clubs, resorts, hotels, and complex multi-outlet environments that need tailored scope and pricing.",
           price: "Custom scope and pricing",
-          cta: "Schedule a Culinary Review",
+          cta: "Schedule an Operational Review",
           features: [
             "Custom operational scope and configuration",
             "Multi-brand or multi-outlet hierarchy",
@@ -442,9 +484,9 @@ export const translations = {
           a: "Yes. The platform subscription includes your first operation. As your operation grows, additional locations are added to the subscription at the per-location rate. Connect with our team when you're ready to expand.",
         },
       ],
-      ctaTitle: "Ready to see how it works in your kitchen?",
-      ctaBody: "Connect with our team. We'll walk through your current operation, answer your questions, and confirm whether FnB Cost Pro is the right fit — before you commit to anything.",
-      ctaButton: "Schedule a Culinary Review",
+      ctaTitle: "Your kitchen already has the data. FnB Cost Pro puts it to work.",
+      ctaBody: "Start with a menu, recipe, invoice, inventory export, or vendor file. We'll show you how FnB Cost Pro turns it into a connected operating foundation.",
+      ctaButton: "See It With Your Data",
     },
     about: {
       meta: {
@@ -861,24 +903,66 @@ export const translations = {
         description:
           "Una plataforma para restaurantes liderados por chefs y operaciones de A&B. Conectividad con proveedores, costeo de recetas en vivo e inteligencia de inventario incluidos. Primera operación incluida en la suscripción.",
       },
-      badge: "Una Plataforma. Cada Operación.",
+      badge: "UNA PLATAFORMA. CADA CAPACIDAD CENTRAL.",
       headline: "Construida para la forma en que los chefs trabajan.",
       subheadline:
-        "FnB Cost Pro es una sola suscripción de plataforma — la conectividad con proveedores, el costeo de recetas en vivo y la inteligencia de inventario forman parte de cómo funciona, no son complementos opcionales. Tu primera operación está incluida.",
+        "Convierte las recetas, fotos, facturas, archivos de inventario e información de proveedores que ya tienes en costeo preciso, visibilidad operacional y compras más inteligentes.",
+      reassuranceLine: "Comienza con una ubicación. Agrega operaciones conectadas a medida que creces.",
+      benefitStrip: [
+        {
+          title: "Captura en vez de redigitar",
+          body: "Convierte recetas escritas a mano, menús, facturas, etiquetas y hojas de cálculo en registros estructurados.",
+        },
+        {
+          title: "Costea con información actual",
+          body: "Conecta recetas con precios de proveedores, rendimientos, porciones y costo teórico de alimentos.",
+        },
+        {
+          title: "Sabe qué comprar",
+          body: "Compara proveedores y prepara pedidos predictivos usando inventario y ventas.",
+        },
+        {
+          title: "Mantén la cocina en movimiento",
+          body: "Trabaja desde el teléfono mientras mantienes los datos estructurados que el liderazgo necesita.",
+        },
+      ],
       monthly: "Mensual",
       annual: "Anual",
       annualSavings: "Ahorra ~14%",
       platform: {
         label: "Plataforma FnB Cost Pro",
-        tagline: "El sistema completo de operaciones culinarias para restaurantes liderados por chefs y equipos de A&B.",
-        firstLocation: "Primera operación incluida",
+        tagline: "Una plataforma completa de operaciones culinarias para restaurantes liderados por chefs y equipos de A&B.",
+        firstLocation: "UNA UBICACIÓN. CADA CAPACIDAD CENTRAL.",
         from: "desde",
         monthlyPrice: "$149",
         annualPrice: "$129",
         perMonth: "/mes",
         perMonthAnnual: "/mes, facturado anualmente",
-        cta: "Agendar una Revisión Culinaria",
-        ctaNote: "Chefs independientes y grupos más pequeños — pregunta sobre precios de inicio transparentes cuando te conectes.",
+        cta: "Empieza Con Tu Información",
+        ctaNote: "Usa un menú, receta escrita a mano, factura, hoja de inventario o archivo de proveedor.",
+        viewAll: "Ver todo lo incluido",
+        outcomeGroups: [
+          {
+            title: "Captura sin redigitar",
+            body: "Menús, recetas escritas a mano, facturas, hojas de inventario, etiquetas de productos y archivos de proveedores.",
+          },
+          {
+            title: "Costeo y control",
+            body: "Costeo de recetas, rendimientos, costo teórico de alimentos, inventario y visibilidad de varianza.",
+          },
+          {
+            title: "Compra inteligentemente",
+            body: "Precios de proveedores, comparaciones normalizadas, guías de pedidos y pedidos predictivos.",
+          },
+          {
+            title: "Trabaja en toda la cocina",
+            body: "Flujos de trabajo móviles, ubicaciones de almacenamiento, herramientas de preparación y conteo de inventario.",
+          },
+          {
+            title: "Conecta la operación",
+            body: "Importaciones POS, integraciones contables, conectividad con proveedores y reportes.",
+          },
+        ],
         features: [
           "Escaneo de menú — extrae nombres de platillos, secciones y precios desde una foto",
           "Escaneo de recetas — fotografía tarjetas de recetas y obtén recetas con costos al instante",
@@ -903,7 +987,7 @@ export const translations = {
           tagline: "Cada operación adicional obtiene acceso completo a la plataforma más capacidades entre ubicaciones.",
           monthlyPrice: "$149/mes",
           annualPrice: "$129/mes, facturado anualmente",
-          cta: "Preguntar sobre múltiples ubicaciones",
+          cta: "Agrega Ubicaciones a Medida que Creces",
           features: [
             "Acceso completo a la plataforma por ubicación",
             "Reportes de varianza entre ubicaciones",
@@ -916,7 +1000,7 @@ export const translations = {
           label: "Implementación Guiada",
           tagline: "Incorporación estructurada, migración de datos, configuración y capacitación del equipo — contigo, no delegado.",
           price: "Compromiso único",
-          cta: "Agendar una Revisión Culinaria",
+          cta: "Habla Sobre Tu Configuración",
           features: [
             "Configuración de cuenta e inicio",
             "Migración de menú, recetas e inventario",
@@ -929,7 +1013,7 @@ export const translations = {
           label: "Operaciones Enterprise",
           tagline: "Para clubes, resorts, hoteles y entornos multi-sucursal complejos que necesitan alcance y precios personalizados.",
           price: "Alcance y precios personalizados",
-          cta: "Agendar una Revisión Culinaria",
+          cta: "Agendar una Revisión Operacional",
           features: [
             "Alcance y configuración operacional personalizada",
             "Jerarquía multi-marca o multi-sucursal",
@@ -970,9 +1054,9 @@ export const translations = {
           a: "Sí. La suscripción de la plataforma incluye tu primera operación. A medida que tu operación crece, se agregan ubicaciones adicionales a la suscripción a la tarifa por ubicación. Conéctate con nuestro equipo cuando estés listo para expandirte.",
         },
       ],
-      ctaTitle: "¿Listo para ver cómo funciona en tu cocina?",
-      ctaBody: "Conéctate con nuestro equipo. Revisaremos tu operación actual, responderemos tus preguntas y confirmaremos si FnB Cost Pro es la opción correcta — antes de que te comprometas con algo.",
-      ctaButton: "Agendar una Revisión Culinaria",
+      ctaTitle: "Tu cocina ya tiene los datos. FnB Cost Pro los pone a trabajar.",
+      ctaBody: "Comienza con un menú, receta, factura, exportación de inventario o archivo de proveedor. Te mostraremos cómo FnB Cost Pro los convierte en una base operacional conectada.",
+      ctaButton: "Vélo Con Tu Información",
     },
     about: {
       meta: {

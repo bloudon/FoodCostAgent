@@ -1,0 +1,225 @@
+You’re right. **“First operation included” is billing language, not buying language.** It makes the main card feel like a feature inventory instead of a premium promise.
+
+The pricing page should first answer:
+
+> **What becomes easier for me the moment I start using FnB Cost Pro?**
+
+Then explain what is included.
+
+## Replace the card eyebrow
+
+Current:
+
+> FIRST OPERATION INCLUDED
+
+Recommended:
+
+> **THE COMPLETE PLATFORM FOR ONE LOCATION**
+
+Or, more benefit-led:
+
+> **FROM KITCHEN INPUTS TO OPERATIONAL DATA**
+
+My preference is:
+
+> **ONE LOCATION. EVERY CORE CAPABILITY.**
+
+That reinforces the simplified offer without sounding administrative.
+
+## Add a benefit header above the pricing card
+
+Place a three- or four-part benefit strip between the hero and the pricing toggle/card:
+
+### Start with what you already have
+
+**Capture instead of retype**
+Turn handwritten recipes, menus, invoices, labels, and spreadsheets into structured records.
+
+**Cost with current information**
+Connect recipes to vendor pricing, yields, portions, and theoretical food cost.
+
+**Know what to buy**
+Compare vendors and prepare predictive orders using inventory and sales.
+
+**Keep the kitchen moving**
+Work from a phone while maintaining the structured data leadership needs.
+
+This gives the visitor a reason to care before presenting the price.
+
+A tighter version for the visual layout:
+
+> **Photograph it. Review it. Put it to work.**
+
+With three supporting columns:
+
+* **Capture kitchen data**
+* **Understand cost and margin**
+* **Prepare smarter purchasing**
+
+## Simplify the main pricing card
+
+The current long feature list is too detailed for the main decision point. It causes the customer to inspect checkboxes instead of understanding the offer.
+
+### Recommended card structure
+
+**Eyebrow**
+
+> ONE LOCATION. EVERY CORE CAPABILITY.
+
+**Title**
+
+> FnB Cost Pro Platform
+
+**Description**
+
+> A complete culinary operations platform for chef-led restaurants and food-and-beverage teams.
+
+**Price**
+
+> $149/month
+
+Then show five outcome groups rather than fifteen feature bullets:
+
+### Capture without retyping
+
+Menus, handwritten recipes, invoices, inventory sheets, product labels, and vendor files.
+
+### Cost and control
+
+Recipe costing, yields, theoretical food cost, inventory, and variance visibility.
+
+### Purchase intelligently
+
+Vendor pricing, normalized comparisons, order guides, and predictive ordering.
+
+### Work across the kitchen
+
+Phone-first workflows, storage locations, prep tools, and inventory counting.
+
+### Connect the operation
+
+POS imports, accounting integrations, vendor connectivity, and reporting.
+
+Then provide a smaller link:
+
+> View everything included
+
+That can expand the detailed feature list or move the visitor to the Platform page.
+
+## Improve the primary CTA
+
+Current:
+
+> Schedule a Culinary Review
+
+That is good for Enterprise and complex prospects, but it may feel like too much commitment for a single-location buyer viewing transparent pricing.
+
+The main card needs a CTA closer to the buying stage.
+
+### Best option if checkout is ready
+
+> **Start Your 14-Day Trial**
+
+Supporting line:
+
+> Full platform access. Guided setup available.
+
+### Best option if you still want qualification before access
+
+> **See FnB Cost Pro With Your Data**
+
+Supporting line:
+
+> Bring a menu, recipe, invoice, or inventory file and see how it becomes structured operational data.
+
+That is much more compelling than a generic meeting. It connects directly to your strongest differentiator.
+
+### Best premium consultative option
+
+> **See How Your Kitchen Would Work**
+
+This is warmer and more concrete than “Schedule a Culinary Review.”
+
+My recommended CTA hierarchy:
+
+* Main Platform card: **Start With Your Data**
+* Additional Locations: **Add Locations as You Grow**
+* Guided Implementation: **Discuss Your Setup**
+* Enterprise: **Schedule an Operational Review**
+
+## Strong replacement for the main card CTA area
+
+> **See FnB Cost Pro work with the information you already have.**
+
+Button:
+
+> **Start With Your Data**
+
+Microcopy:
+
+> Use a menu, handwritten recipe, invoice, inventory sheet, or vendor file.
+
+That turns the CTA from “book time with us” into a tangible promise.
+
+## Reframe the page hero slightly
+
+Current hero copy is accurate but begins like a product inventory:
+
+> “A single platform subscription — vendor connectivity, live recipe costing…”
+
+The hero should carry the benefit, while the pricing card explains the components.
+
+### Recommended hero
+
+**Eyebrow**
+
+> ONE PLATFORM. EVERY CORE CAPABILITY.
+
+**Headline**
+
+> **Built for the way chefs work.**
+
+**Supporting copy**
+
+> Turn the recipes, photos, invoices, inventory files, and vendor information you already have into accurate costing, operational visibility, and smarter purchasing.
+
+**Reassurance line**
+
+> Start with one location. Add connected operations as you grow.
+
+This introduces the commercial model without leading with billing mechanics.
+
+## Revised page flow
+
+1. Hero: premium promise
+2. Benefit strip: Capture → Cost → Purchase → Control
+3. Billing toggle
+4. Main Platform pricing card
+5. Additional Locations / Guided Implementation / Enterprise
+6. Detailed included-capabilities accordion
+7. FAQs
+8. Final CTA using their data
+
+## Recommended final CTA at the bottom
+
+**Headline**
+
+> **Your kitchen already has the data. FnB Cost Pro puts it to work.**
+
+**Copy**
+
+> Start with a menu, recipe, invoice, inventory export, or vendor file. We’ll show you how FnB Cost Pro turns it into a connected operating foundation.
+
+**Button**
+
+> **See It With Your Data**
+
+That is the strongest CTA for the current positioning because it combines:
+
+* low data-entry friction
+* phone and image capture
+* guided onboarding
+* structured data quality
+* immediate proof rather than abstract promises
+
+The pricing page should sell **the transformation first, the complete platform second, and the feature inventory last.**
