@@ -618,6 +618,85 @@ describe('approve re-upload idempotency — find-or-create logic', () => {
     expect(storeItemsCreated).toBe(0);
   });
 
+  /**
+   * Recipe-link survival test.
+   *
+   * The approve route uses onConflictDoNothing for menu_items inserts.
+   * When the same file is re-approved, items that already exist are looked up
+   * by pluSku and their existing DB row is reused — no INSERT is attempted.
+   * This means a recipeId set after the first import must not be overwritten.
+   *
+   * This in-memory simulation mirrors the route's step-4 logic:
+   *   existingByCode lookup → use existing id   (no write to the row)
+   *   missing code          → INSERT (onConflictDoNothing)
+   */
+  it('recipe link on a menu item survives a re-import of the same file', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+
+    // Build the deduplicated list of QAC codes (same logic as the route).
+    const seenCodes = new Set<string>();
+    const uniqueCodes: string[] = [];
+    for (const row of parsed.rows) {
+      if (!seenCodes.has(row.code)) {
+        seenCodes.add(row.code);
+        uniqueCodes.push(row.code);
+      }
+    }
+
+    // ── In-memory DB table: pluSku → { id, recipeId } ─────────────────────────
+    type ItemRow = { id: string; recipeId: string | null };
+    const itemTable = new Map<string, ItemRow>(); // keyed by pluSku
+
+    /**
+     * Simulates the route's step-4 find-or-create inside the approve transaction.
+     * Returns the id map that the route uses for subsequent steps.
+     */
+    function simulateApproveStep4(codes: string[]): Map<string, string> {
+      const menuItemIdMap = new Map<string, string>(); // QAC → id
+      for (const code of codes) {
+        const existing = itemTable.get(code);
+        if (existing) {
+          // Route takes the early-exit path: use existing id, no INSERT.
+          menuItemIdMap.set(code, existing.id);
+        } else {
+          // Route INSERT … onConflictDoNothing.
+          const newId = `item-${itemTable.size + 1}`;
+          itemTable.set(code, { id: newId, recipeId: null });
+          menuItemIdMap.set(code, newId);
+        }
+      }
+      return menuItemIdMap;
+    }
+
+    // ── First approve: all items are new → created with recipeId = null ────────
+    simulateApproveStep4(uniqueCodes);
+    expect(itemTable.size).toBe(uniqueCodes.length);
+
+    // ── Link a recipe to the first item (simulates bulk-link-recipes route) ────
+    const firstCode = uniqueCodes[0];
+    const firstItemRow = itemTable.get(firstCode)!;
+    const linkedRecipeId = 'recipe-abc-123';
+    itemTable.set(firstCode, { ...firstItemRow, recipeId: linkedRecipeId });
+
+    expect(itemTable.get(firstCode)?.recipeId).toBe(linkedRecipeId);
+
+    // ── Second approve with the same file ──────────────────────────────────────
+    // All codes already exist → step-4 takes the existing-id path for every code.
+    // The itemTable rows must not be mutated (no INSERT, no UPDATE).
+    simulateApproveStep4(uniqueCodes);
+
+    // Recipe link on the first item must be intact.
+    expect(itemTable.get(firstCode)?.recipeId).toBe(linkedRecipeId);
+
+    // No new rows must have been created.
+    expect(itemTable.size).toBe(uniqueCodes.length);
+
+    // All other items must still have recipeId = null (not accidentally modified).
+    for (const code of uniqueCodes.slice(1)) {
+      expect(itemTable.get(code)?.recipeId).toBeNull();
+    }
+  });
+
   it('duplicate QAC codes within the same report do not create duplicate items', () => {
     const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
 
