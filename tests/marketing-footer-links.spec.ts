@@ -136,6 +136,52 @@ test.describe('Marketing footer link navigation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Get Started column links navigate correctly
+//
+// These two <Link> elements share their destinations with the Company column
+// ("Contact" and "Pricing"), so we scope each lookup to the sibling <div>
+// whose <h4> reads "Get Started" to avoid ambiguity.
+// ---------------------------------------------------------------------------
+
+test.describe('Marketing footer Get Started column links', () => {
+  test('footer Get Started "Schedule a Culinary Review" link → /contact', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/for-chefs');
+
+    // Scope to the footer section whose heading is "Get Started"
+    const footer = page.locator('footer');
+    const getStartedSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Get Started' }) });
+
+    const link = getStartedSection.getByRole('link', { name: 'Schedule a Culinary Review', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/contact$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('Schedule a Culinary Review', { timeout: 10000 });
+  });
+
+  test('footer Get Started "View Pricing" link → /pricing', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/for-chefs');
+
+    // Scope to the footer section whose heading is "Get Started"
+    const footer = page.locator('footer');
+    const getStartedSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Get Started' }) });
+
+    const link = getStartedSection.getByRole('link', { name: 'View Pricing', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/pricing$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('Built for the way chefs work', { timeout: 10000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite: footer links produce a URL change (not a scroll-to-top no-op)
 // ---------------------------------------------------------------------------
 
