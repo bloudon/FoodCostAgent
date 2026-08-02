@@ -1,0 +1,30 @@
+
+administrator@vps-BLOUD-Soft:~$ sudo ls /etc/nginx/sites-available/
+app.fnbcostpro.com  erecording-fl  fnbcostpro  fnbcostpro.com  kayeflooring.com.conf  permitflow  tk5-bld
+administrator@vps-BLOUD-Soft:~$ grep -A5 "server_name\|root " /etc/nginx/sites-available/fnbcostpro /etc/nginx/sites-available/fnbcostpro.com
+grep: /etc/nginx/sites-available/fnbcostpro: Permission denied
+grep: /etc/nginx/sites-available/fnbcostpro.com: Permission denied
+administrator@vps-BLOUD-Soft:~$ sudo grep -A5 "server_name\|root " /etc/nginx/sites-available/fnbcostpro /etc/nginx/sites-available/fnbcostpro.com
+/etc/nginx/sites-available/fnbcostpro:    server_name app.fnbcostpro.com;
+/etc/nginx/sites-available/fnbcostpro-    return 301 https://$host$request_uri;
+/etc/nginx/sites-available/fnbcostpro-}
+/etc/nginx/sites-available/fnbcostpro-
+/etc/nginx/sites-available/fnbcostpro-server {
+/etc/nginx/sites-available/fnbcostpro-    listen 443 ssl;
+/etc/nginx/sites-available/fnbcostpro:    server_name app.fnbcostpro.com;
+/etc/nginx/sites-available/fnbcostpro-
+/etc/nginx/sites-available/fnbcostpro-    ssl_certificate /etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem;
+/etc/nginx/sites-available/fnbcostpro-    ssl_certificate_key /etc/letsencrypt/live/app.fnbcostpro.com/privkey.pem;
+/etc/nginx/sites-available/fnbcostpro-
+/etc/nginx/sites-available/fnbcostpro-    location / {
+--
+/etc/nginx/sites-available/fnbcostpro.com:    server_name fnbcostpro.com;
+/etc/nginx/sites-available/fnbcostpro.com-
+/etc/nginx/sites-available/fnbcostpro.com-    location / {
+/etc/nginx/sites-available/fnbcostpro.com-        proxy_pass http://localhost:3004;
+/etc/nginx/sites-available/fnbcostpro.com-        proxy_http_version 1.1;
+/etc/nginx/sites-available/fnbcostpro.com-        proxy_set_header Host $host;
+--
+/etc/nginx/sites-available/fnbcostpro.com:    server_name fnbcostpro.com;
+/etc/nginx/sites-available/fnbcostpro.com-    return 404; # managed by Certbot
+/etc/nginx/sites-available/fnbcostpro.com-}
