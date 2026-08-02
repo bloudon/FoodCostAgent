@@ -2,6 +2,22 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.13.0] — 2026-08-02
+
+### Item Catalog
+
+- **Duplicate-item finder and merge tool** — new catalog tool surfaces items that share a name, barcode, or vendor code. Managers can review flagged pairs side-by-side and merge them: recipe links, order guide entries, and transaction history are re-pointed to the surviving item before the duplicate is removed.
+
+### Reports
+
+- **Scheduled reporting hub** — new Reports section (manager+ roles) with a landing hub, a `ReportViewer` for on-demand runs, and a `ScheduledReportsPage` for managing subscriptions. Three report types ship at launch: **Recipe Cost** (ingredient cost per portion across all recipes), **Inventory Value** (on-hand quantity × unit cost by store and category), and **Purchase Activity** (completed receipts aggregated by PO). All reports export to `.xlsx`.
+- **Email delivery** — scheduled subscriptions deliver reports as `.xlsx` attachments via the existing SMTP2GO transport. Recipient lists, cadence (daily/weekly/monthly), and store scope are configurable per subscription. The scheduler runs on startup with catch-up logic and hot-reloads after any CRUD write.
+- **Store-scope enforcement** — `store_manager` users can only create subscriptions and run reports for their assigned locations. Accessible store IDs are persisted in the subscription record so the scheduler enforces scope at execution time without a live user session.
+- **Run-now button** — managers can trigger any scheduled subscription to send immediately from the `ScheduledReportsPage` without waiting for the next scheduled run. A delivery confirmation toast confirms the send completed.
+- **Email misconfiguration guard** — report delivery now validates the SMTP transport is reachable before attempting to send. Misconfigured or unreachable mail service surfaces a clear error in the subscription run log instead of silently dropping recipients.
+
+---
+
 ## [1.12.1] — 2026-08-01
 
 ### Billing & Account
