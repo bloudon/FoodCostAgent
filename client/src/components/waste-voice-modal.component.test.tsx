@@ -101,6 +101,7 @@ function makeMediaRecorderMock() {
     state = "recording";
     ondataavailable: ((e: any) => void) | null = null;
     onstop: (() => void) | null = null;
+    onerror: ((e: Event) => void) | null = null;
 
     constructor(_stream: MediaStream, _opts?: any) {
       instanceRef.current = this;
@@ -254,6 +255,58 @@ describe("WasteVoiceModal — MediaRecorder not supported by browser", () => {
         screen.getByText(/does not support audio recording/i),
       ).toBeDefined();
     });
+  });
+});
+
+// ─── 5. MediaRecorder onerror event mid-recording ────────────────────────────
+
+describe("WasteVoiceModal — MediaRecorder onerror fired mid-recording", () => {
+  it("transitions to the error stage with a user-readable message when onerror fires", async () => {
+    const mockStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+
+    vi.stubGlobal("navigator", {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue(mockStream),
+      },
+    });
+
+    const { instanceRef, Ctor } = makeMediaRecorderMock();
+    vi.stubGlobal("MediaRecorder", Ctor);
+
+    renderModal();
+
+    // Start recording
+    await act(async () => {
+      fireEvent.click(screen.getByText(/start recording/i));
+    });
+
+    // Wait for the recorder instance to be created
+    await waitFor(() => {
+      expect(instanceRef.current).not.toBeNull();
+    });
+
+    // Confirm we are in the recording stage
+    await waitFor(() => {
+      expect(screen.getByText(/stop recording/i)).toBeDefined();
+    });
+
+    // Fire the onerror event (simulates OS revoking mic access, device disconnect, etc.)
+    await act(async () => {
+      instanceRef.current?.onerror?.(new Event("error"));
+    });
+
+    // UI must move to the error stage
+    await waitFor(() => {
+      expect(screen.getByText(/microphone stopped unexpectedly/i)).toBeDefined();
+    });
+
+    // No recording-stage UI should remain
+    expect(screen.queryByText(/stop recording/i)).toBeNull();
+
+    // A "Try again" button must be present for recovery
+    expect(screen.getByText(/try again/i)).toBeDefined();
   });
 });
 

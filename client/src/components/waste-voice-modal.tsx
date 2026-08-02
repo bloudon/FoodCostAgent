@@ -291,6 +291,17 @@ export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry, onIn
       processAudio(new Blob(chunksRef.current, { type: mimeType }));
     };
 
+    recorder.onerror = (_event: Event) => {
+      stopTracks();
+      recorderRef.current = null;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setStage("error");
+      setErrorMessage("The microphone stopped unexpectedly. Please try recording again.");
+    };
+
     recorder.start(250); // collect chunks every 250ms
     setStage("recording");
     setElapsedSecs(0);
