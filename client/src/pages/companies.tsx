@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
   ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
-  Pencil, Smartphone, DatabaseBackup, DollarSign,
+  Pencil, Smartphone, DatabaseBackup, DollarSign, Search, X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,8 +123,9 @@ export default function Companies() {
   const { toast } = useToast();
   const [isNewCompanyDialogOpen, setIsNewCompanyDialogOpen] = useState(false);
   const [incompleteSignupsExpanded, setIncompleteSignupsExpanded] = useState(true);
-  const [qbConnectionsExpanded, setQbConnectionsExpanded] = useState(false);
+  const [qbDetailsOpen, setQbDetailsOpen] = useState(false);
   const [chatLogsExpanded, setChatLogsExpanded] = useState(false);
+  const [companySearch, setCompanySearch] = useState("");
   const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
   const [chatLogCompanyFilter, setChatLogCompanyFilter] = useState<string>("all");
   const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
@@ -142,7 +143,6 @@ export default function Companies() {
 
   const qbConnectionsQuery = useQuery<QbConnectionStatus[]>({
     queryKey: ["/api/admin/quickbooks/connections"],
-    enabled: qbConnectionsExpanded,
   });
 
   const qbDisconnectMutation = useMutation({
@@ -493,7 +493,7 @@ export default function Companies() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         <StatCard
           icon={<Building2 className="h-5 w-5 text-primary" />}
           label="Companies"
@@ -509,16 +509,18 @@ export default function Companies() {
         />
         <StatCard
           icon={<Users className="h-5 w-5 text-primary" />}
-          label="Active Users"
+          label="Users"
           value={adminStats?.activeUsers ?? "—"}
           testId="card-stat-active-users"
           onClick={() => setLocation("/admin/users")}
-        />
-        <StatCard
-          icon={<Activity className="h-5 w-5 text-green-500" />}
-          label="Active Now (30m)"
-          value={adminStats?.activeSessions ?? "—"}
-          testId="card-stat-active-sessions"
+          subtitle={
+            adminStats?.activeSessions != null ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                <Activity className="h-3 w-3" />
+                {adminStats.activeSessions} active now
+              </span>
+            ) : undefined
+          }
         />
         <StatCard
           icon={<Smartphone className="h-5 w-5 text-blue-500" />}
@@ -693,136 +695,175 @@ export default function Companies() {
       {/* Admin panels: AI Chat (left) + QuickBooks (right) on desktop */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 items-start">
 
-        {/* Right column on desktop: QuickBooks cards stacked */}
+        {/* Right column on desktop: QuickBooks summary card */}
         <div className="flex flex-col gap-4 md:order-2">
 
-        {/* QuickBooks App Configuration */}
-        <Card data-testid="card-qb-app-status">
-        <CardHeader className="pb-3 flex flex-row items-center gap-2">
-          <DollarSign className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle className="text-base">QuickBooks App Configuration</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {qbAppStatusQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Checking...</p>
-          ) : qbAppStatusQuery.data?.data ? (
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                {qbAppStatusQuery.data.data.hasClientId ? (
-                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-destructive" />
-                )}
-                <span className="text-muted-foreground">Client ID</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {qbAppStatusQuery.data.data.hasClientSecret ? (
-                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
-                ) : (
-                  <XCircle className="h-4 w-4 text-destructive" />
-                )}
-                <span className="text-muted-foreground">Client Secret</span>
-              </div>
-              <div className="flex items-center gap-2">
+        {/* QuickBooks — single summary card */}
+        <Card data-testid="card-qb-summary">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">QuickBooks</CardTitle>
+              {qbConnectionsQuery.data && (
+                <Badge variant="secondary" className="text-xs" data-testid="badge-qb-connected-count">
+                  {qbConnectionsQuery.data.filter(c => c.connected).length} connected
+                </Badge>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setQbDetailsOpen(true)}
+              data-testid="button-view-qb-details"
+            >
+              View details
+            </Button>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {qbAppStatusQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Checking...</p>
+            ) : qbAppStatusQuery.data?.data ? (
+              <div className="flex flex-wrap gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  {qbAppStatusQuery.data.data.hasClientId ? (
+                    <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                  <span className="text-muted-foreground">Client ID</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {qbAppStatusQuery.data.data.hasClientSecret ? (
+                    <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-destructive" />
+                  )}
+                  <span className="text-muted-foreground">Client Secret</span>
+                </div>
                 <Badge variant="outline" className="text-xs capitalize" data-testid="badge-qb-environment">
                   {qbAppStatusQuery.data.data.environment}
                 </Badge>
+                {!qbAppStatusQuery.data.data.configured && (
+                  <p className="w-full text-xs text-destructive mt-1">
+                    Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET to enable QB OAuth.
+                  </p>
+                )}
               </div>
-              {!qbAppStatusQuery.data.data.configured && (
-                <p className="w-full text-xs text-destructive mt-1">
-                  Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in the server environment to enable QB OAuth.
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Unable to load QB app configuration.</p>
-          )}
-        </CardContent>
-      </Card>
-
-        {/* QuickBooks Connections */}
-        <Card data-testid="card-qb-connections">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <CardTitle className="text-base">QuickBooks Connections</CardTitle>
-            {qbConnectionsQuery.data && (
-              <Badge variant="secondary" className="text-xs" data-testid="badge-qb-connected-count">
-                {qbConnectionsQuery.data.filter(c => c.connected).length} connected
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setQbConnectionsExpanded(v => !v)}
-            data-testid="button-toggle-qb-connections"
-            title={qbConnectionsExpanded ? "Collapse" : "Expand"}
-          >
-            {qbConnectionsExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </CardHeader>
-        {qbConnectionsExpanded && (
-          <CardContent className="p-0">
-            {qbConnectionsQuery.isLoading ? (
-              <div className="px-4 py-3 text-sm text-muted-foreground">Loading...</div>
-            ) : !qbConnectionsQuery.data?.length ? (
-              <div className="px-4 py-3 text-sm text-muted-foreground">No companies found.</div>
             ) : (
-              <div className="divide-y">
-                {qbConnectionsQuery.data.map(item => (
-                  <div
-                    key={item.companyId}
-                    className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap"
-                    data-testid={`row-qb-${item.companyId}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{item.companyName}</span>
-                        {item.connected ? (
-                          <Badge variant="outline" className="text-xs text-green-600 border-green-300 dark:border-green-700">
-                            Connected
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                            Not connected
-                          </Badge>
-                        )}
-                      </div>
-                      {item.connected && (
-                        <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
-                          <span>{item.connectionLevel === "company" ? "Company-wide" : "Store-specific"}</span>
-                          {item.expiresAt && (
-                            <span>Expires {new Date(item.expiresAt).toLocaleDateString()}</span>
-                          )}
-                          {item.lastSyncedAt && (
-                            <span>Last sync {formatAgo(item.lastSyncedAt)}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {item.connected && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => qbDisconnectMutation.mutate(item.companyId)}
-                          disabled={qbDisconnectMutation.isPending}
-                          data-testid={`button-qb-disconnect-${item.companyId}`}
-                        >
-                          Disconnect
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <p className="text-sm text-muted-foreground">Unable to load QB configuration.</p>
             )}
           </CardContent>
-        )}
-      </Card>
+        </Card>
+
+        {/* QuickBooks details modal */}
+        <Dialog open={qbDetailsOpen} onOpenChange={setQbDetailsOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-qb-details">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
+                QuickBooks Details
+              </DialogTitle>
+              <DialogDescription>App configuration and company connections</DialogDescription>
+            </DialogHeader>
+
+            {/* App config */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold mb-2">App Configuration</h3>
+                {qbAppStatusQuery.data?.data ? (
+                  <div className="flex flex-wrap gap-4 text-sm p-3 bg-muted/40 rounded-md">
+                    <div className="flex items-center gap-2">
+                      {qbAppStatusQuery.data.data.hasClientId ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-destructive" />
+                      )}
+                      <span className="text-muted-foreground">Client ID</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {qbAppStatusQuery.data.data.hasClientSecret ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-destructive" />
+                      )}
+                      <span className="text-muted-foreground">Client Secret</span>
+                    </div>
+                    <Badge variant="outline" className="text-xs capitalize">
+                      {qbAppStatusQuery.data.data.environment}
+                    </Badge>
+                    {!qbAppStatusQuery.data.data.configured && (
+                      <p className="w-full text-xs text-destructive mt-1">
+                        Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in the server environment to enable QB OAuth.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Unable to load QB configuration.</p>
+                )}
+              </div>
+
+              {/* Connections */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">Company Connections</h3>
+                {qbConnectionsQuery.isLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading...</div>
+                ) : !qbConnectionsQuery.data?.length ? (
+                  <div className="text-sm text-muted-foreground">No companies found.</div>
+                ) : (
+                  <div className="divide-y border rounded-md">
+                    {qbConnectionsQuery.data.map(item => (
+                      <div
+                        key={item.companyId}
+                        className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap"
+                        data-testid={`row-qb-${item.companyId}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{item.companyName}</span>
+                            {item.connected ? (
+                              <Badge variant="outline" className="text-xs text-green-600 border-green-300 dark:border-green-700">
+                                Connected
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                Not connected
+                              </Badge>
+                            )}
+                          </div>
+                          {item.connected && (
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                              <span>{item.connectionLevel === "company" ? "Company-wide" : "Store-specific"}</span>
+                              {item.expiresAt && (
+                                <span>Expires {new Date(item.expiresAt).toLocaleDateString()}</span>
+                              )}
+                              {item.lastSyncedAt && (
+                                <span>Last sync {formatAgo(item.lastSyncedAt)}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {item.connected && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => qbDisconnectMutation.mutate(item.companyId)}
+                              disabled={qbDisconnectMutation.isPending}
+                              data-testid={`button-qb-disconnect-${item.companyId}`}
+                            >
+                              Disconnect
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         </div>{/* end QB right column */}
 
         {/* Left column on desktop: AI Chat Logs */}
@@ -1098,15 +1139,44 @@ export default function Companies() {
       </div>{/* end admin panels grid */}
 
       {/* Companies list */}
-      <div className="mb-4 flex items-center gap-2">
-        <Building2 className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          All Companies
-        </h2>
+      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            All Companies
+          </h2>
+          {companySearch && (
+            <Badge variant="secondary" className="text-xs">
+              {companies?.filter(c => c.name.toLowerCase().includes(companySearch.toLowerCase())).length ?? 0} of {companies?.length ?? 0}
+            </Badge>
+          )}
+        </div>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search companies…"
+            value={companySearch}
+            onChange={e => setCompanySearch(e.target.value)}
+            className="pl-9 pr-8 h-8 text-sm"
+            data-testid="input-company-search"
+          />
+          {companySearch && (
+            <button
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setCompanySearch("")}
+              aria-label="Clear search"
+              data-testid="button-clear-company-search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
-        {companies?.map((company) => (
+        {companies?.filter(c =>
+          !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase())
+        ).map((company) => (
           <Card
             key={company.id}
             className="hover-elevate transition-all"
@@ -1302,6 +1372,19 @@ export default function Companies() {
           <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No companies found</h3>
           <p className="text-muted-foreground">No companies have been created yet.</p>
+        </div>
+      )}
+      {(companies?.length ?? 0) > 0 && companySearch &&
+        companies!.filter(c => c.name.toLowerCase().includes(companySearch.toLowerCase())).length === 0 && (
+        <div className="text-center py-12">
+          <Search className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <h3 className="text-base font-semibold mb-1">No matches for "{companySearch}"</h3>
+          <button
+            className="text-sm text-primary underline"
+            onClick={() => setCompanySearch("")}
+          >
+            Clear search
+          </button>
         </div>
       )}
     </div>
