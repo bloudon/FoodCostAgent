@@ -210,10 +210,10 @@ function WebsiteRouter() {
       <Route path="/es/industries/chef-led-restaurants" component={EsIndustryChefLed} />
       <Route path="/es/industries/restaurant-groups" component={EsIndustryGroups} />
       <Route path="/es/industries/clubs-resorts" component={EsIndustryClubs} />
-      <Route path="/privacy" component={WebsitePrivacy} />
-      <Route path="/terms" component={WebsiteTerms} />
-      <Route path="/es/privacy" component={WebsitePrivacy} />
-      <Route path="/es/terms" component={WebsiteTerms} />
+      <Route path="/privacy" component={withLang("en", WebsitePrivacy)} />
+      <Route path="/terms" component={withLang("en", WebsiteTerms)} />
+      <Route path="/es/privacy" component={withLang("es", WebsitePrivacy)} />
+      <Route path="/es/terms" component={withLang("es", WebsiteTerms)} />
       <Route path="/enterprise-inquiry" component={EnterpriseInquiry} />
       <Route path="/enterprise-onboarding" component={EnterpriseOnboarding} />
       <Route path="/login" component={Login} />
