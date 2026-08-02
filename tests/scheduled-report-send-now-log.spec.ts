@@ -197,6 +197,120 @@ test.describe('Scheduled report — Send now log entry', () => {
     await expect(page.getByText(/Report queued/i)).toBeVisible({ timeout: 10_000 });
   });
 
+  test('500 from run endpoint shows error toast and does not open the logs panel', async ({ page }) => {
+    // Auth stub
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'test-user-845',
+          email: 'admin@brians.pizza',
+          companyId: COMPANY_ID,
+          companyName: "Brian's Pizza",
+          role: 'company_admin',
+          firstName: 'Test',
+          lastName: 'Admin',
+          active: 1,
+          subscriptionPlan: 'platform',
+        }),
+      }),
+    );
+
+    // One active subscription
+    await page.route('**/api/report-subscriptions', (route) => {
+      if (route.request().method() !== 'GET') return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: SUB_ID,
+            name: 'Weekly Recipe Cost',
+            report_type: 'recipe_cost',
+            schedule_frequency: 'weekly',
+            schedule_hour: 8,
+            email_recipients: ['owner@brians.pizza'],
+            is_active: 1,
+            last_run_at: null,
+            filters: {},
+          },
+        ]),
+      });
+    });
+
+    // "Send now" returns 500
+    await page.route(`**/api/report-subscriptions/${SUB_ID}/run`, (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      return route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Internal server error' }),
+      });
+    });
+
+    // Track whether the logs endpoint is ever called (it must NOT be)
+    let logsEndpointCalled = false;
+    await page.route(`**/api/report-subscriptions/${SUB_ID}/logs`, (route) => {
+      logsEndpointCalled = true;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+    });
+
+    // Shell stubs
+    await page.route('**/api/accessible-stores', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+    await page.route('**/api/stores', (route) => {
+      if (!route.request().url().includes('/api/stores/')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      }
+      return route.continue();
+    });
+    await page.route('**/api/system-preferences', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          unitSystem: 'imperial',
+          currency: 'USD',
+          timezone: 'America/Chicago',
+          posSystem: null,
+          posApiKey: null,
+        }),
+      }),
+    );
+    await page.route('**/api/onboarding/milestones', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ dismissed: true, milestones: [] }),
+      }),
+    );
+    await page.route('**/api/categories', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto(`${BASE_URL}/reports/scheduled`);
+    await expect(page.getByText('Weekly Recipe Cost')).toBeVisible({ timeout: 15_000 });
+
+    // Click "Send now" — the run endpoint will return 500
+    await page.getByTitle('Send now').click();
+
+    // An error toast must appear (match the toast title text exactly)
+    await expect(page.getByText('Error', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+
+    // The logs panel must NOT open
+    await expect(page.getByText(/Run log/i)).not.toBeVisible({ timeout: 3_000 });
+
+    // Wait a moment to confirm polling did not start (logs endpoint not called)
+    await page.waitForTimeout(3_000);
+    expect(logsEndpointCalled).toBe(false);
+  });
+
   test('closing the logs panel mid-poll clears the 15s timer and closes cleanly', async ({ page }) => {
     // Override the logs route to return an empty array so no entry ever appears
     // (simulates the report still processing when the user closes the panel)
