@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -67,6 +67,11 @@ export default function ScheduledReportsPage() {
   const [logsFor, setLogsFor] = useState<Sub | null>(null);
   const [form, setForm] = useState({ ...defaultForm });
 
+  // Polling state: auto-refresh the logs panel for up to 15s after a "Send now" trigger
+  const [polling, setPolling] = useState(false);
+  const triggerTime = useRef<Date | null>(null);
+  const pollingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { data: subs = [], isLoading } = useQuery<Sub[]>({
     queryKey: ["/api/report-subscriptions"],
   });
@@ -74,7 +79,30 @@ export default function ScheduledReportsPage() {
   const { data: logs = [], isLoading: logsLoading } = useQuery<Log[]>({
     queryKey: [`/api/report-subscriptions/${logsFor?.id}/logs`],
     enabled: !!logsFor,
+    refetchInterval: polling ? 2000 : false,
   });
+
+  // Stop polling once a log entry triggered AFTER our send time appears
+  useEffect(() => {
+    if (!polling || !triggerTime.current) return;
+    const hasNewEntry = logs.some(
+      log => new Date(log.triggered_at) > triggerTime.current!
+    );
+    if (hasNewEntry) {
+      setPolling(false);
+      if (pollingTimer.current) {
+        clearTimeout(pollingTimer.current);
+        pollingTimer.current = null;
+      }
+    }
+  }, [logs, polling]);
+
+  // Clean up the timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingTimer.current) clearTimeout(pollingTimer.current);
+    };
+  }, []);
 
   const createMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", "/api/report-subscriptions", body),
@@ -113,6 +141,22 @@ export default function ScheduledReportsPage() {
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["/api/report-subscriptions"] });
       queryClient.invalidateQueries({ queryKey: [`/api/report-subscriptions/${id}/logs`] });
+
+      // Open the logs panel for this subscription and start polling for up to 15s
+      const sub = subs.find(s => s.id === id) ?? null;
+      if (sub) {
+        // Record the trigger time so we only stop polling when a genuinely new entry appears
+        triggerTime.current = new Date();
+        setLogsFor(sub);
+        setPolling(true);
+        // Guaranteed 15s hard cutoff via explicit timer
+        if (pollingTimer.current) clearTimeout(pollingTimer.current);
+        pollingTimer.current = setTimeout(() => {
+          setPolling(false);
+          pollingTimer.current = null;
+        }, 15_000);
+      }
+
       toast({ title: "Report queued", description: "The report is being sent now." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
