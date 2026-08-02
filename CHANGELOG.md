@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.3] — 2026-08-02
+
+### Mobile
+
+- **Fix: recipe detail pages no longer 404 in the app** — `/recipes/:id`, `/recipes/:id/edit`, and `/recipes/new` were missing from the embedded router whitelist. All three are now registered so tapping into a recipe from the list opens the detail view correctly.
+
+---
+
 ## [1.14.2] — 2026-08-02
 
 ### Mobile

@@ -528,6 +528,9 @@ function ProtectedLayoutContent() {
           {/* Quick Access tiles — mobile dashboard shortcuts */}
           <Route path="/inventory-items" component={InventoryItems} />
           <Route path="/inventory-items/:id" component={InventoryItemDetail} />
+          <Route path="/recipes/new" component={RecipeBuilder} />
+          <Route path="/recipes/:id/edit" component={RecipeBuilder} />
+          <Route path="/recipes/:id" component={RecipeDetail} />
           <Route path="/recipes" component={Recipes} />
           <Route path="/shelf-scans" component={ShelfScans} />
           <Route path="/tfc/variance" component={TfcVariance} />
