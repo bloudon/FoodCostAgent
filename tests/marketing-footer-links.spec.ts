@@ -182,6 +182,52 @@ test.describe('Marketing footer Get Started column links', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Spanish footer Get Started column links navigate correctly
+//
+// The Spanish footer renders the Get Started column with the heading
+// "Comenzar". The two action links use translated labels and point to
+// /es/contact and /es/pricing respectively.
+// ---------------------------------------------------------------------------
+
+test.describe('Spanish footer Get Started column links', () => {
+  test('Spanish footer Get Started "Agendar una Revisión Culinaria" link → /es/contact', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/es/for-chefs');
+
+    // Scope to the footer section whose heading is "Comenzar" (Spanish "Get Started")
+    const footer = page.locator('footer');
+    const getStartedSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Comenzar' }) });
+
+    const link = getStartedSection.getByRole('link', { name: 'Agendar una Revisión Culinaria', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/es/contact$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('Agendar una Revisión Culinaria', { timeout: 10000 });
+  });
+
+  test('Spanish footer Get Started "Ver precios" link → /es/pricing', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/es/for-chefs');
+
+    // Scope to the footer section whose heading is "Comenzar" (Spanish "Get Started")
+    const footer = page.locator('footer');
+    const getStartedSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Comenzar' }) });
+
+    const link = getStartedSection.getByRole('link', { name: 'Ver precios', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/es/pricing$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('Construida para la forma en que los chefs trabajan', { timeout: 10000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite: footer links produce a URL change (not a scroll-to-top no-op)
 // ---------------------------------------------------------------------------
 
