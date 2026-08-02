@@ -107,6 +107,8 @@ export default function WasteEntry() {
   } | null>(null);
   
   const [voiceFailuresOpen, setVoiceFailuresOpen] = useState(false);
+  /** True once the modal has delivered at least one batch of entries in this session. */
+  const voiceSessionOccurredRef = useRef(false);
 
   // Date filter state - default to last 7 days
   const defaultEndDate = useMemo(() => {
@@ -1259,9 +1261,16 @@ export default function WasteEntry() {
       {/* ── Voice Entry Modal ──────────────────────────────────────────────── */}
       <WasteVoiceModal
         open={voiceModalOpen}
-        onOpenChange={setVoiceModalOpen}
+        onOpenChange={(open) => {
+          setVoiceModalOpen(open);
+          if (!open && voiceSessionOccurredRef.current) {
+            voiceSessionOccurredRef.current = false;
+            queryClient.invalidateQueries({ queryKey: ["/api/reports/voice-interpret-failures"] });
+          }
+        }}
         storeId={selectedStoreId}
         onLoadEntry={handleVoiceEntries}
+        onInterpretComplete={() => { voiceSessionOccurredRef.current = true; }}
       />
     </div>
   );

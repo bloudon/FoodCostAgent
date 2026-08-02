@@ -193,9 +193,11 @@ interface Props {
   storeId: string;
   /** Called when the user taps Load on an entry. All entries + the selected index are passed. */
   onLoadEntry: (entries: WasteInterpretEntry[], transcript: string, loadIndex: number) => void;
+  /** Called once a transcription/interpretation cycle completes (even if no entries were found). */
+  onInterpretComplete?: () => void;
 }
 
-export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry }: Props) {
+export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry, onInterpretComplete }: Props) {
   const [stage, setStage] = useState<ModalStage>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [elapsedSecs, setElapsedSecs] = useState(0);
@@ -345,6 +347,7 @@ export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry }: Pr
       setTranscript(data.transcript ?? "");
       setEntries(data.entries ?? []);
       setStage("results");
+      onInterpretComplete?.();
     } catch (err: any) {
       setStage("error");
       setErrorMessage(err.message ?? "Failed to process recording. Please try again.");
