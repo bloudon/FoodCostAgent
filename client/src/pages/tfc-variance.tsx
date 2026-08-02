@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info, AlertTriangle, ChevronDown, ChevronRight, Store } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -88,6 +88,22 @@ type RefundSummary = {
     menuItemName: string;
     refundNetSales: number;
   }>;
+};
+
+type OutletFoodCostItem = {
+  outletId: string;
+  outletName: string;
+  totalNetSales: number;
+  totalTheoreticalCost: number;
+  foodCostPct: number | null;
+  linkedItemCount: number;
+  unlinkedItemCount: number;
+  isComplete: boolean;
+};
+
+type OutletFoodCostResponse = {
+  hasData: boolean;
+  outlets: OutletFoodCostItem[];
 };
 
 type VarianceResponse = {
@@ -181,6 +197,15 @@ function TfcVarianceContent() {
   const { data: varianceData, isLoading: isLoadingVariance, error: varianceError } = useQuery<VarianceResponse>({
     queryKey: [
       `/api/tfc/variance?previousCountId=${previousCountId}&currentCountId=${currentCountId}&storeId=${selectedStoreId}`,
+    ],
+    enabled: !!previousCountId && !!currentCountId && !!selectedStoreId && !!companyId,
+    retry: false,
+  });
+
+  // Fetch outlet-level food cost breakdown
+  const { data: outletFoodCost } = useQuery<OutletFoodCostResponse>({
+    queryKey: [
+      `/api/tfc/outlet-food-cost?previousCountId=${previousCountId}&currentCountId=${currentCountId}&storeId=${selectedStoreId}`,
     ],
     enabled: !!previousCountId && !!currentCountId && !!selectedStoreId && !!companyId,
     retry: false,
@@ -691,6 +716,101 @@ function TfcVarianceContent() {
                     </TableBody>
                   </Table>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Food Cost by Outlet */}
+          {outletFoodCost && (
+            <Card className="mb-6">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Store className="h-5 w-5 text-muted-foreground" />
+                  Food Cost % by Outlet
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {outletFoodCost.outlets.length === 0 ? (
+                  /* No outlets defined for this company yet */
+                  <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground" data-testid="note-outlet-no-outlets">
+                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      Outlet breakdown is available after importing sales from a <strong>Sales by Item</strong> report.
+                      Outlets are created automatically from the outlet column in that import.
+                    </span>
+                  </div>
+                ) : !outletFoodCost.hasData ? (
+                  /* Outlets exist but none of the sales in this period are outlet-tagged */
+                  <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground" data-testid="note-outlet-no-data">
+                    <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      No outlet-tagged sales were found for this period. Re-import the Sales by Item
+                      report for each day in this period to populate the outlet breakdown.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Outlet</TableHead>
+                          <TableHead className="text-right">Net Sales</TableHead>
+                          <TableHead className="text-right">Theoretical Cost</TableHead>
+                          <TableHead className="text-right">Food Cost %</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {outletFoodCost.outlets.map((outlet) => (
+                          <TableRow key={outlet.outletId} data-testid={`row-outlet-${outlet.outletId}`}>
+                            <TableCell className="font-medium" data-testid={`text-outlet-name-${outlet.outletId}`}>
+                              {outlet.outletName}
+                            </TableCell>
+                            <TableCell className="text-right font-mono" data-testid={`text-outlet-sales-${outlet.outletId}`}>
+                              {outlet.totalNetSales > 0 ? formatCurrency(outlet.totalNetSales) : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-right font-mono" data-testid={`text-outlet-cost-${outlet.outletId}`}>
+                              {outlet.totalTheoreticalCost > 0 ? formatCurrency(outlet.totalTheoreticalCost) : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell className="text-right font-mono font-semibold" data-testid={`text-outlet-pct-${outlet.outletId}`}>
+                              {outlet.foodCostPct !== null
+                                ? `${formatNumber(outlet.foodCostPct, 1)}%`
+                                : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell>
+                              {outlet.totalNetSales === 0 && outlet.linkedItemCount === 0 ? (
+                                <Badge variant="secondary" data-testid={`badge-outlet-no-sales-${outlet.outletId}`}>
+                                  No sales data
+                                </Badge>
+                              ) : outlet.isComplete ? (
+                                <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid={`badge-outlet-complete-${outlet.outletId}`}>
+                                  Complete
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 gap-1"
+                                  title={`${outlet.unlinkedItemCount} menu item${outlet.unlinkedItemCount !== 1 ? "s" : ""} in this outlet have no linked recipe`}
+                                  data-testid={`badge-outlet-incomplete-${outlet.outletId}`}
+                                >
+                                  <AlertTriangle className="h-3 w-3" />
+                                  Costing incomplete
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {outletFoodCost.outlets.some(o => o.unlinkedItemCount > 0) && (
+                      <p className="text-xs text-muted-foreground mt-3" data-testid="note-outlet-incomplete">
+                        <AlertTriangle className="h-3 w-3 inline mr-1 text-amber-500" />
+                        Some outlets show <em>costing incomplete</em> because not all menu items in that outlet have a linked recipe.
+                        Link recipes via the <strong>Menu Items</strong> page to see the full cost %.
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

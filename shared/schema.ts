@@ -1147,6 +1147,7 @@ export const dailyMenuItemSales = pgTable("daily_menu_item_sales", {
   netSales: real("net_sales").notNull().default(0), // Total revenue (price * qty)
   sourceBatchId: varchar("source_batch_id").notNull(), // FK to sales_upload_batches
   // POS-specific idempotency fields (nullable for CSV-sourced rows)
+  outletLocationId: varchar("outlet_location_id"), // FK to inventory_locations (outlet type); populated by Sales-by-Item CSV import
   connectionId: varchar("connection_id"),       // POS connection that produced this row
   externalOrderId: text("external_order_id"),   // POS system order ID (e.g. Square order UUID)
   externalLineItemId: text("external_line_item_id"), // POS line item UID (unique within an order)

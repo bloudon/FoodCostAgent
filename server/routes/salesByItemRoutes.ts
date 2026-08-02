@@ -495,16 +495,24 @@ export function registerSalesByItemRoutes(app: Express): void {
             }
           }
 
-          // 6. Insert daily_menu_item_sales — one aggregate row per item per batch
+          // 6. Insert daily_menu_item_sales — one aggregate row per (item, outlet) per batch.
+          // Keying by (code + outlet) preserves per-outlet granularity so the TFC
+          // "By Outlet" view can attribute sales and theoretical cost correctly.
+          // The unique index dmis_csv_aggregate_uniq includes COALESCE(outlet_location_id,'')
+          // so re-importing the same CSV is fully idempotent.
           if (batchId && storeId) {
-            // Group rows by QAC — aggregate qty + net if same code appears multiple times
-            const aggMap = new Map<string, { qty: number; net: number }>();
+            type AggEntry = { code: string; qty: number; net: number; outlet: string };
+            const aggMap = new Map<string, AggEntry>();
             for (const row of parsed.rows) {
-              const existing = aggMap.get(row.code) ?? { qty: 0, net: 0 };
-              aggMap.set(row.code, {
-                qty: existing.qty + row.qty,
-                net: existing.net + row.netAmount,
-              });
+              // Key by "code|outlet" so the same QAC appearing in two different outlets
+              // produces two separate rows instead of being collapsed into one.
+              const key = `${row.code}|${row.outlet}`;
+              const existing = aggMap.get(key);
+              if (existing) {
+                aggMap.set(key, { code: row.code, qty: existing.qty + row.qty, net: existing.net + row.netAmount, outlet: row.outlet });
+              } else {
+                aggMap.set(key, { code: row.code, qty: row.qty, net: row.netAmount, outlet: row.outlet });
+              }
             }
 
             // salesDate is defined in step 1 (batch find-or-create) above.
@@ -516,11 +524,12 @@ export function registerSalesByItemRoutes(app: Express): void {
               qtySold: number;
               netSales: number;
               sourceBatchId: string;
+              outletLocationId?: string;
             };
             const salesRows: SalesRow[] = [];
 
-            for (const [code, agg] of Array.from(aggMap.entries())) {
-              const menuItemId = menuItemIdMap.get(code);
+            for (const [, agg] of Array.from(aggMap.entries())) {
+              const menuItemId = menuItemIdMap.get(agg.code);
               if (!menuItemId) continue;
               salesRows.push({
                 companyId,
@@ -530,6 +539,7 @@ export function registerSalesByItemRoutes(app: Express): void {
                 qtySold: agg.qty,
                 netSales: agg.net,
                 sourceBatchId: batchId,
+                outletLocationId: outletIdMap.get(agg.outlet) ?? undefined,
               });
             }
 

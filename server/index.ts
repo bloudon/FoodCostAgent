@@ -1261,6 +1261,74 @@ async function runStartupMigrations() {
     // Orderly category ingestion — column was in CREATE TABLE but never ALTER'd onto existing tables
     await db.execute(sql`ALTER TABLE inventory_import_rows ADD COLUMN IF NOT EXISTS source_category TEXT`);
 
+    // Task #889: outlet-level food cost % on TFC report
+    await db.execute(sql`ALTER TABLE daily_menu_item_sales ADD COLUMN IF NOT EXISTS outlet_location_id VARCHAR`);
+
+    // Task #889: rebuild dmis_csv_aggregate_uniq to include outlet_location_id so the
+    // same (batch, item, outlet) combo is idempotent on re-import and per-outlet rows
+    // are properly isolated.
+    //
+    // Safety design:
+    //  • The entire rebuild runs inside a single PL/pgSQL DO block (one DB transaction).
+    //    If CREATE INDEX fails, PostgreSQL rolls back the whole block — the old index is
+    //    never dropped before the new one exists.
+    //  • An outer IF guards the block so it is a no-op on every restart after the first
+    //    successful run (checked via pg_indexes.indexdef content).
+    //  • Duplicate rows that would violate the new expression constraint are removed first,
+    //    keeping the row with the smallest id per unique key.
+    //  • The new index is created under a temporary name and only swapped to the canonical
+    //    name after construction succeeds.
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        -- Skip if the index already includes outlet_location_id (migration already applied)
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes
+          WHERE indexname = 'dmis_csv_aggregate_uniq'
+            AND indexdef LIKE '%outlet_location_id%'
+        ) THEN
+          -- Clean up any orphaned temp index left by a previous aborted run
+          DROP INDEX IF EXISTS dmis_csv_aggregate_uniq_v2;
+
+          -- Remove duplicate CSV rows that would violate the new expression-based constraint.
+          -- Keeps the row with the smallest id per (company, store, item, date, daypart, outlet, batch).
+          DELETE FROM daily_menu_item_sales
+          WHERE connection_id IS NULL
+            AND id IN (
+              SELECT id FROM (
+                SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY
+                      company_id, store_id, menu_item_id, sales_date,
+                      COALESCE(daypart_id, ''),
+                      COALESCE(outlet_location_id, ''),
+                      source_batch_id
+                    ORDER BY id
+                  ) AS rn
+                FROM daily_menu_item_sales
+                WHERE connection_id IS NULL
+              ) sub
+              WHERE rn > 1
+            );
+
+          -- Create new index under a temp name; if this raises an error the whole block
+          -- rolls back and the existing dmis_csv_aggregate_uniq is left untouched.
+          CREATE UNIQUE INDEX dmis_csv_aggregate_uniq_v2
+            ON daily_menu_item_sales (
+              company_id, store_id, menu_item_id, sales_date,
+              COALESCE(daypart_id, ''),
+              COALESCE(outlet_location_id, ''),
+              source_batch_id
+            )
+            WHERE connection_id IS NULL;
+
+          -- Swap: only reached when creation succeeded
+          DROP INDEX IF EXISTS dmis_csv_aggregate_uniq;
+          ALTER INDEX dmis_csv_aggregate_uniq_v2 RENAME TO dmis_csv_aggregate_uniq;
+        END IF;
+      END $$
+    `);
+
     // Task #836: Scheduled reporting tables
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS saved_reports (

@@ -42,7 +42,7 @@ import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit } from "@shared/schema";
+import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations } from "@shared/schema";
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -18657,6 +18657,183 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     } catch (error: any) {
       console.error('Variance calculation error:', error);
       res.status(500).json({ message: "Failed to calculate variance", error: error.message });
+    }
+  });
+
+  // Task #889: Food cost % broken out by outlet for the TFC report
+  // For each outlet (inventoryLocations with locationType='outlet') within the
+  // selected store's company, sum qtySold × recipe.computedCost (theoretical cost)
+  // and netSales from daily_menu_item_sales, then compute food cost %.
+  app.get("/api/tfc/outlet-food-cost", requireAuth, requireTier("platform"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      const { previousCountId, currentCountId, storeId } = req.query;
+
+      if (!companyId || !previousCountId || !currentCountId || !storeId) {
+        return res.status(400).json({ message: "Missing required parameters: previousCountId, currentCountId, storeId" });
+      }
+
+      // Tenant isolation
+      const store = await storage.getCompanyStore(storeId as string, companyId);
+      if (!store) return res.status(403).json({ message: "Store not found or access denied" });
+
+      const previousCount = await db.query.inventoryCounts.findFirst({
+        where: and(eq(inventoryCounts.id, previousCountId as string), eq(inventoryCounts.companyId, companyId), eq(inventoryCounts.storeId, storeId as string)),
+      });
+      const currentCount = await db.query.inventoryCounts.findFirst({
+        where: and(eq(inventoryCounts.id, currentCountId as string), eq(inventoryCounts.companyId, companyId), eq(inventoryCounts.storeId, storeId as string)),
+      });
+      if (!previousCount || !currentCount) {
+        return res.status(404).json({ message: "One or both inventory counts not found" });
+      }
+
+      // 1. All outlets for this company
+      const outlets = await db
+        .select({ id: inventoryLocations.id, name: inventoryLocations.name })
+        .from(inventoryLocations)
+        .where(
+          and(
+            eq(inventoryLocations.companyId, companyId),
+            eq(inventoryLocations.locationType, "outlet"),
+            eq(inventoryLocations.active, 1),
+          ),
+        );
+
+      // 2. All sales rows for this store in the period that have an outlet tag
+      const salesRows = await db
+        .select({
+          menuItemId: dailyMenuItemSales.menuItemId,
+          outletLocationId: dailyMenuItemSales.outletLocationId,
+          qtySold: dailyMenuItemSales.qtySold,
+          netSales: dailyMenuItemSales.netSales,
+        })
+        .from(dailyMenuItemSales)
+        .where(
+          and(
+            eq(dailyMenuItemSales.companyId, companyId),
+            eq(dailyMenuItemSales.storeId, storeId as string),
+            gte(dailyMenuItemSales.salesDate, previousCount.countDate),
+            lte(dailyMenuItemSales.salesDate, currentCount.countDate),
+            isNotNull(dailyMenuItemSales.outletLocationId),
+          ),
+        );
+
+      if (salesRows.length === 0) {
+        // No outlet-tagged sales — return outlets list with zero/incomplete status
+        return res.json({
+          hasData: false,
+          outlets: outlets.map(o => ({
+            outletId: o.id,
+            outletName: o.name,
+            totalNetSales: 0,
+            totalTheoreticalCost: 0,
+            foodCostPct: null,
+            linkedItemCount: 0,
+            unlinkedItemCount: 0,
+            isComplete: false,
+          })),
+        });
+      }
+
+      // 3. Batch-fetch menu items needed
+      const uniqueMenuItemIds = [...new Set(salesRows.map(s => s.menuItemId))];
+      const menuItemRows = await db
+        .select({ id: menuItems.id, recipeId: menuItems.recipeId })
+        .from(menuItems)
+        .where(
+          and(
+            eq(menuItems.companyId, companyId),
+            sql`${menuItems.id} = ANY(ARRAY[${sql.join(uniqueMenuItemIds.map(id => sql`${id}::text`), sql`, `)}])`,
+          ),
+        );
+      const menuItemMap = new Map(menuItemRows.map(m => [m.id, m.recipeId]));
+
+      // 4. Batch-fetch recipe costs for all relevant recipes
+      const recipeIds = [...new Set(menuItemRows.map(m => m.recipeId).filter((id): id is string => !!id))];
+      const recipeRows = recipeIds.length > 0
+        ? await db
+            .select({ id: recipes.id, computedCost: recipes.computedCost })
+            .from(recipes)
+            .where(
+              and(
+                eq(recipes.companyId, companyId),
+                sql`${recipes.id} = ANY(ARRAY[${sql.join(recipeIds.map(id => sql`${id}::text`), sql`, `)}])`,
+              ),
+            )
+        : [];
+      const recipeCostMap = new Map(recipeRows.map(r => [r.id, r.computedCost]));
+
+      // 5. Aggregate per outlet
+      type OutletAgg = {
+        netSales: number;
+        theoreticalCost: number;
+        linkedItems: Set<string>;
+        unlinkedItems: Set<string>;
+      };
+      const outletAgg = new Map<string, OutletAgg>();
+
+      for (const row of salesRows) {
+        const outletId = row.outletLocationId!;
+        if (!outletAgg.has(outletId)) {
+          outletAgg.set(outletId, { netSales: 0, theoreticalCost: 0, linkedItems: new Set(), unlinkedItems: new Set() });
+        }
+        const agg = outletAgg.get(outletId)!;
+        agg.netSales += Number(row.netSales) || 0;
+
+        const recipeId = menuItemMap.get(row.menuItemId);
+        if (recipeId) {
+          const cost = recipeCostMap.get(recipeId) ?? 0;
+          agg.theoreticalCost += (Number(row.qtySold) || 0) * cost;
+          agg.linkedItems.add(row.menuItemId);
+        } else {
+          agg.unlinkedItems.add(row.menuItemId);
+        }
+      }
+
+      // 6. Build response — include every known outlet, even those with no tagged sales
+      const outletSet = new Set(outlets.map(o => o.id));
+      const outletNameMap = new Map(outlets.map(o => [o.id, o.name]));
+
+      // Also include any outlet IDs that appear in sales but aren't in our outlets list
+      // (e.g. outlet was deactivated since import)
+      for (const outletId of outletAgg.keys()) {
+        if (!outletSet.has(outletId)) {
+          outletSet.add(outletId);
+        }
+      }
+
+      const responseOutlets = Array.from(outletSet).map(outletId => {
+        const agg = outletAgg.get(outletId);
+        const name = outletNameMap.get(outletId) ?? "Unknown Outlet";
+        if (!agg) {
+          return {
+            outletId,
+            outletName: name,
+            totalNetSales: 0,
+            totalTheoreticalCost: 0,
+            foodCostPct: null as number | null,
+            linkedItemCount: 0,
+            unlinkedItemCount: 0,
+            isComplete: false,
+          };
+        }
+        const foodCostPct = agg.netSales > 0 ? (agg.theoreticalCost / agg.netSales) * 100 : null;
+        return {
+          outletId,
+          outletName: name,
+          totalNetSales: agg.netSales,
+          totalTheoreticalCost: agg.theoreticalCost,
+          foodCostPct,
+          linkedItemCount: agg.linkedItems.size,
+          unlinkedItemCount: agg.unlinkedItems.size,
+          isComplete: agg.unlinkedItems.size === 0 && agg.linkedItems.size > 0,
+        };
+      }).sort((a, b) => a.outletName.localeCompare(b.outletName));
+
+      return res.json({ hasData: true, outlets: responseOutlets });
+    } catch (error: any) {
+      console.error("Outlet food cost error:", error);
+      res.status(500).json({ message: "Failed to calculate outlet food cost", error: error.message });
     }
   });
 
