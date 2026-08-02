@@ -487,6 +487,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateRecipeSourceImagePath() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'recipe_source_image_path'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE recipes ADD COLUMN IF NOT EXISTS source_image_path TEXT;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('recipe_source_image_path')`
+        );
+        console.log("[Migration] Applied recipe_source_image_path");
+      } else {
+        console.log("[Migration] Already applied (recipe_source_image_path)");
+      }
+    } catch (err) {
+      console.error("[Migration] recipe_source_image_path error:", err);
+    }
+  })();
+
   // ── QB Reconciliations table + schema migration ──────────────────────────
   (async function migrateQbReconciliations() {
     try {
@@ -7421,6 +7449,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("[Recipe Import] Cost calculation failed (non-fatal):", costErr);
       }
 
+      // AI-crop the food dish photo from the scanned recipe card (non-blocking)
+      let photoCropped = false;
+      if (session.rawImagePath) {
+        try {
+          const { cropFoodPhotoFromScan } = await import("./services/recipePhotoCropper");
+          const userId = (req as any).user?.id ?? "server";
+          const cropResult = await cropFoodPhotoFromScan(session.rawImagePath, userId);
+          if (cropResult.croppedPath) {
+            await db.update(recipes)
+              .set({ imagePath: cropResult.croppedPath, sourceImagePath: session.rawImagePath })
+              .where(eq(recipes.id, recipe.id));
+            photoCropped = true;
+          }
+        } catch (cropErr) {
+          console.error("[Recipe Import] Photo crop failed (non-fatal):", cropErr);
+        }
+      }
+
       // Unmatched count = placeholder components created (visible in recipe builder as missing items)
       const skippedCount = unmatchedIncluded.length;
 
@@ -7429,6 +7475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recipeName: recipe.name,
         componentsCreated: matchedIngredients.length,
         skippedIngredients: skippedCount,
+        photoCropped,
       });
     } catch (error: any) {
       console.error("[Recipe Import Approve]", error);

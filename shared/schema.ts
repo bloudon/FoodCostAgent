@@ -602,7 +602,8 @@ export const recipes = pgTable("recipes", {
   sizeName: text("size_name"), // Size variant name (e.g., "Small", "Large")
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = inactive (deactivated recipes hidden from normal views)
   instructions: text("instructions"), // Step-by-step preparation instructions
-  imagePath: text("image_path"), // Object storage path for recipe reference photo
+  imagePath: text("image_path"), // Object storage path for recipe reference photo (cropped dish photo when AI crop succeeds)
+  sourceImagePath: text("source_image_path"), // Original scanned image path before AI crop (preserved as backup)
 });
 
 export const insertRecipeSchema = createInsertSchema(recipes).omit({ id: true, companyId: true });

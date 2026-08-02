@@ -346,7 +346,7 @@ export default function RecipeImport() {
         })),
         instructions: instructions || undefined,
       });
-      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number; alreadyApproved?: boolean }>;
+      return res.json() as Promise<{ recipeId: string; recipeName: string; componentsCreated: number; skippedIngredients: number; alreadyApproved?: boolean; photoCropped?: boolean }>;
     },
     onSuccess: async (data) => {
       setCreatedRecipeId(data.recipeId);
@@ -374,9 +374,12 @@ export default function RecipeImport() {
         const unmatchedMsg = data.skippedIngredients > 0
           ? ` • ${data.skippedIngredients} unmatched added as missing items`
           : '';
+        const photoMsg = data.photoCropped
+          ? ' • Food photo extracted from scan'
+          : '';
         toast({
           title: 'Recipe Created',
-          description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} linked ingredient${data.componentsCreated !== 1 ? 's' : ''}${unmatchedMsg}`,
+          description: `${formatRecipeName(data.recipeName)} imported with ${data.componentsCreated} linked ingredient${data.componentsCreated !== 1 ? 's' : ''}${unmatchedMsg}${photoMsg}`,
         });
       }
     },
