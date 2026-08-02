@@ -462,7 +462,7 @@ export function registerSalesByItemRoutes(app: Express): void {
             const toLink = menuItemIds.filter((id) => !linkedSet.has(id));
             for (let i = 0; i < toLink.length; i += CHUNK) {
               const chunk = toLink.slice(i, i + CHUNK);
-              await tx
+              const inserted = await tx
                 .insert(storeMenuItems)
                 .values(
                   chunk.map((menuItemId) => ({
@@ -472,8 +472,9 @@ export function registerSalesByItemRoutes(app: Express): void {
                     active: 1,
                   })),
                 )
-                .onConflictDoNothing();
-              stats.storeItemsCreated += chunk.length;
+                .onConflictDoNothing()
+                .returning({ menuItemId: storeMenuItems.menuItemId });
+              stats.storeItemsCreated += inserted.length;
             }
           }
 

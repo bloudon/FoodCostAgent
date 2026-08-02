@@ -450,6 +450,67 @@ describe('approve re-upload idempotency — find-or-create logic', () => {
     expect(afterSecond).toBeCloseTo(afterFirst, 0);
   });
 
+  /**
+   * Simulates the store_menu_items find-or-create used in the approve transaction.
+   * Mirrors the route's pre-fetch + toLink filter + returning() count logic.
+   * Returns { storeItemsCreated } mirroring the route's stats object.
+   */
+  function simulateStoreItemFindOrCreate(
+    menuItemIds: string[],
+    existingLinks: Set<string>,
+  ): { storeItemsCreated: number } {
+    const toLink = menuItemIds.filter((id) => !existingLinks.has(id));
+    let storeItemsCreated = 0;
+    for (const id of toLink) {
+      // .onConflictDoNothing().returning() only returns truly inserted rows.
+      if (!existingLinks.has(id)) {
+        existingLinks.add(id);
+        storeItemsCreated++;
+      }
+    }
+    return { storeItemsCreated };
+  }
+
+  it('first upload creates store-menu-item links for all unique menu items', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const seenCodes = new Set<string>();
+    const uniqueCodes: string[] = [];
+    for (const row of parsed.rows) {
+      if (!seenCodes.has(row.code)) {
+        seenCodes.add(row.code);
+        uniqueCodes.push(row.code);
+      }
+    }
+    // Simulate menu item IDs (one per unique QAC code)
+    const menuItemIds = uniqueCodes.map((_, i) => `item-${i}`);
+
+    const existingLinks = new Set<string>();
+    const { storeItemsCreated } = simulateStoreItemFindOrCreate(menuItemIds, existingLinks);
+
+    expect(storeItemsCreated).toBe(menuItemIds.length);
+    expect(storeItemsCreated).toBeGreaterThan(0);
+  });
+
+  it('second upload creates 0 store-menu-item links (all links pre-exist)', () => {
+    const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
+    const seenCodes = new Set<string>();
+    const uniqueCodes: string[] = [];
+    for (const row of parsed.rows) {
+      if (!seenCodes.has(row.code)) {
+        seenCodes.add(row.code);
+        uniqueCodes.push(row.code);
+      }
+    }
+    // Simulate menu item IDs (one per unique QAC code)
+    const menuItemIds = uniqueCodes.map((_, i) => `item-${i}`);
+
+    // Simulate DB state after the first upload: all links already exist
+    const existingLinks = new Set(menuItemIds);
+    const { storeItemsCreated } = simulateStoreItemFindOrCreate(menuItemIds, existingLinks);
+
+    expect(storeItemsCreated).toBe(0);
+  });
+
   it('duplicate QAC codes within the same report do not create duplicate items', () => {
     const parsed = parseSalesByItemWorkbook(xlsxBuffer, 'Sales_by_item_6-26.xlsx');
 
