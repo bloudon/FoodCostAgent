@@ -228,6 +228,51 @@ test.describe('Spanish footer Get Started column links', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Spanish footer Company column links navigate correctly
+//
+// The Spanish footer renders the Company column with the heading "Empresa".
+// The two links use translated labels and point to /es/about and /es/contact.
+// ---------------------------------------------------------------------------
+
+test.describe('Spanish footer Company column links', () => {
+  test('Spanish footer Company "Nosotros" link → /es/about', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/es/for-chefs');
+
+    // Scope to the footer section whose heading is "Empresa" (Spanish "Company")
+    const footer = page.locator('footer');
+    const companySection = footer.locator('div', { has: page.locator('h4', { hasText: 'Empresa' }) });
+
+    const link = companySection.getByRole('link', { name: 'Nosotros', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/es/about$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('La cocina no debería adaptarse al software', { timeout: 10000 });
+  });
+
+  test('Spanish footer Company "Contacto" link → /es/contact', async ({ page }) => {
+    await stubAuthEndpoint(page);
+    await goToMarketingPage(page, '/es/for-chefs');
+
+    // Scope to the footer section whose heading is "Empresa" (Spanish "Company")
+    const footer = page.locator('footer');
+    const companySection = footer.locator('div', { has: page.locator('h4', { hasText: 'Empresa' }) });
+
+    const link = companySection.getByRole('link', { name: 'Contacto', exact: true });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.scrollIntoViewIfNeeded();
+    await link.click();
+
+    await expect(page).toHaveURL(new RegExp('/es/contact$'), { timeout: 10000 });
+    const h1 = page.locator('h1').first();
+    await expect(h1).toContainText('Agendar una Revisión Culinaria', { timeout: 10000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Suite: footer links produce a URL change (not a scroll-to-top no-op)
 // ---------------------------------------------------------------------------
 
