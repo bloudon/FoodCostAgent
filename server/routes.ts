@@ -15701,19 +15701,17 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         const menuItems = await storage.getMenuItems(req.companyId!);
         const menuItem = menuItems.find(m => m.id === data.menuItemId);
         
-        if (!menuItem || !menuItem.recipeId) {
-          return res.status(404).json({ error: "Menu item or recipe not found" });
+        if (!menuItem) {
+          return res.status(404).json({ error: "Menu item not found" });
         }
         
-        const recipes = await storage.getRecipes(req.companyId!);
-        const recipe = recipes.find(r => r.id === menuItem.recipeId);
-        
-        if (!recipe) {
-          return res.status(404).json({ error: "Recipe not found" });
+        // Menu items without a linked recipe are still valid — log waste with $0 value
+        let totalValue = 0;
+        if (menuItem.recipeId) {
+          const recipes = await storage.getRecipes(req.companyId!);
+          const recipe = recipes.find(r => r.id === menuItem.recipeId);
+          totalValue = (recipe?.computedCost || 0) * data.qty;
         }
-        
-        // Calculate total value (recipe cost × quantity wasted)
-        const totalValue = (recipe.computedCost || 0) * data.qty;
         
         // Create waste log
         const wasteLog = await storage.createWasteLog({

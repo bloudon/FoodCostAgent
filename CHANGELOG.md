@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.1] — 2026-08-02
+
+### Waste
+
+- **Fix: menu items without a linked recipe can now be logged as waste** — previously the server returned "Menu item or recipe not found" for any menu item that existed but had no recipe attached. Waste is now accepted with a `$0` value for unlinked items instead of blocking the submission.
+
+---
+
 ## [1.14.0] — 2026-08-02
 
 ### Waste
