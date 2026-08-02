@@ -5,10 +5,10 @@ description: Current app version, CHANGELOG history, schema migration tags, patc
 
 # App Versioning & Migration State
 
-## Current state (as of 2026-08-01)
+## Current state (as of 2026-08-02)
 
-- **App version**: `1.12.1` (set in `package.json:3`; imported as `APP_VERSION` in `server/routes.ts:6`)
-- **CHANGELOG**: exists at `CHANGELOG.md`; documented from `1.5.0` (2025-04-01) through `1.12.1` (2026-08-01).
+- **App version**: `1.14.0` (set in `package.json:3`; imported as `APP_VERSION` in `server/routes.ts:6`)
+- **CHANGELOG**: exists at `CHANGELOG.md`; documented from `1.5.0` (2025-04-01) through `1.14.0` (2026-08-02).
 
 ---
 
@@ -37,6 +37,8 @@ description: Current app version, CHANGELOG history, schema migration tags, patc
 | 1.11.0 | 2026-07-24 | Operating console dashboard, overdue PO alerts, stale-price warnings, route consolidation, PRICE_MAINTENANCE_ALERT_DAYS constant |
 | 1.12.0 | 2026-07-30 | Global search (10 entity types), GA4 analytics, marketing page translations (Spanish), Orderly snapshot → count session import, vendor pack geometry normalization |
 | 1.12.1 | 2026-08-01 | Recipe builder compact layout, account & locations overview (/choose-plan rewrite), plan-catalog.ts, Stripe billing alignment, feature gate refactor, Get Operational card streamlined, security lockfile scrub |
+| 1.13.0 | 2026-08-02 | Admin dashboard QB stats, Orderly import write fix, duplicate-item finder/merge, scheduled reporting hub with email delivery |
+| 1.14.0 | 2026-08-02 | Voice waste entry — mic modal, Whisper transcription, GPT-4o extraction, fuzzy catalog resolution, unit-safe prefill, POST /api/waste/interpret |
 
 **How to bump the version**: update `package.json` `"version"` and add the matching entry to `CHANGELOG.md`.
 

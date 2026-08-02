@@ -126,6 +126,12 @@ See **`STANDARDS.md`** for the full ratified standards. Key rules for quick refe
 
 ---
 
+# User Preferences
+
+- **Version bump on every push**: Whenever a push to GitHub is requested (any wording — "push", "push confirmation", "push it", etc.), always perform a structured versioning tick first: check current version in `package.json`, determine correct semver bump (MINOR for new capabilities, PATCH for fixes/polish), update `package.json`, add a CHANGELOG.md entry, commit, then push. Never push without a version bump.
+
+---
+
 # System Architecture
 
 - **Web Frontend**: React 18 SPA with TypeScript, Vite, `shadcn/ui` (Radix UI, Tailwind CSS), TanStack Query, React Context, and Wouter for routing. Hostname-based routing separates marketing (`fnbcostpro.com`) from the application (`app.fnbcostpro.com`).

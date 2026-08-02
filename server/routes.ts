@@ -11,6 +11,7 @@ import multer from "multer";
 import { createCheckoutSession, stripeWebhook, getPlans } from "./billing";
 import { GlobalSearchService } from "./globalSearch";
 import { storage } from "./storage";
+import { transcribeAudio, extractSpokenWasteEntries, resolveSpokenWasteEntries } from "./services/wasteInterpreter";
 import { parseCSV } from "./services/tfcCsv";
 import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
@@ -15729,6 +15730,125 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       }
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // ── POST /api/waste/interpret ─────────────────────────────────────────────
+  // Accepts either multipart/form-data (audio file) or application/json
+  // (pre-transcribed text) and returns structured, store-resolved waste entries.
+  const audioUploadMiddleware = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB hard limit
+  }).single("audio");
+
+  app.post("/api/waste/interpret", requireAuth, (req, res, next) => {
+    // Only invoke multer for multipart requests; JSON goes straight through
+    if (req.is("multipart/form-data")) {
+      audioUploadMiddleware(req, res, next);
+    } else {
+      next();
+    }
+  }, async (req, res) => {
+    try {
+      let transcript: string;
+      let transcriptionModel: string | null = null;
+      let storeId: string;
+      let requestId: string;
+
+      // ── Determine input path ──────────────────────────────────────────────
+      if ((req as any).file) {
+        // Audio path — file already in memory via multer
+        const file = (req as any).file as Express.Multer.File;
+        storeId = String(req.body?.storeId ?? "");
+        requestId = String(req.body?.requestId ?? crypto.randomUUID());
+
+        const mimeExtMap: Record<string, string> = {
+          "audio/webm": "webm",
+          "audio/mp4": "mp4",
+          "audio/mpeg": "mp3",
+          "audio/ogg": "ogg",
+          "audio/wav": "wav",
+          "audio/x-m4a": "m4a",
+        };
+        const base = file.mimetype.split(";")[0].trim();
+        const ext = mimeExtMap[base] ?? "webm";
+
+        const result = await transcribeAudio(file.buffer, file.mimetype, ext);
+        transcript = result.transcript;
+        transcriptionModel = result.model;
+      } else {
+        // JSON transcript path
+        const schema = z.object({
+          storeId: z.string().uuid("storeId must be a valid UUID"),
+          transcript: z.string().min(1).max(5100),
+          requestId: z.string().optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });
+        }
+        storeId = parsed.data.storeId;
+        transcript = parsed.data.transcript;
+        requestId = parsed.data.requestId ?? (crypto.randomUUID() as string);
+      }
+
+      // ── Auth / store access ───────────────────────────────────────────────
+      if (!storeId || !/^[0-9a-f-]{36}$/i.test(storeId)) {
+        return res.status(400).json({ error: "storeId must be a valid UUID" });
+      }
+      const accessibleStoreIds = await getAccessibleStores(req.user!, req.companyId);
+      if (!accessibleStoreIds.includes(storeId)) {
+        return res.status(403).json({ error: "Access denied to this store" });
+      }
+
+      // ── Enforce transcript limits ─────────────────────────────────────────
+      const responseWarnings: string[] = [];
+      if (transcript.length > 5000) {
+        responseWarnings.push("Transcript was truncated to 5,000 characters");
+        transcript = transcript.slice(0, 5000);
+      }
+      if (!transcript.trim()) {
+        return res.status(400).json({ error: "No transcript to interpret" });
+      }
+
+      // ── Extract spoken entries ────────────────────────────────────────────
+      const { entries: spokenEntries, model: interpretationModel } =
+        await extractSpokenWasteEntries(transcript);
+
+      // ── Fetch catalog data for resolution ─────────────────────────────────
+      const [allInventoryItems, allMenuItems, allUnits, allItemUnits] = await Promise.all([
+        storage.getInventoryItems(undefined, undefined, req.companyId!),
+        storage.getMenuItemsByCompany(req.companyId!),
+        storage.getUnits(),
+        storage.getInventoryItemUnitsForCompany(req.companyId!),
+      ]);
+
+      // ── Resolve entries against the catalog ──────────────────────────────
+      const resolvedEntries = resolveSpokenWasteEntries({
+        inventoryItems: allInventoryItems as any[],
+        menuItems: allMenuItems as any[],
+        units: allUnits,
+        itemUnits: allItemUnits.map((iu: any) => ({
+          inventoryItemId: iu.inventoryItemId,
+          unitId: iu.unitId,
+        })),
+        entries: spokenEntries,
+      });
+
+      return res.json({
+        requestId,
+        transcript,
+        transcriptionModel,
+        interpretationModel,
+        entries: resolvedEntries,
+        warnings: responseWarnings,
+      });
+    } catch (err: any) {
+      console.error("[waste/interpret] error:", err);
+      if (err.status === 413 || err.message?.includes("10 MB") || err.message?.includes("File too large")) {
+        return res.status(413).json({ error: "Audio file exceeds the 10 MB limit" });
+      }
+      return res.status(500).json({ error: err.message ?? "Failed to interpret waste entry" });
     }
   });
 

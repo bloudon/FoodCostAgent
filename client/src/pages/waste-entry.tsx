@@ -1,7 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar } from "lucide-react";
+import { ArrowLeft, Package, UtensilsCrossed, ChevronRight, Calendar, Mic, CheckCircle2, HelpCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { WasteVoiceModal, WasteInterpretEntry } from "@/components/waste-voice-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +60,14 @@ type Unit = {
   system: string;
 };
 
+type DraftStatus = "pending" | "loaded" | "submitted" | "skipped";
+
+type VoiceDraft = WasteInterpretEntry & {
+  /** Client-side UUID for stable list keys and tracking */
+  draftId: string;
+  status: DraftStatus;
+};
+
 export default function WasteEntry() {
   const { toast } = useToast();
   const [wasteType, setWasteType] = useState<WasteType>(null);
@@ -67,6 +77,22 @@ export default function WasteEntry() {
   const [quantity, setQuantity] = useState("");
   const [reasonCode, setReasonCode] = useState("");
   const [notes, setNotes] = useState("");
+
+  // ── Voice entry state ─────────────────────────────────────────────────────
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [voiceDrafts, setVoiceDrafts] = useState<VoiceDraft[]>([]);
+  const loadedDraftIdRef = useRef<string | null>(null);
+  /**
+   * When a voice draft resolves to a non-canonical unit (e.g. "cases" when
+   * the item is tracked in lbs), we cannot safely prefill the quantity because
+   * the wizard always submits in the item's canonical unit. We store a warning
+   * here so step 4 can surface it and prompt the user to re-enter qty manually.
+   */
+  const [voiceUnitWarning, setVoiceUnitWarning] = useState<{
+    spokenQty: number;
+    spokenUnit: string;
+    canonicalUnitName: string;
+  } | null>(null);
   
   // Date filter state - default to last 7 days
   const defaultEndDate = useMemo(() => {
@@ -214,6 +240,17 @@ export default function WasteEntry() {
         title: "Waste logged",
         description: "The waste entry has been recorded.",
       });
+
+      // Mark the currently loaded voice draft as submitted
+      const currentDraftId = loadedDraftIdRef.current;
+      if (currentDraftId) {
+        loadedDraftIdRef.current = null;
+        setVoiceDrafts(prev =>
+          prev.map(d =>
+            d.draftId === currentDraftId ? { ...d, status: "submitted" } : d,
+          ),
+        );
+      }
       
       // Reset form
       setSelectedItemId(null);
@@ -250,7 +287,108 @@ export default function WasteEntry() {
     setQuantity("");
     setReasonCode("");
     setNotes("");
+    loadedDraftIdRef.current = null;
+    setVoiceUnitWarning(null);
   };
+
+  // ── Voice entry helpers ───────────────────────────────────────────────────
+
+  /** Receive all entries from the modal and immediately prefill with `loadIdx`. */
+  const handleVoiceEntries = useCallback(
+    (entries: WasteInterpretEntry[], _transcript: string, loadIdx: number) => {
+      const drafts: VoiceDraft[] = entries.map((e, i) => ({
+        ...e,
+        draftId: `voice-${Date.now()}-${i}`,
+        status: i === loadIdx ? ("loaded" as DraftStatus) : ("pending" as DraftStatus),
+      }));
+      setVoiceDrafts(drafts);
+      prefillFromDraft(drafts[loadIdx]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  /** Prefill the wizard with a single voice draft entry. */
+  const prefillFromDraft = useCallback((draft: VoiceDraft) => {
+    // Mark any previously loaded draft back to pending, mark this one loaded
+    loadedDraftIdRef.current = draft.draftId;
+    setVoiceDrafts(prev =>
+      prev.map(d => {
+        if (d.draftId === draft.draftId) return { ...d, status: "loaded" };
+        if (d.status === "loaded") return { ...d, status: "pending" };
+        return d;
+      }),
+    );
+
+    // Set wizard base fields.
+    // wasteType comes from the server which now promotes null to the resolved
+    // item's concrete type for all non-unresolved entries.  For truly unresolved
+    // entries the type may still be null — in that case we leave wasteType null
+    // so the wizard shows the type selector (step 1) and the user picks manually.
+    const type: WasteType = draft.wasteType; // never default null → "inventory"
+    setWasteType(type);
+    setReasonCode(draft.reasonCode ?? "");
+    setNotes(draft.notes ?? "");
+
+    // Unit-safe quantity prefill — the wizard always submits in the item's
+    // canonical unit. Only prefill qty when the resolved unit IS the canonical
+    // unit (or when no unit was spoken, which also resolves to canonical).
+    // For non-canonical alternate units or needs_unit, clear qty and warn.
+    const unitMismatch =
+      type === "inventory" &&
+      draft.canonicalUnitId !== null &&
+      draft.unitId !== null &&
+      draft.unitId !== draft.canonicalUnitId;
+
+    const unitUnknown =
+      type === "inventory" &&
+      draft.canonicalUnitId !== null &&
+      draft.resolutionStatus === "needs_unit";
+
+    if (unitMismatch || unitUnknown) {
+      setQuantity("");
+      if (draft.qty != null && (draft.spokenUnit || unitUnknown)) {
+        setVoiceUnitWarning({
+          spokenQty: draft.qty,
+          spokenUnit: draft.spokenUnit ?? draft.unitName ?? "?",
+          canonicalUnitName: draft.canonicalUnitName ?? "canonical unit",
+        });
+      }
+    } else {
+      setQuantity(draft.qty != null ? String(draft.qty) : "");
+      setVoiceUnitWarning(null);
+    }
+
+    if (draft.resolutionStatus === "resolved" && draft.itemId) {
+      // Jump straight to step 4: item is resolved, set category + item
+      setSelectedCategoryId(
+        type === "menu_item" ? (draft.department ?? null) : (draft.categoryId ?? null),
+      );
+      setSelectedItemId(draft.itemId);
+    } else if (
+      (draft.resolutionStatus === "ambiguous" || draft.resolutionStatus === "needs_unit") &&
+      draft.categoryId
+    ) {
+      // Step 3: candidate category known, let user pick the item
+      setSelectedCategoryId(
+        type === "menu_item" ? (draft.department ?? null) : (draft.categoryId ?? null),
+      );
+      setSelectedItemId(null);
+    } else {
+      // Step 2 or 3: we set the type but clear item selection
+      setSelectedCategoryId(null);
+      setSelectedItemId(null);
+    }
+  }, []);
+
+  const skipDraft = useCallback((draftId: string) => {
+    if (loadedDraftIdRef.current === draftId) {
+      loadedDraftIdRef.current = null;
+    }
+    setVoiceDrafts(prev =>
+      prev.map(d => (d.draftId === draftId ? { ...d, status: "skipped" } : d)),
+    );
+  }, []);
 
   const wasteReasons = [
     { value: "SPOILED", label: "Spoiled / Expired" },
@@ -311,6 +449,22 @@ export default function WasteEntry() {
             </div>
           </div>
           
+          {/* Voice Entry */}
+          <div className="flex flex-col justify-end">
+            <span className="text-xs mb-1 invisible select-none">Voice</span>
+            <Button
+              variant="outline"
+              className="gap-2 h-10"
+              onClick={() => setVoiceModalOpen(true)}
+              disabled={!selectedStoreId}
+              title={!selectedStoreId ? "Select a store first" : "Log waste by voice"}
+              data-testid="button-voice-entry"
+            >
+              <Mic className="h-4 w-4" />
+              Voice Entry
+            </Button>
+          </div>
+
           {/* Store Selector */}
           <div className="min-w-[200px]">
             <Label htmlFor="store-select" className="text-xs mb-1 block">Store</Label>
@@ -331,6 +485,84 @@ export default function WasteEntry() {
         </div>
       </div>
       </div>{/* end flex-shrink-0 */}
+
+      {/* ── Voice Draft Queue ─────────────────────────────────────────────── */}
+      {voiceDrafts.some(d => d.status !== "submitted" && d.status !== "skipped") && (
+        <div className="flex-shrink-0 bg-muted/30 border-b px-4 py-3 md:px-8">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Mic className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">Voice Entries</span>
+              <Badge variant="secondary" className="text-xs">
+                {voiceDrafts.filter(d => d.status === "pending" || d.status === "loaded").length} remaining
+              </Badge>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setVoiceDrafts([]);
+                loadedDraftIdRef.current = null;
+              }}
+            >
+              Dismiss all
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {voiceDrafts
+              .filter(d => d.status !== "submitted" && d.status !== "skipped")
+              .map(draft => {
+                const isLoaded = draft.status === "loaded";
+                const statusIcon = {
+                  resolved: <CheckCircle2 className="h-3 w-3 text-green-600" />,
+                  ambiguous: <HelpCircle className="h-3 w-3 text-yellow-600" />,
+                  needs_unit: <AlertTriangle className="h-3 w-3 text-orange-600" />,
+                  unresolved: <AlertCircle className="h-3 w-3 text-red-600" />,
+                }[draft.resolutionStatus];
+                return (
+                  <div
+                    key={draft.draftId}
+                    className={`flex-shrink-0 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 max-w-[200px] ${
+                      isLoaded
+                        ? "bg-primary/10 border-primary/30 text-primary"
+                        : "bg-background border-border"
+                    }`}
+                  >
+                    {statusIcon}
+                    <span className="truncate font-medium">
+                      {draft.itemName ?? draft.spokenItem}
+                    </span>
+                    {draft.qty != null && (
+                      <span className="text-muted-foreground shrink-0">
+                        {draft.qty} {draft.unitName ?? draft.spokenUnit ?? ""}
+                      </span>
+                    )}
+                    {isLoaded ? (
+                      <span className="text-xs text-primary font-semibold shrink-0">In form</span>
+                    ) : draft.resolutionStatus !== "unresolved" ? (
+                      <button
+                        type="button"
+                        className="text-xs underline shrink-0 hover:no-underline"
+                        onClick={() => prefillFromDraft(draft)}
+                      >
+                        Load
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="ml-1 text-muted-foreground hover:text-foreground shrink-0"
+                      onClick={() => skipDraft(draft.draftId)}
+                      title="Skip"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-8">
       {/* Step 1: Select Waste Type */}
       {!wasteType && (
@@ -527,6 +759,18 @@ export default function WasteEntry() {
                     <span className="text-muted-foreground ml-2">(count)</span>
                   )}
                 </Label>
+
+                {/* Voice unit mismatch warning — shown when voice resolved a
+                    non-canonical unit so we cleared qty and need user re-entry */}
+                {voiceUnitWarning && (
+                  <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 mb-4 text-sm text-orange-800">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                      Voice said <strong>{voiceUnitWarning.spokenQty} {voiceUnitWarning.spokenUnit}</strong>.
+                      This item is tracked in <strong>{voiceUnitWarning.canonicalUnitName}</strong> — please re-enter the quantity in {voiceUnitWarning.canonicalUnitName}s.
+                    </span>
+                  </div>
+                )}
                 
                 {/* Large Quantity Display */}
                 <div className="bg-muted rounded-lg p-6 mb-6">
@@ -814,6 +1058,14 @@ export default function WasteEntry() {
         </div>
       )}
       </div>{/* end flex-1 overflow-auto */}
+
+      {/* ── Voice Entry Modal ──────────────────────────────────────────────── */}
+      <WasteVoiceModal
+        open={voiceModalOpen}
+        onOpenChange={setVoiceModalOpen}
+        storeId={selectedStoreId}
+        onLoadEntry={handleVoiceEntries}
+      />
     </div>
   );
 }
