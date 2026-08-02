@@ -333,6 +333,65 @@ test.describe('Spanish footer Company column links from additional pages', () =>
 });
 
 // ---------------------------------------------------------------------------
+// Suite: Spanish "Comenzar" (Get Started) footer column links from additional pages
+//
+// Verifies that "Agendar una Revisión Culinaria" and "Ver precios" inside the
+// "Comenzar" column work from /es/platform, /es/pricing, and /es/for-fb-leaders.
+// ---------------------------------------------------------------------------
+
+test.describe('Spanish footer Comenzar column links from additional pages', () => {
+  const agendarStartPages = [
+    '/es/platform',
+    '/es/pricing',
+    '/es/for-fb-leaders',
+  ];
+
+  for (const path of agendarStartPages) {
+    test(`Spanish footer "Agendar una Revisión Culinaria" link → /es/contact (from ${path})`, async ({ page }) => {
+      await stubAuthEndpoint(page);
+      await goToMarketingPage(page, path);
+
+      const footer = page.locator('footer');
+      const comenzarSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Comenzar' }) });
+
+      const link = comenzarSection.getByRole('link', { name: 'Agendar una Revisión Culinaria', exact: true });
+      await expect(link).toBeVisible({ timeout: 10000 });
+      await link.scrollIntoViewIfNeeded();
+      await link.click();
+
+      await expect(page).toHaveURL(new RegExp('/es/contact$'), { timeout: 10000 });
+      const h1 = page.locator('h1').first();
+      await expect(h1).toContainText('Agendar una Revisión Culinaria', { timeout: 10000 });
+    });
+  }
+
+  const verPreciosStartPages = [
+    '/es/platform',
+    '/es/pricing',
+    '/es/for-fb-leaders',
+  ];
+
+  for (const path of verPreciosStartPages) {
+    test(`Spanish footer "Ver precios" link → /es/pricing (from ${path})`, async ({ page }) => {
+      await stubAuthEndpoint(page);
+      await goToMarketingPage(page, path);
+
+      const footer = page.locator('footer');
+      const comenzarSection = footer.locator('div', { has: page.locator('h4', { hasText: 'Comenzar' }) });
+
+      const link = comenzarSection.getByRole('link', { name: 'Ver precios', exact: true });
+      await expect(link).toBeVisible({ timeout: 10000 });
+      await link.scrollIntoViewIfNeeded();
+      await link.click();
+
+      await expect(page).toHaveURL(new RegExp('/es/pricing$'), { timeout: 10000 });
+      const h1 = page.locator('h1').first();
+      await expect(h1).toContainText('Construida para la forma en que los chefs trabajan', { timeout: 10000 });
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Suite: footer links produce a URL change (not a scroll-to-top no-op)
 // ---------------------------------------------------------------------------
 
