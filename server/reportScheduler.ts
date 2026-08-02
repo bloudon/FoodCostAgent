@@ -51,7 +51,7 @@ async function logRun(subscriptionId: string, status: "success" | "error", email
   }
 }
 
-async function runSubscription(sub: SubRow): Promise<void> {
+export async function runSubscription(sub: SubRow): Promise<void> {
   console.log(`[ReportScheduler] Running subscription "${sub.name}" (${sub.id})`);
   try {
     // Strip server-only metadata from the client-visible filters before passing to generators.
@@ -78,6 +78,11 @@ async function runSubscription(sub: SubRow): Promise<void> {
       buffer,
       filename,
     });
+    if (sent === 0) {
+      await logRun(sub.id, "error", 0, "Email transport not configured — no emails sent");
+      console.warn(`[ReportScheduler] ⚠️ "${sub.name}" delivered 0 emails — transport not configured`);
+      return;
+    }
     await logRun(sub.id, "success", sent);
     console.log(`[ReportScheduler] ✅ Delivered "${sub.name}" to ${sent} recipient(s)`);
   } catch (err: any) {
@@ -92,7 +97,7 @@ function buildCronExpression(frequency: string, hour: number): string {
   return frequency === "weekly" ? `0 ${hour} * * 1` : `0 ${hour} * * *`;
 }
 
-function isCatchUpNeeded(sub: SubRow): boolean {
+export function isCatchUpNeeded(sub: SubRow): boolean {
   if (!sub.last_run_at) return true;
   const lastRun = new Date(sub.last_run_at).getTime();
   const cycleMs = sub.schedule_frequency === "weekly"
