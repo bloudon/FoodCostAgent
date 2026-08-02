@@ -1261,6 +1261,52 @@ async function runStartupMigrations() {
     // Orderly category ingestion — column was in CREATE TABLE but never ALTER'd onto existing tables
     await db.execute(sql`ALTER TABLE inventory_import_rows ADD COLUMN IF NOT EXISTS source_category TEXT`);
 
+    // Task #836: Scheduled reporting tables
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS saved_reports (
+        id           varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id   varchar NOT NULL,
+        name         text NOT NULL,
+        report_type  text NOT NULL,
+        filters      jsonb NOT NULL DEFAULT '{}',
+        is_system    integer NOT NULL DEFAULT 0,
+        created_by   varchar,
+        created_at   timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS saved_reports_company_idx ON saved_reports (company_id)`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS report_subscriptions (
+        id                  varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_id          varchar NOT NULL,
+        name                text NOT NULL,
+        report_type         text NOT NULL,
+        filters             jsonb,
+        saved_report_id     varchar,
+        schedule_frequency  text NOT NULL DEFAULT 'daily',
+        schedule_hour       integer NOT NULL DEFAULT 8,
+        email_recipients    text[] NOT NULL DEFAULT ARRAY[]::text[],
+        is_active           integer NOT NULL DEFAULT 1,
+        last_run_at         timestamp,
+        created_by          varchar,
+        created_at          timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS report_subscriptions_company_idx ON report_subscriptions (company_id)`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS report_subscription_logs (
+        id               varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        subscription_id  varchar NOT NULL,
+        triggered_at     timestamp NOT NULL DEFAULT now(),
+        status           text NOT NULL,
+        emails_sent      integer DEFAULT 0,
+        error_message    text
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS report_sub_logs_sub_idx ON report_subscription_logs (subscription_id)`);
+
     console.log('✅ Startup migrations applied');
   } catch (err) {
     console.error('⚠️ Startup migrations error (non-fatal):', err);
@@ -1437,6 +1483,14 @@ await (async () => {
   setTimeout(activateScheduledMenusJob, 2 * 60 * 1000);
   setInterval(activateScheduledMenusJob, MENU_SCHEDULER_INTERVAL_MS);
   log(`🔄 Menu scheduler job scheduled (every ${MENU_SCHEDULER_INTERVAL_MS / 1000 / 60} minutes, first run in 2min)`);
+
+  // Report scheduler — node-cron based scheduled email delivery
+  try {
+    const { initReportScheduler } = await import("./reportScheduler");
+    await initReportScheduler();
+  } catch (err) {
+    console.error("⚠️ Report scheduler init error (non-fatal):", err);
+  }
 
   // POS stuck-job auto-cleanup — runs every 15 minutes, expires running jobs > 60 min old.
   // This is a safety net for the double-fault case where a job gets stuck in running state

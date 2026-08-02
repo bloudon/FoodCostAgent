@@ -108,9 +108,9 @@ describe.skipIf(SKIP)("GET /api/billing/subscription", () => {
 
     // Seed 3 stores with different statuses
     await db.insert(companyStores).values([
-      { id: IDs.storeA, companyId: IDs.company, name: `StoreA ${RUN}`, status: "active" },
-      { id: IDs.storeB, companyId: IDs.company, name: `StoreB ${RUN}`, status: "inactive" },
-      { id: IDs.storeC, companyId: IDs.company, name: `StoreC ${RUN}`, status: "closed" },
+      { id: IDs.storeA, companyId: IDs.company, name: `StoreA ${RUN}`, code: `SA-${RUN}`, status: "active" },
+      { id: IDs.storeB, companyId: IDs.company, name: `StoreB ${RUN}`, code: `SB-${RUN}`, status: "inactive" },
+      { id: IDs.storeC, companyId: IDs.company, name: `StoreC ${RUN}`, code: `SC-${RUN}`, status: "closed" },
     ]);
   });
 

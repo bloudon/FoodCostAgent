@@ -457,6 +457,38 @@ export async function sendSquareTokenRevokedAlert(opts: {
   }
 }
 
+export async function sendReportEmail(opts: {
+  to: string[];
+  subject: string;
+  buffer: Buffer;
+  filename: string;
+}): Promise<number> {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping report email — no transport configured");
+    return 0;
+  }
+  const { to, subject, buffer, filename } = opts;
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to: to.join(", "),
+      subject,
+      text: `Your scheduled report "${filename}" is attached.`,
+      attachments: [{
+        filename,
+        content: buffer,
+        contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }],
+    });
+    console.log(`[Email] Report email sent to ${to.join(", ")}`);
+    return to.length;
+  } catch (err) {
+    console.error("[Email] Failed to send report email:", err);
+    throw err;
+  }
+}
+
 // Single source of truth for the contact/support address.
 // Override via the CONTACT_EMAIL env var (e.g. in .env.example).
 export const CONTACT_DISPLAY_EMAIL =

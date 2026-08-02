@@ -94,6 +94,9 @@ import AdminVendorRegistry from "@/pages/admin-vendor-registry";
 import AdminPosSyncJobs from "@/pages/admin-pos-sync-jobs";
 import MenuInsights from "@/pages/menu-insights";
 import ExtensionPilot from "@/pages/extension-pilot";
+import ReportsHub from "@/pages/reports/ReportsHub";
+import ReportViewer from "@/pages/reports/ReportViewer";
+import ScheduledReportsPage from "@/pages/reports/ScheduledReportsPage";
 import AdminUsers from "@/pages/admin-users";
 import CountLanding from "@/pages/count-landing";
 import OrderLanding from "@/pages/order-landing";
@@ -620,6 +623,9 @@ function ProtectedLayoutContent() {
               <Route path="/shelf-scans" component={ShelfScans} />
               <Route path="/dashboard/mobile" component={DashboardMobile} />
               <Route path="/menu-insights" component={MenuInsights} />
+              <Route path="/reports/scheduled" component={ScheduledReportsPage} />
+              <Route path="/reports/view" component={ReportViewer} />
+              <Route path="/reports" component={ReportsHub} />
               {import.meta.env.DEV && (
                 <Route path="/extension-pilot" component={ExtensionPilot} />
               )}

@@ -7,6 +7,7 @@ import {
   ChefHat,
   UtensilsCrossed,
   BarChart3,
+  FileBarChart2,
   MoreHorizontal,
   Pin,
   PinOff,
@@ -86,6 +87,11 @@ function getActiveSection(loc: string): string {
   ) return "analyze";
 
   if (
+    loc === "/reports" ||
+    loc.startsWith("/reports/")
+  ) return "reports";
+
+  if (
     loc === "/menu-items" || loc.startsWith("/menu-items/") ||
     loc === "/menus" || loc.startsWith("/menus/") ||
     loc === "/menu-scan" || loc.startsWith("/menu-scan/") ||
@@ -116,6 +122,7 @@ const RAIL: RailItem[] = [
   { id: "prep",      label: "Prep",      icon: ChefHat,          href: "/prep",       testId: "nav-prep" },
   { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menus",       testId: "nav-menu" },
   { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
+  { id: "reports",   label: "Reports",   icon: FileBarChart2,    href: "/reports",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-reports" },
   { id: "more",      label: "More",      icon: MoreHorizontal,   href: "/more",       testId: "nav-more" },
 ];
 

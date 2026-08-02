@@ -2451,3 +2451,79 @@ export const insertInventoryItemExternalMappingSchema = createInsertSchema(inven
   .omit({ id: true, createdAt: true });
 export type InsertInventoryItemExternalMapping = z.infer<typeof insertInventoryItemExternalMappingSchema>;
 export type InventoryItemExternalMapping = typeof inventoryItemExternalMappings.$inferSelect;
+
+// ── Reporting ────────────────────────────────────────────────────────────────
+
+export const REPORT_TYPE_VALUES = ['recipe_cost', 'inventory_value', 'purchase_activity'] as const;
+export type ReportTypeValue = typeof REPORT_TYPE_VALUES[number];
+
+export const reportFiltersSchema = z.object({
+  reportType: z.enum(REPORT_TYPE_VALUES).optional(),
+  storeId: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  category: z.string().optional(),
+});
+export type ReportFilters = z.infer<typeof reportFiltersSchema>;
+
+export const savedReports = pgTable("saved_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  reportType: text("report_type").notNull(),
+  filters: jsonb("filters").notNull().default(sql`'{}'::jsonb`),
+  isSystem: integer("is_system").notNull().default(0),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("saved_reports_company_idx").on(table.companyId),
+}));
+
+export const insertSavedReportSchema = createInsertSchema(savedReports)
+  .omit({ id: true, createdAt: true })
+  .extend({ reportType: z.enum(REPORT_TYPE_VALUES), filters: reportFiltersSchema.optional() });
+export type InsertSavedReport = z.infer<typeof insertSavedReportSchema>;
+export type SavedReport = typeof savedReports.$inferSelect;
+
+export const reportSubscriptions = pgTable("report_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  reportType: text("report_type").notNull(),
+  filters: jsonb("filters"),
+  savedReportId: varchar("saved_report_id"),
+  scheduleFrequency: text("schedule_frequency").notNull().default("daily"),
+  scheduleHour: integer("schedule_hour").notNull().default(8),
+  emailRecipients: text("email_recipients").array().notNull().default(sql`ARRAY[]::text[]`),
+  isActive: integer("is_active").notNull().default(1),
+  lastRunAt: timestamp("last_run_at"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyIdx: index("report_subscriptions_company_idx").on(table.companyId),
+}));
+
+export const insertReportSubscriptionSchema = createInsertSchema(reportSubscriptions)
+  .omit({ id: true, createdAt: true, lastRunAt: true })
+  .extend({
+    reportType: z.enum(REPORT_TYPE_VALUES),
+    scheduleFrequency: z.enum(['daily', 'weekly']),
+    scheduleHour: z.number().int().min(0).max(23),
+    emailRecipients: z.array(z.string().email("Invalid email")).min(1, "At least one recipient required"),
+    filters: reportFiltersSchema.optional(),
+  });
+export type InsertReportSubscription = z.infer<typeof insertReportSubscriptionSchema>;
+export type ReportSubscription = typeof reportSubscriptions.$inferSelect;
+
+export const reportSubscriptionLogs = pgTable("report_subscription_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subscriptionId: varchar("subscription_id").notNull(),
+  triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
+  status: text("status").notNull(),
+  emailsSent: integer("emails_sent").default(0),
+  errorMessage: text("error_message"),
+}, (table) => ({
+  subIdIdx: index("report_sub_logs_sub_idx").on(table.subscriptionId),
+}));
+
+export type ReportSubscriptionLog = typeof reportSubscriptionLogs.$inferSelect;

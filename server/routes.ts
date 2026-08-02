@@ -30,6 +30,7 @@ import { registerExtensionRoutes } from "./integrations/extension/extensionRoute
 import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
+import { registerReportRoutes } from "./routes/reportRoutes";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
 import type { EnrichedInventoryItem } from "../shared/types";
@@ -171,6 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerPosRoutes(app);
   registerMenuRoutes(app);
   registerOrderlyImportRoutes(app);
+  registerReportRoutes(app);
   app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
