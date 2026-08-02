@@ -1,7 +1,7 @@
 /**
  * SalesByItemParser
  *
- * Parses a Northstar / Jones Lang LaSalle "Sales by Item" Excel report.
+ * Parses a Jonas Encore "Sales by Item" Excel report.
  *
  * Report layout (zero-indexed rows):
  *   Row  8: start date value (col 10)

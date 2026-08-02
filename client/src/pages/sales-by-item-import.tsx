@@ -182,7 +182,7 @@ function SalesByItemImportContent() {
             POS Sales Report Import
           </h1>
           <p className="text-sm text-muted-foreground">
-            Seeds outlet locations and menu items from a Northstar Sales-by-Item export
+            Seeds outlet locations and menu items from a Jonas Encore Sales-by-Item export
           </p>
         </div>
       </div>
@@ -204,7 +204,7 @@ function SalesByItemImportContent() {
               Upload Sales by Item Report
             </CardTitle>
             <CardDescription>
-              Upload the Excel export from your Northstar / Jones Lang LaSalle POS system.
+              Upload the Sales by Item Excel export from your Jonas Encore POS system.
               This report seeds outlet locations (Bay Window, Grill, Banquet, etc.) and all
               menu items, so you don't need to enter them manually.
             </CardDescription>

@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.5] — 2026-08-02
+
+### Sales import
+
+- **Relabeled Sales by Item importer** — UI and parser were mislabeled as "Northstar / Jones Lang LaSalle"; corrected to "Jonas Encore" which is the actual POS system the report format originates from
+
+---
+
 ## [1.14.4] — 2026-08-02
 
 ### Marketing site
