@@ -98,6 +98,8 @@ interface CandidateDetail {
   name: string;
   pluSku?: string | null;
   caseSize?: number | null;
+  /** Storage locations this item has previously been counted at (from import history). */
+  knownLocations?: string[];
 }
 
 interface MatchResult {
@@ -594,6 +596,12 @@ function CandidatePicker({
             {item.caseSize != null && <span>Case: {item.caseSize}</span>}
             {item.pluSku && <span>PLU: {item.pluSku}</span>}
           </div>
+          {item.knownLocations && item.knownLocations.length > 0 && (
+            <div className="mt-0.5 text-[9px] text-muted-foreground/60">
+              Known at: {item.knownLocations.slice(0, 3).join(" · ")}
+              {item.knownLocations.length > 3 && ` +${item.knownLocations.length - 3} more`}
+            </div>
+          )}
         </div>
         {selected && <Link2 className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />}
       </button>

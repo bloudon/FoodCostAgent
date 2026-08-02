@@ -39,6 +39,7 @@ import {
   matchByFuzzy,
   matchVendor,
   matchLocation,
+  breakTieByLocation,
   computeResolutionSummary,
   normalizeForMatch,
   type MatchResult,
@@ -48,6 +49,7 @@ import {
   type MatchableItem,
   type MatchableVendor,
   type MatchableLocation,
+  type LocationAssignment,
 } from './OrderlyMatcher';
 import type { InventoryImportRow } from '@shared/schema';
 
@@ -209,8 +211,9 @@ export async function runResolutionPreview(
   batchId: string,
   companyId: string,
 ): Promise<ResolutionPreviewResult> {
-  // Parallel: fetch batch meta + import rows + company items + vendors + locations + external mappings
-  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings] =
+  // Parallel: fetch batch meta + import rows + company items + vendors + locations +
+  // external mappings + item-location assignments (for ambiguous tiebreaking)
+  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments] =
     await Promise.all([
       db
         .select()
@@ -236,7 +239,7 @@ export async function runResolutionPreview(
         .from(vendors)
         .where(and(eq(vendors.companyId, companyId), eq(vendors.active, 1))),
       db
-        .select({ id: inventoryLocations.id, normalizedName: inventoryLocations.normalizedName })
+        .select({ id: inventoryLocations.id, name: inventoryLocations.name, normalizedName: inventoryLocations.normalizedName })
         .from(inventoryLocations)
         .where(and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.active, 1))),
       db
@@ -251,6 +254,13 @@ export async function runResolutionPreview(
             eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
           ),
         ),
+      db
+        .select({
+          inventoryItemId: inventoryItemLocationAssignments.inventoryItemId,
+          locationId: inventoryItemLocationAssignments.locationId,
+        })
+        .from(inventoryItemLocationAssignments)
+        .where(eq(inventoryItemLocationAssignments.companyId, companyId)),
     ]);
 
   if (!batchMeta[0]) throw new Error('Batch not found or not accessible');
@@ -259,6 +269,17 @@ export async function runResolutionPreview(
   const extMappingLookup = new Map<string, string>(
     externalMappings.map((m: { sourceExternalId: string; inventoryItemId: string }): [string, string] => [m.sourceExternalId, m.inventoryItemId]),
   );
+
+  // Build location name lookup and item→locations map for UI enrichment + tiebreaking
+  const locationsById = new Map(existingLocations.map(l => [l.id, l.name]));
+  const locationsByItemId = new Map<string, string[]>();
+  for (const a of locationAssignments as LocationAssignment[]) {
+    const locName = locationsById.get(a.locationId);
+    if (!locName) continue;
+    const names = locationsByItemId.get(a.inventoryItemId) ?? [];
+    names.push(locName);
+    locationsByItemId.set(a.inventoryItemId, names);
+  }
 
   const matchableItems: MatchableItem[] = existingItems;
   const matchableVendors: MatchableVendor[] = existingVendors;
@@ -309,22 +330,42 @@ export async function runResolutionPreview(
       newLocationNames.add(row.storageLocation!.trim());
     }
 
+    // ── Strategy 5: location-history tiebreaker ──
+    // When the item match is still ambiguous after strategies 1–4, check whether
+    // exactly one candidate has a prior location assignment for this row's location.
+    // If so, promote that candidate to 'high' confidence automatically.
+    if (itemMatch.confidence === 'ambiguous' && locationMatch.locationId) {
+      const resolved = breakTieByLocation(
+        itemMatch,
+        locationMatch.locationId,
+        locationAssignments as LocationAssignment[],
+      );
+      if (resolved) itemMatch = resolved;
+    }
+
     resolutions.push({ rowIndex: row.rowIndex, itemMatch, vendorMatch, locationMatch });
   }
 
   const summary = computeResolutionSummary(resolutions);
 
   // Build id → item lookup so preview rows can carry candidate details
-  // (name / caseSize / pluSku) without an extra DB round-trip.
+  // (name / caseSize / pluSku / knownLocations) without an extra DB round-trip.
   const itemById = new Map(existingItems.map(item => [item.id, item]));
 
   const rows = batchRows.map((row: InventoryImportRow, i: number) => {
     const rawMatch = resolutions[i].itemMatch;
     const candidates = rawMatch.candidateIds
-      .map(id => itemById.get(id))
-      .filter((item): item is MatchableItem => item != null);
-    const matchedItem = rawMatch.matchedId
+      .map(id => {
+        const item = itemById.get(id);
+        if (!item) return null;
+        return { ...item, knownLocations: locationsByItemId.get(id) ?? [] };
+      })
+      .filter((item): item is MatchableItem & { knownLocations: string[] } => item != null);
+    const matchedItemBase = rawMatch.matchedId
       ? (itemById.get(rawMatch.matchedId) ?? null)
+      : null;
+    const matchedItem = matchedItemBase
+      ? { ...matchedItemBase, knownLocations: locationsByItemId.get(matchedItemBase.id) ?? [] }
       : null;
 
     return {

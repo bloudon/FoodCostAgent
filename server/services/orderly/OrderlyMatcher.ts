@@ -10,7 +10,7 @@
  * All functions are pure and synchronous — no DB access.
  */
 
-export type MatchStrategy = 'external_mapping' | 'item_code' | 'name_pack' | 'fuzzy' | 'none';
+export type MatchStrategy = 'external_mapping' | 'item_code' | 'name_pack' | 'fuzzy' | 'location_history' | 'none';
 export type MatchConfidence = 'high' | 'medium' | 'low' | 'ambiguous' | 'none';
 
 export interface MatchResult {
@@ -323,6 +323,45 @@ export function matchLocation(
   }
 
   return { locationId: null, isNew: true, normalizedName: normalized };
+}
+
+// ─── Location-history tiebreaker ─────────────────────────────────────────────
+
+export interface LocationAssignment {
+  inventoryItemId: string;
+  locationId: string;
+}
+
+/**
+ * When a match is ambiguous, check whether exactly one candidate has an
+ * existing `inventory_item_location_assignments` row for the given locationId.
+ *
+ * - Exactly one candidate matches → return a new MatchResult with
+ *   strategy='location_history', confidence='high', requiresReview=false.
+ * - Zero or 2+ candidates match → return null (keep the ambiguous result).
+ * - locationId is null/undefined or result is not ambiguous → return null.
+ */
+export function breakTieByLocation(
+  ambiguousResult: MatchResult,
+  locationId: string | null | undefined,
+  assignments: LocationAssignment[],
+): MatchResult | null {
+  if (!locationId || ambiguousResult.confidence !== 'ambiguous') return null;
+
+  const candidateSet = new Set(ambiguousResult.candidateIds);
+  const matching = assignments.filter(
+    a => a.locationId === locationId && candidateSet.has(a.inventoryItemId),
+  );
+
+  if (matching.length !== 1) return null;
+
+  return {
+    strategy: 'location_history',
+    confidence: 'high',
+    matchedId: matching[0].inventoryItemId,
+    candidateIds: [],
+    requiresReview: false,
+  };
 }
 
 // ─── Combined row resolution ─────────────────────────────────────────────────
