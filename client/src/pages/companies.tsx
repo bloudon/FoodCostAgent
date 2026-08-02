@@ -198,7 +198,7 @@ export default function Companies() {
   const recentChatLogsQuery = useQuery<ChatLogsResponse>({
     queryKey: ["/api/admin/chat-logs/preview"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/chat-logs");
+      const res = await fetch("/api/admin/chat-logs?limit=3");
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       return res.json();
     },
