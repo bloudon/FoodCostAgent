@@ -335,6 +335,8 @@ export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry, onIn
 
   async function processAudio(blob: Blob) {
     setStage("uploading");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
     try {
       const ext = mimeToExtension(mimeTypeRef.current);
       const formData = new FormData();
@@ -346,6 +348,7 @@ export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry, onIn
         method: "POST",
         body: formData,
         credentials: "include",
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -360,8 +363,15 @@ export function WasteVoiceModal({ open, onOpenChange, storeId, onLoadEntry, onIn
       setStage("results");
       onInterpretComplete?.();
     } catch (err: any) {
+      const isTimeout = err?.name === "AbortError";
       setStage("error");
-      setErrorMessage(err.message ?? "Failed to process recording. Please try again.");
+      setErrorMessage(
+        isTimeout
+          ? "Request timed out. Please check your connection and try again."
+          : (err.message ?? "Failed to process recording. Please try again."),
+      );
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

@@ -310,6 +310,67 @@ describe("WasteVoiceModal — MediaRecorder onerror fired mid-recording", () => 
   });
 });
 
+// ─── 6. Fetch times out (AbortError after 60 s) ──────────────────────────────
+
+describe("WasteVoiceModal — fetch request times out", () => {
+  it("transitions to the error stage with a 'timed out' message and shows Try again", async () => {
+    const mockStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+
+    vi.stubGlobal("navigator", {
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue(mockStream),
+      },
+    });
+
+    const { instanceRef, Ctor } = makeMediaRecorderMock();
+    vi.stubGlobal("MediaRecorder", Ctor);
+
+    // Simulate fetch aborting (as if AbortController fired after timeout)
+    const abortError = Object.assign(new Error("The operation was aborted"), {
+      name: "AbortError",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(abortError));
+
+    renderModal();
+
+    // Start recording
+    await act(async () => {
+      fireEvent.click(screen.getByText(/start recording/i));
+    });
+
+    await waitFor(() => {
+      expect(instanceRef.current).not.toBeNull();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/stop recording/i)).toBeDefined();
+    });
+
+    // Simulate recorder stopping with one audio chunk
+    await act(async () => {
+      instanceRef.current?.ondataavailable?.({
+        data: new Blob(["audio"], { type: "audio/webm" }),
+      });
+      instanceRef.current?.onstop?.();
+    });
+
+    // UI must show the timeout error, not a spinner
+    await waitFor(() => {
+      expect(screen.getByText(/request timed out/i)).toBeDefined();
+    });
+
+    // No loading spinners should remain
+    expect(screen.queryByText(/transcribing/i)).toBeNull();
+    expect(screen.queryByText(/uploading/i)).toBeNull();
+    expect(screen.queryByText(/resolving/i)).toBeNull();
+
+    // "Try again" button must be present (may also appear in the error description text)
+    expect(screen.getAllByText(/try again/i).length).toBeGreaterThan(0);
+  });
+});
+
 // ─── 4. Recorder aborts mid-session (zero chunks) ────────────────────────────
 
 describe("WasteVoiceModal — recorder abort mid-session (no audio chunks collected)", () => {
