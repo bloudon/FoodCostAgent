@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info, AlertTriangle, ChevronDown, ChevronRight, Store } from "lucide-react";
+import { Download, TrendingUp, TrendingDown, Activity, DollarSign, ShoppingCart, Info, AlertTriangle, ChevronDown, ChevronRight, Store, X, Layers } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
@@ -99,6 +99,8 @@ type OutletFoodCostItem = {
   linkedItemCount: number;
   unlinkedItemCount: number;
   isComplete: boolean;
+  /** Inventory item IDs used in recipes for menu items sold in this unit. */
+  inventoryItemIds: string[];
 };
 
 type OutletFoodCostResponse = {
@@ -154,6 +156,7 @@ function TfcVarianceContent() {
   const { sortField: vSortField, sortDirection: vSortDir, handleSort: vHandleSort } = useTableSort("varianceCost", "desc");
   const [selectedVendorName, setSelectedVendorName] = useState<string>("");
   const [selectedExpectedDate, setSelectedExpectedDate] = useState<string>("");
+  const [selectedOutletId, setSelectedOutletId] = useState<string | null>(null);
 
   // Read URL parameters
   const urlParams = new URLSearchParams(window.location.search);
@@ -251,8 +254,23 @@ function TfcVarianceContent() {
     return `${month}/${day}/${year}`;
   };
 
+  // When a different period is selected, clear any active outlet filter
+  useEffect(() => {
+    setSelectedOutletId(null);
+  }, [currentCountId, previousCountId]);
+
+  // Items filtered by selected operating unit (if any)
+  const activeOutlet = useMemo(() => {
+    if (!selectedOutletId || !outletFoodCost) return null;
+    return outletFoodCost.outlets.find(o => o.outletId === selectedOutletId) ?? null;
+  }, [selectedOutletId, outletFoodCost]);
+
   const sortedVarianceItems = useMemo(() => {
-    const items = varianceData?.items ?? [];
+    const allItems = varianceData?.items ?? [];
+    // If an operating unit is selected, filter to ingredients used in that unit's recipes
+    const items = activeOutlet
+      ? allItems.filter(i => activeOutlet.inventoryItemIds.includes(i.inventoryItemId))
+      : allItems;
     return [...items].sort((a, b) => {
       let av: string | number;
       let bv: string | number;
@@ -272,7 +290,7 @@ function TfcVarianceContent() {
       const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
       return vSortDir === "asc" ? cmp : -cmp;
     });
-  }, [varianceData, vSortField, vSortDir]);
+  }, [varianceData, vSortField, vSortDir, activeOutlet]);
 
   return (
     <div className="p-4 sm:p-8">
@@ -720,96 +738,122 @@ function TfcVarianceContent() {
             </Card>
           )}
 
-          {/* Food Cost by Outlet */}
+          {/* Food Cost by Operating Unit */}
           {outletFoodCost && (
             <Card className="mb-6">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Store className="h-5 w-5 text-muted-foreground" />
-                  Food Cost % by Outlet
+                  <Layers className="h-5 w-5 text-muted-foreground" />
+                  Food Cost % by Operating Unit
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {outletFoodCost.outlets.length === 0 ? (
-                  /* No outlets defined for this company yet */
+                  /* No operating units defined for this company yet */
                   <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground" data-testid="note-outlet-no-outlets">
                     <Info className="h-4 w-4 mt-0.5 shrink-0" />
                     <span>
-                      Outlet breakdown is available after importing sales from a <strong>Sales by Item</strong> report.
-                      Outlets are created automatically from the outlet column in that import.
+                      Operating unit breakdown is available after importing sales from a <strong>Sales by Item</strong> report.
+                      Units are created automatically from the outlet column in that import.
                     </span>
                   </div>
                 ) : !outletFoodCost.hasData ? (
-                  /* Outlets exist but none of the sales in this period are outlet-tagged */
+                  /* Operating units exist but none of the sales in this period are tagged */
                   <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground" data-testid="note-outlet-no-data">
                     <Info className="h-4 w-4 mt-0.5 shrink-0" />
                     <span>
-                      No outlet-tagged sales were found for this period. Re-import the Sales by Item
-                      report for each day in this period to populate the outlet breakdown.
+                      No operating-unit-tagged sales were found for this period. Re-import the Sales by Item
+                      report for each day in this period to populate the breakdown.
                     </span>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Outlet</TableHead>
-                          <TableHead className="text-right">Net Sales</TableHead>
-                          <TableHead className="text-right">Theoretical Cost</TableHead>
-                          <TableHead className="text-right">Food Cost %</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {outletFoodCost.outlets.map((outlet) => (
-                          <TableRow key={outlet.outletId} data-testid={`row-outlet-${outlet.outletId}`}>
-                            <TableCell className="font-medium" data-testid={`text-outlet-name-${outlet.outletId}`}>
-                              {outlet.outletName}
-                            </TableCell>
-                            <TableCell className="text-right font-mono" data-testid={`text-outlet-sales-${outlet.outletId}`}>
-                              {outlet.totalNetSales > 0 ? formatCurrency(outlet.totalNetSales) : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-right font-mono" data-testid={`text-outlet-cost-${outlet.outletId}`}>
-                              {outlet.totalTheoreticalCost > 0 ? formatCurrency(outlet.totalTheoreticalCost) : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell className="text-right font-mono font-semibold" data-testid={`text-outlet-pct-${outlet.outletId}`}>
-                              {outlet.foodCostPct !== null
-                                ? `${formatNumber(outlet.foodCostPct, 1)}%`
-                                : <span className="text-muted-foreground">—</span>}
-                            </TableCell>
-                            <TableCell>
-                              {outlet.totalNetSales === 0 && outlet.linkedItemCount === 0 ? (
-                                <Badge variant="secondary" data-testid={`badge-outlet-no-sales-${outlet.outletId}`}>
-                                  No sales data
-                                </Badge>
-                              ) : outlet.isComplete ? (
-                                <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid={`badge-outlet-complete-${outlet.outletId}`}>
-                                  Complete
-                                </Badge>
-                              ) : (
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 gap-1"
-                                  title={`${outlet.unlinkedItemCount} menu item${outlet.unlinkedItemCount !== 1 ? "s" : ""} in this outlet have no linked recipe`}
-                                  data-testid={`badge-outlet-incomplete-${outlet.outletId}`}
-                                >
-                                  <AlertTriangle className="h-3 w-3" />
-                                  Costing incomplete
-                                </Badge>
-                              )}
-                            </TableCell>
+                  <>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Click a row to filter the ingredient table below to that operating unit's recipes.
+                    </p>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Operating Unit</TableHead>
+                            <TableHead className="text-right">Net Sales</TableHead>
+                            <TableHead className="text-right">Theoretical Cost</TableHead>
+                            <TableHead className="text-right">Food Cost %</TableHead>
+                            <TableHead>Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {outletFoodCost.outlets.some(o => o.unlinkedItemCount > 0) && (
-                      <p className="text-xs text-muted-foreground mt-3" data-testid="note-outlet-incomplete">
-                        <AlertTriangle className="h-3 w-3 inline mr-1 text-amber-500" />
-                        Some outlets show <em>costing incomplete</em> because not all menu items in that outlet have a linked recipe.
-                        Link recipes via the <strong>Menu Items</strong> page to see the full cost %.
-                      </p>
-                    )}
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {outletFoodCost.outlets.map((outlet) => {
+                            const isSelected = selectedOutletId === outlet.outletId;
+                            return (
+                              <TableRow
+                                key={outlet.outletId}
+                                data-testid={`row-outlet-${outlet.outletId}`}
+                                className={`cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? "bg-primary/10 ring-1 ring-inset ring-primary/40"
+                                    : "hover:bg-muted/50"
+                                }`}
+                                onClick={() =>
+                                  setSelectedOutletId(isSelected ? null : outlet.outletId)
+                                }
+                              >
+                                <TableCell className="font-medium" data-testid={`text-outlet-name-${outlet.outletId}`}>
+                                  <span className="flex items-center gap-2">
+                                    {isSelected && (
+                                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                        <X className="h-2.5 w-2.5" />
+                                      </span>
+                                    )}
+                                    {outlet.outletName}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-right font-mono" data-testid={`text-outlet-sales-${outlet.outletId}`}>
+                                  {outlet.totalNetSales > 0 ? formatCurrency(outlet.totalNetSales) : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono" data-testid={`text-outlet-cost-${outlet.outletId}`}>
+                                  {outlet.totalTheoreticalCost > 0 ? formatCurrency(outlet.totalTheoreticalCost) : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-semibold" data-testid={`text-outlet-pct-${outlet.outletId}`}>
+                                  {outlet.foodCostPct !== null
+                                    ? `${formatNumber(outlet.foodCostPct, 1)}%`
+                                    : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell>
+                                  {outlet.totalNetSales === 0 && outlet.linkedItemCount === 0 ? (
+                                    <Badge variant="secondary" data-testid={`badge-outlet-no-sales-${outlet.outletId}`}>
+                                      No sales data
+                                    </Badge>
+                                  ) : outlet.isComplete ? (
+                                    <Badge variant="default" className="bg-green-600 dark:bg-green-700" data-testid={`badge-outlet-complete-${outlet.outletId}`}>
+                                      Complete
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 gap-1"
+                                      title={`${outlet.unlinkedItemCount} menu item${outlet.unlinkedItemCount !== 1 ? "s" : ""} in this unit have no linked recipe`}
+                                      data-testid={`badge-outlet-incomplete-${outlet.outletId}`}
+                                    >
+                                      <AlertTriangle className="h-3 w-3" />
+                                      Costing incomplete
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                      {outletFoodCost.outlets.some(o => o.unlinkedItemCount > 0) && (
+                        <p className="text-xs text-muted-foreground mt-3" data-testid="note-outlet-incomplete">
+                          <AlertTriangle className="h-3 w-3 inline mr-1 text-amber-500" />
+                          Some units show <em>costing incomplete</em> because not all menu items have a linked recipe.
+                          Link recipes via the <strong>Menu Items</strong> page to see the full cost %.
+                        </p>
+                      )}
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -817,7 +861,38 @@ function TfcVarianceContent() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Variance by Ingredient</CardTitle>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-lg">Variance by Ingredient</CardTitle>
+                {activeOutlet && (
+                  <div
+                    className="flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
+                    data-testid="badge-active-outlet-filter"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Filtered: {activeOutlet.outletName}
+                    <button
+                      onClick={() => setSelectedOutletId(null)}
+                      className="ml-1 rounded-full hover:bg-primary/20 p-0.5"
+                      aria-label="Clear filter"
+                      data-testid="button-clear-outlet-filter"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {activeOutlet && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing {sortedVarianceItems.length} ingredient{sortedVarianceItems.length !== 1 ? "s" : ""} used in recipes for <strong>{activeOutlet.outletName}</strong> menu items.{" "}
+                  <button
+                    onClick={() => setSelectedOutletId(null)}
+                    className="underline hover:no-underline"
+                    data-testid="link-show-all-ingredients"
+                  >
+                    Show all
+                  </button>
+                </p>
+              )}
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -923,24 +998,36 @@ function TfcVarianceContent() {
                               </TableCell>
                             </TableRow>
                           ))}
-                        <TableRow className="border-t-2 bg-muted/20 font-bold">
-                          <TableCell colSpan={9} className="text-right font-semibold">
-                            Total
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-mono font-bold ${
-                              varianceData.summary.totalVarianceCost > 0
-                                ? "text-destructive"
-                                : varianceData.summary.totalVarianceCost < 0
-                                ? "text-green-600"
-                                : ""
-                            }`}
-                            data-testid="text-variance-total"
-                          >
-                            {varianceData.summary.totalVarianceCost > 0 ? "+" : ""}
-                            {formatCurrency(varianceData.summary.totalVarianceCost)}
-                          </TableCell>
-                        </TableRow>
+                        {(() => {
+                          const filteredTotal = sortedVarianceItems.reduce((s, i) => s + i.varianceCost, 0);
+                          return (
+                            <TableRow className="border-t-2 bg-muted/20 font-bold">
+                              <TableCell colSpan={9} className="text-right font-semibold">
+                                {activeOutlet ? (
+                                  <span>
+                                    {activeOutlet.outletName} subtotal{" "}
+                                    <span className="text-xs font-normal text-muted-foreground">
+                                      (all ingredients: {formatCurrency(varianceData.summary.totalVarianceCost)})
+                                    </span>
+                                  </span>
+                                ) : "Total"}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-mono font-bold ${
+                                  filteredTotal > 0
+                                    ? "text-destructive"
+                                    : filteredTotal < 0
+                                    ? "text-green-600"
+                                    : ""
+                                }`}
+                                data-testid="text-variance-total"
+                              >
+                                {filteredTotal > 0 ? "+" : ""}
+                                {formatCurrency(filteredTotal)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })()}
                       </>
                     )}
                   </TableBody>

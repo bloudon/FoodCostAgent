@@ -19266,19 +19266,51 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         : [];
       const recipeCostMap = new Map(recipeRows.map(r => [r.id, r.computedCost]));
 
+      // 4b. Batch-fetch direct recipe components (inventory_item type) to get per-outlet
+      //     ingredient sets.  Sub-recipes are not expanded here — direct components only.
+      const recipeComponentRows = recipeIds.length > 0
+        ? await db
+            .select({
+              recipeId: recipeComponents.recipeId,
+              inventoryItemId: recipeComponents.componentId,
+            })
+            .from(recipeComponents)
+            .where(
+              and(
+                sql`${recipeComponents.recipeId} = ANY(ARRAY[${sql.join(recipeIds.map(id => sql`${id}::text`), sql`, `)}])`,
+                eq(recipeComponents.componentType, 'inventory_item'),
+              ),
+            )
+        : [];
+      // recipeId → Set<inventoryItemId>
+      const recipeIngredientMap = new Map<string, Set<string>>();
+      for (const rc of recipeComponentRows) {
+        if (!recipeIngredientMap.has(rc.recipeId)) {
+          recipeIngredientMap.set(rc.recipeId, new Set());
+        }
+        recipeIngredientMap.get(rc.recipeId)!.add(rc.inventoryItemId);
+      }
+
       // 5. Aggregate per outlet
       type OutletAgg = {
         netSales: number;
         theoreticalCost: number;
         linkedItems: Set<string>;
         unlinkedItems: Set<string>;
+        ingredientIds: Set<string>;
       };
       const outletAgg = new Map<string, OutletAgg>();
 
       for (const row of salesRows) {
         const outletId = row.outletLocationId!;
         if (!outletAgg.has(outletId)) {
-          outletAgg.set(outletId, { netSales: 0, theoreticalCost: 0, linkedItems: new Set(), unlinkedItems: new Set() });
+          outletAgg.set(outletId, {
+            netSales: 0,
+            theoreticalCost: 0,
+            linkedItems: new Set(),
+            unlinkedItems: new Set(),
+            ingredientIds: new Set(),
+          });
         }
         const agg = outletAgg.get(outletId)!;
         agg.netSales += Number(row.netSales) || 0;
@@ -19288,6 +19320,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           const cost = recipeCostMap.get(recipeId) ?? 0;
           agg.theoreticalCost += (Number(row.qtySold) || 0) * cost;
           agg.linkedItems.add(row.menuItemId);
+          // Collect every direct ingredient in this menu item's recipe
+          const ingredientIds = recipeIngredientMap.get(recipeId);
+          if (ingredientIds) {
+            for (const itemId of ingredientIds) {
+              agg.ingredientIds.add(itemId);
+            }
+          }
         } else {
           agg.unlinkedItems.add(row.menuItemId);
         }
@@ -19307,7 +19346,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
       const responseOutlets = Array.from(outletSet).map(outletId => {
         const agg = outletAgg.get(outletId);
-        const name = outletNameMap.get(outletId) ?? "Unknown Outlet";
+        const name = outletNameMap.get(outletId) ?? "Unknown Operating Unit";
         if (!agg) {
           return {
             outletId,
@@ -19318,6 +19357,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
             linkedItemCount: 0,
             unlinkedItemCount: 0,
             isComplete: false,
+            inventoryItemIds: [] as string[],
           };
         }
         const foodCostPct = agg.netSales > 0 ? (agg.theoreticalCost / agg.netSales) * 100 : null;
@@ -19330,6 +19370,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           linkedItemCount: agg.linkedItems.size,
           unlinkedItemCount: agg.unlinkedItems.size,
           isComplete: agg.unlinkedItems.size === 0 && agg.linkedItems.size > 0,
+          inventoryItemIds: [...agg.ingredientIds],
         };
       }).sort((a, b) => a.outletName.localeCompare(b.outletName));
 

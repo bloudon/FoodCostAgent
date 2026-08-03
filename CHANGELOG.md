@@ -2,6 +2,15 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.15.1] — 2026-08-03
+
+### TFC page — food cost % by operating unit with click-to-filter
+
+- **Renamed "Outlet" → "Operating Unit"** on the TFC variance page — section header, hint text, and badge tooltips all use the new terminology
+- **Click-to-filter ingredients** — click any operating unit row to filter the Variance by Ingredient table to only the recipe ingredients used in that unit's menu items; click again or use the "Show all" link to clear the filter
+- **Filter banner** — when a filter is active, a chip above the ingredient table shows which unit is selected and how many ingredients are shown, with a one-click dismiss button
+- **Backend: `inventoryItemIds` per unit** — the `/api/tfc/outlet-food-cost` endpoint now returns the set of inventory item IDs (direct recipe components) for each operating unit, enabling client-side filtering without a second round-trip
+
 ## [1.15.0] — 2026-08-03
 
 ### Operating Units — new core platform model
