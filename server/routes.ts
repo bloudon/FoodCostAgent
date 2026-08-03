@@ -16881,6 +16881,37 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     return res.status(403).json({ error: "Access denied" });
   });
 
+  // List outlet-type inventory locations seeded by POS imports (Jonas Encore, etc.)
+  app.get("/api/inventory-locations/outlets", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) return res.status(400).json({ error: "Company context required." });
+
+      const outlets = await db
+        .select({
+          id: inventoryLocations.id,
+          name: inventoryLocations.name,
+          locationType: inventoryLocations.locationType,
+          sourceSystem: inventoryLocations.sourceSystem,
+          active: inventoryLocations.active,
+        })
+        .from(inventoryLocations)
+        .where(
+          and(
+            eq(inventoryLocations.companyId, companyId),
+            eq(inventoryLocations.locationType, "outlet"),
+            eq(inventoryLocations.active, 1),
+          ),
+        )
+        .orderBy(inventoryLocations.name);
+
+      return res.json(outlets);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
   // Get accessible stores for current user (filtered by role and assignments)
   app.get("/api/stores/accessible", requireAuth, async (req, res) => {
     try {

@@ -2,6 +2,13 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.8] — 2026-08-03
+
+### Stores page — POS outlet locations
+
+- **Outlet locations now visible on the Stores page** — a new "POS Outlet Locations" section appears on `/stores` showing every outlet seeded by the Jonas Encore Sales by Item import; previously these were written to the database but had no UI surface
+- **GET `/api/inventory-locations/outlets`** — new endpoint returning active outlet-type inventory locations for the current company, used by the Stores page section
+
 ## [1.14.7] — 2026-08-03
 
 ### Sales import navigation

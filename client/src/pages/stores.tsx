@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Store, Plus, Pencil, Trash2 } from "lucide-react";
+import { Store, Plus, Pencil, Trash2, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CompanyStore } from "@shared/schema";
@@ -56,6 +56,11 @@ export default function Stores() {
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
   const { data: stores = [], isLoading } = useAccessibleStores();
+  const { data: outletLocations = [], isLoading: outletsLoading } = useQuery<
+    Array<{ id: string; name: string; locationType: string; sourceSystem: string | null; active: number }>
+  >({
+    queryKey: ["/api/inventory-locations/outlets"],
+  });
 
   const createStoreMutation = useMutation({
     mutationFn: async (data: Partial<CompanyStore>) => {
@@ -510,6 +515,46 @@ export default function Stores() {
                 ))}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Outlet Locations — seeded by POS imports (Jonas Encore, etc.) */}
+      {(outletsLoading || outletLocations.length > 0) && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-muted-foreground" />
+              POS Outlet Locations
+            </CardTitle>
+            <CardDescription>
+              Outlet locations seeded from your Jonas Encore Sales by Item import.
+              These are used to break down theoretical food cost by outlet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {outletsLoading ? (
+              <div className="text-muted-foreground text-sm">Loading outlets…</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Outlet Name</TableHead>
+                    <TableHead>Source</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {outletLocations.map((loc) => (
+                    <TableRow key={loc.id} data-testid={`row-outlet-${loc.id}`}>
+                      <TableCell className="font-medium">{loc.name}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {loc.sourceSystem === "SALES_BY_ITEM" ? "Jonas Encore" : (loc.sourceSystem ?? "POS")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}
