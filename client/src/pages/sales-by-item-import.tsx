@@ -7,6 +7,7 @@
  */
 
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { TierGate } from "@/components/tier-gate";
@@ -70,6 +71,10 @@ function SalesByItemImportContent() {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [result, setResult] = useState<ApproveResult | null>(null);
   const [unrecognizedWarningDismissed, setUnrecognizedWarningDismissed] = useState(false);
+
+  const { data: seededOutlets = [] } = useQuery<
+    Array<{ id: string; name: string }>
+  >({ queryKey: ["/api/inventory-locations/outlets"] });
 
   // ── File selection ──────────────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
@@ -272,12 +277,37 @@ function SalesByItemImportContent() {
             <div className="rounded-lg bg-muted p-4 text-sm space-y-1">
               <p className="font-medium">What this import does</p>
               <ul className="space-y-1 text-muted-foreground text-xs">
-                <li>• Creates <strong>outlet locations</strong> (Bay Window, Grill, Banquet, Halfway House, etc.) from the Sales Areas header</li>
+                <li>• Creates <strong>sales outlets</strong> (Bay Window, Grill, Banquet, Halfway House, etc.) from the Sales Areas header</li>
                 <li>• Creates <strong>menu item categories</strong> (FF-BW Favorites, BW Lunch, etc.) as menu departments</li>
                 <li>• Creates <strong>menu items</strong> with their Quick Access Codes as PLU/SKU for later recipe linking</li>
-                <li>• Records the <strong>June sales totals</strong> per item for theoretical food cost calculations</li>
+                <li>• Records the <strong>sales totals</strong> per item for theoretical food cost calculations</li>
               </ul>
             </div>
+
+            {/* Already-seeded outlets */}
+            {seededOutlets.length > 0 && (
+              <div className="rounded-lg border p-4 space-y-2" data-testid="seeded-outlets-section">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  Seeded Sales Outlets ({seededOutlets.length})
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  These outlets were created from a previous import and are ready for TFC calculations.
+                  Re-uploading will safely skip them.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {seededOutlets.map((o) => (
+                    <span
+                      key={o.id}
+                      className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium"
+                      data-testid={`badge-outlet-${o.id}`}
+                    >
+                      {o.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -2,6 +2,13 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.9] — 2026-08-03
+
+### Sales by Item import — outlet visibility
+
+- **Seeded outlets shown on import page** — the Sales by Item import page now shows a "Seeded Sales Outlets" section listing every outlet already created from a previous import (Bay Window, Grill, Banquet, etc.), so you can verify them without leaving the page
+- **Reverted Stores page change** — sales outlets were incorrectly surfaced on the Store Locations page in v1.14.8; removed, as sales outlets are distinct from inventory/storage locations
+
 ## [1.14.8] — 2026-08-03
 
 ### Stores page — POS outlet locations
