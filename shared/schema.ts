@@ -2404,7 +2404,7 @@ export const inventoryLocations = pgTable("inventory_locations", {
   name: text("name").notNull(),
   normalizedName: text("normalized_name").notNull(), // lowercase trimmed for dedup
   locationType: text("location_type").notNull().default("storage"),
-  // storage | outlet | cost_center | kitchen | bar | prep | cellar
+  // storage | operating_unit | cost_center | kitchen | bar | prep | cellar
   parentLocationId: varchar("parent_location_id"),          // nullable self-referential hierarchy
   outletOrCostCenterId: varchar("outlet_or_cost_center_id"), // optional POS outlet reference
   isCentralStorage: integer("is_central_storage").notNull().default(0),

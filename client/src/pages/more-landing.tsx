@@ -162,6 +162,17 @@ export default function MoreLanding() {
           } as NavItem,
         ]
       : []),
+    ...(isManager
+      ? [
+          {
+            href: "/operating-units",
+            icon: Layers,
+            label: "Operating Units",
+            description: "Define revenue areas: Bar, Patio, Dining Room, etc.",
+            testId: "more-nav-operating-units",
+          } as NavItem,
+        ]
+      : []),
     ...(isAdmin
       ? [
           {

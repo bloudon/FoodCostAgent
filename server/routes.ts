@@ -901,6 +901,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Operating Units migration ────────────────────────────────────────────────
+  // Rename legacy locationType='outlet' rows to 'operating_unit' and
+  // auto-create a "Main Operation" unit for any company that has none.
+  (async function migrateOperatingUnits() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'operating_units_rename'`
+      );
+      const existing = Array.isArray(existingRows)
+        ? existingRows[0]
+        : (existingRows as any).rows?.[0];
+      if (!existing) {
+        // 1. Rename 'outlet' → 'operating_unit'
+        await db.execute(sql`
+          UPDATE inventory_locations
+          SET location_type = 'operating_unit'
+          WHERE location_type = 'outlet'
+        `);
+        // 2. Auto-create "Main Operation" for companies that have no operating_unit rows
+        await db.execute(sql`
+          INSERT INTO inventory_locations
+            (id, company_id, name, normalized_name, location_type, source_system, active, created_at, updated_at)
+          SELECT
+            gen_random_uuid(),
+            cs.company_id,
+            'Main Operation',
+            'main operation',
+            'operating_unit',
+            'manual',
+            1,
+            NOW(),
+            NOW()
+          FROM (SELECT DISTINCT company_id FROM company_stores WHERE status = 'active') cs
+          WHERE NOT EXISTS (
+            SELECT 1 FROM inventory_locations il
+            WHERE il.company_id = cs.company_id
+              AND il.location_type = 'operating_unit'
+              AND il.active = 1
+          )
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('operating_units_rename')`
+        );
+        console.log("[Migration] Applied operating_units_rename");
+      } else {
+        console.log("[Migration] Already applied (operating_units_rename)");
+      }
+    } catch (err) {
+      console.error("[Migration] operating_units_rename error:", err);
+    }
+  })();
+
   // GET /api/background-images — public
   // Returns active images. If ?companyId= is provided and company has a brand image, returns just that.
   // For free-tier companies without a brand image, returns the designated free-tier background (if any).
@@ -16881,13 +16939,18 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     return res.status(403).json({ error: "Access denied" });
   });
 
-  // List outlet-type inventory locations seeded by POS imports (Jonas Encore, etc.)
-  app.get("/api/inventory-locations/outlets", requireAuth, async (req, res) => {
+  // ── Operating Units CRUD ─────────────────────────────────────────────────────
+  // Operating units are the revenue-producing areas within an operating location
+  // (Dining Room, Bar, Patio, Catering, etc.).  They are stored in
+  // inventory_locations with locationType = 'operating_unit'.
+
+  // GET /api/operating-units — list all active operating units for the company
+  app.get("/api/operating-units", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId as string | undefined;
       if (!companyId) return res.status(400).json({ error: "Company context required." });
 
-      const outlets = await db
+      const units = await db
         .select({
           id: inventoryLocations.id,
           name: inventoryLocations.name,
@@ -16899,17 +16962,130 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         .where(
           and(
             eq(inventoryLocations.companyId, companyId),
-            eq(inventoryLocations.locationType, "outlet"),
-            eq(inventoryLocations.active, 1),
+            eq(inventoryLocations.locationType, "operating_unit"),
           ),
         )
         .orderBy(inventoryLocations.name);
 
-      return res.json(outlets);
+      return res.json(units);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return res.status(500).json({ error: msg });
     }
+  });
+
+  // POST /api/operating-units — create a new operating unit (manager+)
+  app.post("/api/operating-units", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) return res.status(400).json({ error: "Company context required." });
+
+      const currentUser = await storage.getUser(req.user!.id);
+      const role = currentUser?.role ?? "store_user";
+      const ALLOWED_ROLES = ["store_manager", "company_admin", "global_admin"] as const;
+      if (!(ALLOWED_ROLES as readonly string[]).includes(role)) {
+        return res.status(403).json({ error: "Manager or admin role required to manage operating units." });
+      }
+
+      const { name } = req.body as { name?: string };
+      if (!name?.trim()) return res.status(400).json({ error: "name is required." });
+
+      const normalizedName = name.trim().toLowerCase();
+
+      // Dedup check
+      const [existing] = await db
+        .select({ id: inventoryLocations.id })
+        .from(inventoryLocations)
+        .where(
+          and(
+            eq(inventoryLocations.companyId, companyId),
+            eq(inventoryLocations.locationType, "operating_unit"),
+            eq(inventoryLocations.normalizedName, normalizedName),
+          ),
+        )
+        .limit(1);
+      if (existing) return res.status(409).json({ error: "An operating unit with that name already exists." });
+
+      const [created] = await db
+        .insert(inventoryLocations)
+        .values({
+          companyId,
+          name: name.trim(),
+          normalizedName,
+          locationType: "operating_unit",
+          sourceSystem: "manual",
+          active: 1,
+        })
+        .returning();
+
+      return res.status(201).json(created);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // PATCH /api/operating-units/:id — rename or toggle active (manager+)
+  app.patch("/api/operating-units/:id", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) return res.status(400).json({ error: "Company context required." });
+
+      const currentUser = await storage.getUser(req.user!.id);
+      const role = currentUser?.role ?? "store_user";
+      const ALLOWED_ROLES = ["store_manager", "company_admin", "global_admin"] as const;
+      if (!(ALLOWED_ROLES as readonly string[]).includes(role)) {
+        return res.status(403).json({ error: "Manager or admin role required to manage operating units." });
+      }
+
+      const { id } = req.params;
+      const { name, active } = req.body as { name?: string; active?: number };
+
+      const [unit] = await db
+        .select({ id: inventoryLocations.id })
+        .from(inventoryLocations)
+        .where(
+          and(
+            eq(inventoryLocations.id, id),
+            eq(inventoryLocations.companyId, companyId),
+            eq(inventoryLocations.locationType, "operating_unit"),
+          ),
+        )
+        .limit(1);
+      if (!unit) return res.status(404).json({ error: "Operating unit not found." });
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (name !== undefined) {
+        updates.name = name.trim();
+        updates.normalizedName = name.trim().toLowerCase();
+      }
+      if (active !== undefined) updates.active = active ? 1 : 0;
+
+      const [updated] = await db
+        .update(inventoryLocations)
+        .set(updates as any)
+        .where(eq(inventoryLocations.id, id))
+        .returning();
+
+      return res.json(updated);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // Backward-compat alias: old path used by pre-966 clients
+  app.get("/api/inventory-locations/outlets", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId as string | undefined;
+    if (!companyId) return res.status(400).json({ error: "Company context required." });
+    const units = await db
+      .select({ id: inventoryLocations.id, name: inventoryLocations.name,
+                 locationType: inventoryLocations.locationType,
+                 sourceSystem: inventoryLocations.sourceSystem, active: inventoryLocations.active })
+      .from(inventoryLocations)
+      .where(and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.locationType, "operating_unit"), eq(inventoryLocations.active, 1)))
+      .orderBy(inventoryLocations.name);
+    return res.json(units);
   });
 
   // Get accessible stores for current user (filtered by role and assignments)
@@ -17720,6 +17896,34 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         companyId: req.params.id,
       });
       const store = await storage.createCompanyStore(data);
+
+      // Auto-create "Main Operation" if this company has no operating units yet
+      try {
+        const [existingUnit] = await db
+          .select({ id: inventoryLocations.id })
+          .from(inventoryLocations)
+          .where(
+            and(
+              eq(inventoryLocations.companyId, req.params.id),
+              eq(inventoryLocations.locationType, "operating_unit"),
+              eq(inventoryLocations.active, 1),
+            ),
+          )
+          .limit(1);
+        if (!existingUnit) {
+          await db.insert(inventoryLocations).values({
+            companyId: req.params.id,
+            name: "Main Operation",
+            normalizedName: "main operation",
+            locationType: "operating_unit",
+            sourceSystem: "manual",
+            active: 1,
+          });
+        }
+      } catch (unitErr) {
+        console.error("[OperatingUnits] Failed to auto-create Main Operation:", unitErr);
+      }
+
       res.status(201).json(store);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -18959,8 +19163,8 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  // Task #889: Food cost % broken out by outlet for the TFC report
-  // For each outlet (inventoryLocations with locationType='outlet') within the
+  // Food cost % broken out by operating unit for the TFC report
+  // For each operating unit (inventoryLocations with locationType='operating_unit') within the
   // selected store's company, sum qtySold × recipe.computedCost (theoretical cost)
   // and netSales from daily_menu_item_sales, then compute food cost %.
   app.get("/api/tfc/outlet-food-cost", requireAuth, requireTier("platform"), async (req, res) => {
@@ -18986,14 +19190,14 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         return res.status(404).json({ message: "One or both inventory counts not found" });
       }
 
-      // 1. All outlets for this company
+      // 1. All operating units for this company
       const outlets = await db
         .select({ id: inventoryLocations.id, name: inventoryLocations.name })
         .from(inventoryLocations)
         .where(
           and(
             eq(inventoryLocations.companyId, companyId),
-            eq(inventoryLocations.locationType, "outlet"),
+            eq(inventoryLocations.locationType, "operating_unit"),
             eq(inventoryLocations.active, 1),
           ),
         );

@@ -2,6 +2,17 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.15.0] — 2026-08-03
+
+### Operating Units — new core platform model
+
+- **Operating Units page** — new `/operating-units` page (accessible from More → Locations) lets you view, add, rename, and deactivate the revenue-producing areas within your operation (Bar, Patio, Dining Room, Catering, etc.)
+- **Auto-created "Main Operation"** — every company that has an active store but no operating units gets a default "Main Operation" unit created on startup; new stores also trigger the same auto-create
+- **Renamed from "outlet" to "operating_unit"** — the internal `locationType` value is now `operating_unit` across the schema, API endpoints, migrations, and Jonas Encore import; a startup migration renames all existing rows
+- **Operating Units API** — new CRUD endpoints `GET/POST/PATCH /api/operating-units`; the old `/api/inventory-locations/outlets` path is kept as a backward-compatible alias
+- **Jonas Encore import terminology** — all "outlet" language on the Sales by Item import page updated to "operating unit"
+- **More nav** — "Operating Units" entry added to the Locations section of the More page (manager+)
+
 ## [1.14.9] — 2026-08-03
 
 ### Sales by Item import — outlet visibility

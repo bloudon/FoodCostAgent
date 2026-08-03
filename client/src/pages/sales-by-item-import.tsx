@@ -74,7 +74,7 @@ function SalesByItemImportContent() {
 
   const { data: seededOutlets = [] } = useQuery<
     Array<{ id: string; name: string }>
-  >({ queryKey: ["/api/inventory-locations/outlets"] });
+  >({ queryKey: ["/api/operating-units"] });
 
   // ── File selection ──────────────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
@@ -187,7 +187,7 @@ function SalesByItemImportContent() {
             POS Sales Report Import
           </h1>
           <p className="text-sm text-muted-foreground">
-            Seeds outlet locations and menu items from a Jonas Encore Sales-by-Item export
+            Seeds operating units and menu items from a Jonas Encore Sales-by-Item export
           </p>
         </div>
       </div>
@@ -210,7 +210,7 @@ function SalesByItemImportContent() {
             </CardTitle>
             <CardDescription>
               Upload the Sales by Item Excel export from your Jonas Encore POS system.
-              This report seeds outlet locations (Bay Window, Grill, Banquet, etc.) and all
+              This report seeds operating units (Bay Window, Grill, Banquet, etc.) and all
               menu items, so you don't need to enter them manually.
             </CardDescription>
           </CardHeader>
@@ -277,7 +277,7 @@ function SalesByItemImportContent() {
             <div className="rounded-lg bg-muted p-4 text-sm space-y-1">
               <p className="font-medium">What this import does</p>
               <ul className="space-y-1 text-muted-foreground text-xs">
-                <li>• Creates <strong>sales outlets</strong> (Bay Window, Grill, Banquet, Halfway House, etc.) from the Sales Areas header</li>
+                <li>• Creates <strong>operating units</strong> (Bay Window, Grill, Banquet, Halfway House, etc.) from the Sales Areas header</li>
                 <li>• Creates <strong>menu item categories</strong> (FF-BW Favorites, BW Lunch, etc.) as menu departments</li>
                 <li>• Creates <strong>menu items</strong> with their Quick Access Codes as PLU/SKU for later recipe linking</li>
                 <li>• Records the <strong>sales totals</strong> per item for theoretical food cost calculations</li>
@@ -289,10 +289,10 @@ function SalesByItemImportContent() {
               <div className="rounded-lg border p-4 space-y-2" data-testid="seeded-outlets-section">
                 <p className="text-sm font-medium flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Seeded Sales Outlets ({seededOutlets.length})
+                  Seeded Operating Units ({seededOutlets.length})
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  These outlets were created from a previous import and are ready for TFC calculations.
+                  These operating units were created from a previous import and are ready for TFC calculations.
                   Re-uploading will safely skip them.
                 </p>
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -403,10 +403,10 @@ function SalesByItemImportContent() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Store className="h-4 w-4" />
-                Outlets to Seed ({preview.uniqueOutlets})
+                Operating Units to Seed ({preview.uniqueOutlets})
               </CardTitle>
               <CardDescription>
-                These will be created as outlet-type inventory locations (find-or-create — safe to re-upload).
+                These will be created as operating units (find-or-create — safe to re-upload).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -459,7 +459,7 @@ function SalesByItemImportContent() {
               className="flex-1"
             >
               <CheckCircle2 className="h-4 w-4 mr-2" />
-              Import {preview.uniqueOutlets} Outlets &amp; {preview.totalItems} Menu Items
+              Import {preview.uniqueOutlets} Operating Units &amp; {preview.totalItems} Menu Items
             </Button>
             <Button variant="outline" onClick={reset} data-testid="button-cancel">
               Cancel
@@ -472,7 +472,7 @@ function SalesByItemImportContent() {
       {step === "approving" && (
         <Card className="p-12 text-center">
           <Loader2 className="h-10 w-10 animate-spin mx-auto mb-4 text-primary" />
-          <p className="font-medium">Seeding outlets and menu items…</p>
+          <p className="font-medium">Seeding operating units and menu items…</p>
           <p className="text-sm text-muted-foreground mt-1">This usually takes a few seconds.</p>
         </Card>
       )}
@@ -489,7 +489,7 @@ function SalesByItemImportContent() {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Card className="p-4">
-              <p className="text-xs text-muted-foreground mb-1">Outlets Created</p>
+              <p className="text-xs text-muted-foreground mb-1">Operating Units Created</p>
               <p className="text-2xl font-bold text-emerald-600" data-testid="stat-outlets-created">
                 {result.outletsCreated}
               </p>

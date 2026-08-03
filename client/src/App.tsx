@@ -66,6 +66,7 @@ import TransferOrders from "@/pages/transfer-orders";
 import TransferOrderDetail from "@/pages/transfer-order-detail";
 import VarianceReport from "@/pages/variance-report";
 import StorageLocations from "@/pages/storage-locations";
+import OperatingUnits from "@/pages/operating-units";
 import Categories from "@/pages/categories";
 import ApiCredentials from "@/pages/api-credentials";
 import Settings from "@/pages/settings";
@@ -625,6 +626,7 @@ function ProtectedLayoutContent() {
               <Route path="/tfc/sales-import" component={TfcSalesImport} />
               <Route path="/tfc/variance" component={TfcVariance} />
               <Route path="/storage-locations" component={StorageLocations} />
+              <Route path="/operating-units" component={OperatingUnits} />
               <Route path="/categories" component={Categories} />
               <Route path="/unit-conversions" component={UnitConversions} />
               <Route path="/api-credentials" component={ApiCredentials} />

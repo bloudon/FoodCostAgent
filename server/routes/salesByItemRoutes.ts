@@ -350,7 +350,7 @@ export function registerSalesByItemRoutes(app: Express): void {
                   companyId,
                   name: outletName,
                   normalizedName,
-                  locationType: 'outlet',
+                  locationType: 'operating_unit',
                   sourceSystem: 'SALES_BY_ITEM',
                   active: 1,
                 })
