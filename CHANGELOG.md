@@ -2,6 +2,15 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.14.7] — 2026-08-03
+
+### Sales import navigation
+
+- **Jonas Encore tab in Analyze nav** — clubs with `pos_import` now see "Import Sales (Jonas Encore)" as a dedicated tab in the Analyze secondary nav alongside the CSV tab
+- **Jonas Encore action card on Analyze landing** — added an "Import Sales (Jonas Encore)" action card on the `/analyze` hub page pointing directly to `/sales-by-item-import`
+- **Dark-mode-safe Jonas Encore banner** — the "Using Jonas Encore?" banner on the CSV import page now uses theme-aware colors (`bg-blue-500/10`, `dark:text-blue-400`) so it's visible on dark themes
+- **Sidebar active state** — the Analyze nav item now highlights when the user is on `/sales-by-item-import`
+
 ## [1.14.6] — 2026-08-02
 
 ### Sales import

@@ -241,7 +241,7 @@ function TfcSalesImportContent() {
         <p className="text-muted-foreground mt-2">
           Upload CSV sales data to calculate theoretical food cost and variance
         </p>
-        <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800" data-testid="banner-jonas-encore">
+        <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-600 dark:text-blue-400" data-testid="banner-jonas-encore">
           <span>Using Jonas Encore? Upload your Sales by Item report instead</span>
           <a
             href="/sales-by-item-import"

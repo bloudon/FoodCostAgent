@@ -84,6 +84,7 @@ function getActiveSection(loc: string): string {
     loc === "/analyze" ||
     loc.startsWith("/variance") ||
     loc.startsWith("/tfc") ||
+    loc.startsWith("/sales-by-item-import") ||
     loc.startsWith("/menu-insights")
   ) return "analyze";
 

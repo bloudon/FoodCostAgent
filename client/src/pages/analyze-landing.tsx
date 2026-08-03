@@ -65,7 +65,8 @@ function SecondaryTabs({
   const tabs = [
     { label: "Overview", href: "/analyze" },
     ...(showTfc ? [{ label: "Theoretical Food Cost", href: "/tfc/variance" }] : []),
-    ...(showPosImport ? [{ label: "Import Sales", href: "/tfc/sales-import" }] : []),
+    ...(showPosImport ? [{ label: "Import Sales (CSV)", href: "/tfc/sales-import" }] : []),
+    ...(showPosImport ? [{ label: "Import Sales (Jonas Encore)", href: "/sales-by-item-import" }] : []),
     { label: "Inventory Variance", href: "/variance" },
   ];
 
@@ -362,9 +363,22 @@ export default function AnalyzeLanding() {
               icon={Upload}
               iconBg="bg-blue-500/10"
               iconClass="text-blue-600 dark:text-blue-400"
-              title="Import Sales"
-              description="Upload POS data to calculate theoretical food cost"
+              title="Import Sales (CSV)"
+              description="Upload generic POS CSV data to calculate theoretical food cost"
               testId="action-import-sales"
+            />
+          )}
+
+          {/* Jonas Encore Sales by Item import — requires pos_import */}
+          {showPosImport && (
+            <ActionCard
+              href="/sales-by-item-import"
+              icon={Upload}
+              iconBg="bg-indigo-500/10"
+              iconClass="text-indigo-600 dark:text-indigo-400"
+              title="Import Sales (Jonas Encore)"
+              description="Upload Jonas Encore Sales by Item report for theoretical food cost"
+              testId="action-import-sales-by-item"
             />
           )}
 
