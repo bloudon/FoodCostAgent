@@ -1151,7 +1151,7 @@ export default function Companies() {
       </Card>
 
       {/* Companies list */}
-      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+      <div className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
