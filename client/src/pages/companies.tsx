@@ -1164,6 +1164,26 @@ export default function Companies() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search companies…"
+              value={companySearch}
+              onChange={e => setCompanySearch(e.target.value)}
+              className="pl-8 pr-7 h-8 text-sm"
+              data-testid="input-company-search"
+            />
+            {companySearch && (
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setCompanySearch("")}
+                aria-label="Clear search"
+                data-testid="button-clear-company-search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <Select
             value={companyTierFilter}
             onValueChange={(v) => setCompanyTierFilter(v as "all" | Tier)}
@@ -1192,26 +1212,6 @@ export default function Companies() {
               <SelectItem value="suspended">Suspended</SelectItem>
             </SelectContent>
           </Select>
-          <div className="relative w-56">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search companies…"
-              value={companySearch}
-              onChange={e => setCompanySearch(e.target.value)}
-              className="pl-8 pr-7 h-8 text-sm"
-              data-testid="input-company-search"
-            />
-            {companySearch && (
-              <button
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                onClick={() => setCompanySearch("")}
-                aria-label="Clear search"
-                data-testid="button-clear-company-search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
         </div>
       </div>
 
