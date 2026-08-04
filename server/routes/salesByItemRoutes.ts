@@ -196,11 +196,45 @@ export function registerSalesByItemRoutes(app: Express): void {
           );
         }
 
+        // Check which outlet names already exist as operating_unit records so the
+        // preview UI can show "Already exists" vs "Will create" badges.
+        const companyId = (req as any).companyId as string | undefined;
+        const outletNames = Object.keys(parsed.outletCounts);
+        const outletMatchStatus: Record<string, 'exists' | 'new'> = {};
+
+        if (companyId && outletNames.length > 0) {
+          const normalizedNames = outletNames.map(n => n.toLowerCase().trim());
+          const existing = await db
+            .select({ normalizedName: inventoryLocations.normalizedName })
+            .from(inventoryLocations)
+            .where(
+              and(
+                eq(inventoryLocations.companyId, companyId),
+                eq(inventoryLocations.locationType, 'operating_unit'),
+                eq(inventoryLocations.active, 1),
+                sql`${inventoryLocations.normalizedName} = ANY(ARRAY[${sql.join(
+                  normalizedNames.map(n => sql`${n}::text`),
+                  sql`, `,
+                )}])`,
+              ),
+            );
+          const existingSet = new Set(existing.map(r => r.normalizedName));
+          for (const name of outletNames) {
+            outletMatchStatus[name] = existingSet.has(name.toLowerCase().trim())
+              ? 'exists'
+              : 'new';
+          }
+        } else {
+          // No companyId (shouldn't happen for authenticated users) — treat all as new
+          for (const name of outletNames) outletMatchStatus[name] = 'new';
+        }
+
         return res.json({
           reportStart: parsed.reportStart,
           reportEnd: parsed.reportEnd,
           salesAreas: parsed.salesAreas,
           outletCounts: parsed.outletCounts,
+          outletMatchStatus,
           categoryCounts: parsed.categoryCounts,
           totalItems: parsed.rows.length,
           totalQty: parsed.totalQty,
@@ -334,6 +368,7 @@ export function registerSalesByItemRoutes(app: Express): void {
               .where(
                 and(
                   eq(inventoryLocations.companyId, companyId),
+                  eq(inventoryLocations.locationType, 'operating_unit'),
                   eq(inventoryLocations.normalizedName, normalizedName),
                   eq(inventoryLocations.active, 1),
                 ),

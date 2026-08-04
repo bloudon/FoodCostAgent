@@ -21,7 +21,7 @@ import {
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2,
   MapPin, ShoppingBag, Calendar, BarChart2, ChevronLeft, Store, Link2,
-  TriangleAlert, X,
+  TriangleAlert, X, PlusCircle,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,6 +31,8 @@ interface PreviewResult {
   reportEnd: string;
   salesAreas: string[];
   outletCounts: Record<string, number>;
+  /** Per-outlet match status: 'exists' = already an operating unit, 'new' = will be created */
+  outletMatchStatus: Record<string, 'exists' | 'new'>;
   categoryCounts: Record<string, number>;
   totalItems: number;
   totalQty: number;
@@ -329,7 +331,7 @@ function SalesByItemImportContent() {
             <Card className="p-4">
               <div className="flex items-center gap-2 mb-1">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">Outlets</p>
+                <p className="text-xs text-muted-foreground">Operating Units</p>
               </div>
               <p className="font-semibold text-2xl">{preview.uniqueOutlets}</p>
             </Card>
@@ -399,39 +401,83 @@ function SalesByItemImportContent() {
           )}
 
           {/* Outlets breakdown */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Store className="h-4 w-4" />
-                Operating Units to Seed ({preview.uniqueOutlets})
-              </CardTitle>
-              <CardDescription>
-                These will be created as operating units (find-or-create — safe to re-upload).
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Outlet Name</TableHead>
-                    <TableHead className="text-right">Menu Items</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Object.entries(preview.outletCounts)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([outlet, count]) => (
-                      <TableRow key={outlet} data-testid={`row-outlet-${outlet}`}>
-                        <TableCell className="font-medium">{outlet}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant="secondary">{count}</Badge>
-                        </TableCell>
+          {(() => {
+            const statusCounts = Object.values(preview.outletMatchStatus ?? {});
+            const existsCount = statusCounts.filter(s => s === 'exists').length;
+            const newCount = statusCounts.filter(s => s === 'new').length;
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Store className="h-4 w-4" />
+                    Operating Units to Seed ({preview.uniqueOutlets})
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-3 flex-wrap">
+                    <span>Safe to re-upload — existing units are matched, not duplicated.</span>
+                    {existsCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {existsCount} already exist
+                      </span>
+                    )}
+                    {newCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400">
+                        <PlusCircle className="h-3 w-3" />
+                        {newCount} will be created
+                      </span>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Operating Unit Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Menu Items</TableHead>
                       </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {Object.entries(preview.outletCounts)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([outlet, count]) => {
+                          const status = preview.outletMatchStatus?.[outlet] ?? 'new';
+                          return (
+                            <TableRow key={outlet} data-testid={`row-outlet-${outlet}`}>
+                              <TableCell className="font-medium">{outlet}</TableCell>
+                              <TableCell>
+                                {status === 'exists' ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-emerald-500 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 gap-1 text-xs"
+                                    data-testid={`badge-status-exists-${outlet}`}
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Already exists
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-blue-500 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 gap-1 text-xs"
+                                    data-testid={`badge-status-new-${outlet}`}
+                                  >
+                                    <PlusCircle className="h-3 w-3" />
+                                    Will create
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Badge variant="secondary">{count}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Header sales areas (from report) */}
           {preview.salesAreas.length > 0 && (

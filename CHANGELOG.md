@@ -2,6 +2,14 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.15.2] — 2026-08-04
+
+### Jonas Encore import — operating unit matching fix and preview badges
+
+- **Tightened find-or-create lookup** — the approve handler now filters by `locationType = 'operating_unit'` when matching existing records by name, so a storage location or cost centre with the same name (e.g. "Bar") can never accidentally absorb sales data intended for an operating unit
+- **Match status in preview** — the preview endpoint queries existing operating units before returning, so each area in the upload is flagged `'exists'` or `'new'` before any write happens
+- **"Already exists" / "Will create" badges** — the Operating Units to Seed table on the import preview page now shows a green "Already exists" badge or a blue "Will create" badge next to each area name, with a summary count in the card header
+
 ## [1.15.1] — 2026-08-03
 
 ### TFC page — food cost % by operating unit with click-to-filter
