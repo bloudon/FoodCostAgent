@@ -137,41 +137,15 @@ function RecipeDetailContent() {
           </div>
         )}
 
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-4">
-            {(recipe.imagePath || recipe.sourceImagePath) && (
-              <div className="flex-shrink-0">
-                {recipe.imagePath && (
-                  <div className="relative group">
-                    <img
-                      src={recipe.imagePath}
-                      alt={`Photo of ${recipe.name}`}
-                      className="w-20 h-20 rounded-md object-cover border cursor-pointer hover:opacity-90 transition-opacity"
-                      data-testid="img-recipe-photo"
-                      onClick={() => setPhotoLightboxOpen(true)}
-                      title="Click to view full size"
-                    />
-                  </div>
-                )}
-                {recipe.sourceImagePath && (
-                  <button
-                    onClick={() => setScanLightboxOpen(true)}
-                    className="mt-1 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors w-full text-center"
-                    data-testid="button-view-original-scan"
-                  >
-                    View original scan
-                  </button>
-                )}
-              </div>
-            )}
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">
-                {formatRecipeName(recipe.name)}
-              </h1>
-              <p className="text-muted-foreground mt-2">
-                Recipe details and cost history
-              </p>
-            </div>
+        {/* Name row */}
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-recipe-name">
+              {formatRecipeName(recipe.name)}
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Recipe details and cost history
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {recipe.name.includes("Dough") || recipe.name.includes("Sauce") ? (
@@ -187,45 +161,128 @@ function RecipeDetailContent() {
             </Link>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4 md:gap-6 md:grid-cols-3 mb-8">
-        <Card data-testid="card-current-cost">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Current Cost
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="text-2xl font-bold font-mono" data-testid="text-current-cost">
-                ${recipe.computedCost?.toFixed(2) || "0.00"}
+        {/* Hero: image + stat cards side-by-side (or just stat cards when no image) */}
+        {recipe.imagePath ? (
+          <div className="flex gap-6 items-start mb-8 flex-wrap sm:flex-nowrap">
+            {/* Large recipe image */}
+            <div className="flex-shrink-0 w-full sm:w-72">
+              <div className="relative group rounded-lg overflow-hidden border shadow-sm">
+                <img
+                  src={recipe.imagePath}
+                  alt={`Photo of ${recipe.name}`}
+                  className="w-full aspect-square object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  data-testid="img-recipe-photo"
+                  onClick={() => setPhotoLightboxOpen(true)}
+                  title="Click to view full size"
+                />
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="bg-black/50 text-white text-xs rounded-full px-3 py-1 flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3" /> View full size
+                  </span>
+                </div>
               </div>
-              <CostingMethodBadge />
+              {recipe.sourceImagePath && (
+                <button
+                  onClick={() => setScanLightboxOpen(true)}
+                  className="mt-2 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors w-full text-center"
+                  data-testid="button-view-original-scan"
+                >
+                  View original scan
+                </button>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Per {recipe.yieldQty} {getYieldUnitName()} yield
-            </p>
-          </CardContent>
-        </Card>
 
-        <Card data-testid="card-yield">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Yield
-            </CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono" data-testid="text-yield">
-              {recipe.yieldQty}
+            {/* Stat cards stacked beside the image */}
+            <div className="flex flex-col gap-4 flex-1 min-w-0">
+              <Card data-testid="card-current-cost">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Current Cost
+                  </CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <div className="text-2xl font-bold font-mono" data-testid="text-current-cost">
+                      ${recipe.computedCost?.toFixed(2) || "0.00"}
+                    </div>
+                    <CostingMethodBadge />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Per {recipe.yieldQty} {getYieldUnitName()} yield
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-yield">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Yield
+                  </CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold font-mono" data-testid="text-yield">
+                    {recipe.yieldQty}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {recipe.yieldQty} {getYieldUnitName()} produced
+                  </p>
+                </CardContent>
+              </Card>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Units produced
-            </p>
-          </CardContent>
-        </Card>
+          </div>
+        ) : (
+          /* No image — keep the original compact stat-card row */
+          <div className="grid grid-cols-2 gap-4 md:gap-6 md:grid-cols-3 mb-8">
+            {recipe.sourceImagePath && (
+              <button
+                onClick={() => setScanLightboxOpen(true)}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors text-left col-span-2 md:col-span-3 -mt-2 mb-1"
+                data-testid="button-view-original-scan"
+              >
+                View original scan
+              </button>
+            )}
+            <Card data-testid="card-current-cost">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Current Cost
+                </CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <div className="text-2xl font-bold font-mono" data-testid="text-current-cost">
+                    ${recipe.computedCost?.toFixed(2) || "0.00"}
+                  </div>
+                  <CostingMethodBadge />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Per {recipe.yieldQty} {getYieldUnitName()} yield
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-yield">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Yield
+                </CardTitle>
+                <Package className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono" data-testid="text-yield">
+                  {recipe.yieldQty}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Units produced
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2 mb-8">
