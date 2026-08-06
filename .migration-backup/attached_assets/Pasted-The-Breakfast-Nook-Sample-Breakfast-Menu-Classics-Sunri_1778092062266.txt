@@ -1,0 +1,150 @@
+The Breakfast Nook
+Sample Breakfast Menu
+Classics
+Sunrise Breakfast
+
+Two eggs any style, bacon or sausage, home fries, and toast — $11.99
+
+Country Fried Steak & Eggs
+
+Country fried steak topped with sausage gravy, two eggs, and biscuits — $14.99
+
+Corned Beef Hash Platter
+
+House hash, two eggs, toast, and breakfast potatoes — $13.49
+
+Steak & Eggs
+
+Grilled sirloin with eggs, toast, and seasoned potatoes — $18.99
+
+Biscuit Breakfast Bowl
+
+Biscuits layered with potatoes, scrambled eggs, sausage gravy, bacon, and cheddar — $12.99
+
+Omelets
+Denver Omelet
+
+Ham, peppers, onions, and cheddar cheese — $12.49
+
+Veggie Garden Omelet
+
+Spinach, mushrooms, tomatoes, onions, and Swiss cheese — $11.99
+
+Western BBQ Omelet
+
+Pulled pork, caramelized onions, cheddar, and BBQ drizzle — $13.99
+
+Mediterranean Omelet
+
+Spinach, feta, tomatoes, and olives — $12.99
+
+Pancakes & French Toast
+Buttermilk Pancake Stack
+
+Three fluffy pancakes served with butter and syrup — $9.99
+
+Blueberry Pancakes
+
+Buttermilk pancakes loaded with blueberries — $11.49
+
+Banana Nut Pancakes
+
+Bananas, candied pecans, and maple drizzle — $11.99
+
+Cinnamon Roll French Toast
+
+Texas toast dipped in cinnamon custard with cream cheese glaze — $12.49
+
+Stuffed Strawberry Cheesecake French Toast
+
+Brioche stuffed with cheesecake filling and strawberries — $13.99
+
+Breakfast Sandwiches
+Bacon Egg & Cheese Croissant
+
+Applewood bacon, egg, and cheddar on a buttery croissant — $9.99
+
+Sausage Biscuit Sandwich
+
+Sausage patty, egg, and American cheese on a biscuit — $9.49
+
+Avocado Breakfast Wrap
+
+Scrambled eggs, avocado, spinach, tomato, and pepper jack — $11.49
+
+Chicken & Waffle Sandwich
+
+Crispy chicken, waffle bun, maple butter, and bacon — $14.49
+
+Healthy Favorites
+Greek Yogurt Berry Bowl
+
+Greek yogurt, granola, strawberries, blueberries, and honey — $8.99
+
+Breakfast Power Bowl
+
+Quinoa, eggs, avocado, spinach, roasted tomatoes, and feta — $12.99
+
+Master Inventory List
+Proteins
+Eggs
+Bacon
+Breakfast sausage links
+Sausage patties
+Ham
+Pulled pork
+Corned beef hash
+Chicken breast
+Country fried steak
+Sirloin steak
+Dairy
+Butter
+Cheddar cheese
+Swiss cheese
+Pepper jack cheese
+American cheese
+Feta cheese
+Cream cheese
+Milk
+Heavy cream
+Greek yogurt
+Produce
+Potatoes
+Onions
+Bell peppers
+Mushrooms
+Tomatoes
+Cherry tomatoes
+Spinach
+Avocados
+Strawberries
+Blueberries
+Bananas
+Lemons
+Fresh parsley
+Bakery & Dry Goods
+White bread
+Texas toast
+Brioche bread
+Croissants
+Biscuits
+Tortilla wraps
+Pancake mix
+Flour
+Sugar
+Brown sugar
+Granola
+Quinoa
+Pecans
+Syrup
+Honey
+Pantry & Condiments
+BBQ sauce
+Maple syrup
+Cinnamon
+Vanilla extract
+Salt
+Black pepper
+Garlic powder
+Paprika
+Cooking oil

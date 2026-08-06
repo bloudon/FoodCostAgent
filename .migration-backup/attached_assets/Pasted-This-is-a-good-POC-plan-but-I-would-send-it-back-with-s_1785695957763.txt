@@ -1,0 +1,516 @@
+This is a **good POC plan**, but I would send it back with several changes before implementation. The biggest issue is that the endpoint, as written, will not actually become the shared endpoint the mobile team expects without modification.
+
+## The main mismatch
+
+The task says:
+
+> “The mobile flow will eventually call the same `/api/waste/interpret` endpoint.”
+
+But the endpoint is defined to accept only:
+
+> “a multipart audio file upload.”
+
+The mobile architecture says its API server will already transcribe the native audio and pass **spoken intents or a transcript** toward the main application.
+
+So `/api/waste/interpret` should support both input modes now:
+
+```text
+multipart/form-data
+- audio
+- storeId
+
+application/json
+- transcript
+- storeId
+```
+
+Both should converge on the same interpretation and resolution service:
+
+```ts
+interpretAndResolveWaste({
+  companyId,
+  storeId,
+  transcript
+});
+```
+
+Otherwise, the mobile integration will either:
+
+* Transcribe audio and then have no compatible endpoint, or
+* Upload the audio to the main application and duplicate the mobile API’s transcription work.
+
+That change is important enough that I would make it mandatory.
+
+---
+
+# What I like about the task
+
+The POC tests the right things:
+
+* Real kitchen speech
+* Multiple waste events
+* Inventory versus menu-item interpretation
+* Item matching
+* Unit matching
+* Existing wizard prefill
+* Ambiguity handling
+* No changes to the manual workflow
+
+It also correctly keeps the existing wizard as the final correction and submission surface.
+
+This is a sensible way to validate voice before the native bridge is ready.
+
+## Changes I recommend before approving
+
+### 1. Do not lock transcription to `whisper-1`
+
+`whisper-1` remains available, but OpenAI now also exposes `gpt-4o-transcribe` and `gpt-4o-mini-transcribe`. The API documentation lists all three as current transcription options. ([OpenAI Platform][1])
+
+Since this feature needs to understand kitchen terminology, vendor descriptions and units, I would define the task as:
+
+```text
+Use the configured transcription model, initially
+gpt-4o-mini-transcribe or gpt-4o-transcribe.
+Do not hard-code whisper-1 into the service.
+```
+
+For the POC:
+
+* Start with `gpt-4o-mini-transcribe` for cost and speed.
+* Compare it with `gpt-4o-transcribe` using a small kitchen test set.
+* Keep `whisper-1` as a fallback only if there is a specific reason.
+
+Also pass a transcription prompt containing likely terminology:
+
+```text
+Restaurant inventory and waste report. Expect food names,
+menu items, vendor products, quantities, pounds, ounces,
+cases, eaches, gallons, spoilage, overproduction and damage.
+```
+
+OpenAI’s transcription models support a prompt to guide expected terminology. ([OpenAI Platform][1])
+
+### 2. Use Structured Outputs rather than “return JSON”
+
+The task currently says:
+
+> “Pass the transcript to GPT-4o with a system prompt that extracts structured waste entries and returns JSON.”
+
+Use strict JSON-schema output rather than relying on prompt wording and then hoping JSON parses correctly. OpenAI supports Structured Outputs with strict schema adherence. ([OpenAI Platform][2])
+
+The extraction result should remain unresolved initially:
+
+```ts
+const spokenWasteEntrySchema = z.object({
+  wasteType: z.enum(["inventory", "menu_item"]).nullable(),
+  spokenItem: z.string().min(1),
+  qty: z.number().positive().nullable(),
+  spokenUnit: z.string().nullable(),
+  reasonCode: wasteReasonSchema.nullable(),
+  notes: z.string().nullable(),
+});
+```
+
+Missing values should be `null`. The model should not invent them.
+
+### 3. Separate extraction from catalog resolution
+
+Internally, the endpoint should have two clear services:
+
+```text
+Transcript
+   ↓
+extractSpokenWasteEntries()
+   ↓
+resolveWasteDrafts()
+```
+
+That matters because the mobile team may eventually call only the resolution portion after its own language-understanding step.
+
+Recommended internal functions:
+
+```ts
+extractSpokenWasteEntries(transcript)
+resolveSpokenWasteEntries({
+  companyId,
+  storeId,
+  entries
+})
+```
+
+Even if `/api/waste/interpret` invokes both for this POC, keeping them separate avoids tightly coupling transcription, LLM parsing and catalog matching.
+
+### 4. Substring plus Levenshtein is too weak as the full resolver
+
+It is acceptable as a POC baseline, but the task should not imply that this is sufficient item resolution.
+
+Consider:
+
+```text
+“chicken”
+```
+
+Possible matches could include:
+
+* Chicken Breast
+* Chicken Thigh
+* Chicken Wings
+* Grilled Chicken Entrée
+* Chicken Parmesan
+* Chicken Stock
+
+Simple Levenshtein distance may select the textually closest item rather than the operationally correct item.
+
+For the POC, use a weighted candidate scorer:
+
+```text
+Exact normalized match
+Prefix or whole-word match
+Substring match
+Vendor-item alias match
+Recently used at this store
+Active at this store
+Recently received/count/wasted
+Inventory versus menu-item hint
+String similarity
+```
+
+Then return the top candidates rather than only a winning candidate.
+
+Example:
+
+```ts
+{
+  status: "ambiguous",
+  spokenItem: "chicken",
+  candidates: [
+    {
+      itemId: "...",
+      itemName: "Chicken Breast, Boneless",
+      wasteType: "inventory",
+      score: 0.81
+    },
+    {
+      itemId: "...",
+      itemName: "Chicken Parmesan",
+      wasteType: "menu_item",
+      score: 0.76
+    }
+  ]
+}
+```
+
+The wizard can let the chef choose one.
+
+### 5. Do not expose a vague confidence number without a defined meaning
+
+The return shape includes:
+
+```text
+confidence
+ambiguous
+```
+
+What produces `confidence`?
+
+It could mean:
+
+* Model extraction confidence
+* String similarity
+* Candidate-score margin
+* Combined resolution confidence
+
+Those are different things.
+
+For the POC, I would return:
+
+```ts
+{
+  matchScore: 0.86,
+  matchMargin: 0.18,
+  resolutionStatus: "resolved" | "ambiguous" | "unresolved"
+}
+```
+
+The ambiguity decision should use deterministic thresholds, such as:
+
+```text
+Resolved:
+top score meets threshold
+AND top candidate leads second candidate by minimum margin
+
+Ambiguous:
+plausible candidates exist, but the lead is too small
+
+Unresolved:
+no candidate meets minimum threshold
+```
+
+The actual thresholds should be tuned with test utterances.
+
+### 6. Unit resolution must validate against the selected item
+
+The task says it resolves `unitId` and `unitName`, but it does not say how.
+
+The system should not globally map “pounds” to any arbitrary pound unit ID. It should:
+
+1. Resolve the item.
+2. Retrieve valid count/purchase/base units for that item.
+3. Normalize the spoken unit.
+4. Choose only from compatible item units.
+5. Leave `unitId` unresolved if conversion geometry is missing.
+
+Example:
+
+> “Waste three pounds of chicken.”
+
+If the item is only configured in cases and eaches with no weight conversion, the response should not pretend that three pounds can be authoritatively posted.
+
+Return:
+
+```ts
+{
+  resolutionStatus: "needs_unit",
+  qty: 3,
+  spokenUnit: "pounds",
+  unitId: null,
+  warning: "The item has no configured pound conversion."
+}
+```
+
+Then send the chef to the unit step of the existing wizard.
+
+### 7. WebM/Opus cannot be the only recording format
+
+`MediaRecorder` is broadly available, but container and codec support varies between browsers. MDN recommends checking support through `MediaRecorder.isTypeSupported()`, and notes that unsupported MIME/container combinations can fail. ([MDN Web Docs][3])
+
+The component should choose the first supported option:
+
+```ts
+const candidates = [
+  "audio/webm;codecs=opus",
+  "audio/mp4",
+  "audio/webm",
+  "audio/ogg;codecs=opus"
+];
+```
+
+Then:
+
+```ts
+const mimeType = candidates.find(type =>
+  MediaRecorder.isTypeSupported(type)
+);
+```
+
+Do not force WebM on Safari/iOS browsers.
+
+The upload should include the actual MIME type and correct file extension selected by the browser.
+
+### 8. Clarify the “live transcript” requirement
+
+The task says:
+
+> “The modal shows the live transcript after recording stops.”
+
+That is not a live transcript. It is a completed transcript shown after processing.
+
+For this POC, the states should be:
+
+```text
+Listening
+→ Uploading
+→ Transcribing
+→ Resolving
+→ Results
+```
+
+During listening, display:
+
+* Recording timer
+* Audio-level indicator if desired
+* Stop button
+
+After transcription, show the transcript.
+
+True live transcription would require streaming or periodic chunks and is not necessary for this POC.
+
+### 9. Stop microphone tracks when finished
+
+When recording ends or the modal closes, explicitly stop every media track:
+
+```ts
+stream.getTracks().forEach(track => track.stop());
+```
+
+Otherwise the browser may continue showing the microphone indicator or retain device resources.
+
+Browser microphone access also requires a secure HTTPS context outside localhost. ([MDN Web Docs][4])
+
+### 10. Add hard endpoint limits
+
+The task should specify:
+
+* Maximum recording duration
+* Maximum upload size
+* Allowed MIME types
+* Maximum transcript length
+* Maximum number of entries returned
+* Request timeout behavior
+
+Reasonable POC defaults:
+
+```text
+Maximum audio duration: 60 seconds
+Maximum upload: 10 MB
+Maximum transcript: 5,000 characters
+Maximum parsed entries: 10
+```
+
+The client timer should automatically stop at the duration limit.
+
+### 11. Clarify multiple-entry processing state
+
+The current plan says entries can be loaded into the wizard “in turn,” but it does not define what happens after one is submitted.
+
+The POC needs a queue:
+
+```text
+3 voice entries found
+
+1. Chicken Breast — ready
+2. Salmon Entrée — ambiguous
+3. Tomato Soup — ready
+```
+
+After the first entry is submitted:
+
+* Mark it completed.
+* Load the next unresolved draft.
+* Do not remove the remaining drafts during React Query invalidation.
+* Allow skipping an entry.
+* Prevent the same entry from being accidentally submitted twice.
+
+The queue can remain client-side for the POC, but its lifecycle needs definition.
+
+### 12. Return alternatives even when one item is selected
+
+Even a “resolved” result should carry perhaps the top three candidates for correction:
+
+```ts
+{
+  resolvedItem: {...},
+  alternatives: [...]
+}
+```
+
+This enables a simple **Change item** action without rerunning interpretation.
+
+## Recommended endpoint contract
+
+### Audio request
+
+```http
+POST /api/waste/interpret
+Content-Type: multipart/form-data
+```
+
+Fields:
+
+```text
+storeId
+audio
+requestId
+```
+
+### Transcript request
+
+```http
+POST /api/waste/interpret
+Content-Type: application/json
+```
+
+```json
+{
+  "storeId": "uuid",
+  "transcript": "Waste three pounds of chicken because it spoiled",
+  "requestId": "uuid"
+}
+```
+
+### Response
+
+```ts
+{
+  requestId: string;
+  transcript: string;
+  transcriptionModel: string | null;
+  interpretationModel: string;
+  entries: Array<{
+    sourceText: string;
+    wasteType: "inventory" | "menu_item" | null;
+    spokenItem: string;
+    qty: number | null;
+    spokenUnit: string | null;
+    reasonCode: WasteReason | null;
+    notes: string | null;
+
+    resolutionStatus:
+      | "resolved"
+      | "ambiguous"
+      | "unresolved"
+      | "needs_unit";
+
+    itemId: string | null;
+    itemName: string | null;
+    unitId: string | null;
+    unitName: string | null;
+
+    candidates: Array<{
+      itemId: string;
+      itemName: string;
+      wasteType: "inventory" | "menu_item";
+      score: number;
+    }>;
+
+    warnings: string[];
+  }>;
+  warnings: string[];
+}
+```
+
+Keep both the spoken fields and resolved fields. This will be useful when debugging why “the chicken” resolved incorrectly.
+
+## Revised task language I would send back
+
+The most important edits are:
+
+> `/api/waste/interpret` accepts either multipart audio or a JSON transcript so the native mobile flow can reuse the same interpretation and domain-resolution pipeline.
+>
+> Audio transcription uses a configurable OpenAI transcription model rather than hard-coding `whisper-1`.
+>
+> Transcript extraction uses strict structured output and preserves unknown values as `null`.
+>
+> Catalog resolution ranks store-scoped inventory and menu-item candidates using normalized matching, store activity and string similarity. It never silently selects an uncertain result.
+>
+> Unit resolution is constrained to units valid for the resolved item. Missing conversion geometry returns a warning and leaves the wizard’s unit step unresolved.
+>
+> Browser recording selects a supported audio MIME type with `MediaRecorder.isTypeSupported()` rather than assuming WebM/Opus.
+>
+> Multiple interpreted entries are maintained as a client-side queue with completed, skipped, ambiguous and pending states.
+
+## Verdict
+
+I would approve **#910 after those contract changes**.
+
+The POC itself is the right next step. It will validate the two highest-risk areas before native work depends on them:
+
+1. Can chefs speak waste naturally and get usable structured fields?
+2. Can the system reliably map their language to actual store items and valid units?
+
+The essential adjustment is to make `/api/waste/interpret` a reusable **domain interpretation endpoint**, not an audio-only web endpoint. That will keep the POC from becoming throwaway code when the native bridge arrives.
+
+[1]: https://platform.openai.com/docs/api-reference/audio/voice-consent-list?lang=curl&utm_source=chatgpt.com "Audio | OpenAI API Reference"
+[2]: https://platform.openai.com/docs/api-reference/evals/deleteRun?lang=python&utm_source=chatgpt.com "Evals | OpenAI API Reference"
+[3]: https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder?utm_source=chatgpt.com "MediaRecorder - Web APIs | MDN"
+[4]: https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia?utm_source=chatgpt.com "MediaDevices: getUserMedia() method - Web APIs | MDN"

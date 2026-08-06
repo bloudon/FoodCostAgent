@@ -1,0 +1,3106 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useParams, useLocation } from "wouter";
+import { useStoreContext } from "@/hooks/use-store-context";
+import { ArrowLeft, Package, DollarSign, Ruler, MapPin, Users, Plus, Pencil, Trash2, Settings, Star, Scale, Check, X, GripVertical, ChevronDown, ChevronRight, Search, AlertTriangle, CheckCircle2, History, ArrowLeftRight } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { GroupedUnitOptions } from "@/components/grouped-unit-options";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
+import { getSuggestedConversionFactor } from "@/lib/unitConversions";
+import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  manufacturer: string | null;
+  categoryId: string | null;
+  pluSku: string;
+  unitId: string;
+  barcode: string | null;
+  active: number;
+  pricePerUnit: number;
+  avgCostPerUnit: number;
+  effectiveUnitCost?: number;
+  caseSize: number;
+  containerSize: number | null;
+  containerLabel: string | null;
+  containerUnitId: string | null;
+  casePkgCount: number | null;
+  storageLocationId: string;
+  yieldPercent: number;
+  imageUrl: string | null;
+  parLevel: number | null;
+  reorderLevel: number | null;
+  isPowerItem: number | boolean;
+  isVariableWeight: number | boolean;
+};
+
+type Unit = {
+  id: string;
+  name: string;
+  abbreviation: string;
+  kind: string;
+  toBaseRatio: number;
+  system: string;
+};
+
+type StorageLocation = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Category = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Vendor = {
+  id: string;
+  name: string;
+  accountNumber: string | null;
+};
+
+type VendorItem = {
+  id: string;
+  vendorId: string;
+  inventoryItemId: string;
+  vendorSku: string | null;
+  brandName: string | null;
+  purchaseUnitId: string;
+  caseSize: number;
+  innerPackSize: number | null;
+  packUom: string | null;               // label for the inner pack unit (e.g. "lb", "oz", "ea")
+  lastPrice: number;
+  lastCasePrice: number;
+  priceSource: string | null;
+  pricedAt: string | null;
+  active: number;
+  lastOrderDate: string | null;
+  // Pack geometry fields (added in v066)               // label for the inner pack unit (e.g. "lb", "oz", "ea")
+  canonicalQtyPerPurchaseUnit: number | null;
+  normalizedPricePerCanonicalUnit: number | null;
+  packGeometryStatus: string | null; // 'verified'|'parsed'|'inferred'|'incomplete'|'conflicting'|'variable_weight'
+  packGeometrySource: string | null;
+  pricingBasis: string | null;
+  isVariableWeight: number | null;
+  vendor: {
+    id: string;
+    name: string;
+    accountNumber: string | null;
+  } | null;
+  unit: {
+    id: string;
+    name: string;
+  } | null;
+};
+
+function formatPriceSource(source: string | null): { label: string; isLegacy: boolean } {
+  if (!source) return { label: "-", isLegacy: false };
+  switch (source) {
+    case "receipt": return { label: "Receipt", isLegacy: false };
+    case "invoice_scan": return { label: "Invoice Scan", isLegacy: false };
+    case "order_guide_import": return { label: "Order Guide", isLegacy: false };
+    case "manual": return { label: "Manual", isLegacy: false };
+    case "po_create": return { label: "PO", isLegacy: false };
+    case "connector": return { label: "Supplier Sync", isLegacy: false };
+    case "legacy_unknown": return { label: "Unknown", isLegacy: true };
+    default: return { label: source, isLegacy: false };
+  }
+}
+
+type PriceHistoryRecord = {
+  id: string;
+  inventoryItemId: string;
+  vendorItemId: string | null;
+  effectiveAt: string;
+  pricePerUnit: number;
+  casePrice: number | null;
+  source: string | null;
+  note: string | null;
+  recordedBy: string | null;
+  createdAt: string;
+};
+
+function VendorPriceHistoryPanel({ inventoryItemId, vendorItemId }: { inventoryItemId: string; vendorItemId: string }) {
+  const { data, isLoading, isError } = useQuery<{ data: PriceHistoryRecord[] }>({
+    queryKey: ["/api/inventory-items", inventoryItemId, "price-history", vendorItemId],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${inventoryItemId}/price-history?vendorItemId=${vendorItemId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load price history");
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground py-2 px-1">Loading history…</p>;
+  }
+  if (isError) {
+    return <p className="text-xs text-destructive py-2 px-1">Failed to load price history.</p>;
+  }
+  const rows = data?.data ?? [];
+  if (rows.length === 0) {
+    return <p className="text-xs text-muted-foreground py-2 px-1">No price history recorded for this vendor.</p>;
+  }
+
+  return (
+    <div className="w-full">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-muted-foreground border-b">
+            <th className="text-left pb-1 pr-4 font-medium">Date</th>
+            <th className="text-right pb-1 pr-4 font-medium">Case Price</th>
+            <th className="text-right pb-1 pr-4 font-medium">Unit Price</th>
+            <th className="text-left pb-1 font-medium">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const { label, isLegacy } = formatPriceSource(row.source);
+            return (
+              <tr key={row.id} className="border-b last:border-b-0">
+                <td className="py-1 pr-4 text-muted-foreground">
+                  {new Date(row.effectiveAt).toLocaleDateString()}
+                </td>
+                <td className="py-1 pr-4 text-right">
+                  {row.casePrice != null ? `$${row.casePrice.toFixed(2)}` : "—"}
+                </td>
+                <td className="py-1 pr-4 text-right">
+                  ${row.pricePerUnit.toFixed(4)}
+                </td>
+                <td className="py-1">
+                  {isLegacy ? (
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Price predates M3A tracking — reliability unknown">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {label}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">{label}</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Format the human-readable "1 [unit] = X [inv unit]" value for display.
+// unitsPerCanonical = how many of this unit per 1 canonical unit, so the
+// display value "1 [unit] = X [canonical]" is the reciprocal (1/unitsPerCanonical).
+function formatReciprocal(unitsPerCanonical: number): string {
+  if (!unitsPerCanonical || unitsPerCanonical <= 0) return "—";
+  const v = 1 / unitsPerCanonical;
+  return parseFloat(v.toPrecision(4)).toString();
+}
+
+// A single draggable row inside RecipeUnitsList. Drag is disabled while the row
+// is being edited so the controls remain easy to interact with.
+// Quantity is displayed as "1 [unit] = X [invUnitAbbrev]" (human direction).
+function SortableRecipeUnitRow({
+  row,
+  unit,
+  invUnitAbbrev,
+  isEditing,
+  editQty,
+  setEditQty,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  deletePending,
+}: {
+  row: InventoryItemUnit;
+  unit: Unit | undefined;
+  invUnitAbbrev: string;
+  isEditing: boolean;
+  editQty: string;
+  setEditQty: (v: string) => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: () => void;
+  onDelete: () => void;
+  deletePending: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row.id, disabled: isEditing });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const unitName = unit ? formatUnitName(unit.name) : row.unitId;
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className="border-b last:border-b-0"
+      data-testid={`row-recipe-unit-${row.id}`}
+    >
+      <td className="py-1.5 pr-2 w-8">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={isEditing}
+          {...attributes}
+          {...listeners}
+          data-testid={`drag-handle-recipe-unit-${row.id}`}
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </td>
+      <td className="py-1.5 pr-3 font-medium text-sm">{unitName}</td>
+      <td className="py-1.5 pr-3">
+        {isEditing ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">1 {unitName} =</span>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={editQty}
+              onChange={(e) => setEditQty(e.target.value)}
+              className="h-8 w-24"
+              data-testid={`input-edit-qty-${row.id}`}
+              autoFocus
+            />
+            <span className="text-xs text-muted-foreground">{invUnitAbbrev}</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground text-sm">
+            {formatReciprocal(row.unitsPerCanonical)} {invUnitAbbrev}
+          </span>
+        )}
+      </td>
+      <td className="py-1.5">
+        <div className="flex items-center gap-1">
+          {isEditing ? (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onSave}
+                data-testid={`button-save-${row.id}`}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onCancelEdit}
+                data-testid={`button-cancel-${row.id}`}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onStartEdit}
+                data-testid={`button-edit-${row.id}`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onDelete}
+                disabled={deletePending}
+                data-testid={`button-delete-${row.id}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// Per-item Recipe / Issue unit list. Redesigned with:
+// - Intuitive qty direction: "1 [unit] = X [inv unit]" instead of "X per inv unit"
+// - Auto-converted units info section (same-kind units that need no entry)
+// - Browse & add panel with grouped, searchable list of all global units
+function RecipeUnitsList({
+  itemId,
+  itemUnitId,
+  itemUnitAbbrev,
+  itemUnitKind,
+  units,
+  kind,
+}: {
+  itemId: string;
+  itemUnitId: string | null | undefined;
+  itemUnitAbbrev: string;
+  itemUnitKind: string;
+  units: Unit[] | undefined;
+  kind: "recipe" | "issue";
+}) {
+  const { toast } = useToast();
+  const queryParam = kind === "issue" ? "?type=issue" : "";
+  const queryKey = ["/api/inventory-items", itemId, "recipe-units", kind] as const;
+
+  const { data: rows, isLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey,
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units${queryParam}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-item-units"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async (body: { unitId: string; unitsPerCanonical: number }) => {
+      return apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units`, {
+        ...body,
+        isIssueUnit: kind === "issue" ? 1 : 0,
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setPendingUnitId(null);
+      setPendingQty("");
+      toast({ title: "Unit added" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not add unit", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ rowId, unitsPerCanonical }: { rowId: string; unitsPerCanonical: number }) => {
+      return apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${rowId}`, {
+        unitsPerCanonical,
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setEditingId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      return apiRequest("DELETE", `/api/inventory-items/${itemId}/recipe-units/${rowId}`);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast({ title: "Unit removed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not remove", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: async (orderedIds: string[]) => {
+      return apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units/reorder`, {
+        orderedIds,
+        type: kind,
+      });
+    },
+    onMutate: async (orderedIds: string[]) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<InventoryItemUnit[]>(queryKey);
+      if (previous) {
+        const byId = new Map(previous.map((r) => [r.id, r]));
+        const reordered = orderedIds
+          .map((id, i) => {
+            const r = byId.get(id);
+            return r ? { ...r, sortOrder: i } : null;
+          })
+          .filter((r): r is InventoryItemUnit => r !== null);
+        queryClient.setQueryData<InventoryItemUnit[]>(queryKey, reordered);
+      }
+      return { previous };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+      toast({ title: "Could not reorder", description: err?.message, variant: "destructive" });
+    },
+    onSettled: () => {
+      invalidate();
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !rows) return;
+    const oldIndex = rows.findIndex((r) => r.id === active.id);
+    const newIndex = rows.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const newOrder = arrayMove(rows, oldIndex, newIndex);
+    reorderMutation.mutate(newOrder.map((r) => r.id));
+  };
+
+  // Editing existing rows
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState<string>("");
+
+  // Browse panel state
+  const [showBrowse, setShowBrowse] = useState(false);
+  const [browseSearch, setBrowseSearch] = useState("");
+  const [pendingUnitId, setPendingUnitId] = useState<string | null>(null);
+  const [pendingQty, setPendingQty] = useState("");
+  const [pendingFactorIsSuggested, setPendingFactorIsSuggested] = useState(false);
+
+  // Auto-converts collapsible
+  const [showAutoConverts, setShowAutoConverts] = useState(false);
+
+  // Keep a ref to the latest units array so the suggestion effect can read it
+  // without including it in the dependency array — this prevents a background
+  // refetch of units from overwriting a value the user is already editing.
+  const unitsRef = useRef(units);
+  useEffect(() => { unitsRef.current = units; }, [units]);
+
+  // When a unit is selected in the browse panel, pre-fill the factor input
+  // with a standard conversion suggestion for same-kind unit pairs.
+  // Only fires when the selected unit or item unit changes, not on units refetch.
+  useEffect(() => {
+    if (!pendingUnitId) {
+      setPendingFactorIsSuggested(false);
+      return;
+    }
+    const allUnits = unitsRef.current;
+    const pendingUnit = allUnits?.find((u) => u.id === pendingUnitId);
+    const itemUnit = allUnits?.find((u) => u.id === itemUnitId);
+    if (!pendingUnit || !itemUnit) {
+      setPendingFactorIsSuggested(false);
+      return;
+    }
+    // getSuggestedConversionFactor returns unitsPerCanonical (how many
+    // pendingUnit fit in 1 itemUnit). The display direction is the reciprocal.
+    const suggested = getSuggestedConversionFactor(pendingUnit.name, itemUnit.name);
+    if (suggested !== null) {
+      setPendingQty(String(parseFloat((1 / suggested).toPrecision(6))));
+      setPendingFactorIsSuggested(true);
+    } else {
+      setPendingQty("");
+      setPendingFactorIsSuggested(false);
+    }
+  }, [pendingUnitId, itemUnitId]);
+
+  const handleAdd = () => {
+    const entered = parseFloat(pendingQty);
+    if (!pendingUnitId || !(entered > 0)) {
+      toast({
+        title: "Enter a value",
+        description: `Type how many ${itemUnitAbbrev || "inv units"} 1 of this unit equals.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // unitsPerCanonical = how many of this unit per 1 canonical unit
+    // User enters "1 [unit] = X [canonical]", so unitsPerCanonical = 1/entered
+    createMutation.mutate({ unitId: pendingUnitId, unitsPerCanonical: 1 / entered });
+  };
+
+  const usedUnitIds = new Set((rows ?? []).map((r) => r.unitId));
+
+  // Same-kind units auto-convert via global toBaseRatio — no entry needed
+  const autoConvertUnits = (units ?? []).filter(
+    (u) => u.kind === itemUnitKind && u.id !== itemUnitId
+  );
+
+  // All units not yet in the list, available to browse
+  const availableUnits = (units ?? []).filter((u) => !usedUnitIds.has(u.id));
+
+  // Filter by search
+  const filteredUnits = browseSearch.trim()
+    ? availableUnits.filter(
+        (u) =>
+          u.name.toLowerCase().includes(browseSearch.toLowerCase()) ||
+          u.abbreviation.toLowerCase().includes(browseSearch.toLowerCase())
+      )
+    : availableUnits;
+
+  // Group by kind for the browse panel
+  const kindOrder = ["weight", "volume", "count"];
+  const kindLabels: Record<string, string> = {
+    weight: "Weight",
+    volume: "Volume",
+    count: "Count / Portion",
+  };
+  const grouped = kindOrder.reduce(
+    (acc, k) => {
+      acc[k] = filteredUnits.filter((u) => u.kind === k);
+      return acc;
+    },
+    {} as Record<string, Unit[]>
+  );
+  // Catch any other kinds not in kindOrder
+  const otherKinds = [...new Set(filteredUnits.map((u) => u.kind))].filter(
+    (k) => !kindOrder.includes(k)
+  );
+  otherKinds.forEach((k) => {
+    grouped[k] = filteredUnits.filter((u) => u.kind === k);
+  });
+
+  const descriptionText =
+    kind === "issue"
+      ? "Choose which units can be used when transferring or issuing this item. Standard same-kind units (oz, g, kg for a lb item) convert automatically."
+      : "Choose which units recipes can use for this ingredient. Standard same-kind units (oz, g, kg for a lb item) convert automatically — only add others for cross-kind portions like \"each\" or \"case\".";
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <p className="text-sm font-semibold">
+          {kind === "issue" ? "Issue / Transfer Units" : "Recipe Units"}
+        </p>
+        <p className="text-xs text-muted-foreground">{descriptionText}</p>
+      </div>
+
+      {/* Auto-converted units info section */}
+      {autoConvertUnits.length > 0 && (
+        <Collapsible open={showAutoConverts} onOpenChange={setShowAutoConverts}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover-elevate rounded px-1 py-0.5"
+              data-testid="button-toggle-auto-converts"
+            >
+              {showAutoConverts ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <span>
+                {autoConvertUnits.length} unit{autoConvertUnits.length !== 1 ? "s" : ""} auto-convert (no entry needed)
+              </span>
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-1.5 rounded-md border bg-muted/30 p-2.5 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                These units share the same measurement type as <strong>{itemUnitAbbrev || "this item's unit"}</strong> and convert automatically using standard ratios. You only need to add them here if you want a <em>custom</em> conversion factor.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {autoConvertUnits.map((u) => (
+                  <Badge key={u.id} variant="secondary" className="text-xs font-normal">
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Custom units table */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-xs text-muted-foreground">
+              <th className="pb-2 w-8"></th>
+              <th className="pb-2 text-left font-medium">Unit</th>
+              <th className="pb-2 text-left font-medium">
+                1 [unit] = ___ {itemUnitAbbrev || "inv unit"}
+              </th>
+              <th className="w-24 pb-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr>
+                <td colSpan={4} className="py-3 text-muted-foreground text-sm">Loading…</td>
+              </tr>
+            )}
+            {!isLoading && rows && rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="py-3 text-muted-foreground text-sm">
+                  No custom units yet. Use "Browse &amp; add units" below to add some.
+                </td>
+              </tr>
+            )}
+            <SortableContext
+              items={(rows ?? []).map((r) => r.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {rows?.map((row) => {
+                const unit = units?.find((u) => u.id === row.unitId);
+                const isEditing = editingId === row.id;
+                return (
+                  <SortableRecipeUnitRow
+                    key={row.id}
+                    row={row}
+                    unit={unit}
+                    invUnitAbbrev={itemUnitAbbrev}
+                    isEditing={isEditing}
+                    editQty={editQty}
+                    setEditQty={setEditQty}
+                    onStartEdit={() => {
+                      setEditingId(row.id);
+                      // Pre-fill with human-readable reciprocal
+                      setEditQty(formatReciprocal(row.unitsPerCanonical));
+                    }}
+                    onCancelEdit={() => setEditingId(null)}
+                    onSave={() => {
+                      const entered = parseFloat(editQty);
+                      if (entered > 0) {
+                        // unitsPerCanonical = 1 / (user-entered canonical qty per unit)
+                        updateMutation.mutate({ rowId: row.id, unitsPerCanonical: 1 / entered });
+                      }
+                    }}
+                    onDelete={() => deleteMutation.mutate(row.id)}
+                    deletePending={deleteMutation.isPending}
+                  />
+                );
+              })}
+            </SortableContext>
+          </tbody>
+        </table>
+      </DndContext>
+
+      {/* Browse & add panel */}
+      <div className="border-t pt-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setShowBrowse((v) => !v);
+            setBrowseSearch("");
+            setPendingUnitId(null);
+            setPendingQty("");
+          }}
+          data-testid={`button-browse-units-${kind}`}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {showBrowse ? "Close" : "Browse & add units"}
+        </Button>
+
+        {showBrowse && (
+          <div className="mt-3 rounded-md border bg-muted/20 p-3 space-y-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-orange-500" />
+              <Input
+                value={browseSearch}
+                onChange={(e) => {
+                  setBrowseSearch(e.target.value);
+                  setPendingUnitId(null);
+                  setPendingQty("");
+                }}
+                placeholder="Search units…"
+                className="h-8 pl-8 text-sm border-orange-500/40 focus-visible:ring-orange-500/50"
+                data-testid={`input-browse-search-${kind}`}
+              />
+            </div>
+
+            {/* Grouped unit list */}
+            {availableUnits.length === 0 ? (
+              <p className="text-xs text-muted-foreground">All available units are already added.</p>
+            ) : filteredUnits.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No units match your search.</p>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto">
+                {[...kindOrder, ...otherKinds].map((k) => {
+                  const groupUnits = grouped[k];
+                  if (!groupUnits || groupUnits.length === 0) return null;
+                  return (
+                    <div key={k}>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                        {kindLabels[k] ?? k}
+                      </p>
+                      <div className="space-y-0.5">
+                        {groupUnits.map((u) => {
+                          const isAutoConvert = u.kind === itemUnitKind;
+                          const isPending = pendingUnitId === u.id;
+                          return (
+                            <div key={u.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isPending) {
+                                    setPendingUnitId(null);
+                                    setPendingQty("");
+                                  } else {
+                                    setPendingUnitId(u.id);
+                                    setPendingQty("");
+                                  }
+                                }}
+                                className={`w-full flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm text-left hover-elevate ${isPending ? "bg-accent/20" : ""}`}
+                                data-testid={`button-select-unit-${u.id}-${kind}`}
+                              >
+                                <span>
+                                  {formatUnitName(u.name)}{" "}
+                                  <span className="text-muted-foreground text-xs">({u.abbreviation})</span>
+                                </span>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {isAutoConvert && (
+                                    <Badge variant="secondary" className="text-xs font-normal py-0">
+                                      auto
+                                    </Badge>
+                                  )}
+                                  <ChevronRight className={`h-3 w-3 text-muted-foreground transition-transform ${isPending ? "rotate-90" : ""}`} />
+                                </div>
+                              </button>
+
+                              {/* Inline qty form for this unit */}
+                              {isPending && (
+                                <div className="mx-2 mb-1 mt-0.5 rounded-md border bg-background p-2.5 space-y-2">
+                                  {isAutoConvert && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                      This unit already auto-converts using the standard ratio. Only add it here if you need a custom factor for this specific item.
+                                    </p>
+                                  )}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                      1 {formatUnitName(u.name)} =
+                                    </span>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      value={pendingQty}
+                                      onChange={(e) => {
+                                        setPendingQty(e.target.value);
+                                        setPendingFactorIsSuggested(false);
+                                      }}
+                                      placeholder={`e.g., ${u.kind === itemUnitKind ? "0.0625" : "0.375"}`}
+                                      className="h-8 w-28 text-sm"
+                                      data-testid={`input-pending-qty-${kind}`}
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleAdd();
+                                        if (e.key === "Escape") { setPendingUnitId(null); setPendingQty(""); }
+                                      }}
+                                    />
+                                    <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+                                    <Button
+                                      size="sm"
+                                      onClick={handleAdd}
+                                      disabled={createMutation.isPending || !pendingQty}
+                                      data-testid={`button-add-recipe-unit-${kind}`}
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      Add
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => { setPendingUnitId(null); setPendingQty(""); }}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                  {pendingFactorIsSuggested && (
+                                    <p className="text-xs text-muted-foreground" data-testid={`text-conv-suggested-${kind}`}>
+                                      (suggested — verify for your ingredient)
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-muted-foreground">
+                                    Example: "1 {formatUnitName(u.name)} = 0.375 {itemUnitAbbrev || "inv unit"}" means 1 portion costs the same as 0.375 {itemUnitAbbrev || "inventory unit"} of this item.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── UsageConversionsSection ───────────────────────────────────────────────────
+// Flat table that replaces the three-tab Pack Breakdown / Recipe Units /
+// Issue Units UI.  Recipe and Issue DB rows are merged by unitId so each
+// kitchen unit only appears once, with a "Recipe" | "Issue" | "Both" select.
+function UsageConversionsSection({
+  itemId,
+  itemUnitId,
+  itemUnitAbbrev,
+  itemUnitKind,
+  units,
+}: {
+  itemId: string;
+  itemUnitId: string | null | undefined;
+  itemUnitAbbrev: string;
+  itemUnitKind: string;
+  units: Unit[] | undefined;
+}) {
+  const { toast } = useToast();
+
+  const { data: recipeRows, isLoading: recipeLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", itemId, "recipe-units", "recipe"],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load conversions");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const { data: issueRows, isLoading: issueLoading } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", itemId, "recipe-units", "issue"],
+    queryFn: async () => {
+      const res = await fetch(`/api/inventory-items/${itemId}/recipe-units?type=issue`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load conversions");
+      return res.json();
+    },
+    enabled: !!itemId,
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", itemId, "recipe-units", "recipe"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", itemId, "recipe-units", "issue"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inventory-item-units"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+  };
+
+  // Merge recipe + issue rows by unitId into logical conversions
+  const mergedRows = useMemo(() => {
+    const map = new Map<string, { unitId: string; recipeRow?: InventoryItemUnit; issueRow?: InventoryItemUnit }>();
+    for (const r of (recipeRows ?? [])) map.set(r.unitId, { ...map.get(r.unitId), unitId: r.unitId, recipeRow: r });
+    for (const r of (issueRows ?? []))  map.set(r.unitId, { ...map.get(r.unitId), unitId: r.unitId, issueRow: r });
+    return Array.from(map.values());
+  }, [recipeRows, issueRows]);
+
+  // ── Local state ──
+  const [editingKey, setEditingKey]   = useState<string | null>(null);
+  const [editQty, setEditQty]         = useState("");
+  const [showAdd, setShowAdd]         = useState(false);
+  const [addUnitId, setAddUnitId]     = useState<string | null>(null);
+  const [addQty, setAddQty]           = useState("");
+  const [addType, setAddType]         = useState<"recipe" | "issue" | "both">("recipe");
+  const [browseSearch, setBrowseSearch] = useState("");
+  const [suggestedFactor, setSuggestedFactor] = useState(false);
+  const [showAutoConverts, setShowAutoConverts] = useState(false);
+
+  const unitsRef = useRef(units);
+  useEffect(() => { unitsRef.current = units; }, [units]);
+
+  // Pre-fill a standard factor when addUnitId changes
+  useEffect(() => {
+    if (!addUnitId) { setSuggestedFactor(false); return; }
+    const allUnits = unitsRef.current;
+    const addUnit  = allUnits?.find(u => u.id === addUnitId);
+    const itemUnit = allUnits?.find(u => u.id === itemUnitId);
+    if (!addUnit || !itemUnit) { setSuggestedFactor(false); return; }
+    const sug = getSuggestedConversionFactor(addUnit.name, itemUnit.name);
+    if (sug !== null) {
+      setAddQty(String(parseFloat((1 / sug).toPrecision(6))));
+      setSuggestedFactor(true);
+    } else {
+      setAddQty("");
+      setSuggestedFactor(false);
+    }
+  }, [addUnitId, itemUnitId]);
+
+  // ── Mutations ──
+  const createMut = useMutation({
+    mutationFn: (body: { unitId: string; unitsPerCanonical: number; isIssueUnit: 0 | 1 }) =>
+      apiRequest("POST", `/api/inventory-items/${itemId}/recipe-units`, body),
+    onSuccess: () => invalidate(),
+    onError: (err: any) => toast({ title: "Could not add", description: err?.message, variant: "destructive" }),
+  });
+  const deleteMut = useMutation({
+    mutationFn: (rowId: string) => apiRequest("DELETE", `/api/inventory-items/${itemId}/recipe-units/${rowId}`),
+    onSuccess: () => { invalidate(); toast({ title: "Conversion removed" }); },
+    onError: (err: any) => toast({ title: "Could not remove", description: err?.message, variant: "destructive" }),
+  });
+
+  const usedUnitIds = useMemo(() => new Set(mergedRows.map(r => r.unitId)), [mergedRows]);
+  const autoConvertUnits = useMemo(
+    () => (units ?? []).filter(u => u.kind === itemUnitKind && u.id !== itemUnitId),
+    [units, itemUnitKind, itemUnitId],
+  );
+  const availableUnits = useMemo(
+    () => (units ?? []).filter(u => !usedUnitIds.has(u.id) && u.id !== itemUnitId),
+    [units, usedUnitIds, itemUnitId],
+  );
+  const filteredAvailable = useMemo(
+    () => browseSearch.trim()
+      ? availableUnits.filter(u =>
+          u.name.toLowerCase().includes(browseSearch.toLowerCase()) ||
+          u.abbreviation.toLowerCase().includes(browseSearch.toLowerCase()))
+      : availableUnits,
+    [availableUnits, browseSearch],
+  );
+
+  const handleSaveEdit = async (recipeRow?: InventoryItemUnit, issueRow?: InventoryItemUnit) => {
+    const entered = parseFloat(editQty);
+    if (!(entered > 0)) return;
+    const upc = 1 / entered;
+    try {
+      const patches = [
+        recipeRow && apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${recipeRow.id}`, { unitsPerCanonical: upc }),
+        issueRow  && apiRequest("PATCH", `/api/inventory-items/${itemId}/recipe-units/${issueRow.id}`,  { unitsPerCanonical: upc }),
+      ].filter(Boolean);
+      await Promise.all(patches);
+      invalidate();
+      setEditingKey(null);
+    } catch (err: any) {
+      toast({ title: "Could not save", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const handleUsageTypeChange = async (
+    newType: "recipe" | "issue" | "both",
+    recipeRow: InventoryItemUnit | undefined,
+    issueRow: InventoryItemUnit | undefined,
+    unitId: string,
+  ) => {
+    const primary = recipeRow ?? issueRow;
+    if (!primary) return;
+    const upc = primary.unitsPerCanonical;
+    try {
+      if (newType === "both") {
+        if (!recipeRow) await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        if (!issueRow)  await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+      } else if (newType === "recipe") {
+        if (!recipeRow) await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        if (issueRow)   await deleteMut.mutateAsync(issueRow.id);
+      } else if (newType === "issue") {
+        if (!issueRow)  await createMut.mutateAsync({ unitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+        if (recipeRow)  await deleteMut.mutateAsync(recipeRow.id);
+      }
+      invalidate();
+    } catch (err: any) {
+      toast({ title: "Could not update type", description: err?.message, variant: "destructive" });
+    }
+  };
+
+  const handleAdd = async () => {
+    const entered = parseFloat(addQty);
+    if (!addUnitId || !(entered > 0)) {
+      toast({ title: "Enter a value", description: `How many ${itemUnitAbbrev || "inv units"} does 1 of this unit equal?`, variant: "destructive" });
+      return;
+    }
+    const upc = 1 / entered;
+    try {
+      if (addType === "both") {
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: 0 });
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: 1 });
+      } else {
+        await createMut.mutateAsync({ unitId: addUnitId, unitsPerCanonical: upc, isIssueUnit: addType === "issue" ? 1 : 0 });
+      }
+      setShowAdd(false);
+      setAddUnitId(null);
+      setAddQty("");
+      setAddType("recipe");
+      toast({ title: "Conversion added" });
+    } catch (_err) {
+      // handled by mutation onError
+    }
+  };
+
+  const isLoading = recipeLoading || issueLoading;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold">Usage Conversions</p>
+        <p className="text-xs text-muted-foreground">
+          Canonical unit: <span className="font-medium">{itemUnitAbbrev || "—"}</span>
+          {" · "}Define how kitchen units map to this item for recipes and issuing.
+        </p>
+      </div>
+
+      {autoConvertUnits.length > 0 && (
+        <Collapsible open={showAutoConverts} onOpenChange={setShowAutoConverts}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover-elevate rounded px-1 py-0.5"
+              data-testid="button-toggle-auto-converts"
+            >
+              {showAutoConverts ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {autoConvertUnits.length} unit{autoConvertUnits.length !== 1 ? "s" : ""} auto-convert (no entry needed)
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-1.5 rounded-md border bg-muted/30 p-2.5 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                Same-type units convert automatically via standard ratios. Only add a custom conversion
+                if this item uses a non-standard factor.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {autoConvertUnits.map(u => (
+                  <Badge key={u.id} variant="secondary" className="text-xs font-normal">
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-xs text-muted-foreground">
+            <th className="pb-2 text-left font-medium">Kitchen Unit</th>
+            <th className="pb-2 text-left font-medium">Equals (per {itemUnitAbbrev || "unit"})</th>
+            <th className="pb-2 text-left font-medium">Used For</th>
+            <th className="w-20 pb-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading && (
+            <tr><td colSpan={4} className="py-3 text-sm text-muted-foreground">Loading…</td></tr>
+          )}
+          {!isLoading && mergedRows.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-3 text-sm text-muted-foreground">
+                No custom conversions yet. Same-type units (oz, g, kg for a lb item) convert automatically.
+              </td>
+            </tr>
+          )}
+          {mergedRows.map(({ unitId: uid, recipeRow, issueRow }) => {
+            const primary  = recipeRow ?? issueRow!;
+            const unitObj  = units?.find(u => u.id === uid);
+            const unitName = unitObj ? formatUnitName(unitObj.name) : uid;
+            const isEditing = editingKey === uid;
+            const usageType: "recipe" | "issue" | "both" =
+              recipeRow && issueRow ? "both" : recipeRow ? "recipe" : "issue";
+            return (
+              <tr key={uid} className="border-b last:border-b-0" data-testid={`row-conversion-${uid}`}>
+                <td className="py-2 pr-3 font-medium">{unitName}</td>
+                <td className="py-2 pr-3">
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">1 {unitName} =</span>
+                      <Input
+                        type="number" step="any" min="0" value={editQty}
+                        onChange={e => setEditQty(e.target.value)}
+                        className="h-8 w-24" autoFocus
+                        data-testid={`input-edit-qty-${uid}`}
+                      />
+                      <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      1 {unitName} = {formatReciprocal(primary.unitsPerCanonical)} {itemUnitAbbrev}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  <Select
+                    value={usageType}
+                    onValueChange={v => handleUsageTypeChange(v as "recipe" | "issue" | "both", recipeRow, issueRow, uid)}
+                    disabled={createMut.isPending || deleteMut.isPending}
+                  >
+                    <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-usage-type-${uid}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recipe">Recipe</SelectItem>
+                      <SelectItem value="issue">Issue</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="py-2">
+                  <div className="flex items-center gap-1">
+                    {isEditing ? (
+                      <>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => handleSaveEdit(recipeRow, issueRow)}
+                          data-testid={`button-save-${uid}`}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => setEditingKey(null)}
+                          data-testid={`button-cancel-${uid}`}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="icon" variant="ghost"
+                          onClick={() => { setEditingKey(uid); setEditQty(formatReciprocal(primary.unitsPerCanonical)); }}
+                          data-testid={`button-edit-${uid}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" disabled={deleteMut.isPending}
+                          onClick={async () => {
+                            if (recipeRow) await deleteMut.mutateAsync(recipeRow.id);
+                            if (issueRow)  await deleteMut.mutateAsync(issueRow.id);
+                          }}
+                          data-testid={`button-delete-${uid}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {!showAdd ? (
+        <Button variant="outline" size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-conversion">
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add conversion
+        </Button>
+      ) : (
+        <div className="rounded-md border bg-muted/20 p-3 space-y-3" data-testid="panel-add-conversion">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={addUnitId || ""} onValueChange={v => { setAddUnitId(v); setBrowseSearch(""); }}>
+              <SelectTrigger className="h-8 w-44" data-testid="select-add-unit">
+                <SelectValue placeholder="Choose unit…" />
+              </SelectTrigger>
+              <SelectContent>
+                <div className="p-1">
+                  <Input
+                    placeholder="Search…" value={browseSearch}
+                    onChange={e => setBrowseSearch(e.target.value)}
+                    className="h-7 text-xs mb-1"
+                  />
+                </div>
+                {filteredAvailable.map(u => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {formatUnitName(u.name)} ({u.abbreviation})
+                  </SelectItem>
+                ))}
+                {filteredAvailable.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">No units found</div>
+                )}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">=</span>
+            <div className="flex items-center gap-1">
+              <Input
+                type="number" step="any" min="0" value={addQty}
+                onChange={e => { setAddQty(e.target.value); setSuggestedFactor(false); }}
+                placeholder="factor"
+                className={`h-8 w-24 ${suggestedFactor ? "border-blue-400" : ""}`}
+                data-testid="input-add-qty"
+              />
+              <span className="text-xs text-muted-foreground">{itemUnitAbbrev}</span>
+            </div>
+            <Select value={addType} onValueChange={v => setAddType(v as "recipe" | "issue" | "both")}>
+              <SelectTrigger className="h-8 w-24" data-testid="select-add-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="recipe">Recipe</SelectItem>
+                <SelectItem value="issue">Issue</SelectItem>
+                <SelectItem value="both">Both</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {suggestedFactor && (
+            <p className="text-xs text-blue-600">Standard conversion pre-filled — verify for your ingredient.</p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleAdd} disabled={createMut.isPending}
+              data-testid="button-confirm-add-conversion">
+              Add
+            </Button>
+            <Button size="sm" variant="ghost"
+              onClick={() => { setShowAdd(false); setAddUnitId(null); setAddQty(""); setBrowseSearch(""); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function InventoryItemDetail() {
+  const { id } = useParams();
+  const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { selectedStoreId } = useStoreContext();
+  const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
+  const [editedFields, setEditedFields] = useState<Record<string, any>>({});
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
+  const [deleteVendorItemId, setDeleteVendorItemId] = useState<string | null>(null);
+  const [showAddVendorRow, setShowAddVendorRow] = useState(false);
+  const [editingVendorItemId, setEditingVendorItemId] = useState<string | null>(null);
+  const [showInactiveVendors, setShowInactiveVendors] = useState(false);
+  const [expandedVendorHistoryIds, setExpandedVendorHistoryIds] = useState<Set<string>>(new Set());
+
+  function toggleVendorHistory(vendorItemId: string) {
+    setExpandedVendorHistoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(vendorItemId)) {
+        next.delete(vendorItemId);
+      } else {
+        next.add(vendorItemId);
+      }
+      return next;
+    });
+  }
+  const [purchaseUom, setPurchaseUom] = useState("Case");
+  const [showMiddleRow, setShowMiddleRow] = useState(false);
+  const [containerDisplaySize, setContainerDisplaySize] = useState<string>("");
+  const [selectedContainerUnitId, setSelectedContainerUnitId] = useState<string>("");
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  
+  // Vendor item inline edit state (keyed by vendor item id, or "new" for add row)
+  const [vendorRowEdits, setVendorRowEdits] = useState<Record<string, {
+    vendorId: string;
+    vendorSku: string;
+    purchaseUnitId: string;
+    caseSize: string;
+    lastCasePrice: string;
+    active: number;
+  }>>({});
+
+  const { data: item, isLoading: itemLoading } = useQuery<InventoryItem>({
+    queryKey: ["/api/inventory-items", id, "detail", selectedStoreId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedStoreId && selectedStoreId !== "all") {
+        params.append("store_id", selectedStoreId);
+      }
+      const url = `/api/inventory-items/${id}${params.toString() ? `?${params.toString()}` : ""}`;
+      const response = await fetch(url, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      return response.json();
+    },
+    enabled: !!id,
+  });
+
+  const { data: units } = useQuery<Unit[]>({
+    queryKey: ["/api/units"],
+  });
+
+  const { data: compatibleUnits } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", item?.unitId],
+    queryFn: async () => {
+      const response = await fetch(`/api/units/compatible?unitId=${item!.unitId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch compatible units");
+      return response.json();
+    },
+    enabled: !!item?.unitId,
+  });
+
+  const { data: systemPrefs } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
+  });
+
+  const { data: locations } = useQuery<StorageLocation[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const { data: itemLocations } = useQuery<{ id: string; inventoryItemId: string; storageLocationId: string; isPrimary: number }[]>({
+    queryKey: ["/api/inventory-items", id, "locations"],
+    enabled: !!id,
+  });
+
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const { data: vendorItems } = useQuery<VendorItem[]>({
+    queryKey: ["/api/inventory-items", id, "vendor-items"],
+    enabled: !!id,
+  });
+
+  const { data: storeData } = useQuery<{
+    associations: { id: string; storeId: string; inventoryItemId: string }[];
+    allStores: { id: string; name: string }[];
+  }>({
+    queryKey: ["/api/inventory-items", id, "stores"],
+    enabled: !!id,
+  });
+
+  useEffect(() => {
+    if (!item) return;
+    setShowMiddleRow(!!(item.casePkgCount && item.casePkgCount > 0));
+    // Initialize container display size and unit
+    const cUnitId = item.containerUnitId || item.unitId;
+    setSelectedContainerUnitId(cUnitId);
+    if (item.containerSize && item.containerSize > 0 && units) {
+      const baseUnit = units.find(u => u.id === item.unitId);
+      const cUnit = units.find(u => u.id === cUnitId);
+      if (baseUnit && cUnit && cUnit.toBaseRatio > 0) {
+        const displayVal = item.containerSize * (baseUnit.toBaseRatio / cUnit.toBaseRatio);
+        setContainerDisplaySize(parseFloat(displayVal.toFixed(6)).toString());
+      } else {
+        setContainerDisplaySize(item.containerSize > 0 ? String(item.containerSize) : "");
+      }
+    } else {
+      setContainerDisplaySize("");
+    }
+  }, [item?.id, units]);
+
+  useEffect(() => {
+    if (itemLocations) {
+      setSelectedLocations(itemLocations.map(loc => loc.storageLocationId));
+    }
+  }, [itemLocations]);
+
+  useEffect(() => {
+    if (storeData?.associations) {
+      setSelectedStores(storeData.associations.map(assoc => assoc.storeId));
+    }
+  }, [storeData]);
+
+  const updateMutation = useMutation({
+    mutationFn: async (updates: Partial<InventoryItem> & { locationIds?: string[]; storeId?: string }) => {
+      return apiRequest("PATCH", `/api/inventory-items/${id}`, updates);
+    },
+    onSuccess: () => {
+      // Invalidate all inventory-items queries (list, detail, locations, estimated-on-hand)
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          (query.queryKey[0] === "/api/inventory-items" ||
+           query.queryKey[0] === "/api/inventory-items/estimated-on-hand"),
+        refetchType: "active"
+      });
+      // Invalidate all recipe queries (list, detail, components) because recipe costs depend on ingredient prices
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          (query.queryKey[0] === "/api/recipes" || query.queryKey[0] === "/api/recipe-components"),
+        refetchType: "active"
+      });
+      // Invalidate vendor items because they include inventory item prices
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey.some(key => typeof key === 'string' && (key.includes('vendor-items') || key.includes('vendor-prices'))),
+        refetchType: "active"
+      });
+      toast({
+        title: "Item updated",
+        description: "The inventory item has been successfully updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/categories", { name });
+      return res.json();
+    },
+    onSuccess: (newCategory: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      updateMutation.mutate({ categoryId: newCategory.id });
+      setShowAddCategory(false);
+      setNewCategoryName("");
+      toast({ title: "Category created", description: `"${newCategory.name}" has been added.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create category", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleFieldChange = (field: string, value: any) => {
+    setEditedFields(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleFieldBlur = (field: string) => {
+    if (field in editedFields) {
+      const value = editedFields[field];
+      // Validate numeric fields
+      if (field === "containerLabel") {
+        updateMutation.mutate({ containerLabel: value.trim() || null });
+      } else if (["containerSize", "casePkgCount"].includes(field)) {
+        const numValue = parseFloat(value);
+        if (value !== "" && !isNaN(numValue) && numValue > 0) {
+          updateMutation.mutate({ [field]: numValue });
+        } else if (value === "") {
+          updateMutation.mutate({ [field]: null });
+        }
+      } else if (["pricePerUnit", "caseSize", "parLevel", "reorderLevel", "yieldPercent"].includes(field)) {
+        const numValue = parseFloat(value);
+        if (value !== "" && !isNaN(numValue)) {
+          if (field === "yieldPercent" && (numValue < 1 || numValue > 100)) {
+            toast({
+              title: "Validation Error",
+              description: "Yield percentage must be between 1 and 100.",
+              variant: "destructive",
+            });
+            setEditedFields(prev => {
+              const newFields = { ...prev };
+              delete newFields[field];
+              return newFields;
+            });
+            return;
+          }
+          const updates: any = { [field]: numValue };
+          if ((field === "parLevel" || field === "reorderLevel") && selectedStoreId && selectedStoreId !== "all") {
+            updates.storeId = selectedStoreId;
+          }
+          updateMutation.mutate(updates);
+        } else if (value === "" && (field === "parLevel" || field === "reorderLevel")) {
+          const updates: any = { [field]: null };
+          if (selectedStoreId && selectedStoreId !== "all") {
+            updates.storeId = selectedStoreId;
+          }
+          updateMutation.mutate(updates);
+        } else if (value === "" && field === "yieldPercent") {
+          updateMutation.mutate({ [field]: 100 });
+        }
+      } else {
+        updateMutation.mutate({ [field]: value });
+      }
+      setEditedFields(prev => {
+        const newFields = { ...prev };
+        delete newFields[field];
+        return newFields;
+      });
+    }
+  };
+
+
+  const getFieldValue = (field: string, defaultValue: any) => {
+    return field in editedFields ? editedFields[field] : defaultValue;
+  };
+
+  const PACK_OPTIONS = ["Case", "Bag", "Box", "Pail", "Drum", "Jug", "Each", "Other"];
+
+  const handleCaseSizeBlur = () => {
+    if (!("caseSize" in editedFields)) return;
+    const newCaseSize = parseFloat(editedFields["caseSize"]);
+    setEditedFields(prev => { const n = { ...prev }; delete n.caseSize; return n; });
+    if (!isNaN(newCaseSize) && newCaseSize > 0) {
+      const updates: Partial<InventoryItem> = { caseSize: newCaseSize };
+      // Recalculate casePkgCount keeping containerSize the same
+      if (showMiddleRow && item?.containerSize && item.containerSize > 0) {
+        updates.casePkgCount = newCaseSize / item.containerSize;
+      }
+      updateMutation.mutate(updates);
+    }
+  };
+
+  // Convert displayed container size value to item's unit using toBaseRatio
+  const containerDisplayToItemUnit = (displayVal: number, cUnitId: string): number | null => {
+    if (!units || !item) return null;
+    const baseUnit = units.find(u => u.id === item.unitId);
+    const cUnit = units.find(u => u.id === cUnitId);
+    if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    // Guard: reject cross-kind conversions (e.g., oz → gallon)
+    if (baseUnit.kind !== cUnit.kind) return null;
+    return displayVal * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+  };
+
+  const handleContainerSizeBlur = () => {
+    const val = parseFloat(containerDisplaySize);
+    if (isNaN(val) || val <= 0 || !item) return;
+    const containerSizeInItemUnit = containerDisplayToItemUnit(val, selectedContainerUnitId);
+    if (containerSizeInItemUnit === null || containerSizeInItemUnit <= 0) return;
+    const newCasePkgCount = item.caseSize / containerSizeInItemUnit;
+    updateMutation.mutate({
+      containerSize: containerSizeInItemUnit,
+      containerUnitId: selectedContainerUnitId,
+      casePkgCount: newCasePkgCount,
+    });
+  };
+
+  const handleContainerUnitChange = (newUnitId: string) => {
+    setSelectedContainerUnitId(newUnitId);
+    const val = parseFloat(containerDisplaySize);
+    if (!isNaN(val) && val > 0 && item) {
+      const containerSizeInItemUnit = containerDisplayToItemUnit(val, newUnitId);
+      if (containerSizeInItemUnit && containerSizeInItemUnit > 0) {
+        const newCasePkgCount = item.caseSize / containerSizeInItemUnit;
+        updateMutation.mutate({
+          containerSize: containerSizeInItemUnit,
+          containerUnitId: newUnitId,
+          casePkgCount: newCasePkgCount,
+        });
+      }
+    }
+  };
+
+  const handleRemoveMiddleRow = () => {
+    setShowMiddleRow(false);
+    setContainerDisplaySize("");
+    setSelectedContainerUnitId(item?.unitId || "");
+    updateMutation.mutate({ containerSize: null, casePkgCount: null, containerLabel: null, containerUnitId: null });
+  };
+
+  const handleLocationToggle = (locationId: string) => {
+    const newLocations = selectedLocations.includes(locationId)
+      ? selectedLocations.filter(id => id !== locationId)
+      : [...selectedLocations, locationId];
+    
+    // Check if this would result in zero locations BEFORE updating state
+    if (newLocations.length === 0) {
+      toast({
+        title: "At least one location required",
+        description: "An inventory item must have at least one storage location.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update state only if validation passes
+    setSelectedLocations(newLocations);
+    
+    // Update the mutation with new locations only (no storageLocationId field in new schema)
+    updateMutation.mutate({
+      locationIds: newLocations,
+    });
+  };
+
+  const updateStoresMutation = useMutation({
+    mutationFn: async (storeIds: string[]) => {
+      return apiRequest("POST", `/api/inventory-items/${id}/stores`, { storeIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "stores"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Stores updated",
+        description: "Store locations have been successfully updated.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStoreToggle = (storeId: string) => {
+    const newStores = selectedStores.includes(storeId)
+      ? selectedStores.filter(id => id !== storeId)
+      : [...selectedStores, storeId];
+    
+    // Check if this would result in zero stores
+    if (newStores.length === 0) {
+      toast({
+        title: "At least one store required",
+        description: "An inventory item must be available in at least one store.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Update state and trigger mutation
+    setSelectedStores(newStores);
+    updateStoresMutation.mutate(newStores);
+  };
+
+  const createVendorItemMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/vendor-items", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "detail"] });
+      toast({
+        title: "Vendor added",
+        description: "The vendor has been successfully added to this item.",
+      });
+      setShowAddVendorRow(false);
+      setVendorRowEdits(prev => {
+        const newEdits = { ...prev };
+        delete newEdits.new;
+        return newEdits;
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to add vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateVendorItemMutation = useMutation({
+    mutationFn: async ({ id: vendorItemId, data }: { id: string; data: any }) => {
+      const response = await apiRequest("PATCH", `/api/vendor-items/${vendorItemId}`, data);
+      return response.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "detail"] });
+      toast({
+        title: "Vendor updated",
+        description: "The vendor information has been successfully updated.",
+      });
+      setEditingVendorItemId(null);
+      setVendorRowEdits(prev => {
+        const newEdits = { ...prev };
+        delete newEdits[variables.id];
+        return newEdits;
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteVendorItemMutation = useMutation({
+    mutationFn: async (vendorItemId: string) => {
+      await apiRequest("DELETE", `/api/vendor-items/${vendorItemId}`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id, "vendor-items"] });
+      toast({
+        title: "Vendor removed",
+        description: "The vendor has been successfully removed from this item.",
+      });
+      setDeleteVendorItemId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to remove vendor",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Initialize edit state for a vendor item row
+  const startEditingVendorRow = (vendorItem: VendorItem) => {
+    setEditingVendorItemId(vendorItem.id);
+    setVendorRowEdits(prev => ({
+      ...prev,
+      [vendorItem.id]: {
+        vendorId: vendorItem.vendorId,
+        vendorSku: vendorItem.vendorSku || "",
+        purchaseUnitId: vendorItem.purchaseUnitId,
+        caseSize: vendorItem.caseSize.toString(),
+        lastCasePrice: vendorItem.lastCasePrice.toString(),
+        active: vendorItem.active,
+      }
+    }));
+  };
+
+  // Initialize new vendor row
+  const startAddingVendorRow = () => {
+    setShowAddVendorRow(true);
+    setVendorRowEdits(prev => ({
+      ...prev,
+      new: {
+        vendorId: "",
+        vendorSku: "",
+        purchaseUnitId: item?.unitId || "",
+        caseSize: "1",
+        lastCasePrice: "0",
+        active: 1,
+      }
+    }));
+  };
+
+  const cancelEditingVendorRow = (rowId: string) => {
+    if (rowId === "new") {
+      setShowAddVendorRow(false);
+    } else {
+      setEditingVendorItemId(null);
+    }
+    setVendorRowEdits(prev => {
+      const newEdits = { ...prev };
+      delete newEdits[rowId];
+      return newEdits;
+    });
+  };
+
+  const updateVendorRowField = (rowId: string, field: string, value: any) => {
+    setVendorRowEdits(prev => ({
+      ...prev,
+      [rowId]: {
+        ...prev[rowId],
+        [field]: value,
+      }
+    }));
+  };
+
+  const saveVendorRow = (rowId: string) => {
+    const rowData = vendorRowEdits[rowId];
+    if (!rowData) return;
+
+    const data = {
+      inventoryItemId: id,
+      vendorId: rowData.vendorId,
+      vendorSku: rowData.vendorSku.trim() || null,
+      purchaseUnitId: rowData.purchaseUnitId,
+      caseSize: parseFloat(rowData.caseSize) || 1,
+      lastCasePrice: parseFloat(rowData.lastCasePrice) || 0,
+      active: rowData.active,
+    };
+
+    if (rowId === "new") {
+      createVendorItemMutation.mutate(data);
+    } else {
+      updateVendorItemMutation.mutate({ id: rowId, data });
+    }
+  };
+
+  if (itemLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!item) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-muted-foreground">Item not found</div>
+      </div>
+    );
+  }
+
+  const unit = units?.find((u) => u.id === item.unitId);
+  const location = locations?.find((l) => l.id === item.storageLocationId);
+  
+  const filteredUnits = filterUnitsBySystem(units, systemPrefs?.unitSystem);
+
+  return (
+    <div className="h-full flex flex-col pb-16">
+      {/* Fixed Header */}
+      <div className="sticky top-0 z-10 bg-background border-b">
+        <div className="flex items-center gap-4 px-6 py-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (window.history.length > 1) {
+                window.history.back();
+              } else {
+                navigate("/inventory-items");
+              }
+            }}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">{item.name}</h1>
+              {(item.isPowerItem === 1 || item.isPowerItem === true) && (
+                <Star className="h-5 w-5 fill-yellow-500 text-yellow-500" data-testid="icon-power-item" />
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {item.manufacturer && <span>{item.manufacturer}{item.pluSku ? " | " : ""}</span>}{item.pluSku ? `PLU/SKU: ${item.pluSku}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={item.active ? "outline" : "secondary"}>
+              {item.active ? "Active" : "Inactive"}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkReplaceOpen(true)}
+              data-testid="button-bulk-replace"
+              title="Replace this item across all recipes"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5">Replace in recipes</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 space-y-6">
+          {/* Vendors Card - At top for visibility */}
+          {(() => {
+            const activeVendorItems = vendorItems?.filter(vi => vi.active === 1) || [];
+            const inactiveVendorItems = vendorItems?.filter(vi => vi.active === 0) || [];
+            const displayedVendorItems = showInactiveVendors ? vendorItems : activeVendorItems;
+            const hasInactiveVendors = inactiveVendorItems.length > 0;
+            
+            return (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Vendors
+                </CardTitle>
+                <CardDescription>Suppliers for this item</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {hasInactiveVendors && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowInactiveVendors(!showInactiveVendors)}
+                    data-testid="button-toggle-inactive-vendors"
+                  >
+                    {showInactiveVendors ? "Hide Inactive" : `Show Inactive (${inactiveVendorItems.length})`}
+                  </Button>
+                )}
+                <Button
+                  onClick={startAddingVendorRow}
+                  size="sm"
+                  disabled={showAddVendorRow || editingVendorItemId !== null}
+                  data-testid="button-add-vendor"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Vendor
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+
+              {/* ── MOBILE LAYOUT (hidden on sm+) ── */}
+              <div className="sm:hidden">
+
+                {/* Mobile edit/add form — replaces list while active */}
+                {(showAddVendorRow || editingVendorItemId !== null) && (() => {
+                  const rowId = editingVendorItemId ?? "new";
+                  const rowData = vendorRowEdits[rowId];
+                  if (!rowData) return null;
+                  const isPending = editingVendorItemId
+                    ? updateVendorItemMutation.isPending
+                    : createVendorItemMutation.isPending;
+                  const canSave = !!rowData.vendorId && !!rowData.purchaseUnitId;
+                  const derivedUnitPrice = (() => {
+                    const cp = parseFloat(rowData.lastCasePrice || "0");
+                    const cs = parseFloat(rowData.caseSize || "1");
+                    return cs > 0 ? (cp / cs).toFixed(4) : "0.0000";
+                  })();
+                  const inventoryUnitLabel = unit ? formatUnitName(unit.name) : null;
+                  return (
+                    <div className="border rounded-lg p-4 mb-2 space-y-3 bg-muted/30" data-testid={`vendor-form-mobile-${rowId}`}>
+                      <p className="text-sm font-semibold">{editingVendorItemId ? "Edit Vendor" : "Add Vendor"}</p>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Vendor</label>
+                        <Select
+                          value={rowData.vendorId}
+                          onValueChange={(v) => updateVendorRowField(rowId, "vendorId", v)}
+                        >
+                          <SelectTrigger className="w-full" data-testid={`select-vendor-mobile-${rowId}`}>
+                            <SelectValue placeholder="Select vendor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vendors?.map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">SKU (optional)</label>
+                        <Input
+                          value={rowData.vendorSku}
+                          onChange={(e) => updateVendorRowField(rowId, "vendorSku", e.target.value)}
+                          placeholder="e.g. 910795"
+                          data-testid={`input-sku-mobile-${rowId}`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Purchase Unit</label>
+                        <Select
+                          value={rowData.purchaseUnitId}
+                          onValueChange={(v) => updateVendorRowField(rowId, "purchaseUnitId", v)}
+                        >
+                          <SelectTrigger className="w-full" data-testid={`select-unit-mobile-${rowId}`}>
+                            <SelectValue placeholder="Select unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <GroupedUnitOptions units={filteredUnits ?? []} />
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Case Price ($)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={rowData.lastCasePrice}
+                          onChange={(e) => updateVendorRowField(rowId, "lastCasePrice", e.target.value)}
+                          data-testid={`input-case-price-mobile-${rowId}`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Units / Case</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={rowData.caseSize}
+                          onChange={(e) => updateVendorRowField(rowId, "caseSize", e.target.value)}
+                          data-testid={`input-case-mobile-${rowId}`}
+                        />
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Unit price: ${derivedUnitPrice}{inventoryUnitLabel ? ` / ${inventoryUnitLabel}` : ''}
+                      </p>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                        <Select
+                          value={rowData.active.toString()}
+                          onValueChange={(v) => updateVendorRowField(rowId, "active", parseInt(v))}
+                        >
+                          <SelectTrigger className="w-full" data-testid={`select-status-mobile-${rowId}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">Active</SelectItem>
+                            <SelectItem value="0">Inactive</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          onClick={() => saveVendorRow(rowId)}
+                          disabled={!canSave || isPending}
+                          className="flex-1"
+                          data-testid={`button-save-vendor-mobile-${rowId}`}
+                        >
+                          <Check className="h-4 w-4 mr-2" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => cancelEditingVendorRow(rowId)}
+                          className="flex-1"
+                          data-testid={`button-cancel-vendor-mobile-${rowId}`}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Mobile read-only list — hidden while add/edit form is active */}
+                {!showAddVendorRow && editingVendorItemId === null && (!displayedVendorItems || displayedVendorItems.length === 0) && (
+                  <p className="text-center py-8 text-sm text-muted-foreground">
+                    {inactiveVendorItems.length > 0
+                      ? "No active vendors. Use toggle above to show inactive vendors."
+                      : "No vendors configured for this item"}
+                  </p>
+                )}
+
+                {!showAddVendorRow && editingVendorItemId === null && (
+                <div className="divide-y">
+                  {displayedVendorItems?.map((vi) => {
+                    return (
+                      <div key={vi.id} className="py-3" data-testid={`vendor-item-card-mobile-${vi.id}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium truncate">{vi.vendor?.name || "Unknown"}</span>
+                            {vi.active === 0 && (
+                              <Badge variant="outline" className="text-xs shrink-0">Inactive</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => toggleVendorHistory(vi.id)}
+                              title="Price history"
+                              data-testid={`button-history-vendor-mobile-${vi.id}`}
+                            >
+                              {expandedVendorHistoryIds.has(vi.id)
+                                ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                : <History className="h-4 w-4 text-muted-foreground" />
+                              }
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => startEditingVendorRow(vi)}
+                              disabled={editingVendorItemId !== null || showAddVendorRow}
+                              data-testid={`button-edit-vendor-mobile-${vi.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeleteVendorItemId(vi.id)}
+                              data-testid={`button-delete-vendor-mobile-${vi.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {vi.vendorSku ? `SKU: ${vi.vendorSku} · ` : ""}
+                          {formatUnitName(vi.unit?.name)} · {vi.caseSize}/case
+                          {vi.lastOrderDate ? ` · Last order: ${new Date(vi.lastOrderDate).toLocaleDateString()}` : ""}
+                        </p>
+                        <p className="text-xs mt-0.5">
+                          <span>Case: ${vi.lastCasePrice.toFixed(2)}</span>
+                          <span className="text-muted-foreground"> · {
+                              vi.normalizedPricePerCanonicalUnit != null
+                                ? `$${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/${formatUnitName(unit?.name)}`
+                                : vi.packGeometryStatus === "conflicting"
+                                  ? "⚠ incompatible units"
+                                  : vi.packGeometryStatus === "variable_weight"
+                                    ? "variable weight"
+                                    : `Unit: $${vi.lastPrice.toFixed(4)}`
+                            }</span>
+                          {vi.priceSource && (() => {
+                            const { label, isLegacy } = formatPriceSource(vi.priceSource);
+                            return isLegacy ? (
+                              <span className="ml-1 text-amber-600 dark:text-amber-400" title="Price predates M3A tracking — reliability unknown">
+                                {" · "}<AlertTriangle className="inline h-3 w-3 mr-0.5" />{label}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground"> · {label}</span>
+                            );
+                          })()}
+                        </p>
+                        {expandedVendorHistoryIds.has(vi.id) && item && (
+                          <div className="mt-3 pt-3 border-t bg-muted/20 rounded-md p-3" data-testid={`vendor-history-mobile-${vi.id}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <History className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price History</span>
+                            </div>
+                            <VendorPriceHistoryPanel
+                              inventoryItemId={item.id}
+                              vendorItemId={vi.id}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                )}
+
+              </div>
+
+              {/* ── DESKTOP TABLE (hidden on mobile) ── */}
+              <div className="hidden sm:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Case Price</TableHead>
+                      <TableHead>Units/Case</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Price Date</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedVendorItems && displayedVendorItems.length > 0 ? (
+                      displayedVendorItems.map((vi) => {
+                        const isEditing = editingVendorItemId === vi.id;
+                        const rowData = vendorRowEdits[vi.id];
+
+                        if (isEditing && rowData) {
+                          return (
+                            <TableRow key={vi.id} data-testid={`vendor-item-row-${vi.id}`}>
+                              <TableCell>
+                                <Select
+                                  value={rowData.vendorId}
+                                  onValueChange={(value) => updateVendorRowField(vi.id, "vendorId", value)}
+                                >
+                                  <SelectTrigger className="w-[140px]" data-testid={`select-vendor-${vi.id}`}>
+                                    <SelectValue placeholder="Select vendor" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {vendors?.map((vendor) => (
+                                      <SelectItem key={vendor.id} value={vendor.id}>
+                                        {vendor.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  value={rowData.vendorSku}
+                                  onChange={(e) => updateVendorRowField(vi.id, "vendorSku", e.target.value)}
+                                  placeholder="SKU"
+                                  className="w-[100px]"
+                                  data-testid={`input-sku-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={rowData.purchaseUnitId}
+                                  onValueChange={(value) => updateVendorRowField(vi.id, "purchaseUnitId", value)}
+                                >
+                                  <SelectTrigger className="w-[100px]" data-testid={`select-unit-${vi.id}`}>
+                                    <SelectValue placeholder="Unit" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <GroupedUnitOptions units={filteredUnits ?? []} />
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={rowData.lastCasePrice}
+                                  onChange={(e) => updateVendorRowField(vi.id, "lastCasePrice", e.target.value)}
+                                  className="w-[90px]"
+                                  data-testid={`input-case-price-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={rowData.caseSize}
+                                  onChange={(e) => updateVendorRowField(vi.id, "caseSize", e.target.value)}
+                                  className="w-[70px]"
+                                  data-testid={`input-case-${vi.id}`}
+                                />
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                ${(() => {
+                                  const casePrice = parseFloat(rowData.lastCasePrice || "0");
+                                  const caseSize = parseFloat(rowData.caseSize || "1");
+                                  return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
+                                })()}{unit ? ` / ${formatUnitName(unit.name)}` : ''}
+                              </TableCell>
+                              <TableCell className="text-right text-xs text-muted-foreground">
+                                {vi.pricedAt ? new Date(vi.pricedAt).toLocaleDateString() : "-"}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Select
+                                    value={rowData.active.toString()}
+                                    onValueChange={(value) => updateVendorRowField(vi.id, "active", parseInt(value))}
+                                  >
+                                    <SelectTrigger className="w-[80px]" data-testid={`select-status-${vi.id}`}>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="1">Active</SelectItem>
+                                      <SelectItem value="0">Inactive</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => saveVendorRow(vi.id)}
+                                    disabled={!rowData.vendorId || !rowData.purchaseUnitId || updateVendorItemMutation.isPending}
+                                    data-testid={`button-save-vendor-${vi.id}`}
+                                  >
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => cancelEditingVendorRow(vi.id)}
+                                    data-testid={`button-cancel-vendor-${vi.id}`}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+
+                        return (
+                          <React.Fragment key={vi.id}>
+                          <TableRow data-testid={`vendor-item-row-${vi.id}`}>
+                            <TableCell className="font-medium">
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span>{vi.vendor?.name || "Unknown"}</span>
+                                {(vi.priceSource === "receipt" || vi.priceSource === "invoice_scan") && (
+                                  <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vi.id}`}>
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Paid Price
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{vi.vendorSku || "-"}</TableCell>
+                            <TableCell>{formatUnitName(vi.unit?.name)}</TableCell>
+                            <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
+                            <TableCell>{vi.caseSize}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {vi.normalizedPricePerCanonicalUnit != null ? (
+                                <span title={`1 ${formatUnitName(vi.unit?.name)} = ${vi.canonicalQtyPerPurchaseUnit ?? "?"} ${formatUnitName(unit?.name)} · Case: $${vi.lastCasePrice.toFixed(2)} · Normalized: $${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/${formatUnitName(unit?.name)}`}>
+                                  ${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/{formatUnitName(unit?.name)}
+                                </span>
+                              ) : vi.packGeometryStatus === "conflicting" ? (
+                                <span className="text-amber-600 dark:text-amber-400 text-xs" title="Cannot normalize price — purchase unit and inventory unit use incompatible measurements.">
+                                  ⚠ incompatible units
+                                </span>
+                              ) : vi.packGeometryStatus === "incomplete" || vi.packGeometryStatus == null ? (
+                                <span className="text-muted-foreground/60 text-xs" title={`Add the total ${formatUnitName(unit?.name)} contained in one ${formatUnitName(vi.unit?.name)} to enable price comparison.`}>
+                                  ${vi.lastPrice.toFixed(4)}
+                                </span>
+                              ) : vi.packGeometryStatus === "variable_weight" ? (
+                                <span className="text-muted-foreground/60 text-xs" title="Weight varies by delivery — estimated price only.">
+                                  ~${vi.lastPrice.toFixed(4)} est.
+                                </span>
+                              ) : (
+                                <span>${vi.lastPrice.toFixed(4)}</span>
+                              )}
+                            </TableCell>
+                            <TableCell data-testid={`text-price-source-${vi.id}`}>
+                              {(() => {
+                                const { label, isLegacy } = formatPriceSource(vi.priceSource);
+                                if (isLegacy) {
+                                  return (
+                                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs" title="Price predates M3A tracking — reliability unknown">
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      {label}
+                                    </span>
+                                  );
+                                }
+                                return <span className="text-sm text-muted-foreground">{label}</span>;
+                              })()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {(() => {
+                                const pricedAt = vi.pricedAt ? new Date(vi.pricedAt) : null;
+                                const daysSince = pricedAt
+                                  ? Math.floor((Date.now() - pricedAt.getTime()) / 86_400_000)
+                                  : null;
+                                const isStale = pricedAt ? daysSince! > 14 : false;
+                                const isAging = pricedAt && !isStale && daysSince! > 7;
+                                if (!pricedAt) {
+                                  return (
+                                    <div className="flex items-center justify-end gap-1 text-xs text-amber-600 dark:text-amber-400" title="No pricing date recorded" data-testid={`icon-stale-${vi.id}`}>
+                                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                                      <span>Unknown</span>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : isAging ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground"}`}>
+                                    {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vi.id}`} />}
+                                    {isAging && !isStale && <AlertTriangle className="h-3 w-3 shrink-0 opacity-60" data-testid={`icon-aging-${vi.id}`} />}
+                                    <span title={isStale ? `Price is ${daysSince} days old — excluded from recommendations` : isAging ? `Price is ${daysSince} days old — getting stale` : undefined}>
+                                      {pricedAt.toLocaleDateString()}
+                                      {(isStale || isAging) && daysSince != null && (
+                                        <span className="ml-1">({daysSince}d ago)</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => toggleVendorHistory(vi.id)}
+                                  title="Price history"
+                                  data-testid={`button-history-vendor-${vi.id}`}
+                                >
+                                  {expandedVendorHistoryIds.has(vi.id)
+                                    ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    : <History className="h-4 w-4 text-muted-foreground" />
+                                  }
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => startEditingVendorRow(vi)}
+                                  disabled={editingVendorItemId !== null || showAddVendorRow}
+                                  data-testid={`button-edit-vendor-${vi.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteVendorItemId(vi.id)}
+                                  data-testid={`button-delete-vendor-${vi.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {expandedVendorHistoryIds.has(vi.id) && item && (
+                            <TableRow data-testid={`vendor-history-row-${vi.id}`}>
+                              <TableCell colSpan={9} className="bg-muted/30 px-6 py-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <History className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Price History</span>
+                                </div>
+                                <VendorPriceHistoryPanel
+                                  inventoryItemId={item.id}
+                                  vendorItemId={vi.id}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          </React.Fragment>
+                        );
+                      })
+                    ) : !showAddVendorRow && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                          {inactiveVendorItems.length > 0
+                            ? "No active vendors. Use toggle above to show inactive vendors."
+                            : "No vendors configured for this item"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {showAddVendorRow && vendorRowEdits.new && (
+                      <TableRow data-testid="vendor-item-row-new">
+                        <TableCell>
+                          <Select
+                            value={vendorRowEdits.new.vendorId}
+                            onValueChange={(value) => updateVendorRowField("new", "vendorId", value)}
+                          >
+                            <SelectTrigger className="w-[140px]" data-testid="select-vendor-new">
+                              <SelectValue placeholder="Select vendor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vendors?.map((vendor) => (
+                                <SelectItem key={vendor.id} value={vendor.id}>
+                                  {vendor.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={vendorRowEdits.new.vendorSku}
+                            onChange={(e) => updateVendorRowField("new", "vendorSku", e.target.value)}
+                            placeholder="SKU"
+                            className="w-[100px]"
+                            data-testid="input-sku-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={vendorRowEdits.new.purchaseUnitId}
+                            onValueChange={(value) => updateVendorRowField("new", "purchaseUnitId", value)}
+                          >
+                            <SelectTrigger className="w-[100px]" data-testid="select-unit-new">
+                              <SelectValue placeholder="Unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <GroupedUnitOptions units={filteredUnits ?? []} />
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={vendorRowEdits.new.lastCasePrice}
+                            onChange={(e) => updateVendorRowField("new", "lastCasePrice", e.target.value)}
+                            className="w-[90px]"
+                            data-testid="input-case-price-new"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={vendorRowEdits.new.caseSize}
+                            onChange={(e) => updateVendorRowField("new", "caseSize", e.target.value)}
+                            className="w-[70px]"
+                            data-testid="input-case-new"
+                          />
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          ${(() => {
+                            const casePrice = parseFloat(vendorRowEdits.new.lastCasePrice || "0");
+                            const caseSize = parseFloat(vendorRowEdits.new.caseSize || "1");
+                            return caseSize > 0 ? (casePrice / caseSize).toFixed(4) : "0.0000";
+                          })()}{unit ? ` / ${formatUnitName(unit.name)}` : ''}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">-</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => saveVendorRow("new")}
+                              disabled={!vendorRowEdits.new.vendorId || !vendorRowEdits.new.purchaseUnitId || createVendorItemMutation.isPending}
+                              data-testid="button-save-vendor-new"
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => cancelEditingVendorRow("new")}
+                              data-testid="button-cancel-vendor-new"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+            </CardContent>
+          </Card>
+            );
+          })()}
+
+          <div className="grid gap-6 md:grid-cols-2">
+          {/* Basic Settings Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Basic Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Item Name</Label>
+              <Input
+                id="name"
+                value={getFieldValue("name", item.name)}
+                onChange={(e) => handleFieldChange("name", e.target.value)}
+                onBlur={() => handleFieldBlur("name")}
+                disabled={updateMutation.isPending}
+                data-testid="input-item-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manufacturer">Manufacturer</Label>
+              <Input
+                id="manufacturer"
+                value={getFieldValue("manufacturer", item.manufacturer || "")}
+                onChange={(e) => handleFieldChange("manufacturer", e.target.value)}
+                onBlur={() => handleFieldBlur("manufacturer")}
+                disabled={updateMutation.isPending}
+                placeholder="e.g., Grande Cheese"
+                data-testid="input-manufacturer"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="categoryId">Category</Label>
+                {!showAddCategory && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto py-0 px-1 text-xs text-muted-foreground"
+                    onClick={() => setShowAddCategory(true)}
+                    data-testid="button-add-category-inline"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add new
+                  </Button>
+                )}
+              </div>
+
+              {showAddCategory ? (
+                <div className="flex items-center gap-2" data-testid="inline-add-category">
+                  <Input
+                    autoFocus
+                    placeholder="New category name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newCategoryName.trim()) {
+                        createCategoryMutation.mutate(newCategoryName.trim());
+                      } else if (e.key === "Escape") {
+                        setShowAddCategory(false);
+                        setNewCategoryName("");
+                      }
+                    }}
+                    disabled={createCategoryMutation.isPending}
+                    data-testid="input-new-category-name"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="default"
+                    disabled={!newCategoryName.trim() || createCategoryMutation.isPending}
+                    onClick={() => createCategoryMutation.mutate(newCategoryName.trim())}
+                    data-testid="button-create-category-confirm"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setShowAddCategory(false); setNewCategoryName(""); }}
+                    data-testid="button-create-category-cancel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select 
+                  value={getFieldValue("categoryId", item.categoryId || "")} 
+                  onValueChange={(value) => {
+                    updateMutation.mutate({ categoryId: value || null });
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger data-testid="select-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Item Image</Label>
+              <div className="flex items-start gap-4">
+                {item.imageUrl && (
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={`${item.imageUrl}?thumbnail=true`} 
+                      alt={item.name}
+                      className="w-20 h-20 object-cover rounded-md border"
+                      data-testid="img-inventory-item"
+                    />
+                  </div>
+                )}
+                <ObjectUploader
+                  maxFileSize={10485760}
+                  onUploadComplete={async (objectPath: string) => {
+                    try {
+                      await apiRequest("PUT", `/api/inventory-items/${id}/image`, {
+                        imageUrl: objectPath,
+                      });
+                      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items", id] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+                      toast({
+                        title: "Image uploaded",
+                        description: "The item image has been successfully uploaded.",
+                      });
+                    } catch (error: any) {
+                      toast({
+                        title: "Upload failed",
+                        description: error.message,
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  buttonText={item.imageUrl ? "Change Image" : "Upload Image"}
+                  buttonVariant="outline"
+                  dataTestId="button-upload-image"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Upload a product image (max 10MB). Thumbnails will be automatically generated.
+              </p>
+            </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Pricing
+              </CardTitle>
+              <CardDescription>Cost and pricing information</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Effective Cost (per {unit?.abbreviation || 'unit'})</Label>
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <div className="text-3xl font-semibold" data-testid="text-effective-cost">
+                    ${(item.effectiveUnitCost ?? item.pricePerUnit)?.toFixed(2) || '0.00'}
+                  </div>
+                  <CostingMethodBadge />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This is the cost used for recipe costing and on-hand valuation, based on your company's costing method.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Last Cost (per {unit?.abbreviation || 'unit'})</Label>
+                  <div className="text-2xl font-semibold text-muted-foreground" data-testid="text-last-cost">
+                    ${item.pricePerUnit?.toFixed(2) || '0.00'}
+                  </div>
+                  {vendorItems && vendorItems.filter(vi => vi.active === 1).length > 0 ? (
+                    <p className="text-xs text-muted-foreground">Auto-synced from vendor — edit in the Purchasing section below.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Avg Cost / WAC (per {unit?.abbreviation || 'unit'})</Label>
+                  <div className="text-2xl font-semibold text-muted-foreground" data-testid="text-avg-cost">
+                    ${item.avgCostPerUnit?.toFixed(2) || '0.00'}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Pricing is automatically derived from receiving history. Case sizes are managed per vendor.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Ruler className="h-5 w-5" />
+                Units & Measurements
+              </CardTitle>
+              <CardDescription>Unit configuration</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="unitId">Unit of Measure *</Label>
+                <Select
+                  value={getFieldValue("unitId", item.unitId)}
+                  onValueChange={(value) => {
+                    updateMutation.mutate({ unitId: value });
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  <SelectTrigger id="unitId" data-testid="select-unit">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <GroupedUnitOptions units={filteredUnits ?? []} />
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="yieldPercent">Yield Percentage *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="yieldPercent"
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="100"
+                    value={getFieldValue("yieldPercent", item.yieldPercent ?? 100)}
+                    placeholder="100"
+                    onChange={(e) => handleFieldChange("yieldPercent", e.target.value)}
+                    onBlur={() => handleFieldBlur("yieldPercent")}
+                    disabled={updateMutation.isPending}
+                    required
+                    data-testid="input-yield-percent"
+                  />
+                  <div className="flex items-center px-3 text-muted-foreground">%</div>
+                </div>
+                <p className="text-xs text-muted-foreground">Usable percentage after trimming/waste. Default is 100%.</p>
+              </div>
+
+              {/* Usage Conversions — flat table replacing Pack Breakdown / Recipe Units / Issue Units tabs */}
+              <div className="rounded-md border p-4">
+                <UsageConversionsSection
+                  itemId={item.id}
+                  itemUnitId={item.unitId}
+                  itemUnitAbbrev={unit?.abbreviation || ""}
+                  itemUnitKind={unit?.kind || ""}
+                  units={units}
+                />
+              </div>
+
+              {/* Purchasing reference — vendor packs and normalized cost per canonical unit */}
+              {(() => {
+                const activeVendors = (vendorItems ?? []).filter(vi => vi.active === 1);
+                return (
+                  <div className="rounded-md border p-4 space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold">Purchasing</p>
+                      <p className="text-xs text-muted-foreground">
+                        Vendor purchase packs and normalized cost per {unit?.abbreviation || "canonical unit"}.
+                      </p>
+                    </div>
+                    {activeVendors.length === 0 ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          No vendor items linked. Enter a manual unit price for costing.
+                        </p>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Price per Unit ($)</Label>
+                          <Input
+                            type="number"
+                            step="0.0001"
+                            value={getFieldValue("pricePerUnit", item.pricePerUnit ?? 0)}
+                            onChange={(e) => handleFieldChange("pricePerUnit", e.target.value)}
+                            onBlur={() => handleFieldBlur("pricePerUnit")}
+                            disabled={updateMutation.isPending}
+                            className="h-8 w-36"
+                            data-testid="input-price-per-unit"
+                          />
+                          <p className="text-xs text-muted-foreground">Used for costing until a vendor is linked.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-xs text-muted-foreground">
+                            <th className="pb-2 text-left font-medium">Vendor</th>
+                            <th className="pb-2 text-left font-medium">Purchase Pack</th>
+                            <th className="pb-2 text-right font-medium">Case Price</th>
+                            <th className="pb-2 text-right font-medium">Cost / {unit?.abbreviation || "unit"}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeVendors.map(vi => {
+                            const ip = (vi.innerPackSize ?? 1) > 1 ? vi.innerPackSize! : null;
+                            const pUom = vi.packUom ?? vi.unit?.name ?? unit?.abbreviation ?? "";
+                            const packDesc = ip
+                              ? `${vi.caseSize} × ${ip} ${pUom}`
+                              : `${vi.caseSize} ${pUom}`;
+                            const normalizedCost = vi.normalizedPricePerCanonicalUnit;
+                            const gStatus = vi.packGeometryStatus;
+                            return (
+                              <tr key={vi.id} className="border-b last:border-b-0" data-testid={`row-purchasing-${vi.id}`}>
+                                <td className="py-2 pr-3 font-medium">{vi.vendor?.name ?? "—"}</td>
+                                <td className="py-2 pr-3 text-muted-foreground">{packDesc}</td>
+                                <td className="py-2 pr-3 text-right text-muted-foreground">
+                                  {vi.lastCasePrice > 0 ? `$${vi.lastCasePrice.toFixed(2)}` : "—"}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {normalizedCost != null ? (
+                                    <span className="font-medium">${normalizedCost.toFixed(4)}</span>
+                                  ) : gStatus === "conflicting" ? (
+                                    <Badge variant="destructive" className="text-xs">⚠ Units conflict</Badge>
+                                  ) : gStatus === "variable_weight" ? (
+                                    <Badge variant="secondary" className="text-xs">Variable weight</Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="text-xs text-muted-foreground">Incomplete</Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Item Flags */}
+              <div className="pt-4 border-t space-y-3">
+                <Label className="text-sm font-medium">Item Flags</Label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Star className={`h-4 w-4 ${(item.isPowerItem === 1 || item.isPowerItem === true) ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`} />
+                    <div className="space-y-0.5">
+                      <Label htmlFor="isPowerItem" className="cursor-pointer text-sm font-normal">
+                        Power Item
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        High-cost item for power counts
+                      </p>
+                    </div>
+                  </div>
+                  <Checkbox
+                    id="isPowerItem"
+                    checked={item.isPowerItem === 1 || item.isPowerItem === true}
+                    onCheckedChange={(checked) => {
+                      updateMutation.mutate({ isPowerItem: checked ? 1 : 0 });
+                    }}
+                    disabled={updateMutation.isPending}
+                    data-testid="checkbox-power-item"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Scale className={`h-4 w-4 ${(item.isVariableWeight === 1 || item.isVariableWeight === true) ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                    <div className="space-y-0.5">
+                      <Label htmlFor="isVariableWeight" className="cursor-pointer text-sm font-normal">
+                        Variable Weight
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Catch weight items (meats, cheese)
+                      </p>
+                    </div>
+                  </div>
+                  <Checkbox
+                    id="isVariableWeight"
+                    checked={item.isVariableWeight === 1 || item.isVariableWeight === true}
+                    onCheckedChange={(checked) => {
+                      updateMutation.mutate({ isVariableWeight: checked ? 1 : 0 });
+                    }}
+                    disabled={updateMutation.isPending}
+                    data-testid="checkbox-variable-weight"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Store Locations
+              </CardTitle>
+              <CardDescription>Physical stores where this item is available</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Available Stores</Label>
+                <p className="text-sm text-muted-foreground">
+                  Select all store locations where this item should be available. Items are identified by PLU/SKU: {item?.pluSku || "Not set"}
+                </p>
+                <div className="space-y-2 border rounded-md p-3">
+                  {storeData?.allStores?.map((store) => {
+                    return (
+                      <div key={store.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`store-${store.id}`}
+                          checked={selectedStores.includes(store.id)}
+                          onCheckedChange={() => handleStoreToggle(store.id)}
+                          disabled={updateStoresMutation.isPending}
+                          data-testid={`checkbox-store-${store.id}`}
+                        />
+                        <Label 
+                          htmlFor={`store-${store.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {store.name}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Storage & Inventory
+              </CardTitle>
+              <CardDescription>Location and inventory levels</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Storage Locations</Label>
+                <p className="text-sm text-muted-foreground">Select all locations where this item is stored</p>
+                <div className="space-y-2 border rounded-md p-3">
+                  {locations?.map((loc) => {
+                    const isPrimary = itemLocations?.find(il => il.storageLocationId === loc.id)?.isPrimary === 1;
+                    return (
+                      <div key={loc.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`location-${loc.id}`}
+                          checked={selectedLocations.includes(loc.id)}
+                          onCheckedChange={() => handleLocationToggle(loc.id)}
+                          disabled={updateMutation.isPending}
+                          data-testid={`checkbox-location-${loc.id}`}
+                        />
+                        <Label 
+                          htmlFor={`location-${loc.id}`}
+                          className="text-sm font-normal cursor-pointer flex-1"
+                        >
+                          {loc.name}
+                          {isPrimary && (
+                            <Badge variant="outline" className="ml-2">Primary</Badge>
+                          )}
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="parLevel">Par Level</Label>
+                <Input
+                  id="parLevel"
+                  type="number"
+                  step="0.01"
+                  value={getFieldValue("parLevel", item.parLevel ?? "")}
+                  placeholder="Not set"
+                  onChange={(e) => handleFieldChange("parLevel", e.target.value)}
+                  onBlur={() => handleFieldBlur("parLevel")}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-par-level"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reorderLevel">Reorder Level</Label>
+                <Input
+                  id="reorderLevel"
+                  type="number"
+                  step="0.01"
+                  value={getFieldValue("reorderLevel", item.reorderLevel ?? "")}
+                  placeholder="Not set"
+                  onChange={(e) => handleFieldChange("reorderLevel", e.target.value)}
+                  onBlur={() => handleFieldBlur("reorderLevel")}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-reorder-level"
+                />
+              </div>
+            </CardContent>
+          </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteVendorItemId} onOpenChange={() => setDeleteVendorItemId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Vendor</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this vendor from this item? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteVendorItemId) {
+                  deleteVendorItemMutation.mutate(deleteVendorItemId);
+                }
+              }}
+              disabled={deleteVendorItemMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteVendorItemMutation.isPending ? "Removing..." : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={true} />
+
+      {/* Bulk replace dialog */}
+      {item && (
+        <BulkReplaceDialog
+          open={bulkReplaceOpen}
+          onOpenChange={setBulkReplaceOpen}
+          fromType="inventory_item"
+          fromId={item.id}
+          fromName={item.name}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}

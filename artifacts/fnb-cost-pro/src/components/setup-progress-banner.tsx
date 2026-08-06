@@ -1,0 +1,198 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import {
+  CheckCircle2,
+  ArrowRight,
+  ArrowLeft,
+  ChevronRight,
+} from "lucide-react";
+
+interface Milestone {
+  id: string;
+  label: string;
+  completed: boolean;
+  path: string;
+}
+
+interface MilestonesResponse {
+  milestones: Milestone[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
+const milestoneLabels: Record<string, string> = {
+  menu_scan: "Menu Scan",
+  plan: "Review Your Account",
+  invoice_scan: "Invoice Scan",
+  categories: "Categories",
+  storage_locations: "Storage",
+  recipes: "Recipes",
+  review: "Review",
+  inventory_count: "First Count",
+  menu_insights: "Menu Insights",
+  // Legacy labels kept for backwards compatibility
+  store: "Store",
+  vendors: "Vendor",
+  inventory: "Inventory",
+  costs: "Seed Costs",
+  par_levels: "Par Levels",
+  menu: "Menu Items",
+  team: "Team",
+};
+
+interface SetupProgressBannerProps {
+  currentMilestoneId: string;
+  hasEntries?: boolean;
+}
+
+export function SetupProgressBanner({ currentMilestoneId, hasEntries = false }: SetupProgressBannerProps) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+
+  const { data, isLoading } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+
+  const reviewStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/milestones/review-step", { stepId: currentMilestoneId });
+      if (!response.ok) throw new Error("Failed to complete step");
+      return response.json();
+    },
+    onSuccess: async () => {
+      const freshData = await queryClient.fetchQuery<MilestonesResponse>({
+        queryKey: ["/api/onboarding/milestones"],
+        staleTime: 0,
+      });
+      const milestones = freshData?.milestones || [];
+      const currentIdx = milestones.findIndex((m) => m.id === currentMilestoneId);
+      if (currentIdx < 0) return;
+      const next = milestones.find((m, i) => i > currentIdx && !m.completed);
+      if (next) {
+        navigate(next.path);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/milestones"] });
+        toast({ title: "Setup complete!", description: "Your account is ready to go." });
+        navigate("/");
+      }
+    },
+  });
+
+  if (isLoading || !data || data.dismissed) return null;
+
+  const currentMilestone = data.milestones.find((m) => m.id === currentMilestoneId);
+  const currentIndex = data.milestones.findIndex((m) => m.id === currentMilestoneId);
+  if (currentIndex < 0) return null;
+  const prevMilestone = currentIndex > 0 ? data.milestones[currentIndex - 1] : null;
+  const nextMilestone = data.milestones.find((m, i) => i > currentIndex && !m.completed);
+  const currentCompleted = currentMilestone?.completed;
+  const isLastStep = !nextMilestone;
+  const allComplete = data.completedCount === data.totalCount;
+
+  if (allComplete && !currentCompleted) return null;
+
+  return (
+    <div
+      className="fixed bottom-0 left-0 right-0 z-50 bg-[#f2690d]"
+      data-testid="setup-progress-banner"
+    >
+      <div className="flex items-center justify-between gap-3 px-4 py-3 max-w-screen-xl mx-auto">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {prevMilestone && (
+            <Link href={prevMilestone.path}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 hover:text-white"
+                data-testid="button-prev-milestone"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
+          {currentCompleted ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <CheckCircle2 className="h-5 w-5 text-white" />
+              <span className="text-base font-bold text-white hidden sm:inline">
+                {milestoneLabels[currentMilestoneId] || currentMilestone?.label} done!
+              </span>
+              <span className="text-base font-bold text-white sm:hidden">Done!</span>
+            </div>
+          ) : (
+            <span className="text-base font-bold text-white">
+              Step {currentIndex + 1} of {data.totalCount}
+            </span>
+          )}
+          {nextMilestone && currentCompleted && (
+            <ChevronRight className="h-5 w-5 text-white/80 shrink-0 hidden sm:block" />
+          )}
+          {nextMilestone && currentCompleted && (
+            <span className="text-base font-bold text-white truncate">
+              Next: {nextMilestone.label}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {nextMilestone && currentCompleted && (
+            <Link href={nextMilestone.path}>
+              <Button
+                size="sm"
+                className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
+                data-testid="button-next-milestone"
+              >
+                Done, Next Step
+                <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </Link>
+          )}
+          {currentCompleted && isLastStep && (
+            <Button
+              size="sm"
+              className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
+              onClick={() => {
+                toast({ title: "Setup complete!", description: "Your account is ready to go." });
+                navigate("/");
+              }}
+              data-testid="button-done-view-dashboard"
+            >
+              Done, View Dashboard
+              <ArrowRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          )}
+          {!currentCompleted && hasEntries && (
+            <Button
+              size="sm"
+              className="bg-white text-[#f2690d] font-bold hover:bg-white/90 hover:text-[#f2690d]"
+              onClick={() => reviewStepMutation.mutate()}
+              disabled={reviewStepMutation.isPending}
+              data-testid="button-done-next-step"
+            >
+              {reviewStepMutation.isPending ? "Saving..." : isLastStep ? "Done, View Dashboard" : "Done, Next Step"}
+              {!reviewStepMutation.isPending && <ArrowRight className="h-3.5 w-3.5 ml-1" />}
+            </Button>
+          )}
+          {nextMilestone && !currentCompleted && (
+            <Link href={nextMilestone.path}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white border border-white/60 hover:bg-white/20 hover:text-white font-bold"
+                data-testid="button-skip-milestone"
+              >
+                Skip
+                <ArrowRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

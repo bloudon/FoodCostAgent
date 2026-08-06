@@ -1,0 +1,1098 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Package, Search, Plus, MoreVertical, Store, TrendingUp, TrendingDown, Minus, Star, Upload, Pencil, BarChart2, Copy } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Link, useLocation } from "wouter";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import { useStoreContext } from "@/hooks/use-store-context";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { SortableTableHead, useTableSort, sortData } from "@/components/sortable-table-head";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Label } from "@/components/ui/label";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { formatUnitName, formatDateString } from "@/lib/utils";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
+
+interface MilestonesResponse {
+  milestones: { id: string; label: string; completed: boolean; path: string }[];
+  completedCount: number;
+  totalCount: number;
+  dismissed: boolean;
+}
+
+type InventoryItemDisplay = {
+  id: string;
+  name: string;
+  manufacturer: string | null;
+  categoryId: string | null;
+  category: string | null;
+  pluSku: string;
+  pricePerUnit: number;
+  avgCostPerUnit: number;
+  effectiveUnitCost: number;
+  unitId: string;
+  caseSize: number;
+  imageUrl: string | null;
+  parLevel: number | null;
+  reorderLevel: number | null;
+  storageLocationId: string;
+  onHandQty: number;
+  active: number;
+  isPowerItem: number | boolean;
+  vendorSkus: string[];
+  latestCasePrice: number | null;
+  latestCasePriceVendor: string | null;
+  locations: Array<{
+    id: string;
+    name: string;
+    isPrimary: boolean;
+  }>;
+  unit: {
+    id: string;
+    name: string;
+    abbreviation: string;
+  } | null;
+};
+
+type StorageLocation = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Category = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type CompanyStore = {
+  id: string;
+  companyId: string;
+  code: string;
+  name: string;
+  status: string;
+};
+
+const categoryColors: Record<string, string> = {
+  "Protein": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  "Produce": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  "Dairy": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Dry/Pantry": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+};
+
+function getInventoryStatus(quantity: number, parLevel: number | null, reorderLevel: number | null) {
+  if (reorderLevel && quantity <= reorderLevel) {
+    return { status: "Critical", variant: "destructive" as const, color: "text-red-600 dark:text-red-400" };
+  }
+  if (parLevel && quantity < parLevel) {
+    return { status: "Low", variant: "secondary" as const, color: "text-yellow-600 dark:text-yellow-400" };
+  }
+  return { status: "OK", variant: "outline" as const, color: "text-green-600 dark:text-green-400" };
+}
+
+export default function InventoryItems() {
+  const [, navigate] = useLocation();
+  const [search, setSearch] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("category") ?? "all";
+  });
+  const [activeFilter, setActiveFilter] = useState<"active" | "inactive" | "all">("active");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(9999);
+  const [breakdownItemId, setBreakdownItemId] = useState<string | null>(null);
+  const [breakdownItemName, setBreakdownItemName] = useState<string>("");
+  const [editItem, setEditItem] = useState<InventoryItemDisplay | null>(null);
+  const { toast } = useToast();
+
+  const { data: milestonesData } = useQuery<MilestonesResponse>({
+    queryKey: ["/api/onboarding/milestones"],
+    retry: false,
+    staleTime: 0,
+  });
+
+  const MILESTONE_ID = "inventory";
+  const currentMilestone = milestonesData?.milestones.find(m => m.id === MILESTONE_ID);
+  const showOnboardingButtons = milestonesData && !milestonesData.dismissed && currentMilestone && !currentMilestone.completed;
+
+  // Use global store context instead of local state
+  const { selectedStoreId: selectedStore } = useStoreContext();
+
+  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+
+  // Fetch estimated on-hand data for the selected store
+  const { data: estimatedOnHandData } = useQuery<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    estimatedOnHand: number;
+  }>>({
+    queryKey: ["/api/inventory-items/estimated-on-hand", selectedStore],
+    queryFn: async () => {
+      if (!selectedStore || selectedStore === "all") {
+        return [];
+      }
+      const response = await fetch(`/api/inventory-items/estimated-on-hand?storeId=${selectedStore}`);
+      if (!response.ok) throw new Error("Failed to fetch estimated on-hand data");
+      return response.json();
+    },
+    enabled: !!selectedStore && selectedStore !== "all",
+  });
+
+  // Create a map for quick lookup of estimated on-hand quantities
+  const estimatedOnHandMap = new Map(
+    estimatedOnHandData?.map(item => [item.inventoryItemId, item.estimatedOnHand]) || []
+  );
+
+  const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
+    queryKey: ["/api/inventory-items", selectedStore],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedStore) {
+        params.append("store_id", selectedStore);
+      }
+      const url = `/api/inventory-items${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch inventory items");
+      return response.json();
+    },
+    enabled: !!selectedStore,
+  });
+
+  const { data: locations } = useQuery<StorageLocation[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, active, storeId }: { id: string; active: number; storeId?: string }) => {
+      const payload: { active: number; storeId?: string } = { active };
+      if (storeId) {
+        payload.storeId = storeId;
+      }
+      return await apiRequest("PATCH", `/api/inventory-items/${id}`, payload);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      const scope = variables.storeId ? "at this store" : "globally";
+      toast({
+        title: "Success",
+        description: `Item status updated ${scope}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const filteredItems = inventoryItems?.filter((item) => {
+    const searchLower = search.toLowerCase();
+    const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
+      item.manufacturer?.toLowerCase().includes(searchLower) ||
+      item.pluSku?.toLowerCase().includes(searchLower) ||
+      item.vendorSkus?.some(sku => sku.toLowerCase().includes(searchLower));
+    const matchesLocation = selectedLocation === "all" || 
+      item.locations.some(loc => loc.id === selectedLocation);
+    const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
+    const matchesActive = 
+      activeFilter === "all" ? true :
+      activeFilter === "active" ? item.active === 1 :
+      item.active === 0;
+    return matchesSearch && matchesLocation && matchesCategory && matchesActive;
+  }) || [];
+
+  const { sortField, sortDirection, handleSort } = useTableSort("name");
+
+  const sortedItems = useMemo(() =>
+    sortData(filteredItems, sortField, sortDirection, (item, field) => {
+      switch (field) {
+        case "name": return item.name;
+        case "category": return item.category ?? "";
+        case "unit": return item.unit?.name ?? "";
+        case "par": return item.parLevel ?? null;
+        case "reorder": return item.reorderLevel ?? null;
+        case "cost": return item.effectiveUnitCost;
+        case "lastCost": return item.pricePerUnit;
+        case "wac": return item.avgCostPerUnit;
+        case "quantity": return item.onHandQty;
+        case "estOnHand": return estimatedOnHandMap.get(item.id) ?? null;
+        case "casePrice": return item.latestCasePrice ?? null;
+        default: return null;
+      }
+    }),
+    [filteredItems, sortField, sortDirection, estimatedOnHandMap]
+  );
+
+  const totalPages = Math.ceil(sortedItems.length / itemsPerPage);
+  
+  // Clamp currentPage to valid range when filtered items change
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    } else if (totalPages === 0 && currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [sortedItems.length, itemsPerPage, currentPage, totalPages]);
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedItems = itemsPerPage === 9999 ? sortedItems : sortedItems.slice(startIndex, endIndex);
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Sticky header: title + buttons + filters */}
+      <div className="flex-shrink-0 bg-background border-b px-4 pt-4 pb-3 space-y-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            {selectedCategory !== "all" && (
+              <button
+                onClick={() => navigate("/categories")}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
+              >
+                <Package className="h-3 w-3" />
+                ← Categories
+              </button>
+            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Package className="h-6 w-6 text-muted-foreground" />
+              <h1 className="text-2xl font-bold">
+                Inventory Items ({filteredItems.length})
+              </h1>
+              <CostingMethodBadge />
+            </div>
+            {showOnboardingButtons && (
+              <p className="text-muted-foreground mt-2">
+                Add inventory items, or skip this step for now.
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2 items-center flex-wrap justify-end">
+            <Button asChild variant="outline" data-testid="button-par-levels">
+              <Link href="/inventory-items/par-levels">
+                <BarChart2 className="h-4 w-4 mr-2" />
+                Par Levels
+              </Link>
+            </Button>
+            <Button asChild variant="outline" data-testid="button-find-duplicates">
+              <Link href="/inventory-items/duplicates">
+                <Copy className="h-4 w-4 mr-2" />
+                Find Duplicates
+              </Link>
+            </Button>
+            <Button asChild variant="outline" data-testid="button-import-csv">
+              <Link href="/inventory-import">
+                <Upload className="h-4 w-4 mr-2" />
+                Import CSV
+              </Link>
+            </Button>
+            <Button asChild data-testid="button-add-item">
+              <Link href="/inventory-items/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Item
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+            <Input
+              placeholder="Search items..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
+              data-testid="input-search-inventory"
+            />
+          </div>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[160px]" data-testid="select-category-filter">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories?.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+            <SelectTrigger className="w-[160px]" data-testid="select-location-filter">
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {locations?.map((location) => (
+                <SelectItem key={location.id} value={location.id}>
+                  {location.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={activeFilter} onValueChange={(val) => {
+            setActiveFilter(val as "active" | "inactive" | "all");
+            setCurrentPage(1);
+          }}>
+            <SelectTrigger className="w-[140px]" data-testid="select-active-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active Only</SelectItem>
+              <SelectItem value="inactive">Inactive Only</SelectItem>
+              <SelectItem value="all">All Items</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-auto pb-16">
+      <div className="p-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-muted-foreground">Loading inventory...</div>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-1">No inventory items found</h3>
+            <p className="text-muted-foreground text-sm">
+              {search || selectedLocation !== "all" || selectedCategory !== "all"
+                ? "Try adjusting your filters"
+                : "Inventory items will appear here as stock is received"}
+            </p>
+          </div>
+        ) : (
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-320px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
+                  <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="min-w-[180px]">Item</SortableTableHead>
+                  <TableHead className="hidden sm:table-cell">Status</TableHead>
+                  <SortableTableHead field="category" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="hidden md:table-cell">Category</SortableTableHead>
+                  <TableHead className="hidden lg:table-cell">Location</TableHead>
+                  <SortableTableHead field="unit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="hidden sm:table-cell">Unit</SortableTableHead>
+                  <SortableTableHead field="par" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Par</SortableTableHead>
+                  <SortableTableHead field="reorder" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Reorder</SortableTableHead>
+                  <SortableTableHead field="cost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Cost</SortableTableHead>
+                  <SortableTableHead field="lastCost" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden lg:table-cell">Last Cost</SortableTableHead>
+                  <SortableTableHead field="wac" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden lg:table-cell">Avg Cost (WAC)</SortableTableHead>
+                  <SortableTableHead field="quantity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Quantity</SortableTableHead>
+                  <SortableTableHead field="estOnHand" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden md:table-cell">Est. On-Hand</SortableTableHead>
+                  <SortableTableHead field="casePrice" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right hidden xl:table-cell">Case Price</SortableTableHead>
+                  <TableHead className="w-[50px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedItems.map((item) => {
+                  const quantity = item.onHandQty || 0;
+                  const inventoryStatus = getInventoryStatus(quantity, item.parLevel, item.reorderLevel);
+
+                  return (
+                    <TableRow 
+                      key={item.id} 
+                      data-testid={`row-inventory-${item.id}`}
+                      className={item.active === 0 ? "opacity-60" : ""}
+                    >
+                      <TableCell 
+                        className="cursor-pointer hover-elevate"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={item.imageUrl || undefined} />
+                            <AvatarFallback>
+                              <Package className="h-4 w-4" />
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              {item.name}
+                              {(item.isPowerItem === 1 || item.isPowerItem === true) && (
+                                <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" data-testid={`icon-power-item-${item.id}`} />
+                              )}
+                              {item.active === 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">{item.pluSku}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer hidden sm:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        <Badge variant={inventoryStatus.variant} data-testid={`badge-status-${item.id}`}>
+                          {inventoryStatus.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer hidden md:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        {item.category && (
+                          <Badge 
+                            variant="secondary" 
+                            className={categoryColors[item.category] || ""}
+                          >
+                            {item.category}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer hidden lg:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        {item.locations.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {item.locations.map((location) => (
+                              <div key={location.id} className="flex items-center gap-1">
+                                <span className="text-sm whitespace-nowrap">{location.name}</span>
+                                {location.isPrimary && (
+                                  <Badge variant="outline" className="text-xs h-4 px-1">
+                                    (p)
+                                  </Badge>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="cursor-pointer hidden sm:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        <span className="text-sm text-muted-foreground">{formatUnitName(item.unit?.name)}</span>
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer hidden xl:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        {item.parLevel ? item.parLevel.toFixed(1) : "-"}
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono text-sm text-muted-foreground cursor-pointer hidden xl:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        {item.reorderLevel ? item.reorderLevel.toFixed(1) : "-"}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono font-semibold cursor-pointer"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-effective-cost-${item.id}`}
+                      >
+                        ${item.effectiveUnitCost ? item.effectiveUnitCost.toFixed(2) : (item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00')}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden lg:table-cell text-muted-foreground"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-last-cost-${item.id}`}
+                      >
+                        ${item.pricePerUnit ? item.pricePerUnit.toFixed(2) : '0.00'}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden lg:table-cell text-muted-foreground"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-avg-cost-${item.id}`}
+                      >
+                        ${item.avgCostPerUnit ? item.avgCostPerUnit.toFixed(2) : '0.00'}
+                      </TableCell>
+                      <TableCell 
+                        className="text-right font-mono cursor-pointer hidden md:table-cell"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                      >
+                        <span className={inventoryStatus.color}>{quantity.toFixed(2)}</span>
+                      </TableCell>
+                      <TableCell 
+                        className={`text-right font-mono hidden md:table-cell ${estimatedOnHandMap.has(item.id) && selectedStore !== "all" ? "cursor-pointer hover:underline" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (estimatedOnHandMap.has(item.id) && selectedStore !== "all") {
+                            setBreakdownItemId(item.id);
+                            setBreakdownItemName(item.name);
+                          }
+                        }}
+                        data-testid={`cell-estimated-on-hand-${item.id}`}
+                        title={selectedStore === "all" ? "Select a specific store to view breakdown" : "Click to view breakdown"}
+                      >
+                        {estimatedOnHandMap.has(item.id) ? (
+                          <span className="text-blue-600 dark:text-blue-400">
+                            {estimatedOnHandMap.get(item.id)?.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="text-right font-mono cursor-pointer hidden xl:table-cell text-muted-foreground"
+                        onClick={() => window.location.href = `/inventory-items/${item.id}`}
+                        data-testid={`cell-case-price-${item.id}`}
+                        title={item.latestCasePriceVendor ? `Vendor: ${item.latestCasePriceVendor}` : undefined}
+                      >
+                        {item.latestCasePrice != null ? (
+                          `$${item.latestCasePrice.toFixed(2)}`
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              data-testid={`button-menu-${item.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setEditItem(item)}
+                              data-testid={`menu-edit-${item.id}`}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit Item
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => toggleActiveMutation.mutate({ 
+                                id: item.id, 
+                                active: item.active === 1 ? 0 : 1,
+                                storeId: selectedStore !== "all" ? selectedStore : undefined
+                              })}
+                              data-testid={`menu-toggle-active-${item.id}`}
+                            >
+                              {item.active === 1 ? "Mark as Inactive" : "Mark as Active"}
+                              {selectedStore !== "all" && <span className="text-xs ml-2 text-muted-foreground">(this store)</span>}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+          </Table>
+        )}
+
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">
+              {filteredItems.length === 0 
+                ? "Showing 0 items"
+                : itemsPerPage === 9999 
+                  ? `Showing ${filteredItems.length} items`
+                  : `Showing ${startIndex + 1}-${Math.min(endIndex, filteredItems.length)} of ${filteredItems.length} items`
+              }
+            </span>
+            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+              setItemsPerPage(Number(val));
+              setCurrentPage(1);
+            }}>
+              <SelectTrigger className="w-[140px]" data-testid="select-items-per-page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25 per page</SelectItem>
+                <SelectItem value="50">50 per page</SelectItem>
+                <SelectItem value="100">100 per page</SelectItem>
+                <SelectItem value="9999">Show all</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {itemsPerPage !== 9999 && totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                data-testid="button-prev-page"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                data-testid="button-next-page"
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+      </div>
+
+      {/* Edit Item Dialog */}
+      <EditInventoryItemDialog
+        item={editItem}
+        open={!!editItem}
+        onClose={() => setEditItem(null)}
+      />
+
+      {/* Estimated On-Hand Breakdown Modal */}
+      <EstimatedOnHandBreakdownModal
+        itemId={breakdownItemId}
+        itemName={breakdownItemName}
+        storeId={selectedStore !== "all" ? selectedStore : ""}
+        open={!!breakdownItemId}
+        onClose={() => setBreakdownItemId(null)}
+      />
+      <SetupProgressBanner currentMilestoneId="invoice_scan" hasEntries={(inventoryItems?.length ?? 0) > 0} />
+    </div>
+  );
+}
+
+// Edit Item Dialog Component
+function EditInventoryItemDialog({
+  item,
+  open,
+  onClose,
+}: {
+  item: InventoryItemDisplay | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [pricePerUnit, setPricePerUnit] = useState<string>("");
+
+  useEffect(() => {
+    if (item) {
+      setPricePerUnit(item.pricePerUnit?.toString() ?? "0");
+    }
+  }, [item?.id]);
+
+  const { data: vendorItems, isLoading: vendorItemsLoading } = useQuery<{ id: string; active: number }[]>({
+    queryKey: ["/api/inventory-items", item?.id, "vendor-items"],
+    enabled: open && !!item?.id,
+  });
+
+  const hasActiveVendor = (vendorItems?.filter(vi => vi.active === 1)?.length ?? 0) > 0;
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-items/${item!.id}`, {
+        pricePerUnit: parseFloat(pricePerUnit) || 0,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({ title: "Item updated", description: "Price per unit has been updated." });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent data-testid="dialog-edit-item">
+        <DialogHeader>
+          <DialogTitle>Edit Item</DialogTitle>
+          <DialogDescription>{item.name}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="edit-price-per-unit">Price per Unit ($)</Label>
+            {vendorItemsLoading ? (
+              <div
+                className="h-9 rounded-md border bg-muted/50 animate-pulse"
+                data-testid="loading-price-per-unit"
+              />
+            ) : hasActiveVendor ? (
+              <>
+                <div
+                  className="flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground"
+                  data-testid="display-price-per-unit-edit"
+                >
+                  ${item.pricePerUnit?.toFixed(4) ?? "0.0000"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Auto-synced from vendor — edit price in the{" "}
+                  <Link
+                    href={`/inventory-items/${item.id}`}
+                    onClick={onClose}
+                    className="underline"
+                  >
+                    Purchasing section
+                  </Link>.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  id="edit-price-per-unit"
+                  type="number"
+                  step="0.0001"
+                  value={pricePerUnit}
+                  onChange={(e) => setPricePerUnit(e.target.value)}
+                  data-testid="input-price-per-unit-edit"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used for costing until a vendor is linked.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            data-testid="button-edit-cancel"
+          >
+            Cancel
+          </Button>
+          {!hasActiveVendor && !vendorItemsLoading && (
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending}
+              data-testid="button-edit-save"
+            >
+              {updateMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Breakdown Modal Component
+function EstimatedOnHandBreakdownModal({
+  itemId,
+  itemName,
+  storeId,
+  open,
+  onClose,
+}: {
+  itemId: string | null;
+  itemName: string;
+  storeId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: breakdown, isLoading, error } = useQuery({
+    queryKey: ["/api/inventory-items", itemId, "breakdown", storeId],
+    queryFn: async () => {
+      if (!itemId || !storeId) return null;
+      const response = await fetch(`/api/inventory-items/${itemId}/estimated-on-hand-breakdown?storeId=${storeId}`);
+      
+      // Handle 404 as "no data available" rather than an error
+      // This happens when there's no inventory count for the store
+      if (response.status === 404) {
+        return null;
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Failed to fetch breakdown" }));
+        throw new Error(errorData.error || "Failed to fetch breakdown");
+      }
+      const data = await response.json();
+      // Ensure we return null if backend returned null (no count exists)
+      return data || null;
+    },
+    enabled: open && !!itemId && !!storeId,
+  });
+
+  if (!open || !itemId) return null;
+
+  // Show error if store is not selected
+  if (!storeId) {
+    return (
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent data-testid="dialog-breakdown">
+          <DialogHeader>
+            <DialogTitle>Estimated On-Hand Breakdown</DialogTitle>
+            <DialogDescription>{itemName}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Store className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              Please select a specific store to view the estimated on-hand breakdown.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto" data-testid="dialog-breakdown">
+        <DialogHeader>
+          <DialogTitle>Estimated On-Hand Breakdown</DialogTitle>
+          <DialogDescription>{itemName}</DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-muted-foreground">Loading breakdown...</div>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="text-red-600 dark:text-red-400 mb-2">Error loading breakdown</div>
+            <div className="text-sm text-muted-foreground">
+              {(error as Error).message || "An unexpected error occurred"}
+            </div>
+          </div>
+        ) : !breakdown || !breakdown.summary ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="font-medium text-muted-foreground mb-2">
+              No breakdown available
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Please complete an inventory count for this store to see the estimated on-hand breakdown.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-sm text-muted-foreground mb-1">Last Count</div>
+                <div className="text-2xl font-semibold">
+                  {breakdown.summary.lastCountQty.toFixed(2)} {breakdown.unitName}
+                </div>
+                {breakdown.lastCount && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {formatDateString(breakdown.lastCount.date)}
+                  </div>
+                )}
+              </div>
+              
+              <div className="bg-card border rounded-lg p-4">
+                <div className="text-sm text-muted-foreground mb-1">Net Change</div>
+                <div className="text-2xl font-semibold flex items-center gap-2">
+                  {(breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty).toFixed(2)}
+                  {(breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty) > 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                  ) : (breakdown.summary.receivedQty - breakdown.summary.wasteQty - breakdown.summary.theoreticalUsageQty - breakdown.summary.transferredOutQty) < 0 ? (
+                    <TrendingDown className="h-4 w-4 text-red-600" />
+                  ) : (
+                    <Minus className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Since last count
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">Estimated On-Hand</div>
+                <div className="text-2xl font-semibold text-blue-600 dark:text-blue-400">
+                  {breakdown.summary.estimatedOnHand.toFixed(2)} {breakdown.unitName}
+                </div>
+                <div className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-1">
+                  Current estimate
+                </div>
+              </div>
+            </div>
+
+            {/* Breakdown Sections */}
+            <div className="space-y-4">
+              {/* Receipts */}
+              {breakdown.receipts && breakdown.receipts.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-green-500 rounded-full" />
+                    <h3 className="font-semibold text-green-700 dark:text-green-400">
+                      Receipts (+{breakdown.summary.receivedQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-green-200 dark:border-green-800 pl-4 space-y-2">
+                    {breakdown.receipts.map((receipt: any, idx: any) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{receipt.vendorName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(receipt.date)}</span>
+                        </div>
+                        <span className="font-mono text-green-700 dark:text-green-400">
+                          +{receipt.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Theoretical Usage */}
+              {breakdown.theoreticalUsage && breakdown.theoreticalUsage.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-orange-500 rounded-full" />
+                    <h3 className="font-semibold text-orange-700 dark:text-orange-400">
+                      Theoretical Usage (-{breakdown.summary.theoreticalUsageQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-orange-200 dark:border-orange-800 pl-4 space-y-2">
+                    {breakdown.theoreticalUsage.map((usage: any, idx: any) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">Sales</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(usage.date)}</span>
+                        </div>
+                        <span className="font-mono text-orange-700 dark:text-orange-400">
+                          -{usage.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Waste */}
+              {breakdown.waste && breakdown.waste.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-red-500 rounded-full" />
+                    <h3 className="font-semibold text-red-700 dark:text-red-400">
+                      Waste (-{breakdown.summary.wasteQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-red-200 dark:border-red-800 pl-4 space-y-2">
+                    {breakdown.waste.map((waste: any, idx: any) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{waste.reason}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(waste.date)}</span>
+                        </div>
+                        <span className="font-mono text-red-700 dark:text-red-400">
+                          -{waste.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfers In */}
+              {breakdown.transfersIn && breakdown.transfersIn.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-cyan-500 rounded-full" />
+                    <h3 className="font-semibold text-cyan-700 dark:text-cyan-400">
+                      Transfers In (+{breakdown.summary.transferredInQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-cyan-200 dark:border-cyan-800 pl-4 space-y-2">
+                    {breakdown.transfersIn.map((transfer: any, idx: any) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">From {transfer.fromStoreName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(transfer.date)}</span>
+                        </div>
+                        <span className="font-mono text-cyan-700 dark:text-cyan-400">
+                          +{transfer.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfers Out */}
+              {breakdown.transfersOut && breakdown.transfersOut.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-1 bg-purple-500 rounded-full" />
+                    <h3 className="font-semibold text-purple-700 dark:text-purple-400">
+                      Transfers Out (-{breakdown.summary.transferredOutQty.toFixed(2)} {breakdown.unitName})
+                    </h3>
+                  </div>
+                  <div className="ml-3 border-l-2 border-purple-200 dark:border-purple-800 pl-4 space-y-2">
+                    {breakdown.transfersOut.map((transfer: any, idx: any) => (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex flex-col">
+                          <span className="font-medium">To {transfer.toStoreName}</span>
+                          <span className="text-xs text-muted-foreground">{formatDateString(transfer.date)}</span>
+                        </div>
+                        <span className="font-mono text-purple-700 dark:text-purple-400">
+                          -{transfer.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {(!breakdown.receipts || breakdown.receipts.length === 0) && 
+               (!breakdown.theoreticalUsage || breakdown.theoreticalUsage.length === 0) && 
+               (!breakdown.waste || breakdown.waste.length === 0) && 
+               (!breakdown.transfersOut || breakdown.transfersOut.length === 0) &&
+               (!breakdown.transfersIn || breakdown.transfersIn.length === 0) && (
+                <div className="text-center text-muted-foreground py-8">
+                  No activity since last count
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,0 +1,35 @@
+3|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+3|fnbcostpro  | file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:89
+3|fnbcostpro  |     const err = new TypeError(message, { cause });
+3|fnbcostpro  |                 ^
+3|fnbcostpro  | TypeError: "clientId" must be a non-empty string
+3|fnbcostpro  |     at CodedTypeError (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:89:17)
+3|fnbcostpro  |     at new Configuration (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:463:19)
+3|fnbcostpro  |     at Module.discovery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:244:22)
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async memoize.maxAge (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:15962:12)
+3|fnbcostpro  |     at async setupSsoAuth (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:16075:18)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:16224:3 {
+3|fnbcostpro  |   code: 'ERR_INVALID_ARG_TYPE',
+3|fnbcostpro  |   [cause]: undefined
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0
+3|fnbcostpro  | > rest-express@1.0.0 start
+3|fnbcostpro  | > NODE_ENV=production node dist/index.js
+3|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+3|fnbcostpro  | file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:89
+3|fnbcostpro  |     const err = new TypeError(message, { cause });
+3|fnbcostpro  |                 ^
+3|fnbcostpro  | TypeError: "clientId" must be a non-empty string
+3|fnbcostpro  |     at CodedTypeError (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:89:17)
+3|fnbcostpro  |     at new Configuration (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:463:19)
+3|fnbcostpro  |     at Module.discovery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/openid-client/build/index.js:244:22)
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async memoize.maxAge (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:15962:12)
+3|fnbcostpro  |     at async setupSsoAuth (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:16075:18)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:16224:3 {
+3|fnbcostpro  |   code: 'ERR_INVALID_ARG_TYPE',
+3|fnbcostpro  |   [cause]: undefined
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0
+3|fnbcostpro  | > rest-express@1.0.0 start

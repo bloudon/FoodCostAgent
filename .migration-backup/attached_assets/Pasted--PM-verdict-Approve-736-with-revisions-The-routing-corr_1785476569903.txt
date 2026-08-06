@@ -1,0 +1,416 @@
+## PM verdict
+
+**Approve #736 with revisions.** The routing correction is clearly right, and the portfolio concept supports the premium chef-first positioning. But the proposed dashboard currently measures mostly **configuration completeness**, not true menu “health” or “readiness.”
+
+A menu with recipes attached is not necessarily costed, priced correctly, published, assigned, or operationally ready.
+
+# What is right
+
+Keep these decisions:
+
+* Sidebar **Menus** should route to `/menus`.
+* `/menu-items` should become the secondary **item catalog** destination.
+* Executive chefs should land on a portfolio of actual menus, not a raw item list.
+* Live, scheduled, and draft menus should be visually distinguishable.
+* Location assignments and scheduling belong on the cards.
+* Stats should come back in one efficient query.
+* Menu-builder changes should remain out of scope.
+
+This fixes a basic information-architecture problem:
+
+> **Menus are the chef’s finished collections; menu items are reusable building blocks.**
+
+The current navigation treats those concepts as though they are the same.
+
+# Required changes
+
+## 1. Rename “Chef’s Portfolio” carefully
+
+“Chef’s Portfolio View” works as an internal concept, but the live page should probably remain simply:
+
+> **Menus**
+
+Supporting text could be:
+
+> Organize, review, and manage menus across every location.
+
+“Portfolio” is elegant marketing language, but in the application it may sound like a public showcase rather than an operating workspace.
+
+## 2. Define menu statuses precisely
+
+The ticket mentions:
+
+* Live
+* Scheduled
+* Draft
+
+Confirm the actual data model supports these states consistently.
+
+You likely also need defined behavior for:
+
+* Expired
+* Inactive
+* Archived
+* Unscheduled but active
+* Scheduled with an invalid past window
+
+The summary bar should not count statuses based on loose date assumptions in the frontend. The server should return a canonical effective status or the business rules should be shared.
+
+Suggested status logic:
+
+* **Live:** active now for at least one assigned location
+* **Scheduled:** has a future effective start
+* **Draft:** not published or activated
+* **Expired:** end date has passed
+* **Archived:** deliberately removed from operational use
+
+Even if only three are displayed in v1, define the others so they do not get miscounted.
+
+## 3. “Recipe-costed” is currently mislabeled
+
+The proposed API metric is:
+
+> Entries where the underlying menu item has at least one recipe
+
+That does not prove the item is costed.
+
+A recipe could have:
+
+* Missing ingredients
+* Missing vendor pricing
+* Incomplete yields
+* Invalid units
+* Zero calculated cost
+* Stale costs
+* No recipe linked to the relevant size or variation
+
+Rename the initial metric:
+
+> **Recipe linked**
+
+Do not label it **costed** unless the calculation is valid.
+
+A card could show:
+
+* `18 of 24 items recipe-linked`
+* `21 of 24 items priced`
+
+Later, when costing readiness exists, add:
+
+* `16 of 24 cost-ready`
+
+## 4. Define “priced”
+
+The task says cards show how many items are priced, but it does not define priced.
+
+Does priced mean:
+
+* Base menu item has any price?
+* Every active size has a price?
+* Every menu entry has a location-specific price?
+* A zero-dollar item counts?
+* Modifier-driven pricing counts?
+* Market-price items count?
+
+This needs one authoritative definition.
+
+Recommended v1:
+
+> A menu entry is priced when the exact sellable entry or its applicable size has a valid positive selling price, unless it is explicitly marked market price or complimentary.
+
+Otherwise the dashboard may show false completeness.
+
+## 5. Summary bar should include one actionable metric
+
+Current proposal:
+
+* Total menus
+* Live menus
+* Total items across live menus
+
+That is informational but not especially useful.
+
+I would use:
+
+* **Live menus**
+* **Scheduled menus**
+* **Menus needing attention**
+* **Live menu items**
+
+“Total menus” can appear in the page heading or filtering context.
+
+A menu needs attention when, for example:
+
+* No location is assigned
+* No sections exist
+* No items exist
+* Live menu has unpriced items
+* Live menu has items without linked recipes
+* Scheduled menu has incomplete setup
+
+This turns the page into an operating dashboard rather than a collection of cards.
+
+## 6. Add filters before visual hierarchy becomes unwieldy
+
+Bay Hill or another complex operator may have many menus across outlets and service periods.
+
+At minimum, add lightweight filters:
+
+* Status
+* Location
+* Type
+
+And perhaps search by menu name.
+
+This can be in scope without becoming a full redesign. Otherwise the “large live cards, drafts below” design may become difficult to scan.
+
+## 7. Be cautious with full-width live cards
+
+Visually emphasizing live menus makes sense, but full-width cards can waste space and make ten live menus feel overwhelming.
+
+A better structure:
+
+### Active now
+
+Prominent but compact cards
+
+### Scheduled
+
+Standard cards ordered by start date
+
+### Drafts
+
+Smaller cards or a denser list
+
+### Archived/expired
+
+Collapsed or filtered out by default
+
+The distinction should come from grouping and status—not only card size.
+
+## 8. Section count needs a clear definition
+
+Clarify whether section count includes:
+
+* Empty sections
+* Hidden sections
+* Nested sections
+* Deleted sections
+* Sections inherited from a template
+
+For dashboard readiness, empty sections may actually be a warning rather than a positive count.
+
+## 9. Location assignments need useful behavior
+
+Location badges should not be decorative only.
+
+Requirements should specify:
+
+* Clicking a location badge filters or navigates appropriately, or remains noninteractive by design.
+* Inactive locations are not shown as active assignments.
+* “All locations” has a specific representation.
+* A menu with no assigned location receives a visible warning.
+* Global admins can see company/location context without leaking inaccessible location names to normal users.
+
+## 10. Last updated needs meaningful provenance
+
+“Last updated” can be misleading if any background process changes a timestamp.
+
+Define whether it means:
+
+* Menu metadata changed
+* Section changed
+* Entry added or removed
+* Pricing changed
+* Schedule changed
+* Location assignment changed
+* Any child menu item changed
+
+For the chef, the useful meaning is:
+
+> Last structural or publishing change to this menu.
+
+A vendor price update affecting recipe cost should probably not make the menu appear manually updated five seconds ago.
+
+# Recommended menu-card content
+
+Avoid cramming too much onto each card.
+
+## Header
+
+* Menu name
+* Type
+* Effective status
+* Overflow actions
+
+## Operational context
+
+* Assigned locations
+* Schedule or “Always available”
+* Last meaningful update
+
+## Readiness row
+
+* Sections
+* Items
+* Priced
+* Recipe-linked
+
+Example:
+
+> **Dinner Menu**
+> À la carte · Live
+> Bay Window, Member Lounge
+> Always available
+>
+> 6 sections · 42 items
+> 40 priced · 35 recipe-linked
+
+Then show warnings separately:
+
+> 2 unpriced · 7 missing recipes
+
+Positive and negative counts should not compete visually.
+
+# Add direct actions
+
+The page should support the chef’s likely next action.
+
+Each card should have:
+
+* **Open Menu**
+* Duplicate
+* Edit schedule
+* Manage locations
+* Archive, when permitted
+
+At minimum, clicking the card should open the builder, but an explicit **Open Menu** action improves clarity.
+
+The page header should contain:
+
+* **Create Menu**
+* **Browse Item Catalog**
+
+“Browse Item Catalog” should not be buried inside a card or overflow menu.
+
+# API and performance comments
+
+The one-round-trip target is good. Require the query to avoid row multiplication caused by joining:
+
+* Sections
+* Entries
+* Recipes
+* Locations
+
+Naively joining all four may inflate counts.
+
+Use aggregated subqueries or distinct counts deliberately. Test a menu containing:
+
+* Multiple sections
+* Multiple entries
+* Multiple recipes per menu item
+* Multiple assigned locations
+
+Otherwise `sectionCount` and `itemCount` may be multiplied by the location or recipe joins.
+
+Also define whether `itemCount` means:
+
+* Distinct menu items
+* Menu entries
+* Sellable sizes
+* Items repeated in multiple sections
+
+For a menu dashboard, **menu entry count** is usually the most honest number. A repeated item in two sections is operationally two placements, even if it references one catalog record.
+
+# Missing empty states
+
+The screenshot currently shows the catalog’s empty state. The new `/menus` page needs its own states:
+
+## No menus exist
+
+> Create your first menu to organize items, recipes, pricing, and location availability.
+
+Actions:
+
+* Create Menu
+* Browse Item Catalog
+
+## Menus exist but filter returns none
+
+> No menus match these filters.
+
+Action:
+
+* Clear filters
+
+## Menu exists but has no items
+
+The card should show:
+
+> Empty menu — add sections and items
+
+This is more actionable than displaying `0 items`.
+
+# Analytics
+
+Track:
+
+* Menus dashboard opened
+* Menu card opened
+* Create menu clicked
+* Item catalog clicked
+* Status/location filter used
+* Attention warning selected
+
+This will show whether the dashboard becomes the intended chef home base.
+
+# Revised acceptance criteria
+
+Add these to “done”:
+
+* Status rules are documented and consistently derived.
+* “Recipe-linked” is not labeled “costed” unless valid cost readiness is verified.
+* “Priced” has a precise domain definition.
+* Menus with missing locations, no items, unpriced entries, or missing recipes show actionable warnings.
+* Page supports filtering by status and location.
+* Cards have a direct Open Menu action.
+* Empty-page and empty-filter states are distinct.
+* API aggregation does not inflate counts across joins.
+* Counts respect company and location permissions.
+* Last-updated reflects meaningful menu changes, not unrelated background updates.
+
+# Recommended scope decision
+
+For v1, I would ship:
+
+* Navigation correction
+* Summary bar
+* Status grouping
+* Rich cards
+* Recipe-linked and priced completeness
+* Location badges
+* Schedule
+* Basic filters
+* Browse Item Catalog
+* Create/Open Menu actions
+
+Defer:
+
+* True food-cost health
+* Margin thresholds
+* Forecast performance
+* Sales mix
+* Menu-engineering quadrants
+* Cost-change alerts
+
+Those later features could turn this into a genuine executive-chef portfolio dashboard.
+
+## Final decision
+
+**Approve after replacing the vague “health/readiness” language with precise operational definitions.**
+
+The feature is strategically strong because it creates the right hierarchy:
+
+> **The item catalog stores building blocks. The menu portfolio shows what the culinary operation is actually presenting and managing.**
+
+That distinction should be clear in the navigation, the API, and every metric shown on the cards.

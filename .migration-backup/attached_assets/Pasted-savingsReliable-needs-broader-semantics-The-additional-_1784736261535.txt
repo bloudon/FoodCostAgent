@@ -1,0 +1,150 @@
+savingsReliable needs broader semantics
+
+The additional point is correct. Reliability should reflect all weaknesses in the calculation, not only price age.
+
+Suggested rule:
+
+savingsReliable =
+  sourcePriceFromPoLine &&
+  sourcePriceIsFresh &&
+  targetPriceIsFresh &&
+  sourcePackIsValid &&
+  targetPackIsValid &&
+  quantitiesAreComparable;
+
+A fallback to the current vendor_item price should set reliability to false because that may not represent the price currently carried on the PO.
+
+It may also be useful to store reasons rather than only a boolean:
+
+savingsReliabilityReasons: Array<
+  | "source_price_stale"
+  | "target_price_stale"
+  | "source_price_fallback"
+  | "missing_price_history"
+  | "pack_conversion"
+  | "unknown_price_source"
+>;
+
+That can be JSON initially. The UI can then explain the warning instead of merely showing that the number is unreliable.
+
+Recommended work order
+1. NEW-A — Pack-size routing protection
+
+Highest priority.
+
+Automatic routing should initially require:
+
+Compatible base units
+Valid pack geometry
+Equal effective case quantities
+source caseSize × source innerPackSize
+=
+target caseSize × target innerPackSize
+
+Different-pack alternatives may still be displayed, but automatic routing should be blocked until quantity conversion is deliberately implemented.
+
+2. NEW-B + NEW-C — Savings calculation
+
+I would combine these into one task because they are the same calculation boundary.
+
+Calculate:
+
+source extended cost
+− target extended cost
+=
+projected line savings
+
+Use:
+
+Source PO line case price when available
+Source quantity from the PO line
+Target current case price
+Target routed quantity
+Full pack geometry
+
+When the source PO line price is unavailable:
+
+Fall back only if necessary
+Mark savings unreliable
+Record the fallback reason
+
+Store both:
+
+Savings per comparable case/unit
+Total projected line savings
+
+The UI should emphasize the total line savings.
+
+3. #477 — Destination quantity concurrency
+
+Required before deployment.
+
+Use a lock, atomic increment, or conflict-safe upsert. Two routes entering the same destination line must not overwrite each other.
+
+4. #476 — Destination PO compatibility
+
+Required before deployment.
+
+The destination PO lookup should include:
+
+Company
+Location
+Vendor
+Draft/pending status
+Delivery or order date
+Not already submitted
+Not already exported, unless deliberately allowed
+
+If more than one compatible PO remains, create a new draft rather than selecting an arbitrary one.
+
+5. #472 — Reliability warning
+
+Once the calculations are correct, expose them clearly.
+
+Example:
+
+Projected savings: $24.80
+Estimate uses a newer supplier quote than the source PO price.
+
+or:
+
+Projected savings may be inaccurate
+The source price is 23 days old.
+
+6. NEW-D — Audit completeness
+
+Capture the calculation inputs, not just the result:
+
+Original quantity
+Destination quantity
+Source and target case prices
+Source and target normalized prices
+Effective pack quantities
+Price dates and sources
+Reliability result and reasons
+Projected line savings
+Source and destination PO/line IDs
+
+This can be completed alongside #472.
+
+7. Remaining work
+
+Then proceed in this order:
+
+#475 — Empty source-PO state
+#473 — Missing source-price history
+#478 — Fix time-boundary test using an injected/frozen clock
+#470 — Historical operator-name backfill, low priority
+Deployment gate
+
+Before putting M3B on the VPS, I would require completion of:
+
+NEW-A
+NEW-B/NEW-C
+#477
+#476
+#472
+NEW-D
+#474 concurrent regression test
+
+The remaining empty-state and cleanup tasks could technically follow, although #475 is small enough that I would include it before beta use.

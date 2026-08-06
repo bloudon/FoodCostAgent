@@ -1,0 +1,50 @@
+PORT=3002
+[PM2] Applying action deleteProcessId on app [fnbcostpro](ids: [ 6 ])
+[PM2] [fnbcostpro](6) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3451440  │ 14h    │ 2    │ online    │ 0%       │ 93.8mb   │ adm… │ disabled │
+│ 5  │ k5-api         │ default     │ 0.0.0   │ fork    │ 3582733  │ 92m    │ 495  │ online    │ 0%       │ 74.3mb   │ adm… │ disabled │
+│ 4  │ kaye-api       │ default     │ 0.0.0   │ cluster │ 3451459  │ 14h    │ 2    │ online    │ 0%       │ 66.5mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.0   │ fork    │ 3451423  │ 14h    │ 2    │ online    │ 0%       │ 136.0mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3451448  │ 14h    │ 2    │ online    │ 0%       │ 77.1mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/npm in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3451440  │ 14h    │ 2    │ online    │ 0%       │ 93.8mb   │ adm… │ disabled │
+│ 7  │ fnbcostpro     │ default     │ N/A     │ fork    │ 3649231  │ 0s     │ 0    │ online    │ 0%       │ 18.9mb   │ adm… │ disabled │
+│ 5  │ k5-api         │ default     │ 0.0.0   │ fork    │ 3582733  │ 92m    │ 495  │ online    │ 0%       │ 74.3mb   │ adm… │ disabled │
+│ 4  │ kaye-api       │ default     │ 0.0.0   │ cluster │ 3451459  │ 14h    │ 2    │ online    │ 0%       │ 67.0mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.0   │ fork    │ 3451423  │ 14h    │ 2    │ online    │ 0%       │ 136.5mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3451448  │ 14h    │ 2    │ online    │ 0%       │ 77.4mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/administrator/.pm2/dump.pm2
+[TAILING] Tailing last 10 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 10 lines:
+7|fnbcostp |     at emitErrorNT (node:net:1944:8)
+7|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+7|fnbcostp |   code: 'EADDRINUSE',
+7|fnbcostp |   errno: -98,
+7|fnbcostp |   syscall: 'listen',
+7|fnbcostp |   address: '0.0.0.0',
+7|fnbcostp |   port: 3002
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 10 lines:
+7|fnbcostp | ✅ All unit conversions already present
+7|fnbcostp | 🏢 Creating Brian's Pizza company and stores...
+7|fnbcostp | 🔗 Migrating vendors to store assignments...
+7|fnbcostp |    All vendors already assigned to stores
+7|fnbcostp | 6:46:51 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+7|fnbcostp | 6:46:51 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+7|fnbcostp | 6:46:51 PM [express] serving on port 3004
+7|fnbcostp | 6:46:51 PM [express] ✅ Session cleanup completed
+7|fnbcostp | 🔄 Starting scheduled QuickBooks token refresh for 0 connection(s)
+7|fnbcostp | ✅ QuickBooks token refresh completed: 0 success, 0 failed

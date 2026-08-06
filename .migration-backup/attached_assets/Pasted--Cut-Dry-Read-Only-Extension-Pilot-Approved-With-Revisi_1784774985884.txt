@@ -1,0 +1,145 @@
+# Cut+Dry Read-Only Extension Pilot — Approved With Revisions
+
+Proceed with the browser-extension direction, subject to the following pilot boundaries and architecture corrections.
+
+## Pilot Scope
+
+The first pilot supports:
+
+* One FnB company
+* One Cut+Dry customer supplier connection
+* One restaurant location
+* One external supplier within Cut+Dry
+* One selected supplier order guide
+* Case-level pricing only
+* User-triggered read-only capture
+* No portal cart modification
+* No supplier order submission
+* No automatic background synchronization
+
+## Multi-Vendor Identity
+
+Do not model Cut+Dry as one vendor.
+
+Every capture must identify:
+
+* `customerSupplierConnectionId`
+* `externalSupplierId`
+* `externalSupplierName`
+* `externalLocationId`, when available
+* `externalOrderGuideId`, when available
+* `sourceItemId`, when available
+* `supplierSku`
+
+Supplier SKU matching must be scoped by connection and external supplier.
+
+The sync job may contain a mapped FnB `vendorId`, but the extension must verify that the visible Cut+Dry supplier matches that job before capture begins.
+
+## Pairing
+
+* Create pairing code through an authenticated FnB web session.
+* Use a cryptographically secure, single-use code.
+* Store only a hash of the code.
+* Claim through `POST`, not `GET`.
+* Enforce expiration and rate limits.
+* Bind the claim to an extension installation ID.
+* Invalidate the code atomically.
+* Keep normal web-session authentication separate from extension bearer-token authentication.
+
+## Extension Authorization
+
+The extension must not be allowed to choose its own:
+
+* Company
+* Connector
+* FnB vendor
+* Store
+* Supplier connection
+
+Those values are taken from the authenticated token and sync job.
+
+Use a revocable extension-installation credential and a short-lived sync-job authorization.
+
+## Host Permissions
+
+* Request access only to the confirmed Cut+Dry application origin.
+* Prefer optional supplier host permissions requested during connection.
+* Include the FnB API origin so the extension service worker can submit data.
+* Do not request `<all_urls>`.
+* Remove `tabs` if the implementation does not require sensitive tab-property access.
+
+## Job Lifecycle
+
+The server owns status transitions.
+
+The extension sends specific events:
+
+* Portal opened
+* Capture started
+* Ingestion submitted
+* Authentication required
+* Capture failed
+
+The server sets `COMPLETE` only after ingestion is validated and processed successfully.
+
+## Ingestion
+
+Capture raw source values and identifiers.
+
+For the initial pilot:
+
+* Process only an unambiguous case-level price.
+* Send products with multiple or unclear UOM offers to review.
+* Use `priceSource = "connector"`.
+* Store the sync-job ID as source reference.
+* Store transport as `browser_extension`.
+* Use `capturedAt` as the observed price timestamp.
+* Do not invent a supplier price-effective date when the page does not provide one.
+
+Every ingestion request must be idempotent by sync-job and batch ID.
+
+## Reuse
+
+Reuse:
+
+* `recordVendorPrice()`
+* M3A price freshness and provenance
+* Existing pack parser
+* Existing unit conversion
+* Existing vendor-item matching
+* Existing unmatched-item review where compatible
+
+Before claiming zero changes, verify that the existing review pipeline can accept a portal platform containing multiple external suppliers. Add external-vendor resolution before item matching where necessary.
+
+## Diagnostics
+
+Every ingestion batch records:
+
+* Extension version
+* Connector parser version
+* Captured supplier
+* Captured location
+* Captured order guide
+* Items seen
+* Items matched
+* Items updated
+* Items sent to review
+* Items rejected
+* Processing errors
+
+## Pilot Success Criteria
+
+The pilot succeeds when:
+
+1. The user pairs the extension without supplier credentials entering FnB.
+2. The user signs into Cut+Dry and completes any supplier authentication themselves.
+3. The extension verifies the intended supplier and location.
+4. The user explicitly starts capture.
+5. FnB receives one selected order guide.
+6. Existing matched vendor items receive current connector-sourced prices.
+7. Ambiguous or unmatched products enter review.
+8. M3A freshness and provenance display correctly.
+9. M3B uses the refreshed prices without additional changes.
+10. Repeating an ingestion does not duplicate price history or review records.
+11. A revoked extension token cannot ingest.
+12. The extension never modifies the Cut+Dry cart or submits an order.

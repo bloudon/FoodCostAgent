@@ -1,0 +1,351 @@
+This is strategically the right move for the premium positioning.
+
+A single flat list of menu items makes FnB look like a costing utility. A **menu portfolio**—where culinary teams can build, cost, compare, approve, and schedule multiple menus—moves it toward a premium culinary-management product.
+
+The key product decision is:
+
+> A menu should become a container of references to menu items, not a second copy of the recipes and items themselves.
+
+## Recommended product model
+
+FnB should distinguish between three things:
+
+### 1. Menu item
+
+The canonical sellable item connected to:
+
+* Recipe
+* Ingredient cost
+* Yield
+* POS identifiers
+* Sales history
+* Theoretical usage
+
+Example:
+
+```text
+Crab Cake Benedict
+```
+
+### 2. Menu
+
+A business container representing where and when items are offered.
+
+Examples:
+
+* Main Dinner
+* Lunch
+* Sunday Brunch
+* Holiday 2026
+* Wedding Banquet Package
+* Corporate Catering
+* Chef’s Tasting Menu
+* Fall Specials — Draft
+
+### 3. Menu entry
+
+The placement of a menu item inside a particular menu.
+
+The entry can hold menu-specific details without changing the canonical item:
+
+* Section
+* Display order
+* Menu-specific selling price
+* Display name override
+* Description override
+* Availability
+* Featured/special status
+* Location assignment
+* Effective dates
+
+That means one item can appear on several menus:
+
+```text
+Caesar Salad
+├── Lunch Menu — $12
+├── Dinner Menu — $15
+├── Catering Menu — $48 per tray
+└── Banquet Menu — included in Package B
+```
+
+The recipe and ingredient cost remain centralized, while the presentation and selling price can vary.
+
+## This should not merely be a “menu type” tag
+
+A tag such as `brunch` or `catering` will not support what you are describing.
+
+The menu needs its own identity, lifecycle, ownership, scheduling, sections, assignments, and readiness status.
+
+Conceptually:
+
+```typescript
+Menu {
+  id
+  companyId
+  name
+  menuType
+  status
+  description
+  effectiveStart
+  effectiveEnd
+  createdBy
+  updatedBy
+}
+```
+
+With related records:
+
+```text
+menu_sections
+menu_entries
+menu_location_assignments
+menu_schedule_rules
+```
+
+## Menu lifecycle
+
+For culinary development, I would use these user-facing states:
+
+```text
+Draft
+Ready
+Scheduled
+Live
+Retired
+```
+
+The system behavior can be:
+
+* **Draft:** actively being developed
+* **Ready:** all required costing and setup checks are complete
+* **Scheduled:** approved with a future activation period
+* **Live:** currently offered
+* **Retired:** retained for history or reuse
+
+Do not delete old menus. A holiday or banquet menu may be reused or cloned next year.
+
+## Build future menus without disrupting live menus
+
+This is one of the strongest premium-use cases.
+
+A chef should be able to:
+
+1. Duplicate the current dinner menu.
+2. Name it `Fall Dinner 2026`.
+3. Add and remove dishes.
+4. change selling prices.
+5. Cost new recipes.
+6. See projected food cost and margin.
+7. Resolve incomplete recipes.
+8. Schedule it for a future date.
+9. Keep the current menu untouched until activation.
+
+The normal **Duplicate Menu** action should copy:
+
+* Sections
+* Menu entries
+* Prices and presentation overrides
+* Location assignments, optionally
+* Schedule rules, optionally
+
+It should **not duplicate the underlying recipes or canonical menu items by default**.
+
+Otherwise, recipe maintenance and POS matching will quickly become fragmented.
+
+## Menu sections
+
+Menus should contain ordered sections:
+
+```text
+Starters
+Soups & Salads
+Entrées
+Sides
+Desserts
+Beverages
+```
+
+Banquet or catering menus may use different structures:
+
+```text
+Package A
+Package B
+Passed Hors d’Oeuvres
+Stations
+Add-ons
+Per-Person Upgrades
+```
+
+Sections belong to the menu, not globally to the company. “Entrées” on a banquet menu may behave differently from “Entrées” on a standard dinner menu.
+
+## Scheduling
+
+Scheduling should be designed in layers.
+
+For the first release, support:
+
+* Effective start date
+* Effective end date
+* Assigned locations
+* Manual activation/deactivation
+* Simple recurring days and time windows where needed
+
+Examples:
+
+```text
+Lunch
+Monday–Friday
+11:00 AM–3:00 PM
+```
+
+```text
+Sunday Brunch
+Sunday
+9:00 AM–2:00 PM
+```
+
+```text
+Valentine’s Menu
+February 13–15
+All dinner service
+```
+
+Avoid building a deeply complicated calendar-rule engine initially. Simple weekly availability plus date ranges will cover most cases.
+
+## Menu readiness
+
+This is where FnB can become meaningfully premium.
+
+Each draft menu should show whether it is ready to launch:
+
+```text
+42 menu entries
+38 fully costed
+3 missing recipe ingredients
+1 missing selling price
+5 POS mappings unresolved
+Projected food cost: 29.4%
+Target: 30.0%
+```
+
+Suggested readiness checks:
+
+* Menu entry has a selling price
+* Recipe is complete
+* Ingredient prices are sufficiently current
+* Food cost can be calculated
+* POS mapping is confirmed when electronically connected
+* Location assignment exists
+* Schedule is valid
+* No unresolved or intentionally unreviewed items
+
+A chef should be able to see the menu-level problems without opening every item individually.
+
+## Menu-level financial intelligence
+
+This feature becomes much stronger when the container provides rollups:
+
+* Average menu food-cost percentage
+* Weighted food cost using actual or forecast sales
+* Gross-margin contribution
+* High-cost outliers
+* Low-margin items
+* Items with rapidly increasing ingredient costs
+* Items included on multiple menus at different prices
+* Uncosted items
+* Planned versus actual menu performance
+
+Initially, calculate a simple unweighted summary and entry-level margins. Weighted menu engineering can follow once POS sales are flowing reliably.
+
+## Relationship to POS integration
+
+POS mapping should remain attached to the canonical menu item or its sellable variation—not directly to every menu entry.
+
+```text
+Square catalog variation
+        ↓
+Canonical FnB menu item
+        ↓
+Appears on Lunch, Dinner and Catering menus
+```
+
+This avoids remapping the same Square item every time it appears in another FnB menu.
+
+There may eventually be cases where a POS has separate catalog IDs for lunch and dinner versions. Those should be separate sellable variations or mappings, even if they share a recipe.
+
+The POS connector may not always tell FnB which conceptual menu produced a sale. Sales should not be assigned to a menu container unless the source data or schedule makes that attribution reliable.
+
+## Important modeling distinction
+
+Menu-specific price overrides are appropriate.
+
+Menu-specific recipes generally are not.
+
+When the actual portion or ingredients change, create a distinct item or variation:
+
+```text
+Dinner Salmon — 8 oz
+Lunch Salmon — 5 oz
+```
+
+Do not represent materially different food usage as one item with only a different menu price.
+
+## Recommended MVP scope
+
+Build now:
+
+* Multiple menu containers
+* Menu name and type
+* Draft/live/retired lifecycle
+* Ordered sections
+* Menu entries referencing existing menu items
+* Menu-specific selling price
+* Location assignments
+* Effective date ranges
+* Duplicate menu
+* Menu-level cost and readiness summary
+* Ability to create new items while building a menu
+* Existing menu scan can populate a selected menu
+* POS-mapped items can be placed on multiple menus
+
+Follow later:
+
+* Complex recurring schedules
+* Approval workflows
+* Formal revision/version history
+* Menu comparison reports
+* Sales-weighted menu engineering
+* Automatic publishing to POS systems
+* Guest-facing menu design or PDF generation
+* Event proposal and banquet-package pricing
+* Ingredient-availability simulations
+
+## Product positioning
+
+This gives FnB a stronger premium promise:
+
+> **Build and cost tomorrow’s menu before it goes live.**
+
+Or:
+
+> **Create, cost, compare, and schedule every menu—from daily service to seasonal events—in one culinary workspace.**
+
+That connects directly to the target customer: chef-driven restaurants, hotels, clubs, catering operations, and higher-end groups that change offerings frequently.
+
+## Product-manager call
+
+Proceed with **Multiple Menus as a foundational domain feature**, not a cosmetic organization feature.
+
+The first implementation should focus on:
+
+```text
+Menu container
+→ Sections
+→ Referenced menu items
+→ Menu-specific pricing
+→ Draft/live lifecycle
+→ Locations and effective dates
+→ Cost/readiness rollup
+```
+
+Do not begin with full automation, complex schedules, or POS publishing. First make FnB the best place for the culinary team to **build and financially validate a future menu without disturbing the live operation**.

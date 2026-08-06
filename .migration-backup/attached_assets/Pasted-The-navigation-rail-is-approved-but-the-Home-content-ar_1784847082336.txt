@@ -1,0 +1,80 @@
+The navigation rail is approved, but the Home content area still feels visually heavy and utilitarian.
+
+Please redesign Home around a clearer daily hierarchy rather than stacked full-width alert panels.
+
+## Visual direction
+
+- Keep the dark theme.
+- Use neutral charcoal card surfaces instead of colored full-card outlines.
+- Reserve green for primary actions.
+- Use amber/red/blue only for icons, badges, or thin accent bars.
+- Reduce the number of full-width horizontal panels.
+- Increase heading and metric typography.
+- Create stronger separation between primary actions, KPIs, alerts, and activity.
+
+## Home layout
+
+### Header
+
+- Page title: Home
+- Store and date context
+- One dominant primary action: Start Count
+- Two supporting actions: Build Order and Scan Invoice
+
+### KPI row
+
+Show four useful daily metrics:
+
+- Inventory Value
+- Food Cost
+- Open Orders
+- Count Status
+
+Avoid setup statistics such as Active Items and Menu Items as the primary KPIs.
+
+### Main content
+
+Use a responsive two-column layout:
+
+1. Needs Attention
+   - Order deadlines
+   - Missing ingredients
+   - Below-par items
+   - Maximum 3–5 compact rows with View All
+
+2. Recent Activity
+   - Count completed
+   - Invoice processed
+   - PO created/routed/exported
+
+3. Upcoming Orders
+   - Vendor
+   - Deadline
+   - Delivery date
+
+4. Cost Watch
+   - Largest recent price changes
+   - Variance alerts
+   - Stale vendor pricing
+
+## Alert treatment
+
+Replace the separate blue, amber, and orange full-width bordered panels with one compact Needs Attention card.
+
+Use subtle neutral borders and small colored status indicators rather than coloring the entire card border.
+
+## Header cleanup
+
+Move global-admin links such as Backgrounds, Vendor Registry, and All Companies into a single Admin menu.
+
+Replace the full-width release announcement bar with a smaller dismissible notification or changelog link.
+
+## Sidebar refinements
+
+- Keep the six-item flat rail.
+- Use one consistent active-state treatment.
+- Increase spacing slightly.
+- Keep icon and label alignment uniform.
+- Preserve the store selector and user controls.
+
+The desired result should feel like a calm restaurant operating console, not a system-monitoring dashboard.

@@ -1,0 +1,105 @@
+Their read is correct. I would approve the approach with three decisions locked:
+
+## Product decisions
+
+**Mobile:** preserve the current hamburger-triggered sheet drawer. Do not add a bottom tab bar in this task. That would be a separate mobile-navigation redesign.
+
+**More:** remains a normal rail destination linking to `/more`. No flyout, submenu, or nested disclosure.
+
+**Desktop expansion:** use separate pinned and temporary-hover states. That is the correct model for avoiding content movement during casual hover while still allowing users to keep labels visible.
+
+## Implementation caveats
+
+The proposed structure is sound, but I would add these requirements:
+
+* The temporary expanded panel must remain open while the pointer is anywhere inside its expanded width—not only over the original 72px rail.
+* Give the overlay a clear `z-index`, background, border/shadow, and pointer events so content beneath it cannot be accidentally clicked.
+* Do not activate hover expansion on touch-only devices. Use the existing mobile/tablet drawer at the applicable breakpoint.
+* Hydrate `isPinned` after mount to avoid a flash or React hydration mismatch from reading `localStorage`.
+* Disable compact-mode tooltips while the rail is temporarily expanded or pinned.
+* Keyboard focus entering the rail should expand it; focus leaving the entire rail should allow it to close.
+* Escape closes only temporary expansion. It should not unpin a user-pinned rail.
+* Clicking a navigation item should not collapse a pinned rail.
+* Use `prefers-reduced-motion` to reduce or disable the width animation.
+* Temporary overlay expansion should not change the document width or introduce horizontal scrolling.
+* The store selector and profile controls must remain usable in both compact and expanded states.
+
+One technical simplification: use `SidebarProvider`’s open state for the **pinned layout state**, while managing temporary hover/focus expansion separately. Avoid repeatedly changing the provider’s persistent open state on mouse enter and leave.
+
+## Replit-ready approval
+
+```markdown
+The proposed implementation approach is approved with these clarifications.
+
+## Mobile
+
+Preserve the existing hamburger-triggered sheet drawer on mobile.
+
+Do not add a bottom tab bar in this task. Mobile bottom navigation would be a separate future design decision.
+
+## More
+
+More remains a standard rail item linking to `/more`.
+
+Do not add a flyout, submenu, or nested disclosure. The `/more` landing page remains the navigation hub for secondary and administrative tools.
+
+## Desktop State Model
+
+Use two separate states:
+
+- `isPinned` — persistent user preference stored in localStorage
+- `isTemporarilyOpen` — derived from hover or keyboard focus
+
+Recommended behavior:
+
+- Collapsed and unpinned: 72px
+- Temporarily open and unpinned: 230px overlay; content does not move
+- Pinned open: 230px persistent layout; content margin adjusts
+- Pinned closed/unpinned: compact rail
+
+Use the shadcn SidebarProvider state for the persistent pinned layout where practical. Manage hover/focus expansion separately rather than toggling the provider on every mouse event.
+
+## Interaction Requirements
+
+- Opening delay: approximately 150–250ms
+- Closing delay: approximately 250–400ms
+- Keep the rail open while the pointer is anywhere within the expanded overlay
+- Keyboard focus entering the rail opens it
+- Focus leaving the whole rail permits it to close
+- Escape closes temporary expansion only
+- Clicking outside closes temporary expansion
+- Navigation does not collapse a pinned rail
+- Pin preference persists locally
+
+## Overlay Requirements
+
+When temporarily expanded:
+
+- Use an appropriate z-index
+- Give the panel an opaque background and subtle shadow/border
+- Prevent click-through to page content
+- Do not change content width
+- Do not create horizontal overflow
+- Keep store selector and profile controls fully interactive
+
+## Responsive Behavior
+
+- Desktop: hover/focus expansion with optional pinning
+- Mobile and touch layouts: preserve the current sheet drawer
+- Do not depend on hover behavior on touch-only devices
+
+## Accessibility and Polish
+
+- `aria-label` on icon controls
+- Tooltips only while compact
+- Disable tooltips while expanded or pinned
+- Visible keyboard focus
+- Minimum 44px targets
+- Active state includes shape/indicator, not color alone
+- Respect `prefers-reduced-motion`
+- Hydrate localStorage preference after mount to avoid initial-state flashing or hydration warnings
+
+Proceed using the existing `app-sidebar.tsx` and shadcn primitives, adding the custom hover/focus/pin layer without changing routes, permissions, or the `/more` behavior.
+```
+
+This keeps the task limited to a better desktop shell without unexpectedly turning it into a mobile-navigation project.

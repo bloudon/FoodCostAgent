@@ -1,0 +1,113 @@
+Here is the full technical requirements document for your web app team.
+
+FnB Cost Pro — Web App Requirements for Mobile Companion Integration
+Overview
+The mobile app is a React Native (Expo) companion that embeds certain web app pages inside native WebViews. Authentication is handled natively via the /api/mobile/login endpoint; the resulting JWT is passed into WebViews through a URL query parameter called mobileToken. The web app must recognise this token and use it to authenticate those embedded sessions, instead of redirecting to the login page.
+
+1. Authentication — mobileToken Query Parameter
+This is the most critical requirement. Nothing else works until this is in place.
+
+How it works
+When the mobile app opens a WebView it appends mobileToken=<jwt> to the URL. The <jwt> is the same token issued by /api/mobile/login.
+
+On every embedded page the mobile app also injects this JavaScript before page content loads, which patches fetch and XMLHttpRequest to add Authorization: Bearer <token> to every subsequent API call the page makes:
+
+(function(){
+  var tok = new URLSearchParams(window.location.search).get('mobileToken');
+  if (tok) {
+    var oF = window.fetch;
+    window.fetch = function(i, o) {
+      o = o || {};
+      o.headers = Object.assign({ 'Authorization': 'Bearer ' + tok }, o.headers || {});
+      return oF.call(this, i, o);
+    };
+    // XHR patched similarly …
+  }
+})();
+
+What the web app must do
+On every route listed in Section 2, before the normal auth guard runs:
+
+Read ?mobileToken= from the query string.
+Validate it as a Bearer JWT (same validation used for Authorization: Bearer headers on API routes).
+If valid, hydrate the user session from that token — do not redirect to /login.
+If invalid or absent, apply the normal auth guard (redirect to login as usual).
+A minimal middleware pattern (Next.js example):
+
+// middleware.ts  (or equivalent auth guard)
+const mobileToken = request.nextUrl.searchParams.get('mobileToken');
+if (mobileToken) {
+  const user = await verifyJwt(mobileToken);   // same verifier used for API routes
+  if (user) {
+    // attach user to request context / set session cookie, then continue
+    return NextResponse.next();
+  }
+}
+// fall through to normal cookie/session check
+
+2. Routes That Need mobileToken Support
+Route	Query params	Used by
+/inventory-sessions	embedded=true, mobileToken	Home tab + Inventory tab
+/dashboard/mobile	embedded=true, mobileToken	Home tab (once built)
+/count/[sessionId]/mobile	mobileToken	Count screen
+Any route passed as targetPath	embedded=true, mobileToken, optional location=[id]	Deep-linked inventory screens
+3. Embedded Mode — embedded=true
+When ?embedded=true is present, the page is running inside a native WebView with a native header bar above it. The web app should:
+
+Hide its own top navigation bar, sidebar, and any global header.
+Hide any floating "back" or "home" navigation that would conflict with the native back button.
+Keep all page content and modals fully functional.
+4. Catch-Weight Scanning Bridge (/inventory-sessions)
+The inventory page has a native catch-weight scanning modal. The web app and the mobile app communicate via window.ReactNativeWebView.postMessage (web → native) and a CustomEvent (native → web).
+
+4a. Web app triggers native scan (web → native)
+When the user taps a catch-weight item's scan button, post this message:
+
+window.ReactNativeWebView.postMessage(JSON.stringify({
+  type: "SCAN_CATCH_WEIGHT",
+  lineId: "<inventory-line-uuid>",
+  itemId: "<item-uuid>",
+  itemName: "Salmon Fillet",
+  sessionId: "<session-uuid>"  // include if known, otherwise omit
+}));
+
+The mobile app will open the native camera/scale modal and return a result (see 4b below).
+
+4b. Native returns weight result (native → web)
+The mobile app dispatches a CustomEvent on window:
+
+// Success
+window.addEventListener('nativeCatchWeightResult', (e) => {
+  const { lineId, newCount, cancelled } = e.detail;
+  // newCount = total line quantity after this scan
+  // cancelled = false
+});
+// Cancelled
+// Same event, cancelled = true, weight = null
+
+The web app must listen for this event and update the line accordingly. If cancelled === true, undo any optimistic UI update.
+
+4c. Guard against zero-weight submission (already patched client-side)
+The mobile app injects a MutationObserver guard that blocks the + button when the associated weight input is zero or empty. This is a workaround — ideally the web app validates this natively so the guard is no longer needed.
+
+5. API Endpoints (already expected by the mobile app)
+These endpoints are already being called — confirm they exist and return the expected shapes:
+
+Method	Path	Purpose
+POST	/api/mobile/login	Accepts { email, password }, returns { token } or { access_token }
+GET	/api/mobile/sessions/active	Returns the user's active inventory session(s): [{ id }] or { id }
+GET	/api/auth/me	Returns user profile including optional preferredLanguage: "en" | "es"
+PATCH	/api/auth/me/language	Accepts { language: "en" | "es" }, persists preferred language
+6. Implementation Priority
+Priority	Requirement	Impact
+P0	mobileToken auth on /inventory-sessions	Unblocks home tab + inventory tab
+P0	mobileToken auth on /count/[sessionId]/mobile	Unblocks count screen
+P1	embedded=true hides web navigation	Prevents double nav bars
+P1	SCAN_CATCH_WEIGHT → nativeCatchWeightResult bridge	Catch-weight scanning in inventory
+P2	Build /dashboard/mobile route with mobileToken	Enables a proper mobile dashboard home tab
+7. Testing the Integration
+To verify that mobileToken is working, load this URL in a browser (replacing TOKEN with a real token from /api/mobile/login):
+
+https://app.fnbcostpro.com/inventory-sessions?embedded=true&mobileToken=TOKEN
+
+If it shows the inventory page content (not the login page), the integration is working. If it redirects to /login, the middleware is not yet reading mobileToken.

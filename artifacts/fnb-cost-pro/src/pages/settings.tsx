@@ -1,0 +1,2040 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatPhoneNumber, isValidPhone } from "@/lib/phone";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Building2, User, Plug, Settings as SettingsIcon, Truck, Store, Link as LinkIcon, Shield, DollarSign, CheckCircle2, XCircle, Loader2, Plus, Trash2, Download, RefreshCw, Wrench, AlertTriangle, Pencil, Lock, Zap, TriangleAlert, AlertCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Company, CompanyStore, SystemPreferences, VendorCredentials, Vendor, QuickBooksVendorMapping, PosConnection, PosSyncJob } from "@shared/schema";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { UsersManagement } from "@/components/UsersManagement";
+import { useAuth } from "@/lib/auth-context";
+import { useTier } from "@/hooks/use-tier";
+import { PosSalesDataSection } from "@/components/PosSalesDataSection";
+
+function QbIntegrationCard({
+  qbStatus,
+  qbStatusLoading,
+  qbDisconnectMutation,
+}: {
+  qbStatus: any;
+  qbStatusLoading: boolean;
+  qbDisconnectMutation: any;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>QuickBooks Online</CardTitle>
+        <CardDescription>
+          Connect your QuickBooks Online account to automatically sync received purchase orders as bills
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {qbStatusLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Checking connection status...</span>
+          </div>
+        ) : qbStatus?.connected ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
+              <span className="font-medium">Connected to QuickBooks Online</span>
+            </div>
+            <div className="grid gap-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Connection Level:</span>
+                <Badge variant="outline">
+                  {qbStatus.connectionLevel === "company" ? "Company-Wide" : "Store-Specific"}
+                </Badge>
+              </div>
+              {qbStatus.lastSyncedAt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last Synced:</span>
+                  <span>{new Date(qbStatus.lastSyncedAt).toLocaleString()}</span>
+                </div>
+              )}
+              {qbStatus.expiresAt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Token Expires:</span>
+                  <span>{new Date(qbStatus.expiresAt).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => qbDisconnectMutation.mutate()}
+              disabled={qbDisconnectMutation.isPending}
+              data-testid="button-qb-disconnect"
+            >
+              {qbDisconnectMutation.isPending && <Loader2 className="h-3 w-3 mr-2 animate-spin" />}
+              Disconnect QuickBooks
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <XCircle className="h-5 w-5" />
+              <span>Not connected</span>
+            </div>
+            <Button
+              onClick={() => { window.location.href = "/api/quickbooks/connect"; }}
+              data-testid="button-qb-connect"
+            >
+              <LinkIcon className="h-4 w-4 mr-2" />
+              Connect QuickBooks Online
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function QbSyncHistoryCard() {
+  const { user } = useAuth();
+  const { hasFeature } = useTier();
+  const { toast } = useToast();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const { data: syncLogs = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/quickbooks/sync-logs"],
+    retry: false,
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async ({ purchaseOrderId, logId }: { purchaseOrderId: string; logId: string }) => {
+      setRetryingId(logId);
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds: [purchaseOrderId] });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setRetryingId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      const result = data?.data?.results?.[0];
+      if (result?.success) {
+        toast({ title: "Retried successfully", description: "Bill created in QuickBooks." });
+      } else {
+        toast({ title: "Retry failed", description: result?.error || "Export failed", variant: "destructive" });
+      }
+    },
+    onError: (error: any) => {
+      setRetryingId(null);
+      toast({ title: "Retry failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const statusBadge = (status: string) => {
+    if (status === "success") return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">Success</Badge>;
+    if (status === "failed" || status === "retry_exhausted") return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">{status === "retry_exhausted" ? "Failed (max retries)" : "Failed"}</Badge>;
+    if (status === "pending") return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800">Pending</Badge>;
+    return <Badge variant="outline">{status}</Badge>;
+  };
+
+  // Guard: only show when QuickBooks integration is available on the current plan
+  if (!hasFeature("quickbooks_integration")) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sync History</CardTitle>
+        <CardDescription>
+          Purchase orders exported to QuickBooks as bills
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading sync history...
+          </div>
+        ) : syncLogs.length === 0 ? (
+          <div className="text-center py-8 border rounded-lg border-dashed">
+            <p className="text-sm text-muted-foreground">No sync history yet. Export a received order to QuickBooks to see logs here.</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>QB Bill ID</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Error</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {syncLogs.map((log: any) => (
+                <TableRow key={log.id} data-testid={`sync-log-row-${log.id}`}>
+                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                    {log.receivedAt ? new Date(log.receivedAt).toLocaleDateString() : (log.lastAttemptAt ? new Date(log.lastAttemptAt).toLocaleDateString() : "—")}
+                  </TableCell>
+                  <TableCell className="font-medium">{(log as any).vendorName || "—"}</TableCell>
+                  <TableCell className="font-mono text-sm">
+                    {(log as any).amount != null ? `$${parseFloat((log as any).amount).toFixed(2)}` : "—"}
+                  </TableCell>
+                  <TableCell className="font-mono text-sm text-muted-foreground">{log.quickbooksBillId || "—"}</TableCell>
+                  <TableCell>{statusBadge(log.syncStatus)}</TableCell>
+                  <TableCell className="text-sm text-destructive max-w-[200px] truncate">
+                    {log.errorMessage || "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(log.syncStatus === "failed" || log.syncStatus === "retry_exhausted") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => retryMutation.mutate({ purchaseOrderId: log.purchaseOrderId, logId: log.id })}
+                        disabled={retryingId === log.id}
+                        data-testid={`button-retry-sync-${log.id}`}
+                      >
+                        {retryingId === log.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                        )}
+                        Retry
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Settings() {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("company");
+  const [posIsDirty, setPosIsDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  // Keep a ref so the pushState closure always sees the latest dirty flag.
+  const posIsDirtyRef = useRef(false);
+  // Set to true for exactly one pushState call to let the confirmed navigation through.
+  const allowNextNavigationRef = useRef(false);
+  // Set to true to skip the synthetic popstate we dispatch after a confirmed leave.
+  const skipNextPopStateRef = useRef(false);
+  const [isVendorMappingDialogOpen, setIsVendorMappingDialogOpen] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("");
+  const [selectedQbVendorId, setSelectedQbVendorId] = useState<string>("");
+  const [isVendorSyncDialogOpen, setIsVendorSyncDialogOpen] = useState(false);
+  const [selectedVendorsForSync, setSelectedVendorsForSync] = useState<Set<string>>(new Set());
+  // Global admins switch companies via /companies (writes localStorage).
+  // Regular users (owner / company_admin / staff) implicitly operate on their
+  // own company, so fall back to their session companyId when localStorage
+  // hasn't been populated.
+  const lsSelectedCompanyId =
+    typeof window !== "undefined" ? localStorage.getItem("selectedCompanyId") : null;
+  const [editStoreDialogOpen, setEditStoreDialogOpen] = useState(false);
+  const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
+  const [storeForm, setStoreForm] = useState({
+    name: "",
+    code: "",
+    phone: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    timezone: "",
+    status: "active",
+  });
+
+  // Fetch current user with SSO info (used as a fallback source of companyId
+  // for non-admin users who never visit /companies to set localStorage).
+  const { data: currentUser } = useQuery<any>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  const selectedCompanyId = lsSelectedCompanyId || currentUser?.companyId || null;
+
+  const { data: company, isLoading: companyLoading } = useQuery<Company>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: stores = [], isLoading: storesLoading } = useAccessibleStores();
+
+  const { data: systemPrefs, isLoading: prefsLoading } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
+  });
+
+  // QuickBooks connection status
+  const { data: qbStatus, isLoading: qbStatusLoading, refetch: refetchQbStatus } = useQuery<any>({
+    queryKey: ["/api/quickbooks/status"],
+    retry: false,
+  });
+
+  // FnBcostpro vendors (for mapping)
+  const { data: vendors = [], isLoading: vendorsLoading } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+    enabled: !!qbStatus?.connected,
+  });
+
+  // QuickBooks vendors
+  const { data: qbVendors = [], isLoading: qbVendorsLoading } = useQuery<Array<{ id: string; displayName: string; active: boolean }>>({
+    queryKey: ["/api/quickbooks/vendors"],
+    enabled: !!qbStatus?.connected,
+    retry: false,
+  });
+
+  // Vendor mappings
+  const { data: vendorMappings = [], isLoading: vendorMappingsLoading, refetch: refetchVendorMappings } = useQuery<QuickBooksVendorMapping[]>({
+    queryKey: ["/api/quickbooks/vendors/mappings"],
+    enabled: !!qbStatus?.connected,
+    retry: false,
+  });
+
+  // Vendor preview for sync
+  const { data: vendorPreview = [], isLoading: vendorPreviewLoading, refetch: refetchVendorPreview } = useQuery<any[]>({
+    queryKey: ["/api/quickbooks/vendors/preview"],
+    enabled: isVendorSyncDialogOpen && !!qbStatus?.connected,
+    retry: false,
+  });
+
+  // Vendor credentials query disabled - integrations tab removed
+  // const { data: vendorCredentials = [], isLoading: vendorCredsLoading } = useQuery<VendorCredentials[]>({
+  //   queryKey: ["/api/vendor-credentials"],
+  //   queryFn: async () => {
+  //     const res = await fetch("/api/vendor-credentials", {
+  //       credentials: "include",
+  //     });
+  //     // Return empty array if forbidden (non-admin users)
+  //     if (res.status === 403) {
+  //       return [];
+  //     }
+  //     if (!res.ok) {
+  //       throw new Error(`${res.status}: ${res.statusText}`);
+  //     }
+  //     return await res.json();
+  //   },
+  //   retry: false,
+  // });
+
+  const updateCompanyMutation = useMutation({
+    mutationFn: async (data: Partial<Company>) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return await apiRequest("PATCH", `/api/companies/${selectedCompanyId}`, data);
+    },
+    onSuccess: () => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
+      toast({
+        title: "Success",
+        description: "Company information updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update company information",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateCostingMethodMutation = useMutation({
+    mutationFn: async (costingMethod: "last_cost" | "weighted_average") => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      const res = await apiRequest("PATCH", `/api/companies/${selectedCompanyId}/costing-method`, { costingMethod });
+      return await res.json() as { recipesRecalculated?: number };
+    },
+    onSuccess: (data) => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
+      // Recipe costs were just recalculated server-side; refresh recipe-related caches.
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      // Inventory list/detail responses include `effectiveUnitCost` which is
+      // derived from the company's costing method, so they must be refetched.
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      // Theoretical Food Cost / variance reports surface headline cost totals
+      // that depend on the costing method.
+      queryClient.invalidateQueries({ queryKey: ["/api/tfc/usage-runs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/variance"] });
+      const count = typeof data?.recipesRecalculated === "number" ? data.recipesRecalculated : null;
+      toast({
+        title: "Costing method updated",
+        description: count !== null
+          ? `Recalculated ${count} recipe${count === 1 ? "" : "s"} using the new method.`
+          : "Recipe costs have been recalculated using the new method.",
+      });
+    },
+    onError: (error: Error) => {
+      // Server returns plain `error` strings; for cycle errors the message
+      // already includes the offending recipe ids (see /costing-method 409
+      // handler in server/routes.ts).
+      toast({
+        title: "Failed to update costing method",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateStoreMutation = useMutation({
+    mutationFn: async (data: { id: string; [key: string]: any }) => {
+      const { id, ...payload } = data;
+      return await apiRequest("PATCH", `/api/stores/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stores"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accessible-stores"] });
+      setEditStoreDialogOpen(false);
+      setEditingStore(null);
+      toast({ title: "Store updated", description: "Store information saved." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save store information.", variant: "destructive" });
+    },
+  });
+
+  const qbDisconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/quickbooks/disconnect", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/status"] });
+      refetchQbStatus();
+      toast({ title: "QuickBooks disconnected", description: "Your QuickBooks connection has been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to disconnect QuickBooks.", variant: "destructive" });
+    },
+  });
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: async (data: Partial<SystemPreferences>) => {
+      return await apiRequest("PATCH", "/api/system-preferences", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/system-preferences"] });
+      toast({
+        title: "Success",
+        description: "System preferences updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update system preferences",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateLogoMutation = useMutation({
+    mutationFn: async (imageUrl: string) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return await apiRequest("PUT", `/api/companies/${selectedCompanyId}/logo`, { imageUrl });
+    },
+    onSuccess: () => {
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/companies/${selectedCompanyId}`] });
+      }
+      toast({
+        title: "Success",
+        description: "Company logo updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update company logo",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create vendor mapping mutation
+  const createVendorMappingMutation = useMutation({
+    mutationFn: async (data: { vendorId: string; qbVendorId: string; qbVendorName: string }) => {
+      return await apiRequest("POST", "/api/quickbooks/vendors/mappings", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      setIsVendorMappingDialogOpen(false);
+      setSelectedVendorId("");
+      setSelectedQbVendorId("");
+      toast({
+        title: "Success",
+        description: "Vendor mapping created successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create vendor mapping",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete vendor mapping mutation
+  const deleteVendorMappingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest("DELETE", `/api/quickbooks/vendors/mappings/${id}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      toast({
+        title: "Success",
+        description: "Vendor mapping deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete vendor mapping",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Sync selected vendors from QuickBooks
+  const syncVendorsMutation = useMutation({
+    mutationFn: async (selectedVendorIds: string[]) => {
+      return await apiRequest("POST", "/api/quickbooks/vendors/sync", { selectedVendorIds });
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/vendors/mappings"] });
+      setIsVendorSyncDialogOpen(false);
+      setSelectedVendorsForSync(new Set());
+      toast({
+        title: "Success",
+        description: `Synced ${result.summary.created + result.summary.updated + result.summary.matched} vendors successfully`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sync vendors",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleVendorMappingSubmit = () => {
+    if (!selectedVendorId || !selectedQbVendorId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select both a vendor and a QuickBooks vendor",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const qbVendor = qbVendors.find(v => v.id === selectedQbVendorId);
+    if (!qbVendor) return;
+
+    createVendorMappingMutation.mutate({
+      vendorId: selectedVendorId,
+      qbVendorId: selectedQbVendorId,
+      qbVendorName: qbVendor.displayName,
+    });
+  };
+
+  const handleCompanySave = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    const phoneValue = formData.get("company-phone") as string || "";
+    if (!isValidPhone(phoneValue)) {
+      toast({ variant: "destructive", title: "Invalid phone number", description: "Phone number must be 10 digits" });
+      return;
+    }
+
+    const companyData: Partial<Company> = {
+      name: formData.get("company-name") as string,
+      addressLine1: formData.get("company-address") as string,
+      city: formData.get("company-city") as string,
+      state: formData.get("company-state") as string,
+      postalCode: formData.get("company-zip") as string,
+      phone: phoneValue,
+      contactEmail: formData.get("company-email") as string,
+    };
+    
+    updateCompanyMutation.mutate(companyData);
+  };
+
+  const handleTabChange = (tab: string) => {
+    if (posIsDirty && activeTab === "connections" && tab !== "connections") {
+      setPendingTab(tab);
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleLeaveTab = () => {
+    if (pendingTab) {
+      setActiveTab(pendingTab);
+      setPendingTab(null);
+    }
+  };
+
+  const handleStayOnTab = () => {
+    setPendingTab(null);
+  };
+
+  // ── Page-level navigation guard ───────────────────────────────────────────
+
+  /** True when a URL string points to /settings (or a sub-path). */
+  const isSettingsPath = useCallback((urlStr: string): boolean => {
+    try {
+      const pathname = new URL(urlStr, window.location.origin).pathname;
+      return pathname === "/settings" || pathname.startsWith("/settings/");
+    } catch {
+      // Relative path fallback
+      return urlStr === "/settings" || urlStr.startsWith("/settings/") ||
+             urlStr.startsWith("/settings?") || urlStr.startsWith("/settings#");
+    }
+  }, []);
+
+  // Keep the ref in sync so closures always see the latest dirty flag.
+  useEffect(() => {
+    posIsDirtyRef.current = posIsDirty;
+  }, [posIsDirty]);
+
+  // 1. Browser beforeunload (refresh, close tab, hard external link)
+  useEffect(() => {
+    if (!posIsDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Modern browsers require returnValue to be set to trigger the dialog.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [posIsDirty]);
+
+  // 2. In-app SPA navigation via pushState (wouter sidebar links).
+  //    Intercept pushState while dirty; if the destination is outside /settings,
+  //    capture it as pendingNavigation and abort the push.
+  useEffect(() => {
+    if (!posIsDirty) return;
+
+    const originalPushState = window.history.pushState.bind(window.history);
+
+    window.history.pushState = (
+      state: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) => {
+      // User confirmed leaving — let this one push through and reset the flag.
+      if (allowNextNavigationRef.current) {
+        allowNextNavigationRef.current = false;
+        originalPushState(state, unused, url);
+        return;
+      }
+      if (!posIsDirtyRef.current) {
+        originalPushState(state, unused, url);
+        return;
+      }
+      const target = url ? String(url) : null;
+      // Allow navigation within /settings (tab changes, query-string updates).
+      if (!target || isSettingsPath(target)) {
+        originalPushState(state, unused, url);
+        return;
+      }
+      // Destination is outside /settings → intercept and show modal.
+      setPendingNavigation(target);
+    };
+
+    return () => {
+      window.history.pushState = originalPushState;
+    };
+  }, [posIsDirty, isSettingsPath]);
+
+  // 3. Browser Back/Forward (popstate) guard.
+  //    When the user presses Back and lands outside /settings, immediately push
+  //    /settings back so the URL is restored, then show the confirmation modal.
+  useEffect(() => {
+    if (!posIsDirty) return;
+
+    const handlePopState = () => {
+      // Skip the one synthetic popstate we fire ourselves after a confirmed leave.
+      if (skipNextPopStateRef.current) {
+        skipNextPopStateRef.current = false;
+        return;
+      }
+      if (!posIsDirtyRef.current) return;
+      const destination = window.location.pathname + window.location.search;
+      if (isSettingsPath(destination)) return; // still on settings — fine
+      // Capture where they were trying to go.
+      const intended = destination;
+      // Restore the URL to /settings without adding a new history entry.
+      window.history.replaceState(null, "", "/settings");
+      // Notify wouter that we're back on /settings.
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      // Show the confirmation modal.
+      setPendingNavigation(intended);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [posIsDirty, isSettingsPath]);
+
+  const handleConfirmLeaveSettings = () => {
+    if (pendingNavigation) {
+      const target = pendingNavigation;
+      setPendingNavigation(null);
+      // Allow exactly one pushState call through the guard so we don't loop.
+      allowNextNavigationRef.current = true;
+      // Skip the synthetic popstate we're about to fire, so the popstate guard
+      // doesn't see the non-settings URL and re-intercept this navigation.
+      skipNextPopStateRef.current = true;
+      // Navigate for real now that the user confirmed.
+      window.history.pushState(null, "", target);
+      // Dispatch a popstate event so wouter picks up the location change.
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    }
+  };
+
+  const handleCancelLeaveSettings = () => {
+    setPendingNavigation(null);
+  };
+
+  const handlePrefsSave = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      unitSystem: formData.get("unit-system") as string,
+      currency: formData.get("currency") as string,
+      timezone: formData.get("timezone") as string,
+      posSystem: formData.get("pos-system") as string,
+      posApiKey: formData.get("pos-api-key") as string,
+    };
+    updatePrefsMutation.mutate(data);
+  };
+
+  const renderVendorCard = (vendorKey: string, vendorName: string, credentials?: VendorCredentials) => {
+    const hasApiCredentials = !!(credentials?.apiKey || credentials?.apiSecret || credentials?.apiUrl || credentials?.username || credentials?.password);
+    const hasEdiConfig = !!(credentials?.ediIsaId || credentials?.ediGsId || credentials?.ediQualifier || credentials?.as2Url || credentials?.as2Identifier);
+    const hasSftpConfig = !!(credentials?.sftpHost || credentials?.sftpPort || credentials?.sftpUsername || credentials?.sftpPassword);
+    const hasPunchoutConfig = !!(credentials?.punchoutUrl || credentials?.punchoutDomain || credentials?.punchoutIdentity || credentials?.sharedSecret);
+    const isConfigured = hasApiCredentials || hasEdiConfig || hasSftpConfig || hasPunchoutConfig;
+    const isActive = credentials?.isActive === 1;
+
+    return (
+      <div key={vendorKey} className="flex items-center justify-between p-4 border rounded-md" data-testid={`vendor-card-${vendorKey}`}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium">{vendorName}</h3>
+            {isConfigured && (
+              <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
+                {isActive ? 'Active' : 'Inactive'}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {isConfigured 
+              ? `Configured • ${hasApiCredentials ? 'API' : ''} ${hasEdiConfig ? 'EDI' : ''} ${hasSftpConfig ? 'SFTP' : ''} ${hasPunchoutConfig ? 'PunchOut' : ''}`.trim()
+              : 'Not configured'
+            }
+          </p>
+        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" data-testid={`button-configure-${vendorKey}`}>
+              {isConfigured ? 'Edit' : 'Configure'}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Configure {vendorName} Integration</DialogTitle>
+              <DialogDescription>
+                Enter your {vendorName} API credentials and configuration details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor={`${vendorKey}-active`}>Enable Integration</Label>
+                <Switch
+                  id={`${vendorKey}-active`}
+                  checked={isActive}
+                  data-testid={`switch-${vendorKey}-active`}
+                />
+              </div>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                Configuration for {vendorName} is coming soon. This will include fields for API credentials, EDI configuration, SFTP settings, and PunchOut/cXML setup.
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  };
+
+  return (
+    <div className="p-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-settings-title">
+          Settings
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Manage your company information, user profile, and system preferences
+        </p>
+      </div>
+
+      {/* Unsaved POS changes guard — navigating away from /settings entirely */}
+      <Dialog open={pendingNavigation !== null} onOpenChange={(open) => { if (!open) handleCancelLeaveSettings(); }}>
+        <DialogContent data-testid="dialog-unsaved-nav-changes">
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes to your POS &amp; Sales configuration. If you leave now, your changes will be discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCancelLeaveSettings} data-testid="button-cancel-leave-settings">
+              Stay and Save
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmLeaveSettings} data-testid="button-confirm-leave-settings">
+              Leave and Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unsaved POS changes guard dialog */}
+      <Dialog open={pendingTab !== null} onOpenChange={(open) => { if (!open) setPendingTab(null); }}>
+        <DialogContent data-testid="dialog-unsaved-tab-changes">
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes to your POS &amp; Sales configuration. If you leave now, your changes will be discarded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleStayOnTab} data-testid="button-stay-on-tab">
+              Stay and Save
+            </Button>
+            <Button variant="destructive" onClick={handleLeaveTab} data-testid="button-leave-tab">
+              Leave and Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-7 max-w-6xl">
+          <TabsTrigger value="company" data-testid="tab-company">
+            <Building2 className="h-4 w-4 mr-2" />
+            Company
+          </TabsTrigger>
+          <TabsTrigger value="users" data-testid="tab-users">
+            <User className="h-4 w-4 mr-2" />
+            Users
+          </TabsTrigger>
+          <TabsTrigger value="user" data-testid="tab-user">
+            <User className="h-4 w-4 mr-2" />
+            Profile
+          </TabsTrigger>
+          <TabsTrigger value="integrations" data-testid="tab-integrations">
+            <DollarSign className="h-4 w-4 mr-2" />
+            Integrations
+          </TabsTrigger>
+          <TabsTrigger value="connections" data-testid="tab-connections">
+            <Plug className="h-4 w-4 mr-2" />
+            POS &amp; Sales
+          </TabsTrigger>
+          <TabsTrigger value="preferences" data-testid="tab-preferences">
+            <SettingsIcon className="h-4 w-4 mr-2" />
+            Preferences
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" data-testid="tab-maintenance">
+            <Wrench className="h-4 w-4 mr-2" />
+            Maintenance
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="company" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Company Information</CardTitle>
+              <CardDescription>
+                Basic information about your restaurant or business
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form key={company?.id} onSubmit={handleCompanySave} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Company Logo</Label>
+                  <div className="flex items-center gap-4">
+                    {company?.logoImagePath && (
+                      <div className="flex-shrink-0">
+                        <img 
+                          src={`${company.logoImagePath}?thumbnail=true`}
+                          alt="Company logo"
+                          className="max-h-[150px] object-contain rounded-md border"
+                          data-testid="img-company-logo"
+                        />
+                      </div>
+                    )}
+                    <ObjectUploader
+                      onUploadComplete={(url) => updateLogoMutation.mutate(url)}
+                      buttonText={company?.logoImagePath ? "Change Logo" : "Upload Logo"}
+                      dataTestId="button-upload-logo"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Upload your company logo. Maximum height: 150px
+                  </p>
+                </div>
+
+                <Separator />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-name">Company Name</Label>
+                    <Input
+                      id="company-name"
+                      name="company-name"
+                      placeholder="Your Restaurant Name"
+                      defaultValue={company?.name || ""}
+                      data-testid="input-company-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-phone">Phone Number</Label>
+                    <Input
+                      id="company-phone"
+                      name="company-phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      defaultValue={company?.phone || ""}
+                      onChange={(e) => { e.target.value = formatPhoneNumber(e.target.value); }}
+                      data-testid="input-company-phone"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company-address">Street Address</Label>
+                  <Input
+                    id="company-address"
+                    name="company-address"
+                    placeholder="123 Main Street"
+                    defaultValue={company?.addressLine1 || ""}
+                    data-testid="input-company-address"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-city">City</Label>
+                    <Input
+                      id="company-city"
+                      name="company-city"
+                      placeholder="City"
+                      defaultValue={company?.city || ""}
+                      data-testid="input-company-city"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-state">State</Label>
+                    <Input
+                      id="company-state"
+                      name="company-state"
+                      placeholder="State"
+                      defaultValue={company?.state || ""}
+                      data-testid="input-company-state"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-zip">ZIP Code</Label>
+                    <Input
+                      id="company-zip"
+                      name="company-zip"
+                      placeholder="12345"
+                      defaultValue={company?.postalCode || ""}
+                      data-testid="input-company-zip"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="company-email">Email Address</Label>
+                  <Input
+                    id="company-email"
+                    name="company-email"
+                    type="email"
+                    placeholder="info@restaurant.com"
+                    defaultValue={company?.contactEmail || ""}
+                    data-testid="input-company-email"
+                  />
+                </div>
+
+                <Separator />
+                
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-company"
+                    disabled={updateCompanyMutation.isPending}
+                  >
+                    {updateCompanyMutation.isPending ? "Saving..." : "Save Company Information"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Costing Method</CardTitle>
+              <CardDescription>
+                Choose how ingredient costs are valued throughout the app — recipe costing, on-hand
+                value, count snapshots, theoretical food cost, and variance reports all honor this
+                setting. Switching will recalculate every recipe.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-w-md">
+                <Label htmlFor="company-costing-method">Inventory Costing Method</Label>
+                <Select
+                  value={(company?.costingMethod === "weighted_average" ? "weighted_average" : "last_cost") as string}
+                  onValueChange={(value) => {
+                    if (value !== "last_cost" && value !== "weighted_average") return;
+                    if (value === (company?.costingMethod ?? "last_cost")) return;
+                    updateCostingMethodMutation.mutate(value);
+                  }}
+                  disabled={updateCostingMethodMutation.isPending || companyLoading}
+                >
+                  <SelectTrigger id="company-costing-method" data-testid="select-costing-method">
+                    <SelectValue placeholder="Select costing method..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="last_cost" data-testid="option-costing-last-cost">
+                      Last Cost (most recent purchase price)
+                    </SelectItem>
+                    <SelectItem value="weighted_average" data-testid="option-costing-weighted-average">
+                      Weighted Average Cost (WAC)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {updateCostingMethodMutation.isPending
+                    ? "Recalculating recipe costs..."
+                    : "Default is Last Cost. WAC blends every receipt of an item, smoothing out price spikes."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Locations</CardTitle>
+              <CardDescription>
+                Physical store locations for this company
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {storesLoading ? (
+                <div className="text-center py-4 text-muted-foreground">Loading stores...</div>
+              ) : stores.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground" data-testid="text-no-stores">
+                  No stores found for this company.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {stores.map((store) => (
+                    <div
+                      key={store.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`store-item-${store.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Store className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <div className="font-medium" data-testid={`text-store-name-${store.id}`}>
+                            {store.name}
+                          </div>
+                          <div className="text-sm text-muted-foreground" data-testid={`text-store-code-${store.id}`}>
+                            {(store as any).code} • {store.phone || "No phone"}
+                          </div>
+                          {(store as any).addressLine1 && (
+                            <div className="text-sm text-muted-foreground">
+                              {(store as any).addressLine1}
+                              {store.city && `, ${store.city}`}
+                              {store.state && `, ${store.state}`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={store.status === "active" ? "default" : "secondary"}
+                          data-testid={`badge-store-status-${store.id}`}
+                        >
+                          {store.status}
+                        </Badge>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          data-testid={`button-edit-store-${store.id}`}
+                          onClick={() => {
+                            // @ts-ignore
+                            setEditingStore(store);
+                            setStoreForm({
+                              name: store.name || "",
+                              code: (store as any).code || "",
+                              phone: store.phone || "",
+                              addressLine1: (store as any).addressLine1 || "",
+                              addressLine2: (store as any).addressLine2 || "",
+                              city: store.city || "",
+                              state: store.state || "",
+                              postalCode: (store as any).postalCode || "",
+                              timezone: (store as any).timezone || "",
+                              status: store.status || "active",
+                            });
+                            setEditStoreDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-6">
+          {selectedCompanyId ? (
+            <UsersManagement companyId={selectedCompanyId} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>
+                  Please select a company first
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <QbIntegrationCard
+            qbStatus={qbStatus}
+            qbStatusLoading={qbStatusLoading}
+            qbDisconnectMutation={qbDisconnectMutation}
+          />
+
+          {qbStatus?.connected && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Vendor Import from QuickBooks</CardTitle>
+                <CardDescription>
+                  Automatically import vendor information from QuickBooks Online
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Import vendors from your QuickBooks account. You can review and select which vendors to import,
+                    and we'll automatically match them with any existing vendors.
+                  </p>
+                  <Button
+                    onClick={() => setIsVendorSyncDialogOpen(true)}
+                    data-testid="button-sync-vendors"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Sync Vendors from QuickBooks
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {qbStatus?.connected && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Vendor Mapping</CardTitle>
+                    <CardDescription>
+                      Map your vendors to QuickBooks vendors for accurate bill creation
+                    </CardDescription>
+                  </div>
+                  <Dialog open={isVendorMappingDialogOpen} onOpenChange={setIsVendorMappingDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button data-testid="button-add-vendor-mapping">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Mapping
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Create Vendor Mapping</DialogTitle>
+                        <DialogDescription>
+                          Select a vendor from your system and map it to a QuickBooks vendor
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label>FnBcostpro Vendor</Label>
+                          <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+                            <SelectTrigger data-testid="select-fnbcostpro-vendor">
+                              <SelectValue placeholder="Select vendor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vendorsLoading ? (
+                                <div className="flex items-center justify-center p-4">
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                </div>
+                              ) : vendors.filter(v => v.active === 1).filter(v => !vendorMappings.some(m => m.vendorId === v.id)).length === 0 ? (
+                                <div className="p-4 text-sm text-muted-foreground text-center">
+                                  All vendors are already mapped
+                                </div>
+                              ) : (
+                                vendors
+                                  .filter(v => v.active === 1)
+                                  .filter(v => !vendorMappings.some(m => m.vendorId === v.id))
+                                  .map((vendor) => (
+                                    <SelectItem key={vendor.id} value={vendor.id}>
+                                      {vendor.name}
+                                    </SelectItem>
+                                  ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>QuickBooks Vendor</Label>
+                          <Select value={selectedQbVendorId} onValueChange={setSelectedQbVendorId}>
+                            <SelectTrigger data-testid="select-quickbooks-vendor">
+                              <SelectValue placeholder="Select QuickBooks vendor..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {qbVendorsLoading ? (
+                                <div className="flex items-center justify-center p-4">
+                                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                </div>
+                              ) : qbVendors.length === 0 ? (
+                                <div className="p-4 text-sm text-muted-foreground text-center">
+                                  No QuickBooks vendors found
+                                </div>
+                              ) : (
+                                qbVendors.map((qbVendor) => (
+                                  <SelectItem key={qbVendor.id} value={qbVendor.id}>
+                                    {qbVendor.displayName}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsVendorMappingDialogOpen(false);
+                            setSelectedVendorId("");
+                            setSelectedQbVendorId("");
+                          }}
+                          data-testid="button-cancel-vendor-mapping"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleVendorMappingSubmit}
+                          disabled={createVendorMappingMutation.isPending || !selectedVendorId || !selectedQbVendorId}
+                          data-testid="button-save-vendor-mapping"
+                        >
+                          {createVendorMappingMutation.isPending && (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          )}
+                          Save Mapping
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {vendorMappingsLoading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : vendorMappings.length === 0 ? (
+                  <div className="text-center p-8 border rounded-lg border-dashed">
+                    <p className="text-sm text-muted-foreground">
+                      No vendor mappings configured yet. Click "Add Mapping" to get started.
+                    </p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>FnBcostpro Vendor</TableHead>
+                        <TableHead>QuickBooks Vendor</TableHead>
+                        <TableHead className="w-[80px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {vendorMappings.map((mapping) => {
+                        const vendor = vendors.find(v => v.id === mapping.vendorId);
+                        return (
+                          <TableRow key={mapping.id} data-testid={`vendor-mapping-row-${mapping.id}`}>
+                            <TableCell className="font-medium">
+                              {vendor?.name || "Unknown Vendor"}
+                            </TableCell>
+                            <TableCell>{(mapping as any).qbVendorName}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteVendorMappingMutation.mutate(mapping.id)}
+                                disabled={deleteVendorMappingMutation.isPending}
+                                data-testid={`button-delete-vendor-mapping-${mapping.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Vendor Sync Dialog */}
+          <Dialog open={isVendorSyncDialogOpen} onOpenChange={setIsVendorSyncDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Import Vendors from QuickBooks</DialogTitle>
+                <DialogDescription>
+                  Select which vendors you want to import from QuickBooks. We'll automatically detect matches with your existing vendors.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="flex-1 overflow-auto">
+                {vendorPreviewLoading ? (
+                  <div className="flex items-center justify-center p-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : vendorPreview.length === 0 ? (
+                  <div className="text-center p-8 border rounded-lg border-dashed">
+                    <p className="text-sm text-muted-foreground">
+                      No QuickBooks vendors found to import
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedVendorsForSync.size === vendorPreview.filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match").length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Select all new vendors and exact matches
+                              const newSet = new Set(
+                                vendorPreview
+                                  .filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match")
+                                  .map(v => v.qbVendor.id)
+                              );
+                              setSelectedVendorsForSync(newSet);
+                            } else {
+                              setSelectedVendorsForSync(new Set());
+                            }
+                          }}
+                          className="h-4 w-4"
+                          data-testid="checkbox-select-all-vendors"
+                        />
+                        <span className="text-sm font-medium">
+                          Select All ({vendorPreview.filter(v => v.matchType === "new_vendor" || v.matchType === "exact_match").length} available)
+                        </span>
+                      </div>
+                      <Badge variant="outline">
+                        {selectedVendorsForSync.size} selected
+                      </Badge>
+                    </div>
+
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[50px]"></TableHead>
+                          <TableHead>QuickBooks Vendor</TableHead>
+                          <TableHead>Match Status</TableHead>
+                          <TableHead>Existing Vendor</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {vendorPreview.map((item) => {
+                          const isAlreadySynced = item.matchType === "already_synced";
+                          const isPossibleMatch = item.matchType === "possible_match";
+                          const canSelect = !isAlreadySynced && !isPossibleMatch;
+
+                          return (
+                            <TableRow key={item.qbVendor.id} data-testid={`vendor-preview-row-${item.qbVendor.id}`}>
+                              <TableCell>
+                                {canSelect ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedVendorsForSync.has(item.qbVendor.id)}
+                                    onChange={(e) => {
+                                      const newSet = new Set(selectedVendorsForSync);
+                                      if (e.target.checked) {
+                                        newSet.add(item.qbVendor.id);
+                                      } else {
+                                        newSet.delete(item.qbVendor.id);
+                                      }
+                                      setSelectedVendorsForSync(newSet);
+                                    }}
+                                    className="h-4 w-4"
+                                    data-testid={`checkbox-vendor-${item.qbVendor.id}`}
+                                  />
+                                ) : (
+                                  <div className="h-4 w-4" />
+                                )}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {item.qbVendor.displayName}
+                              </TableCell>
+                              <TableCell>
+                                {item.matchType === "already_synced" && (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Already Synced
+                                  </Badge>
+                                )}
+                                {item.matchType === "exact_match" && (
+                                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    Exact Match
+                                  </Badge>
+                                )}
+                                {item.matchType === "possible_match" && (
+                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                                    Possible Match
+                                  </Badge>
+                                )}
+                                {item.matchType === "new_vendor" && (
+                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                                    New Vendor
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.existingVendor ? (
+                                  <span className="text-sm text-muted-foreground">
+                                    {item.existingVendor.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground italic">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {item.recommendedAction === "create" && (
+                                  <span className="text-sm text-muted-foreground">Create new</span>
+                                )}
+                                {item.recommendedAction === "link" && (
+                                  <span className="text-sm text-muted-foreground">Link existing</span>
+                                )}
+                                {item.recommendedAction === "update" && (
+                                  <span className="text-sm text-muted-foreground">Update existing</span>
+                                )}
+                                {item.recommendedAction === "skip" && (
+                                  <span className="text-sm text-muted-foreground">Skip</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="flex-shrink-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsVendorSyncDialogOpen(false);
+                    setSelectedVendorsForSync(new Set());
+                  }}
+                  data-testid="button-cancel-vendor-sync"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    syncVendorsMutation.mutate(Array.from(selectedVendorsForSync));
+                  }}
+                  disabled={syncVendorsMutation.isPending || selectedVendorsForSync.size === 0}
+                  data-testid="button-import-vendors"
+                >
+                  {syncVendorsMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Import {selectedVendorsForSync.size > 0 && `(${selectedVendorsForSync.size})`} Vendors
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {qbStatus?.connected && <QbSyncHistoryCard />}
+
+        </TabsContent>
+
+        <TabsContent value="user" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>User Profile</CardTitle>
+              <CardDescription>
+                Your personal information and account settings
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={currentUser?.profileImageUrl} alt={`${currentUser?.firstName} ${currentUser?.lastName}`} />
+                  <AvatarFallback>
+                    {currentUser?.firstName?.[0]}{currentUser?.lastName?.[0]}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-lg font-semibold" data-testid="text-user-fullname">
+                    {currentUser?.firstName} {currentUser?.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground" data-testid="text-user-email">
+                    {currentUser?.email}
+                  </p>
+                  <Badge variant="secondary" className="mt-1" data-testid="badge-user-role">
+                    {currentUser?.role?.replace('_', ' ')}
+                  </Badge>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-base font-semibold flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Enterprise SSO
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Single Sign-On for enterprise authentication
+                  </p>
+                </div>
+
+                {currentUser?.ssoProvider ? (
+                  <div className="border rounded-md p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Shield className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium" data-testid="text-sso-enabled">
+                            SSO Enabled
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            You can sign in using enterprise SSO
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="default" data-testid="badge-sso-linked">
+                        Active
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      SSO is not enabled for your account. Contact your administrator or link below:
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => window.location.href = "/api/sso/login"}
+                      data-testid="button-link-sso"
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Link SSO Account
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="connections" className="space-y-6">
+          <PosSalesDataSection selectedCompanyId={selectedCompanyId} company={company} onDirtyChange={setPosIsDirty} />
+        </TabsContent>
+
+        <TabsContent value="preferences" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>System Preferences</CardTitle>
+              <CardDescription>
+                Configure your system settings and regional preferences
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePrefsSave} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="unit-system">Unit System</Label>
+                  <Select name="unit-system" defaultValue={systemPrefs?.unitSystem || "imperial"}>
+                    <SelectTrigger id="unit-system" data-testid="select-unit-system">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="imperial">Imperial (lb, oz, fl oz)</SelectItem>
+                      <SelectItem value="metric">Metric (kg, g, ml, L)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose your preferred measurement system for inventory and recipes
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="currency">Currency</Label>
+                  <Select name="currency" defaultValue={systemPrefs?.currency || "USD"}>
+                    <SelectTrigger id="currency" data-testid="select-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">US Dollar (USD)</SelectItem>
+                      <SelectItem value="EUR">Euro (EUR)</SelectItem>
+                      <SelectItem value="GBP">British Pound (GBP)</SelectItem>
+                      <SelectItem value="CAD">Canadian Dollar (CAD)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Timezone</Label>
+                  <Select name="timezone" defaultValue={systemPrefs?.timezone || "America/New_York"}>
+                    <SelectTrigger id="timezone" data-testid="select-timezone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                      <SelectItem value="America/Chicago">Central Time</SelectItem>
+                      <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                      <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+                
+                <div className="flex justify-end">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-save-preferences"
+                    disabled={updatePrefsMutation.isPending}
+                  >
+                    {updatePrefsMutation.isPending ? "Saving..." : "Save Preferences"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="space-y-6">
+          <MaintenanceTab />
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Store Dialog */}
+      <Dialog open={editStoreDialogOpen} onOpenChange={(open) => { setEditStoreDialogOpen(open); if (!open) setEditingStore(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Store</DialogTitle>
+            <DialogDescription>Update the details for this store location.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-name">Store Name *</Label>
+                <Input
+                  id="store-name"
+                  value={storeForm.name}
+                  onChange={(e) => setStoreForm(f => ({ ...f, name: e.target.value }))}
+                  data-testid="input-store-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-code">Store Code *</Label>
+                <Input
+                  id="store-code"
+                  value={storeForm.code}
+                  onChange={(e) => setStoreForm(f => ({ ...f, code: e.target.value }))}
+                  data-testid="input-store-code"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-phone">Phone</Label>
+              <Input
+                id="store-phone"
+                value={storeForm.phone}
+                onChange={(e) => setStoreForm(f => ({ ...f, phone: e.target.value }))}
+                placeholder="e.g. (555) 555-5555"
+                data-testid="input-store-phone"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-address1">Address Line 1</Label>
+              <Input
+                id="store-address1"
+                value={storeForm.addressLine1}
+                onChange={(e) => setStoreForm(f => ({ ...f, addressLine1: e.target.value }))}
+                data-testid="input-store-address1"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="store-address2">Address Line 2</Label>
+              <Input
+                id="store-address2"
+                value={storeForm.addressLine2}
+                onChange={(e) => setStoreForm(f => ({ ...f, addressLine2: e.target.value }))}
+                placeholder="Suite, unit, etc."
+                data-testid="input-store-address2"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-city">City</Label>
+                <Input
+                  id="store-city"
+                  value={storeForm.city}
+                  onChange={(e) => setStoreForm(f => ({ ...f, city: e.target.value }))}
+                  data-testid="input-store-city"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-state">State</Label>
+                <Input
+                  id="store-state"
+                  value={storeForm.state}
+                  onChange={(e) => setStoreForm(f => ({ ...f, state: e.target.value }))}
+                  placeholder="e.g. CA"
+                  data-testid="input-store-state"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-zip">Postal Code</Label>
+                <Input
+                  id="store-zip"
+                  value={storeForm.postalCode}
+                  onChange={(e) => setStoreForm(f => ({ ...f, postalCode: e.target.value }))}
+                  data-testid="input-store-postal-code"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="store-timezone">Timezone</Label>
+                <Select
+                  value={storeForm.timezone || "America/New_York"}
+                  onValueChange={(val) => setStoreForm(f => ({ ...f, timezone: val }))}
+                >
+                  <SelectTrigger id="store-timezone" data-testid="select-store-timezone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
+                    <SelectItem value="America/Chicago">Central (CT)</SelectItem>
+                    <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
+                    <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
+                    <SelectItem value="America/Anchorage">Alaska (AKT)</SelectItem>
+                    <SelectItem value="Pacific/Honolulu">Hawaii (HT)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="store-status">Status</Label>
+                <Select
+                  value={storeForm.status}
+                  onValueChange={(val) => setStoreForm(f => ({ ...f, status: val }))}
+                >
+                  <SelectTrigger id="store-status" data-testid="select-store-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setEditStoreDialogOpen(false); setEditingStore(null); }}
+              data-testid="button-cancel-store-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!storeForm.name.trim() || !storeForm.code.trim() || updateStoreMutation.isPending}
+              onClick={() => {
+                if (!editingStore) return;
+                updateStoreMutation.mutate({ id: editingStore.id, ...storeForm });
+              }}
+              data-testid="button-save-store"
+            >
+              {updateStoreMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Maintenance Tab Component
+function MaintenanceTab() {
+  const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Preview pricing fixes
+  const { data: pricingPreview, isLoading: previewLoading, refetch: refetchPreview } = useQuery<{
+    message: string;
+    proposedFixCount: number;
+    proposedFixes: Array<{
+      inventoryItemId: string;
+      itemName: string;
+      unitName: string;
+      vendorName: string;
+      vendorUnitPrice: number;
+      caseSize: number;
+      innerPack: number;
+      calculatedCasePrice: number;
+      oldUnitPrice: number;
+      newUnitPrice: number;
+      priceDifference: number;
+    }>;
+  }>({
+    queryKey: ["/api/maintenance/fix-inventory-pricing"],
+    enabled: showPreview,
+  });
+
+  // Apply pricing fixes mutation
+  const applyPricingFixMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/maintenance/fix-inventory-pricing", {});
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      setShowPreview(false);
+      toast({
+        title: "Success",
+        description: `Fixed pricing for ${result.fixedCount} inventory items. Recipe costs will be recalculated.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to apply pricing fixes",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handlePreview = () => {
+    setShowPreview(true);
+    refetchPreview();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wrench className="h-5 w-5" />
+          Data Maintenance Tools
+        </CardTitle>
+        <CardDescription>
+          Tools to fix data issues and recalculate values
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="border rounded-lg p-4 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Fix Inventory Pricing
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Sync inventory item prices with vendor order guide prices. This will update 
+                the price per unit for inventory items to match the current vendor pricing.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={handlePreview}
+              disabled={previewLoading}
+              data-testid="button-preview-pricing-fix"
+            >
+              {previewLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Preview Changes
+                </>
+              )}
+            </Button>
+          </div>
+
+          {showPreview && pricingPreview && (
+            <div className="border-t pt-4 space-y-4">
+              {pricingPreview.proposedFixCount === 0 ? (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span>All inventory prices are correct! No fixes needed.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span>Found {pricingPreview.proposedFixCount} items with incorrect pricing</span>
+                  </div>
+                  
+                  <div className="max-h-[400px] overflow-auto border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Vendor</TableHead>
+                          <TableHead className="text-right">Current Price</TableHead>
+                          <TableHead className="text-right">Correct Price</TableHead>
+                          <TableHead className="text-right">Difference</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pricingPreview.proposedFixes.map((fix) => (
+                          <TableRow key={fix.inventoryItemId}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{fix.itemName}</div>
+                                <div className="text-xs text-muted-foreground">per {fix.unitName}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {fix.vendorName}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-red-600 dark:text-red-400">
+                              ${fix.oldUnitPrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-green-600 dark:text-green-400">
+                              ${fix.newUnitPrice.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {fix.priceDifference > 0 ? "-" : "+"}${Math.abs(fix.priceDifference).toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <p className="text-sm text-muted-foreground">
+                      This will update {pricingPreview.proposedFixCount} inventory items and recalculate all affected recipe costs.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPreview(false)}
+                        data-testid="button-cancel-pricing-fix"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => applyPricingFixMutation.mutate()}
+                        disabled={applyPricingFixMutation.isPending}
+                        data-testid="button-apply-pricing-fix"
+                      >
+                        {applyPricingFixMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Applying...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Apply {pricingPreview.proposedFixCount} Fixes
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

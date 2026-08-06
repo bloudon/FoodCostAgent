@@ -1,0 +1,327 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { ArrowLeftRight, Search, Plus, Trash2 } from "lucide-react";
+import { Fragment, useState, useMemo } from "react";
+import { Link } from "wouter";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatDateString } from "@/lib/utils";
+import { UserActionDate } from "@/components/user-action-date";
+
+type TransferOrderDisplay = {
+  id: string;
+  fromStoreId: string;
+  toStoreId: string;
+  fromStoreName: string;
+  toStoreName: string;
+  status: string;
+  createdAt: string;
+  expectedDate: string | null;
+  notes: string | null;
+  totalValue: number;
+  createdByName?: string | null;
+  executedByName?: string | null;
+  receivedByName?: string | null;
+};
+
+type Store = {
+  id: string;
+  name: string;
+};
+
+const statusColors: Record<string, string> = {
+  "pending": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  "in_transit": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "completed": "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+};
+
+import { TierGate } from "@/components/tier-gate";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
+
+function TransferOrdersContent() {
+  const [search, setSearch] = useState("");
+  const [selectedStore, setSelectedStore] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const { data: transferOrders, isLoading } = useQuery<TransferOrderDisplay[]>({
+    queryKey: ["/api/transfer-orders"],
+  });
+
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: ["/api/stores/accessible"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/transfer-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/transfer-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      toast({
+        title: "Success",
+        description: "Transfer order deleted successfully",
+      });
+      setOrderToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete transfer order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { sortField, sortDirection, handleSort } = useTableSort("expectedDate", "desc");
+
+  const filteredOrders = transferOrders?.filter((order) => {
+    const matchesSearch = order.fromStoreName?.toLowerCase().includes(search.toLowerCase()) ||
+      order.toStoreName?.toLowerCase().includes(search.toLowerCase()) ||
+      order.id?.toLowerCase().includes(search.toLowerCase());
+    const matchesStore = selectedStore === "all" || 
+      order.fromStoreId === selectedStore || 
+      order.toStoreId === selectedStore;
+    const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
+    return matchesSearch && matchesStore && matchesStatus;
+  }) || [];
+
+  const sortedOrders = useMemo(() => {
+    return [...filteredOrders].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortField) {
+        case "expectedDate":
+          av = a.expectedDate ? new Date(a.expectedDate).getTime() : 0;
+          bv = b.expectedDate ? new Date(b.expectedDate).getTime() : 0;
+          break;
+        // @ts-ignore
+        case "fromStore":
+          av = (a.fromStoreName ?? "").toLowerCase();
+          bv = (b.fromStoreName ?? "").toLowerCase();
+          break;
+        // @ts-ignore
+        case "toStore":
+          av = (a.toStoreName ?? "").toLowerCase();
+          bv = (b.toStoreName ?? "").toLowerCase();
+          break;
+        // @ts-ignore
+        case "status":
+          av = a.status;
+          bv = b.status;
+          break;
+        // @ts-ignore
+        case "totalValue":
+          av = a.totalValue;
+          bv = b.totalValue;
+          break;
+        default:
+          return 0;
+      }
+      // @ts-ignore
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [filteredOrders, sortField, sortDirection]);
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4 space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold">Transfer Orders</h1>
+            <p className="text-muted-foreground mt-1">
+              Move inventory between stores
+            </p>
+          </div>
+          <Button asChild data-testid="button-create-transfer">
+            <Link href="/transfer-orders/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Transfer
+            </Link>
+          </Button>
+        </div>
+
+        <div className="flex gap-4 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+            <Input
+              placeholder="Search transfers..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
+              data-testid="input-search-transfer"
+            />
+          </div>
+          <Select value={selectedStore} onValueChange={setSelectedStore}>
+            <SelectTrigger className="w-[200px]" data-testid="select-store-filter">
+              <SelectValue placeholder="Filter by store" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Stores</SelectItem>
+              {stores?.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <SelectTrigger className="w-[200px]" data-testid="select-status-filter">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="in_transit">In Transit</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto px-6 py-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-muted-foreground">Loading transfer orders...</div>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <ArrowLeftRight className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-1">No transfer orders found</h3>
+            <p className="text-muted-foreground text-sm">
+              {search || selectedStore !== "all" || selectedStatus !== "all"
+                ? "Try adjusting your filters"
+                : "Create your first transfer order to get started"}
+            </p>
+          </div>
+        ) : (
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-290px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow>
+                  <SortableTableHead field="expectedDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Expected Date</SortableTableHead>
+                  <SortableTableHead field="fromStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>From Store</SortableTableHead>
+                  <SortableTableHead field="toStore" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>To Store</SortableTableHead>
+                  <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Status</SortableTableHead>
+                  <SortableTableHead field="totalValue" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right">Value</SortableTableHead>
+                  <TableHead className="text-right w-[80px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedOrders.map((order, index) => {
+                  const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
+                  return (
+                    <Fragment key={order.id}>
+                      <TableRow 
+                        data-testid={`row-transfer-${order.id}`}
+                        className={rowClass}
+                      >
+                        <TableCell>
+                          <Link href={`/transfer-orders/${order.id}`}>
+                            <span className="text-primary hover:underline cursor-pointer font-medium" data-testid={`link-transfer-${order.id}`}>
+                              {order.expectedDate ? (
+                                <UserActionDate
+                                  date={order.expectedDate}
+                                  actionLabel={order.status === "completed" ? "Completed" : order.status === "in_transit" ? "Shipped" : "Created"}
+                                  userName={order.status === "completed" ? order.receivedByName : order.status === "in_transit" ? order.executedByName : order.createdByName}
+                                />
+                              ) : "No date set"}
+                            </span>
+                          </Link>
+                        </TableCell>
+                        <TableCell>{order.fromStoreName}</TableCell>
+                        <TableCell>{order.toStoreName}</TableCell>
+                        <TableCell>
+                          <Badge className={statusColors[order.status]} data-testid={`badge-status-${order.id}`}>
+                            {order.status.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          ${(order.totalValue || 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setOrderToDelete(order.id)}
+                            disabled={order.status === "completed"}
+                            data-testid={`button-delete-${order.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {order.notes && (
+                        <TableRow className={rowClass}>
+                          <TableCell colSpan={6} className="pt-0 pb-3 text-sm text-muted-foreground italic border-b">
+                            {order.notes}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+          </Table>
+        )}
+      </div>
+
+      <AlertDialog open={!!orderToDelete} onOpenChange={() => setOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transfer Order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the transfer order.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => orderToDelete && deleteMutation.mutate(orderToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+export default function TransferOrders() {
+  return (
+    <TierGate feature="transfer_orders">
+      <TransferOrdersContent />
+    </TierGate>
+  );
+}

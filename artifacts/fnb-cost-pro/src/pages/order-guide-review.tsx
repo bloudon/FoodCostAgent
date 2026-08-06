@@ -1,0 +1,1416 @@
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useRoute, useLocation } from 'wouter';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  CheckCircle2,
+  AlertCircle,
+  PlusCircle,
+  ArrowLeft,
+  Check,
+  CheckCheck,
+  Store,
+  ChevronDown,
+  Building2,
+  Plus,
+  AlertTriangle,
+  Hash,
+  X,
+  Scale,
+} from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import { useStoreContext } from '@/hooks/use-store-context';
+import { hasPackSizeMismatch, formatStoredPackSize } from '@/lib/orderGuidePackSize';
+import { isBottleOrCanWithFluidOz } from '@shared/orderGuideUtils';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
+interface Vendor {
+  id: string;
+  name: string;
+}
+
+interface OrderGuideLine {
+  id: string;
+  vendorSku: string;
+  productName: string;
+  packSize: string | null;
+  uom: string | null;
+  caseSize: number | null;
+  caseSizeRaw: string | null;
+  innerPack: number | null;
+  price: number | null;
+  priceSource?: 'unit' | 'case' | 'zero';
+  matchStatus: string;
+  matchedInventoryItemId: string | null;
+  matchedInventoryItemUnitName?: string | null;
+  matchConfidence: number | null;
+  storedCaseSize: number | null;
+  storedInnerPackSize: number | null;
+  /** Count extracted from the product name (e.g. 16 from "Cheesecake 16 Slices"). Null when no hint found. */
+  nameCount?: number | null;
+  /** 1 = confirmed catch-weight / variable-weight item from vendor data */
+  isVariableWeight?: number | null;
+  /** 1 = heuristically suspected catch-weight (protein + LB pack or weight-range name) */
+  isSuspectedCatchWeight?: number | null;
+}
+
+interface ReviewData {
+  guide: {
+    id: string;
+    fileName: string | null;
+    rowCount: number;
+    status: string;
+    vendorId: string | null;
+    source: string | null;
+    detectedVendorName: string | null;
+  };
+  lines: {
+    matched: OrderGuideLine[];
+    ambiguous: OrderGuideLine[];
+    new: OrderGuideLine[];
+  };
+  summary: {
+    total: number;
+    matched: number;
+    ambiguous: number;
+    new: number;
+  };
+}
+
+export default function OrderGuideReview() {
+  const [, params] = useRoute('/order-guides/:id/review');
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const orderGuideId = params?.id;
+  const { stores, selectedStoreId } = useStoreContext();
+
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
+  const [targetStoreIds, setTargetStoreIds] = useState<Set<string>>(new Set());
+  const [isStoreSelectionOpen, setIsStoreSelectionOpen] = useState(false);
+
+  const [currentVendorId, setCurrentVendorId] = useState<string | null>(null);
+  const [vendorInitialized, setVendorInitialized] = useState(false);
+
+  const [isAddVendorOpen, setIsAddVendorOpen] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
+
+  // Active tab — defaults to 'matched' then jumps to the most urgent non-empty tab once data loads
+  const [activeTab, setActiveTab] = useState<'matched' | 'ambiguous' | 'new'>('matched');
+  const [tabInitialized, setTabInitialized] = useState(false);
+
+  const matchedTableRef = useRef<HTMLDivElement>(null);
+  const ambiguousTableRef = useRef<HTMLDivElement>(null);
+  const newTableRef = useRef<HTMLDivElement>(null);
+
+  const scrollToFirstMismatch = useCallback((containerRef: React.RefObject<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const firstIcon = container.querySelector('[data-testid^="icon-packsize-mismatch-"]');
+    if (!firstIcon) return;
+    const row = firstIcon.closest('tr');
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('bg-amber-100', 'transition-colors', 'duration-500');
+    setTimeout(() => {
+      row.classList.remove('bg-amber-100');
+      setTimeout(() => row.classList.remove('transition-colors', 'duration-500'), 600);
+    }, 1500);
+  }, []);
+
+  const scrollToFirstNameCountSuspicious = useCallback((containerRef: React.RefObject<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const firstMarker = container.querySelector('[data-testid^="marker-namecount-suspicious-"]');
+    if (!firstMarker) return;
+    const row = firstMarker.closest('tr');
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('bg-amber-100', 'transition-colors', 'duration-500');
+    setTimeout(() => {
+      row.classList.remove('bg-amber-100');
+      setTimeout(() => row.classList.remove('transition-colors', 'duration-500'), 600);
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    if (stores.length > 0 && targetStoreIds.size === 0) {
+      setTargetStoreIds(new Set(stores.map(s => s.id)));
+    }
+  }, [stores]);
+
+  const { data: reviewData, isLoading } = useQuery<ReviewData>({
+    queryKey: ['/api/order-guides', orderGuideId, 'review'],
+    queryFn: async () => {
+      const res = await fetch(`/api/order-guides/${orderGuideId}/review`);
+      if (!res.ok) throw new Error('Failed to load order guide');
+      return res.json();
+    },
+    enabled: !!orderGuideId,
+  });
+
+  useEffect(() => {
+    if (reviewData && !vendorInitialized) {
+      setCurrentVendorId(reviewData.guide.vendorId ?? null);
+      setVendorInitialized(true);
+    }
+  }, [reviewData, vendorInitialized]);
+
+  // Jump to the most urgent non-empty tab once data first loads
+  useEffect(() => {
+    if (!reviewData || tabInitialized) return;
+    if (reviewData.summary.ambiguous > 0) setActiveTab('ambiguous');
+    else if (reviewData.summary.new > 0) setActiveTab('new');
+    else setActiveTab('matched');
+    setTabInitialized(true);
+  }, [reviewData, tabInitialized]);
+
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ['/api/vendors'],
+    queryFn: async () => {
+      const res = await fetch('/api/vendors');
+      if (!res.ok) throw new Error('Failed to load vendors');
+      return res.json();
+    },
+  });
+
+  useMemo(() => {
+    if (reviewData && selectedLineIds.size === 0) {
+      const allLineIds = new Set<string>();
+      reviewData.lines.matched.forEach(line => allLineIds.add(line.id));
+      reviewData.lines.ambiguous.forEach(line => allLineIds.add(line.id));
+      reviewData.lines.new.forEach(line => allLineIds.add(line.id));
+      setSelectedLineIds(allLineIds);
+    }
+  }, [reviewData]);
+
+  const vendorMutation = useMutation({
+    mutationFn: async ({ vendorId, previousVendorId }: { vendorId: string | null; previousVendorId: string | null }) => {
+      return apiRequest('PATCH', `/api/order-guides/${orderGuideId}/vendor`, { vendorId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/order-guides', orderGuideId, 'review'] });
+    },
+    onError: (error: Error, variables) => {
+      setCurrentVendorId(variables.previousVendorId);
+      toast({
+        title: 'Vendor update failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const addVendorMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest('POST', '/api/vendors', { name });
+      return res.json() as Promise<Vendor>;
+    },
+    onSuccess: async (newVendor: Vendor) => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
+      setCurrentVendorId(newVendor.id);
+      vendorMutation.mutate({ vendorId: newVendor.id, previousVendorId: null });
+      setIsAddVendorOpen(false);
+      setNewVendorName('');
+      toast({ title: 'Vendor created', description: `"${newVendor.name}" added and linked to this import.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to create vendor', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleOpenAddVendor = () => {
+    setNewVendorName(reviewData?.guide.detectedVendorName ?? '');
+    setIsAddVendorOpen(true);
+  };
+
+  const handleVendorChange = (value: string) => {
+    const newVendorId = value === '__none__' ? null : value;
+    const previousVendorId = currentVendorId;
+    setCurrentVendorId(newVendorId);
+    vendorMutation.mutate({ vendorId: newVendorId, previousVendorId });
+  };
+
+  const [unitOverrides, setUnitOverrides] = useState<Record<string, string>>({});
+  const [countOverrides, setCountOverrides] = useState<Record<string, number>>({});
+  const [priceSourceOverrides, setPriceSourceOverrides] = useState<Record<string, 'unit' | 'case'>>({});
+  const sessionKey = orderGuideId ? `nameCountDismissed:${orderGuideId}` : null;
+
+  const toggleCatchWeightOverride = (lineId: string, currentOverride: 'unit' | 'case' | undefined, linePriceSource: string | undefined) => {
+    setPriceSourceOverrides(prev => {
+      const next = { ...prev };
+      // If already confirmed as unit-price, revert to case; otherwise confirm as unit-price
+      if (currentOverride === 'unit' || (!currentOverride && linePriceSource === 'unit')) {
+        next[lineId] = 'case';
+      } else {
+        next[lineId] = 'unit';
+      }
+      return next;
+    });
+  };
+
+  const [dismissedNameCountHints, setDismissedNameCountHints] = useState<Set<string>>(() => {
+    if (!orderGuideId) return new Set<string>();
+    try {
+      const stored = sessionStorage.getItem(`nameCountDismissed:${orderGuideId}`);
+      if (stored) return new Set<string>(JSON.parse(stored));
+    } catch { /* ignore */ }
+    return new Set<string>();
+  });
+
+  const dismissNameCountHint = (lineId: string) => {
+    setDismissedNameCountHints(prev => {
+      const next = new Set([...prev, lineId]);
+      if (sessionKey) {
+        try { sessionStorage.setItem(sessionKey, JSON.stringify([...next])); } catch { /* ignore */ }
+      }
+      return next;
+    });
+  };
+
+  const handleUnitOverrideChange = (lineId: string, unit: string) => {
+    setUnitOverrides(prev => {
+      const next = { ...prev };
+      if (unit === '__auto__') {
+        delete next[lineId];
+      } else {
+        next[lineId] = unit;
+      }
+      return next;
+    });
+  };
+
+  const handleCountOverride = (lineId: string, count: number | null) => {
+    setCountOverrides(prev => {
+      const next = { ...prev };
+      if (count === null || count <= 0) {
+        delete next[lineId];
+      } else {
+        next[lineId] = count;
+      }
+      return next;
+    });
+  };
+
+  const approveMutation = useMutation({
+    mutationFn: async ({ importAll }: { importAll: boolean }) => {
+      const payload: Record<string, unknown> = {
+        ...(importAll ? { importAll: true } : { selectedLineIds: Array.from(selectedLineIds) }),
+        targetStoreIds: Array.from(targetStoreIds),
+      };
+      if (Object.keys(unitOverrides).length > 0) {
+        payload.unitOverrides = unitOverrides;
+      }
+      if (Object.keys(countOverrides).length > 0) {
+        payload.countOverrides = countOverrides;
+      }
+      if (Object.keys(priceSourceOverrides).length > 0) {
+        payload.priceSourceOverrides = priceSourceOverrides;
+      }
+      return apiRequest('POST', `/api/order-guides/${orderGuideId}/approve`, payload);
+    },
+    onSuccess: (data: any) => {
+      const inventoryMsg = data.inventoryItemsCreated > 0
+        ? `, ${data.inventoryItemsCreated} inventory item${data.inventoryItemsCreated !== 1 ? 's' : ''}`
+        : '';
+      const storeMsg = data.storeAssignmentsCreated > 0
+        ? ` across ${targetStoreIds.size} store${targetStoreIds.size > 1 ? 's' : ''}`
+        : '';
+      toast({
+        title: 'Import complete',
+        description: `Created ${data.vendorItemsCreated} vendor item${data.vendorItemsCreated !== 1 ? 's' : ''}${inventoryMsg}${storeMsg}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/vendors'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-items'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory-items'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/store-inventory-items'] });
+      if (currentVendorId) {
+        navigate(`/vendors/${currentVendorId}`);
+      } else {
+        navigate('/vendors');
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Import failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const toggleTargetStore = (storeId: string) => {
+    setTargetStoreIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(storeId)) {
+        if (newSet.size > 1) newSet.delete(storeId);
+      } else {
+        newSet.add(storeId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllTargetStores = () => setTargetStoreIds(new Set(stores.map(s => s.id)));
+
+  const selectCurrentStoreOnly = () => {
+    if (selectedStoreId) setTargetStoreIds(new Set([selectedStoreId]));
+  };
+
+  const toggleLineSelection = (lineId: string) => {
+    setSelectedLineIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lineId)) newSet.delete(lineId);
+      else newSet.add(lineId);
+      return newSet;
+    });
+  };
+
+  const selectAllInCategory = (lines: OrderGuideLine[]) => {
+    setSelectedLineIds(prev => {
+      const newSet = new Set(prev);
+      lines.forEach(line => newSet.add(line.id));
+      return newSet;
+    });
+  };
+
+  const deselectAllInCategory = (lines: OrderGuideLine[]) => {
+    setSelectedLineIds(prev => {
+      const newSet = new Set(prev);
+      lines.forEach(line => newSet.delete(line.id));
+      return newSet;
+    });
+  };
+
+  // These memos must stay above the early returns so the hook call-count is
+  // consistent across renders (Rules of Hooks).
+  const sortedAmbiguousLinesMemo = useMemo(() => {
+    if (!reviewData) return [];
+    const hasWarningFn = (l: OrderGuideLine) => {
+      if (hasPackSizeMismatch(l)) return true;
+      if (!l.nameCount || !l.caseSize || l.caseSize <= 0) return false;
+      return Math.max(l.nameCount / l.caseSize, l.caseSize / l.nameCount) > 5 && !dismissedNameCountHints.has(l.id);
+    };
+    const warn = reviewData.lines.ambiguous.filter(hasWarningFn);
+    const clean = reviewData.lines.ambiguous.filter(l => !hasWarningFn(l));
+    return [...warn, ...clean];
+  }, [reviewData, dismissedNameCountHints]);
+
+  const sortedNewLinesMemo = useMemo(() => {
+    if (!reviewData) return [];
+    const hasWarningFn = (l: OrderGuideLine) => {
+      if (hasPackSizeMismatch(l)) return true;
+      if (!l.nameCount || !l.caseSize || l.caseSize <= 0) return false;
+      return Math.max(l.nameCount / l.caseSize, l.caseSize / l.nameCount) > 5 && !dismissedNameCountHints.has(l.id);
+    };
+    const warn = reviewData.lines.new.filter(hasWarningFn);
+    const clean = reviewData.lines.new.filter(l => !hasWarningFn(l));
+    return [...warn, ...clean];
+  }, [reviewData, dismissedNameCountHints]);
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-1/3"></div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="h-24 bg-muted rounded"></div>
+            <div className="h-24 bg-muted rounded"></div>
+            <div className="h-24 bg-muted rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!reviewData) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-muted-foreground">Order guide not found</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const matchPercentage = reviewData.summary.total > 0
+    ? Math.round((reviewData.summary.matched / reviewData.summary.total) * 100)
+    : 0;
+  const matchedMismatchCount = reviewData.lines.matched.filter(hasPackSizeMismatch).length;
+  const ambiguousMismatchCount = reviewData.lines.ambiguous.filter(hasPackSizeMismatch).length;
+
+  // Count lines per tab where the name-count hint and the CSV case-size differ by more than 5×.
+  // At that magnitude the column values are almost certainly not the same thing (e.g. the name
+  // encodes individual oz while the CSV case-size shows the number of items in the case).
+  function hasSuspiciousNameCountRatio(line: OrderGuideLine): boolean {
+    if (!line.nameCount || !line.caseSize || line.caseSize <= 0) return false;
+    return Math.max(line.nameCount / line.caseSize, line.caseSize / line.nameCount) > 5;
+  }
+  const matchedSuspiciousCount = reviewData.lines.matched.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
+  const ambiguousSuspiciousCount = reviewData.lines.ambiguous.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
+  const newSuspiciousCount = reviewData.lines.new.filter(l => hasSuspiciousNameCountRatio(l) && !dismissedNameCountHints.has(l.id)).length;
+  const selectedCount = selectedLineIds.size;
+  const newSelectedCount = reviewData.lines.new.filter(l => selectedLineIds.has(l.id)).length;
+  const isImageScan = reviewData.guide.source === 'image_scan';
+  const noVendorWarning = isImageScan && !currentVendorId;
+  const selectedVendorName = vendors?.find(v => v.id === currentVendorId)?.name;
+
+  // sortedAmbiguousLines and sortedNewLines are computed above the early returns (see sortedAmbiguousLinesMemo / sortedNewLinesMemo).
+  const sortedAmbiguousLines = sortedAmbiguousLinesMemo;
+  const sortedNewLines = sortedNewLinesMemo;
+
+  const confirmSummary = [
+    `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`,
+    newSelectedCount > 0 ? `${newSelectedCount} new` : null,
+    `${targetStoreIds.size} store${targetStoreIds.size !== 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <div className="p-6 pb-24 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => window.history.back()}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">Review Import</h1>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <p className="text-sm text-muted-foreground">
+                {reviewData.guide.fileName || 'Imported order guide'}
+              </p>
+              {(matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount) > 0 && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30"
+                  data-testid="badge-namecount-warnings-total"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount} pack-size {matchedSuspiciousCount + ambiguousSuspiciousCount + newSuspiciousCount === 1 ? 'warning' : 'warnings'}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 items-end">
+          {stores.length > 1 && (
+            <Collapsible open={isStoreSelectionOpen} onOpenChange={setIsStoreSelectionOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="button-select-stores">
+                  <Store className="h-4 w-4" />
+                  Import to {targetStoreIds.size} of {stores.length} stores
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isStoreSelectionOpen ? 'rotate-180' : ''}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <Card>
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">Target Stores</span>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={selectAllTargetStores} data-testid="button-select-all-stores">All</Button>
+                        <Button variant="ghost" size="sm" onClick={selectCurrentStoreOnly} data-testid="button-select-current-store">Current Only</Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {stores.map(store => (
+                        <div key={store.id} className="flex items-center gap-2" data-testid={`store-checkbox-${store.id}`}>
+                          <Checkbox
+                            id={`target-store-${store.id}`}
+                            checked={targetStoreIds.has(store.id)}
+                            onCheckedChange={() => toggleTargetStore(store.id)}
+                            disabled={targetStoreIds.size === 1 && targetStoreIds.has(store.id)}
+                          />
+                          <label htmlFor={`target-store-${store.id}`} className="text-sm cursor-pointer flex-1">
+                            {store.name}
+                            {store.id === selectedStoreId && (
+                              <Badge variant="secondary" className="ml-2 text-xs">Current</Badge>
+                            )}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
+          {/* Secondary import buttons (kept as escape hatch; also gated on vendor for image scans) */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => approveMutation.mutate({ importAll: true })}
+              disabled={approveMutation.isPending || targetStoreIds.size === 0 || noVendorWarning}
+              data-testid="button-import-all"
+            >
+              <CheckCheck className="h-4 w-4 mr-2" />
+              {approveMutation.isPending ? 'Importing…' : `Import All (${reviewData.summary.total})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => approveMutation.mutate({ importAll: false })}
+              disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0 || noVendorWarning}
+              data-testid="button-import-selected"
+            >
+              <Check className="h-4 w-4 mr-2" />
+              {approveMutation.isPending ? 'Importing…' : `Import Selected (${selectedCount})`}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Vendor Assignment Card */}
+      <Card className={noVendorWarning ? 'border-yellow-500/60' : ''}>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-sm font-medium shrink-0">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span>Vendor</span>
+            </div>
+            <Select
+              value={currentVendorId ?? '__none__'}
+              onValueChange={handleVendorChange}
+              disabled={vendorMutation.isPending || addVendorMutation.isPending}
+            >
+              <SelectTrigger className="w-56" data-testid="select-vendor">
+                <SelectValue placeholder="Select existing vendor…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No vendor assigned</SelectItem>
+                {(vendors ?? []).map(vendor => (
+                  <SelectItem key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenAddVendor}
+              disabled={addVendorMutation.isPending}
+              data-testid="button-add-new-vendor"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add New Vendor
+            </Button>
+            {currentVendorId && selectedVendorName && (
+              <Badge variant="secondary" data-testid="badge-vendor-name">
+                {selectedVendorName}
+              </Badge>
+            )}
+            {isImageScan && currentVendorId && !noVendorWarning && (
+              <span className="text-xs text-muted-foreground">Auto-detected from invoice</span>
+            )}
+          </div>
+
+          {noVendorWarning && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 p-3">
+              <p className="text-sm text-yellow-800 dark:text-yellow-300 flex-1">
+                Vendor not recognized from your invoice — select an existing vendor or add a new one to link pricing data.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{reviewData.summary.total}</div>
+            <p className="text-xs text-muted-foreground">Products in import</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Auto-Matched</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{reviewData.summary.matched}</div>
+            <p className="text-xs text-muted-foreground">{matchPercentage}% match rate</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Needs Review</CardTitle>
+            <AlertCircle className="h-4 w-4 text-yellow-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-yellow-600">{reviewData.summary.ambiguous}</div>
+            <p className="text-xs text-muted-foreground">Possible matches</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">New Items</CardTitle>
+            <PlusCircle className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{reviewData.summary.new}</div>
+            <p className="text-xs text-muted-foreground">Not in inventory</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'matched' | 'ambiguous' | 'new')} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="matched" data-testid="tab-matched">
+            Auto-Matched ({reviewData.summary.matched})
+          </TabsTrigger>
+          <TabsTrigger value="ambiguous" data-testid="tab-ambiguous">
+            Needs Review ({reviewData.summary.ambiguous})
+          </TabsTrigger>
+          <TabsTrigger value="new" data-testid="tab-new">
+            New Items ({reviewData.summary.new})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="matched" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle>Auto-Matched Items</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Matched with high confidence and linked to existing inventory items
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => selectAllInCategory(reviewData.lines.matched)} data-testid="button-select-all-matched">Select All</Button>
+                <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.matched)} data-testid="button-deselect-all-matched">Deselect All</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {matchedMismatchCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
+                  data-testid="banner-matched-pack-size-mismatch"
+                  // @ts-ignore
+                  onClick={() => scrollToFirstMismatch(matchedTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  // @ts-ignore
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstMismatch(matchedTableRef)}
+                  aria-label="Jump to first pack size mismatch"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{matchedMismatchCount} pack size {matchedMismatchCount === 1 ? 'change' : 'changes'} detected</span>
+                    {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
+                  </span>
+                </div>
+              )}
+              {matchedSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
+                  data-testid="banner-matched-name-count-suspicious"
+                  // @ts-ignore
+                  onClick={() => scrollToFirstNameCountSuspicious(matchedTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  // @ts-ignore
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(matchedTableRef)}
+                  aria-label="Jump to first name-count warning"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{matchedSuspiciousCount} {matchedSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
+                  </span>
+                </div>
+              )}
+              <OrderGuideTable lines={reviewData.lines.matched} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} containerRef={matchedTableRef as any} showUnitSelector={false} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ambiguous" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle>Items Needing Review</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Possible matches that need manual verification
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => selectAllInCategory(reviewData.lines.ambiguous)} data-testid="button-select-all-ambiguous">Select All</Button>
+                <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.ambiguous)} data-testid="button-deselect-all-ambiguous">Deselect All</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {ambiguousMismatchCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
+                  data-testid="banner-ambiguous-pack-size-mismatch"
+                  // @ts-ignore
+                  onClick={() => scrollToFirstMismatch(ambiguousTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  // @ts-ignore
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstMismatch(ambiguousTableRef)}
+                  aria-label="Jump to first pack size mismatch"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{ambiguousMismatchCount} pack size {ambiguousMismatchCount === 1 ? 'change' : 'changes'} detected</span>
+                    {' '}— review rows marked with <AlertTriangle className="inline h-3.5 w-3.5 text-amber-500 align-text-bottom" /> before importing.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
+                  </span>
+                </div>
+              )}
+              {ambiguousSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
+                  data-testid="banner-ambiguous-name-count-suspicious"
+                  // @ts-ignore
+                  onClick={() => scrollToFirstNameCountSuspicious(ambiguousTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  // @ts-ignore
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(ambiguousTableRef)}
+                  aria-label="Jump to first name-count warning"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{ambiguousSuspiciousCount} {ambiguousSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
+                  </span>
+                </div>
+              )}
+              <OrderGuideTable lines={sortedAmbiguousLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showConfidence containerRef={ambiguousTableRef as any} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="new" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle>New Items</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Not in inventory — will be created as new inventory items with smart defaults.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => selectAllInCategory(reviewData.lines.new)} data-testid="button-select-all-new">Select All</Button>
+                <Button variant="outline" size="sm" onClick={() => deselectAllInCategory(reviewData.lines.new)} data-testid="button-deselect-all-new">Deselect All</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {newSuspiciousCount > 0 && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 cursor-pointer select-none hover-elevate"
+                  data-testid="banner-new-name-count-suspicious"
+                  // @ts-ignore
+                  onClick={() => scrollToFirstNameCountSuspicious(newTableRef)}
+                  role="button"
+                  tabIndex={0}
+                  // @ts-ignore
+                  onKeyDown={e => e.key === 'Enter' && scrollToFirstNameCountSuspicious(newTableRef)}
+                  aria-label="Jump to first name-count warning"
+                >
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span>
+                    <span className="font-medium">{newSuspiciousCount} {newSuspiciousCount === 1 ? 'item has' : 'items have'} a name-count that differs from the CSV pack size by more than 5×</span>
+                    {' '}— the unit embedded in the product name may not match the case count. Check the "Name says…" hints on affected rows.
+                    <span className="ml-1 underline underline-offset-2 text-amber-700 dark:text-amber-400">Click to jump to first</span>
+                  </span>
+                </div>
+              )}
+              <OrderGuideTable lines={sortedNewLines} selectedLineIds={selectedLineIds} onToggleSelection={toggleLineSelection} showUnitSelector unitOverrides={unitOverrides} onUnitChange={handleUnitOverrideChange} countOverrides={countOverrides} onCountOverride={handleCountOverride} dismissedNameCountHints={dismissedNameCountHints} onDismissNameCountHint={dismissNameCountHint} containerRef={newTableRef as any} priceSourceOverrides={priceSourceOverrides} onPriceSourceToggle={toggleCatchWeightOverride} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Sticky Confirm Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-sm" data-testid="text-confirm-summary">
+            <span className="text-muted-foreground">{confirmSummary}</span>
+            {selectedVendorName && (
+              <span className="ml-2 font-medium text-foreground">→ {selectedVendorName}</span>
+            )}
+            {noVendorWarning && (
+              <span className="ml-2 text-yellow-600 dark:text-yellow-400">— select or add a vendor first</span>
+            )}
+          </div>
+          <Button
+            onClick={() => approveMutation.mutate({ importAll: false })}
+            disabled={approveMutation.isPending || selectedCount === 0 || targetStoreIds.size === 0 || noVendorWarning}
+            data-testid="button-confirm-import"
+          >
+            <Check className="h-4 w-4 mr-2" />
+            {approveMutation.isPending
+              ? 'Importing…'
+              : selectedVendorName
+                ? `Confirm & Import (${selectedCount}) → ${selectedVendorName}`
+                : `Confirm & Import (${selectedCount})`}
+          </Button>
+        </div>
+      </div>
+
+      {/* Add New Vendor Dialog */}
+      <Dialog open={isAddVendorOpen} onOpenChange={setIsAddVendorOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-add-vendor">
+          <DialogHeader>
+            <DialogTitle>Add New Vendor</DialogTitle>
+            <DialogDescription>
+              {reviewData.guide.detectedVendorName
+                ? `AI detected "${reviewData.guide.detectedVendorName}" from your invoice. Confirm or adjust the name below.`
+                : 'Enter a name for the new vendor to link to this import.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="new-vendor-name">Vendor Name</Label>
+            <Input
+              id="new-vendor-name"
+              value={newVendorName}
+              onChange={e => setNewVendorName(e.target.value)}
+              placeholder="e.g. Sysco, US Foods…"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && newVendorName.trim()) {
+                  addVendorMutation.mutate(newVendorName.trim());
+                }
+              }}
+              data-testid="input-new-vendor-name"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddVendorOpen(false)} data-testid="button-cancel-add-vendor">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => addVendorMutation.mutate(newVendorName.trim())}
+              disabled={!newVendorName.trim() || addVendorMutation.isPending}
+              data-testid="button-confirm-add-vendor"
+            >
+              {addVendorMutation.isPending ? 'Creating…' : 'Add Vendor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+const UNIT_AUTO_SENTINEL = '__auto__';
+
+const UNIT_OPTIONS: { value: string; label: string }[] = [
+  { value: UNIT_AUTO_SENTINEL, label: 'Auto' },
+  { value: 'each', label: 'ea' },
+  { value: 'pound', label: 'lb' },
+  { value: 'ounce', label: 'oz' },
+  { value: 'gallon', label: 'gal' },
+  { value: 'quart', label: 'qt' },
+  { value: 'liter', label: 'liter' },
+  { value: 'fluid ounce', label: 'fl oz' },
+];
+
+/**
+ * Derive unit price from a case price — mirrors deriveUnitPrice() on the server.
+ * Uses the matched inventory item's unit when available; falls back to the CSV UOM.
+ * When overrideUnitName is provided it takes highest priority over all other sources.
+ * When countOverride is provided it is used as the outer count divisor (for the "each" family).
+ */
+function deriveDisplayUnitPrice(
+  line: OrderGuideLine,
+  overrideUnitName?: string,
+  countOverride?: number,
+  isUnitPriceOverride?: boolean,
+): { unitPrice: number; unitLabel: string } | null {
+  if (!line.price || line.price <= 0) return null;
+
+  // When the reviewer (or scan pipeline) flagged this as a per-unit price, return it directly.
+  const isUnitPrice = isUnitPriceOverride ?? (line.priceSource === 'unit');
+  if (isUnitPrice) {
+    const rawUnit = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? line.uom ?? 'lb').toLowerCase().trim();
+    const unitLabel = ['lb', 'lbs', 'pound', 'pounds'].includes(rawUnit) ? 'lb' : rawUnit || 'unit';
+    return { unitPrice: line.price, unitLabel };
+  }
+
+  const outerCount = countOverride && countOverride > 0 ? countOverride : Math.max(line.caseSize ?? 1, 1);
+  const innerSize  = Math.max(line.innerPack ?? 1, 1);
+  const packUom    = (line.uom ?? '').toLowerCase().trim();
+
+  // Auto-detect "each" for bottles/cans with an oz pack UOM when no higher-priority
+  // source supplies a unit. "24 × 12 OZ" on a "Can" or "Bottle" product means
+  // 24 individual containers — price per bottle, not per ounce.
+  const bottleCanAutoUnit =
+    !overrideUnitName && !line.matchedInventoryItemUnitName &&
+    isBottleOrCanWithFluidOz(line.productName, line.uom)
+      ? 'ea'
+      : null;
+
+  // Priority: explicit override > matched inventory item unit > bottle/can auto-detect > CSV UOM
+  const inventoryUnitName = (overrideUnitName ?? line.matchedInventoryItemUnitName ?? bottleCanAutoUnit ?? packUom).toLowerCase().trim();
+
+  // "each" family
+  if (['each', 'ea', 'piece', 'unit', 'count', 'ct'].includes(inventoryUnitName)) {
+    return { unitPrice: line.price / outerCount, unitLabel: 'ea' };
+  }
+  // "lb" family
+  if (['pound', 'lb', 'lbs'].includes(inventoryUnitName)) {
+    const totalLbs = ['oz', 'ounce', 'ounces'].includes(packUom)
+      ? (outerCount * innerSize) / 16
+      : outerCount * innerSize;
+    return { unitPrice: line.price / Math.max(totalLbs, 0.0001), unitLabel: 'lb' };
+  }
+  // "oz" family
+  if (['ounce', 'oz', 'ounces'].includes(inventoryUnitName)) {
+    return { unitPrice: line.price / (outerCount * innerSize), unitLabel: 'oz' };
+  }
+  // Default
+  return { unitPrice: line.price / (outerCount * innerSize), unitLabel: inventoryUnitName || 'unit' };
+}
+
+function formatPackSize(line: OrderGuideLine): string {
+  if (line.caseSize != null && line.innerPack != null) {
+    const uom = line.uom ? ` ${line.uom}` : '';
+    return `${line.caseSize} × ${line.innerPack}${uom}`;
+  }
+  if (line.caseSize != null) {
+    const uom = line.uom ? ` ${line.uom}` : '';
+    return `${line.caseSize}${uom}`;
+  }
+  return line.uom || '-';
+}
+
+
+function OrderGuideTable({
+  lines,
+  selectedLineIds,
+  onToggleSelection,
+  showConfidence = false,
+  containerRef,
+  showUnitSelector = false,
+  unitOverrides,
+  onUnitChange,
+  countOverrides,
+  onCountOverride,
+  dismissedNameCountHints,
+  onDismissNameCountHint,
+  priceSourceOverrides,
+  onPriceSourceToggle,
+}: {
+  lines: OrderGuideLine[];
+  selectedLineIds: Set<string>;
+  onToggleSelection: (lineId: string) => void;
+  showConfidence?: boolean;
+  containerRef?: React.RefObject<HTMLDivElement>;
+  showUnitSelector?: boolean;
+  unitOverrides?: Record<string, string>;
+  onUnitChange?: (lineId: string, unit: string) => void;
+  countOverrides?: Record<string, number>;
+  onCountOverride?: (lineId: string, count: number | null) => void;
+  dismissedNameCountHints?: Set<string>;
+  onDismissNameCountHint?: (lineId: string) => void;
+  priceSourceOverrides?: Record<string, 'unit' | 'case'>;
+  onPriceSourceToggle?: (lineId: string, currentOverride: 'unit' | 'case' | undefined, linePriceSource: string | undefined) => void;
+}) {
+  const [expandedCounts, setExpandedCounts] = useState<Set<string>>(new Set());
+
+  const toggleCountInput = (lineId: string) => {
+    setExpandedCounts(prev => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  };
+
+  const collapseCountInput = (lineId: string) => {
+    setExpandedCounts(prev => {
+      const next = new Set(prev);
+      next.delete(lineId);
+      return next;
+    });
+  };
+
+  if (lines.length === 0) {
+    return <div className="text-center py-8 text-muted-foreground">No items in this category</div>;
+  }
+
+  return (
+    <div className="rounded-md border" ref={containerRef}>
+      <Table wrapperClassName="max-h-[calc(100vh-420px)]">
+        <TableHeader className="sticky top-0 z-10 bg-card">
+          <TableRow>
+            <TableHead className="w-12"></TableHead>
+            <TableHead>Vendor SKU</TableHead>
+            <TableHead>Product Name</TableHead>
+            <TableHead>Pack Size</TableHead>
+            <TableHead>Case Price</TableHead>
+            <TableHead>Unit Price</TableHead>
+            {showConfidence && <TableHead>Match Confidence</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lines.map((line) => {
+            const isNewOrAmbiguous = line.matchStatus === 'new' || line.matchStatus === 'ambiguous';
+            const canOverrideUnit = showUnitSelector && isNewOrAmbiguous;
+            const overrideUnit = canOverrideUnit ? (unitOverrides?.[line.id] ?? UNIT_AUTO_SENTINEL) : undefined;
+            const effectiveOverride = (overrideUnit && overrideUnit !== UNIT_AUTO_SENTINEL) ? overrideUnit : undefined;
+            const activeCountOverride = countOverrides?.[line.id];
+            const activePriceSourceOverride = priceSourceOverrides?.[line.id];
+            const effectiveIsUnitPrice = activePriceSourceOverride === 'unit'
+              || (!activePriceSourceOverride && line.priceSource === 'unit');
+            const derived = deriveDisplayUnitPrice(line, effectiveOverride, activeCountOverride, effectiveIsUnitPrice);
+            const isUnusual = derived ? (derived.unitPrice < 0.05 || derived.unitPrice > 200) : false;
+
+            // Catch-weight: confirmed (isVariableWeight) or suspected (isSuspectedCatchWeight)
+            const isCatchWeightConfirmed = line.isVariableWeight === 1;
+            const isCatchWeightSuspected = !isCatchWeightConfirmed && line.isSuspectedCatchWeight === 1;
+            const showCatchWeightBadge = isCatchWeightConfirmed || isCatchWeightSuspected;
+            // True when reviewer has toggled this line to "price is $/lb"
+            const catchWeightActive = effectiveIsUnitPrice && showCatchWeightBadge;
+
+            // Name count hint: show when the product name suggests a count that differs from caseSize
+            // and the reviewer has not already accepted or dismissed it
+            const nameCountDiffersFromCase =
+              line.nameCount != null &&
+              line.nameCount > 0 &&
+              line.nameCount !== (line.caseSize ?? 0);
+            const showNameCountHint = nameCountDiffersFromCase && !activeCountOverride && !dismissedNameCountHints?.has(line.id);
+            const showNameCountUsing = !!activeCountOverride && activeCountOverride === line.nameCount;
+
+            // Manual count input: show when expanded by user OR when there's an active manual override
+            // (i.e. override is set but doesn't match the name-count hint path)
+            const isManualOverride = !!activeCountOverride && activeCountOverride !== line.nameCount;
+            const showCountInput = canOverrideUnit && (expandedCounts.has(line.id) || isManualOverride);
+            const countInputActive = canOverrideUnit && (showCountInput || showNameCountUsing);
+
+            // Suspicious ratio: name-count vs caseSize differ by more than 5×, and hint not dismissed
+            const isSuspiciousNameCount = (() => {
+              if (!line.nameCount || !line.caseSize || line.caseSize <= 0) return false;
+              return Math.max(line.nameCount / line.caseSize, line.caseSize / line.nameCount) > 5;
+            })() && !dismissedNameCountHints?.has(line.id);
+
+            return (
+              <TableRow key={line.id} data-testid={`row-product-${line.id}`}>
+                <TableCell>
+                  {isSuspiciousNameCount && (
+                    <span
+                      className="sr-only"
+                      data-testid={`marker-namecount-suspicious-${line.id}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <Checkbox
+                    checked={selectedLineIds.has(line.id)}
+                    onCheckedChange={() => onToggleSelection(line.id)}
+                    data-testid={`checkbox-${line.id}`}
+                  />
+                </TableCell>
+                <TableCell className="font-mono text-sm">{line.vendorSku}</TableCell>
+                <TableCell>
+                  <div className="flex items-start gap-1.5">
+                    <span>{line.productName}</span>
+                    {showCatchWeightBadge && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            className={`mt-0.5 shrink-0 flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium transition-colors ${
+                              catchWeightActive
+                                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                                : isCatchWeightConfirmed
+                                  ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-700'
+                                  : 'bg-muted text-muted-foreground border border-border hover:bg-orange-50 hover:text-orange-700 dark:hover:bg-orange-900/20 dark:hover:text-orange-300'
+                            }`}
+                            onClick={() => onPriceSourceToggle?.(line.id, activePriceSourceOverride, line.priceSource)}
+                            data-testid={`button-catch-weight-toggle-${line.id}`}
+                            aria-label={catchWeightActive ? 'Price treated as $/lb — click to revert' : 'Mark price as $/lb (catch weight)'}
+                          >
+                            <Scale className="h-2.5 w-2.5" />
+                            <span>{catchWeightActive ? '$/lb ✓' : isCatchWeightConfirmed ? '$/lb' : '$/lb?'}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[220px]">
+                          {catchWeightActive
+                            ? <p>Price treated as per-lb. Click to revert to case price.</p>
+                            : isCatchWeightConfirmed
+                              ? <p>Vendor flagged as catch-weight — price is per lb. Click to confirm.</p>
+                              : <p>Suspected catch-weight (protein + weight pack). Click to treat price as $/lb.</p>
+                          }
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell data-testid={`text-packsize-${line.id}`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">{formatPackSize(line)}</span>
+                    {hasPackSizeMismatch(line) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <AlertTriangle
+                            className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                            data-testid={`icon-packsize-mismatch-${line.id}`}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>Pack size changed — was {formatStoredPackSize(line)}, now {formatPackSize(line)}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {line.price != null ? `$${line.price.toFixed(2)}` : '-'}
+                </TableCell>
+                <TableCell>
+                  {!derived ? (
+                    <span className="text-muted-foreground">-</span>
+                  ) : canOverrideUnit ? (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                          ${derived.unitPrice.toFixed(4)}&nbsp;/
+                        </span>
+                        <Select
+                          value={overrideUnit}
+                          onValueChange={(val) => onUnitChange?.(line.id, val)}
+                        >
+                          <SelectTrigger
+                            className="h-7 w-24 text-xs px-2"
+                            data-testid={`select-unit-${line.id}`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIT_OPTIONS.map(opt => (
+                              <SelectItem key={opt.value || '__auto__'} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className={`rounded p-0.5 transition-colors ${countInputActive ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                              onClick={() => toggleCountInput(line.id)}
+                              data-testid={`button-edit-count-${line.id}`}
+                              aria-label="Edit pack count"
+                            >
+                              <Hash className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>Override pack count for unit price calculation</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        {isUnusual && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                                data-testid={`icon-unusual-unit-price-${line.id}`}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p>Unit price looks unusual — verify pack size and unit before committing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      {showCountInput && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Count:</span>
+                          <Input
+                            type="number"
+                            className="h-6 w-16 text-xs px-1.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            value={activeCountOverride ?? ''}
+                            placeholder={String(line.caseSize ?? 1)}
+                            min={1}
+                            onChange={e => {
+                              const val = parseInt(e.target.value, 10);
+                              onCountOverride?.(line.id, isNaN(val) || val <= 0 ? null : val);
+                            }}
+                            data-testid={`input-count-override-${line.id}`}
+                          />
+                          {activeCountOverride && (
+                            <button
+                              className="text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                onCountOverride?.(line.id, null);
+                                if (!line.nameCount) collapseCountInput(line.id);
+                              }}
+                              data-testid={`button-clear-count-override-${line.id}`}
+                              aria-label="Clear count override"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {showNameCountHint && !showCountInput && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                            onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                            data-testid={`button-use-name-count-${line.id}`}
+                          >
+                            Name says {line.nameCount} — use that?
+                          </button>
+                          <button
+                            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => onDismissNameCountHint?.(line.id)}
+                            data-testid={`button-dismiss-name-count-${line.id}`}
+                            aria-label="Dismiss hint"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>dismiss</span>
+                          </button>
+                        </div>
+                      )}
+                      {showNameCountUsing && !showCountInput && (
+                        <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+                          <span>Using {activeCountOverride}</span>
+                          <button
+                            className="underline underline-offset-2 hover:opacity-70"
+                            onClick={() => onCountOverride?.(line.id, null)}
+                            data-testid={`button-undo-count-override-${line.id}`}
+                          >
+                            undo
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={isUnusual ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                          ${derived.unitPrice.toFixed(4)}&nbsp;/&nbsp;{derived.unitLabel}
+                        </span>
+                        {isUnusual && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle
+                                className="h-4 w-4 text-amber-500 shrink-0 cursor-default"
+                                data-testid={`icon-unusual-unit-price-${line.id}`}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              <p>Unit price looks unusual — verify pack size and unit before committing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      {showNameCountHint && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            className="text-left text-xs text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300"
+                            onClick={() => onCountOverride?.(line.id, line.nameCount!)}
+                            data-testid={`button-use-name-count-${line.id}`}
+                          >
+                            Name says {line.nameCount} — use that?
+                          </button>
+                          <button
+                            className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => onDismissNameCountHint?.(line.id)}
+                            data-testid={`button-dismiss-name-count-${line.id}`}
+                            aria-label="Dismiss hint"
+                          >
+                            <X className="h-3 w-3" />
+                            <span>dismiss</span>
+                          </button>
+                        </div>
+                      )}
+                      {showNameCountUsing && (
+                        <div className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+                          <span>Using {activeCountOverride}</span>
+                          <button
+                            className="underline underline-offset-2 hover:opacity-70"
+                            onClick={() => onCountOverride?.(line.id, null)}
+                            data-testid={`button-undo-count-override-${line.id}`}
+                          >
+                            undo
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TableCell>
+                {showConfidence && (
+                  <TableCell>
+                    <Badge variant={getConfidenceBadgeVariant(line.matchConfidence)}>
+                      {line.matchConfidence ? `${line.matchConfidence}%` : 'N/A'}
+                    </Badge>
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function getConfidenceBadgeVariant(confidence: number | null): 'default' | 'secondary' | 'outline' {
+  if (!confidence) return 'outline';
+  if (confidence >= 70) return 'default';
+  if (confidence >= 50) return 'secondary';
+  return 'outline';
+}

@@ -1,0 +1,176 @@
+administrator@vps-BLOUD-Soft:~$ sudo nginx -T | grep -A 20 "listen 443"
+[sudo] password for administrator:
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/fnbcostpro.com/fullchain.pem"
+nginx: [warn] conflicting server name "app.fnbcostpro.com" on 0.0.0.0:443, ignored
+nginx: [warn] conflicting server name "app.fnbcostpro.com" on 0.0.0.0:80, ignored
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/www.erecording-fl.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+
+}
+
+# Primary site (non-www)
+server {
+
+  server_name erecording-fl.com;
+
+  location ~* (\.env|/api/\.env)$ { return 403; }
+
+  location / {
+    proxy_pass http://127.0.0.1:3002;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+--
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/www.erecording-fl.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    if ($host = www.erecording-fl.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+  listen 80;
+  listen [::]:80;
+  server_name www.erecording-fl.com;
+    return 404; # managed by Certbot
+
+
+}
+--
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
+  ssl_certificate_key /etc/nginx/ssl-certificates/fhd.com.key;
+  ssl_certificate /etc/nginx/ssl-certificates/fhd.com.crt;
+  server_name www.fhd.com;
+  return 301 https://fhd.com$request_uri;
+}
+
+server {
+  listen 80;
+  listen [::]:80;
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
+  ssl_certificate_key /etc/nginx/ssl-certificates/fhd.com.key;
+  ssl_certificate /etc/nginx/ssl-certificates/fhd.com.crt;
+  server_name fhd.com www1.fhd.com;
+  root /home/fhd/htdocs/fhd.com;
+
+  access_log /home/fhd/logs/nginx/access.log main;
+  error_log /home/fhd/logs/nginx/error.log;
+
+  if ($scheme != "https") {
+    rewrite ^ https://$host$uri permanent;
+  }
+
+  location ~ /.well-known {
+    auth_basic off;
+    allow all;
+  }
+
+
+
+--
+    listen 443 ssl;
+    server_name app.fnbcostpro.com;
+
+    ssl_certificate /etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.fnbcostpro.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# configuration file /etc/nginx/sites-enabled/permitflow.conf:
+server {
+--
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/pflow.permitsmanager.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = pflow.permitsmanager.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+        server_name pflow.permitsmanager.com;
+    return 404; # managed by Certbot
+
+
+}
+--
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/app.fnbcostpro.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = app.fnbcostpro.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+
+
+    listen 80 ;
+    listen [::]:80 ;
+    server_name app.fnbcostpro.com;
+    return 404; # managed by Certbot
+
+
+--
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/fnbcostpro.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/fnbcostpro.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = fnbcostpro.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+
+
+    listen 80 ;
+    listen [::]:80 ;
+    server_name fnbcostpro.com;
+    return 404; # managed by Certbot

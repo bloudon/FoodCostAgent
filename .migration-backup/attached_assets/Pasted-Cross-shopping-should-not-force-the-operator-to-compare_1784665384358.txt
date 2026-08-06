@@ -1,0 +1,333 @@
+Cross-shopping should not force the operator to compare raw supplier catalogs while building an order.
+
+The core model
+
+Each FnB inventory item becomes the restaurant’s canonical buying specification.
+
+Example:
+
+FnB Inventory Item
+Mozzarella Cheese
+
+Base unit: lb
+Count unit: case
+Preferred brand: Grande
+Typical pack: 6 × 5 lb
+Category: Dairy
+
+Each supplier product then maps to that one inventory item:
+
+Mozzarella Cheese
+├── Sysco SKU 12345 — Grande 6/5 lb
+├── PFG SKU 87422 — Grande 6/5 lb
+├── GFS SKU 55281 — Saputo 6/5 lb
+└── Local Dairy SKU MZ30 — House Brand 30 lb
+
+That existing vendor-item-to-inventory-item relationship should remain the foundation.
+
+Use three matching levels
+
+Not every match should be treated equally.
+
+1. Exact product
+
+Strong identifiers agree:
+
+Supplier SKU already known
+UPC/GTIN
+Manufacturer item number
+Brand
+Pack configuration
+
+These can usually be auto-linked.
+
+2. Approved equivalent
+
+Different brand or pack, but the operator has approved it for cross-shopping.
+
+Example:
+
+Grande mozzarella 6/5 lb
+vs.
+Saputo mozzarella 6/5 lb
+
+The system may suggest the relationship, but the user approves it once.
+
+3. Not comparable
+
+The item may belong to the same general category but should not compete.
+
+Examples:
+
+Whole-milk versus part-skim mozzarella
+Premium wings versus commodity wings
+Fresh chicken versus frozen chicken
+Different cup sizes or materials
+Products with incompatible yields
+
+These remain visible in the vendor catalog but are excluded from cross-shopping.
+
+Minimal schema addition
+
+For MVP, each vendor-item mapping needs only a small qualification field:
+
+type CrossShopQualification =
+  | "exact"
+  | "approved_equivalent"
+  | "not_eligible"
+  | "pending_review";
+
+Optionally retain a reason:
+
+type MatchReviewReason =
+  | "brand"
+  | "pack_size"
+  | "unit"
+  | "quality"
+  | "specification"
+  | "yield"
+  | "other";
+
+Do not build a full product ontology yet.
+
+Matching priority
+
+The matcher should evaluate candidates in this order:
+
+Existing vendor SKU mapping
+UPC or manufacturer product number
+Exact normalized brand, name and pack
+Same normalized name and compatible pack
+Similar description, category and unit
+AI-assisted suggestion
+
+Only the strongest matches should be automatic.
+
+AI and fuzzy name matching should produce suggestions—not silent mappings.
+
+Confidence behavior
+Auto-match
+
+Allow automatic mapping only when:
+
+A strong identifier matches
+Units are compatible
+Pack geometry is valid
+There is no competing candidate
+The mapping does not contradict an existing user decision
+
+Example:
+
+98% match
+Same manufacturer number
+Same brand
+Same 6 × 5 lb pack
+Quick approval
+
+For likely equivalents, show a compact review card:
+
+New supplier product
+Saputo Whole Milk Mozzarella — 6/5 lb
+
+Suggested FnB item
+Mozzarella Cheese
+
+Why:
+✓ Same category
+✓ Same base unit
+✓ Same total case weight
+△ Different brand
+
+[Approve Equivalent] [Choose Another] [Create New]
+
+The operator should not need to open multiple screens.
+
+Batch review, not one-at-a-time setup
+
+When a catalog is imported, create a matching queue:
+
+126 products imported
+
+94 matched automatically
+18 likely matches
+9 new products
+5 require review
+
+The user reviews only the 32 exceptions.
+
+Useful controls:
+
+Approve
+Approve all high-confidence
+Choose another item
+Create new inventory item
+Ignore
+Not eligible for cross-shopping
+
+Sort the queue by:
+
+Products already being purchased
+Highest spend
+Most frequently ordered
+Items currently needed on a PO
+Remaining catalog items
+
+Do not make the operator map thousands of inactive supplier products.
+
+Match only the products the restaurant uses
+
+This is an important MVP boundary.
+
+Do not import and require matching for an entire distributor catalog when the restaurant buys only 150 items.
+
+Start with:
+
+Order-guide items
+Recent invoice items
+Recent PO items
+Products explicitly added by the user
+Products proposed as alternatives to an active item
+
+That keeps onboarding manageable.
+
+Teach once and persist
+
+Once a user approves:
+
+PFG SKU 87422
+→ Mozzarella Cheese
+→ Approved equivalent
+
+FnB should preserve that mapping for future:
+
+Order-guide imports
+Invoice scans
+Portal refreshes
+PO creation
+Cross-shopping
+
+The user should only be asked again when there is catalog drift, such as:
+
+SKU now has a different pack size
+Brand changed
+Unit changed
+Product description changed materially
+Supplier reused the SKU
+Mapping conflicts with another item
+Detect catalog changes
+
+A supplier SKU match alone is not always enough.
+
+Example:
+
+Previous:
+SKU 12345 — 6/5 lb mozzarella
+
+Current:
+SKU 12345 — 4/5 lb mozzarella
+
+FnB should retain the mapping but flag:
+
+Pack changed from 30 lb to 20 lb. Review before using for comparison.
+
+This connects directly to M3A’s pack-geometry safeguards.
+
+Keep matching out of the normal ordering workflow
+
+When a manager opens Review Savings, show only approved comparable products.
+
+For unresolved products:
+
+3 PO items do not yet have approved alternatives
+[Review Matches]
+
+Do not interrupt every line with a matching dialog.
+
+The normal ordering experience should be:
+
+Open PO
+→ Review Savings
+→ Select alternatives
+→ Route lines
+
+Matching should appear only as an exception.
+
+Suggested M3B workflow
+Vendor catalog/import
+    ↓
+Exact identifiers auto-match
+    ↓
+Likely candidates enter review queue
+    ↓
+Operator approves equivalents once
+    ↓
+Mappings persist
+    ↓
+Cross-shopping uses approved mappings only
+Reuse data FnB already has
+
+FnB can produce strong suggestions using:
+
+Normalized item names
+Vendor SKUs
+Brand
+Case size
+Inner pack size
+Base unit
+Category
+Invoice history
+Existing vendor-item mappings
+Recipe usage
+Product-name count hints
+Pack mismatch detection
+
+This is an area where FnB’s existing pack intelligence can outperform a simple description matcher.
+
+Global learning without global control
+
+FnB may eventually learn that many customers mapped:
+
+Supplier SKU XYZ
+→ Grande Whole Milk Mozzarella 6/5 lb
+
+That global knowledge can improve suggestions.
+
+But the final comparison approval should remain company-specific because:
+
+Restaurants have different quality standards
+One operator may accept house brands
+Another may require a contract brand
+Yield and preparation performance can differ
+Contract restrictions may vary
+
+Global data suggests; the restaurant approves.
+
+What to avoid in MVP
+
+Do not build:
+
+A universal restaurant-product catalog
+Fully autonomous AI substitutions
+Supplier-paid product placement
+Product sampling workflows
+A complex specification management suite
+Global automatic equivalence decisions
+Yield-adjusted comparison for every product category
+Manufacturer and distributor master-data reconciliation
+
+Those are later opportunities.
+
+Recommended M3B boundary
+
+For the initial version:
+
+Existing SKU mappings remain automatic.
+Strong exact matches can auto-link.
+Fuzzy matches require one-click approval.
+Each mapping is classified as exact, approved equivalent, not eligible or pending.
+Approved mappings persist.
+Cross-shopping uses only exact and approved-equivalent mappings.
+The operator reviews exceptions in a batch queue.
+Unresolved mappings never silently drive routing.
+
+That gives the user a painless experience without requiring FnB to solve universal product matching before launch.

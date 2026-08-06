@@ -1,0 +1,718 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { ArrowLeft, Settings, Plus, X } from "lucide-react";
+import { GroupedUnitOptions } from "@/components/grouped-unit-options";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import type { SystemPreferences } from "@shared/schema";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+
+type Unit = {
+  id: string;
+  name: string;
+  abbreviation: string;
+  kind: string;
+  toBaseRatio: number;
+  system: string;
+};
+
+type StorageLocation = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Category = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};
+
+type Store = {
+  id: string;
+  name: string;
+  address?: string;
+  city?: string;
+};
+
+const PACK_OPTIONS = ["Case", "Bag", "Box", "Pail", "Drum", "Jug", "Each", "Other"];
+
+export default function InventoryItemCreate() {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  
+  const [name, setName] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("name") ?? "";
+  });
+  const [manufacturer, setManufacturer] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [pluSku, setPluSku] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const [caseSize, setCaseSize] = useState("20");
+  const [purchaseUom, setPurchaseUom] = useState("Case");
+  const [showMiddleRow, setShowMiddleRow] = useState(false);
+  const [containerLabel, setContainerLabel] = useState("");
+  const [containerDisplaySize, setContainerDisplaySize] = useState("");
+  const [containerUnitId, setContainerUnitId] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [casePrice, setCasePrice] = useState("0");
+  const [pricePerUnit, setPricePerUnit] = useState("0");
+  const [yieldPercent, setYieldPercent] = useState("100");
+  const [parLevel, setParLevel] = useState("");
+  const [reorderLevel, setReorderLevel] = useState("");
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [primaryLocationId, setPrimaryLocationId] = useState("");
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
+  const [isPowerItem, setIsPowerItem] = useState(false);
+  const [isVariableWeight, setIsVariableWeight] = useState(false);
+  const [extraDetailsOpen, setExtraDetailsOpen] = useState<string | undefined>("extra-details");
+
+  const { data: units } = useQuery<Unit[]>({
+    queryKey: ["/api/units"],
+  });
+
+  const { data: compatibleUnits } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", unitId],
+    queryFn: async () => {
+      const response = await fetch(`/api/units/compatible?unitId=${unitId}`, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch compatible units");
+      return response.json();
+    },
+    enabled: !!unitId,
+  });
+
+  const { data: systemPrefs } = useQuery<SystemPreferences>({
+    queryKey: ["/api/system-preferences"],
+  });
+
+  const { data: locations } = useQuery<StorageLocation[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const { data: existingInventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
+  const { data: stores } = useAccessibleStores();
+
+  // Set default unit to Pound when units are loaded
+  useEffect(() => {
+    if (units && !unitId) {
+      const poundUnit = units.find(u => u.name.toLowerCase() === "pound");
+      if (poundUnit) {
+        setUnitId(poundUnit.id);
+        setContainerUnitId(poundUnit.id);
+      }
+    }
+  }, [units, unitId]);
+
+  // Sync containerUnitId whenever unitId changes:
+  // - Default to base unit when not set
+  // - Reset to base unit if current containerUnit is a different kind (e.g., lb → gallon)
+  useEffect(() => {
+    if (!unitId || !units) return;
+    if (!containerUnitId) {
+      setContainerUnitId(unitId);
+      return;
+    }
+    const baseUnit = units.find(u => u.id === unitId);
+    const cUnit = units.find(u => u.id === containerUnitId);
+    if (baseUnit && cUnit && baseUnit.kind !== cUnit.kind) {
+      // Incompatible kinds after base unit change — reset to new base unit
+      setContainerUnitId(unitId);
+    }
+  }, [unitId, units]);
+
+  // Select all stores by default when stores are loaded
+  useEffect(() => {
+    if (stores && stores.length > 0 && selectedStores.length === 0) {
+      setSelectedStores(stores.map(s => s.id));
+    }
+  }, [stores, selectedStores.length]);
+
+  // Set first selected location as primary
+  useEffect(() => {
+    if (selectedLocations.length > 0 && !primaryLocationId) {
+      setPrimaryLocationId(selectedLocations[0]);
+    } else if (selectedLocations.length > 0 && !selectedLocations.includes(primaryLocationId)) {
+      setPrimaryLocationId(selectedLocations[0]);
+    }
+  }, [selectedLocations, primaryLocationId]);
+
+  const parsedCaseSize = parseFloat(caseSize) || 20;
+  const parsedContainerDisplaySize = parseFloat(containerDisplaySize) || 0;
+
+  // Convert displayed container size to item's unit using toBaseRatio
+  // Returns null if units are incompatible (different kind) to prevent cross-kind math
+  const computeContainerSizeInItemUnit = (): number | null => {
+    if (!parsedContainerDisplaySize || !containerUnitId || !unitId || !units) return null;
+    const baseUnit = units.find(u => u.id === unitId);
+    const cUnit = units.find(u => u.id === containerUnitId);
+    if (!baseUnit || !cUnit || baseUnit.toBaseRatio <= 0) return null;
+    // Guard: reject cross-kind conversions (e.g., oz → gallon)
+    if (baseUnit.kind !== cUnit.kind) return null;
+    return parsedContainerDisplaySize * (cUnit.toBaseRatio / baseUnit.toBaseRatio);
+  };
+
+  // Bidirectional price handlers — editing one recalculates the other
+  const handleCasePriceChange = (val: string) => {
+    setCasePrice(val);
+    const cp = parseFloat(val);
+    if (!isNaN(cp) && parsedCaseSize > 0) {
+      setPricePerUnit((cp / parsedCaseSize).toFixed(4));
+    }
+  };
+
+  const handleUnitPriceChange = (val: string) => {
+    setPricePerUnit(val);
+    const up = parseFloat(val);
+    if (!isNaN(up)) {
+      setCasePrice((up * parsedCaseSize).toFixed(2));
+    }
+  };
+
+  const handleCaseSizeChange = (val: string) => {
+    setCaseSize(val);
+    const size = parseFloat(val);
+    const up = parseFloat(pricePerUnit);
+    if (!isNaN(size) && size > 0 && !isNaN(up)) {
+      setCasePrice((up * size).toFixed(2));
+    }
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const containerSizeInItemUnit = showMiddleRow ? computeContainerSizeInItemUnit() : null;
+      const computedCasePkgCount = containerSizeInItemUnit && containerSizeInItemUnit > 0
+        ? parsedCaseSize / containerSizeInItemUnit
+        : null;
+
+      const data = {
+        name: name.trim(),
+        manufacturer: manufacturer.trim() || null,
+        categoryId: categoryId || null,
+        pluSku: pluSku.trim() || null,
+        unitId,
+        caseSize: parsedCaseSize,
+        barcode: barcode.trim() || null,
+        pricePerUnit: parseFloat(pricePerUnit) || 0,
+        storageLocationId: primaryLocationId,
+        yieldPercent: parseFloat(yieldPercent) || 100,
+        parLevel: parLevel.trim() !== "" ? parseFloat(parLevel.trim()) : null,
+        reorderLevel: reorderLevel.trim() !== "" ? parseFloat(reorderLevel.trim()) : null,
+        isPowerItem: isPowerItem ? 1 : 0,
+        isVariableWeight: isVariableWeight ? 1 : 0,
+        locationIds: selectedLocations,
+        storeIds: selectedStores,
+        ...(showMiddleRow && containerSizeInItemUnit && containerSizeInItemUnit > 0 ? {
+          containerSize: containerSizeInItemUnit,
+          casePkgCount: computedCasePkgCount,
+          containerLabel: containerLabel.trim() || null,
+          containerUnitId: containerUnitId || null,
+        } : {}),
+      };
+      const response = await apiRequest("POST", "/api/inventory-items", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Item created",
+        description: "The inventory item has been successfully created.",
+      });
+      navigate("/inventory-items");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Creation failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLocationToggle = (locationId: string) => {
+    const newLocations = selectedLocations.includes(locationId)
+      ? selectedLocations.filter(id => id !== locationId)
+      : [...selectedLocations, locationId];
+
+    if (newLocations.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one storage location is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedLocations(newLocations);
+  };
+
+  const handleStoreToggle = (storeId: string) => {
+    const newStores = selectedStores.includes(storeId)
+      ? selectedStores.filter(id => id !== storeId)
+      : [...selectedStores, storeId];
+
+    if (newStores.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one store location is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedStores(newStores);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Item name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!unitId || unitId.trim() === "") {
+      toast({
+        title: "Validation Error",
+        description: "Unit of measure is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!yieldPercent || parseFloat(yieldPercent) < 1 || parseFloat(yieldPercent) > 100) {
+      toast({
+        title: "Validation Error",
+        description: "Yield percentage must be between 1 and 100.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedStores.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one store location is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedLocations.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one storage location is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createMutation.mutate();
+  };
+
+  const filteredUnits = filterUnitsBySystem(units || [], systemPrefs?.unitSystem || "imperial");
+  const unit = units?.find(u => u.id === unitId);
+
+  return (
+    <div className="p-8 pb-16">
+      <div className="mb-8">
+        <Button
+          variant="ghost"
+          onClick={() => navigate("/inventory-items")}
+          className="mb-4"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Inventory Items
+        </Button>
+        <h1 className="text-3xl font-semibold tracking-tight" data-testid="text-create-title">
+          Create Inventory Item
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Add a new item to your inventory
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Basic Information</CardTitle>
+              <CardDescription>Essential item details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Item Name *</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Mozzarella Cheese"
+                  required
+                  data-testid="input-name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="categoryId">Category</Label>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger data-testid="select-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id} data-testid={`option-category-${category.id}`}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Accordion type="single" collapsible value={extraDetailsOpen} onValueChange={setExtraDetailsOpen}>
+                <AccordionItem value="extra-details" className="border rounded-lg px-4">
+                  <AccordionTrigger className="hover:no-underline" data-testid="accordion-extra-details">
+                    <div className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      <span className="font-semibold">Extra Details</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-4 space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="manufacturer">Manufacturer</Label>
+                      <Input
+                        id="manufacturer"
+                        value={manufacturer}
+                        onChange={(e) => setManufacturer(e.target.value)}
+                        placeholder="e.g., Grande Cheese"
+                        data-testid="input-manufacturer"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="pluSku">PLU/SKU</Label>
+                      <Input
+                        id="pluSku"
+                        value={pluSku}
+                        onChange={(e) => setPluSku(e.target.value)}
+                        placeholder="e.g., MOZZ-001"
+                        data-testid="input-plu-sku"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="barcode">Barcode</Label>
+                      <Input
+                        id="barcode"
+                        value={barcode}
+                        onChange={(e) => setBarcode(e.target.value)}
+                        placeholder="Barcode"
+                        data-testid="input-barcode"
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Unit & Quantity</CardTitle>
+              <CardDescription>Measurement and inventory details</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="unit">Unit of Measure *</Label>
+                <Select value={unitId} onValueChange={setUnitId} required>
+                  <SelectTrigger data-testid="select-unit">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <GroupedUnitOptions units={filteredUnits ?? []} />
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Purchasing */}
+              <div className="space-y-3 rounded-md border p-4">
+                <div>
+                  <p className="text-sm font-semibold">Purchasing</p>
+                  <p className="text-xs text-muted-foreground">Define how this item is purchased.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Purchase Unit of Measure *</Label>
+                    <Select value={purchaseUom} onValueChange={setPurchaseUom}>
+                      <SelectTrigger data-testid="select-purchase-uom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PACK_OPTIONS.map(o => (
+                          <SelectItem key={o} value={o}>{o}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Purchase Unit Size *</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={caseSize}
+                        onChange={(e) => handleCaseSizeChange(e.target.value)}
+                        placeholder="e.g., 40"
+                        className="flex-1"
+                        data-testid="input-case-size"
+                      />
+                      <span className="flex h-9 min-w-[2.5rem] items-center justify-center rounded-md border px-2 text-sm text-muted-foreground">
+                        {unit?.abbreviation || "unit"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Usage Conversions placeholder — configured after item is saved */}
+              <div className="rounded-md border p-4 space-y-2">
+                <div>
+                  <p className="text-sm font-semibold">Usage Conversions</p>
+                  <p className="text-xs text-muted-foreground">
+                    Define how kitchen units (oz, slice, each) relate to the canonical unit for recipes and issuing.
+                  </p>
+                </div>
+                <div
+                  className="rounded-md border border-dashed p-4 text-sm text-muted-foreground"
+                  data-testid="text-usage-conversions-placeholder"
+                >
+                  Unit conversions can be added after the item is saved.
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pricing</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="casePrice" className="text-xs">Case Price ($)</Label>
+                    <Input
+                      id="casePrice"
+                      type="number"
+                      step="0.01"
+                      value={casePrice}
+                      onChange={(e) => handleCasePriceChange(e.target.value)}
+                      data-testid="input-case-price"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="pricePerUnit" className="text-xs">Unit Price ($)</Label>
+                    <Input
+                      id="pricePerUnit"
+                      type="number"
+                      step="0.0001"
+                      value={pricePerUnit}
+                      onChange={(e) => handleUnitPriceChange(e.target.value)}
+                      data-testid="input-price-per-unit"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enter either price — the other will be calculated automatically.
+                  Unit price is used for costing until a vendor is linked.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="yieldPercent">Yield Percentage *</Label>
+                <Input
+                  id="yieldPercent"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="100"
+                  value={yieldPercent}
+                  onChange={(e) => setYieldPercent(e.target.value)}
+                  placeholder="100"
+                  required
+                  data-testid="input-yield-percent"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Usable percentage after trimming/waste. Default is 100%.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Store Locations *</CardTitle>
+              <CardDescription>Select which stores will carry this item (at least one required)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {stores?.map((store) => (
+                <div key={store.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`store-${store.id}`}
+                    checked={selectedStores.includes(store.id)}
+                    onCheckedChange={() => handleStoreToggle(store.id)}
+                    data-testid={`checkbox-store-${store.id}`}
+                  />
+                  <Label
+                    htmlFor={`store-${store.id}`}
+                    className="text-sm font-normal cursor-pointer flex-1"
+                  >
+                    {store.name}
+                    {store.city && <span className="text-muted-foreground ml-2">({store.city})</span>}
+                  </Label>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Storage Locations *</CardTitle>
+              <CardDescription>Select all applicable storage locations (at least one required)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {locations?.map((location) => (
+                <div key={location.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`location-${location.id}`}
+                    checked={selectedLocations.includes(location.id)}
+                    onCheckedChange={() => handleLocationToggle(location.id)}
+                    data-testid={`checkbox-location-${location.id}`}
+                  />
+                  <Label
+                    htmlFor={`location-${location.id}`}
+                    className="text-sm font-normal cursor-pointer flex-1"
+                  >
+                    {location.name}
+                  </Label>
+                  {primaryLocationId === location.id && (
+                    <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded" data-testid={`badge-primary-${location.id}`}>
+                      Primary
+                    </span>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Inventory Levels</CardTitle>
+              <CardDescription>Par and reorder levels</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="parLevel">Par Level</Label>
+                <Input
+                  id="parLevel"
+                  type="number"
+                  step="0.01"
+                  value={parLevel}
+                  onChange={(e) => setParLevel(e.target.value)}
+                  placeholder="Target inventory level"
+                  data-testid="input-par-level"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reorderLevel">Reorder Level</Label>
+                <Input
+                  id="reorderLevel"
+                  type="number"
+                  step="0.01"
+                  value={reorderLevel}
+                  onChange={(e) => setReorderLevel(e.target.value)}
+                  placeholder="Level to trigger reorder"
+                  data-testid="input-reorder-level"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isPowerItem"
+                  checked={isPowerItem}
+                  onCheckedChange={(checked) => setIsPowerItem(checked === true)}
+                  data-testid="checkbox-power-item"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPowerItem" className="cursor-pointer font-medium">
+                    Power Item
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    High-cost item tracked more frequently in power inventory counts
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isVariableWeight"
+                  checked={isVariableWeight}
+                  onCheckedChange={(checked) => setIsVariableWeight(checked === true)}
+                  data-testid="checkbox-variable-weight"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isVariableWeight" className="cursor-pointer font-medium">
+                    Variable Weight (Catch Weight)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Actual weight differs from ordered quantity (meats, cheeses)
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <Button
+            type="submit"
+            disabled={createMutation.isPending}
+            data-testid="button-create-item"
+          >
+            {createMutation.isPending ? "Creating..." : "Create Item"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => navigate("/inventory-items")}
+            data-testid="button-cancel"
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+      <SetupProgressBanner currentMilestoneId="inventory" hasEntries={(existingInventoryItems?.length ?? 0) > 0} />
+    </div>
+  );
+}

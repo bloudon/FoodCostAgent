@@ -1,0 +1,1166 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useParams, useLocation } from "wouter";
+import { Company, CompanyStore, InsertCompany, InsertCompanyStore, insertCompanySchema, insertCompanyStoreSchema, POS_PROVIDER_VALUES } from "@shared/schema";
+import { z } from "zod";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { ChevronLeft, Building2, Store, Plus, Edit, Save, X, Pencil, ImageIcon, Trash2, Users, UserX, UserCheck, AlertTriangle } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { TierGate } from "@/components/tier-gate";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect } from "react";
+import { formatPhoneNumber } from "@/lib/phone";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useAuth } from "@/lib/auth-context";
+import { TIER_LABELS, getTierLabel, TIERS, type Tier, type DbTier } from "@shared/tier-config";
+
+type CompanyUser = {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  role: string;
+  active: number;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export default function CompanyDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isGlobalAdmin = user?.role === "global_admin";
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
+  const [editingStore, setEditingStore] = useState<CompanyStore | null>(null);
+  const [isNewStoreDialogOpen, setIsNewStoreDialogOpen] = useState(false);
+  const [isEditStoreDialogOpen, setIsEditStoreDialogOpen] = useState(false);
+
+  const { data: company, isLoading: loadingCompany } = useQuery<Company>({
+    queryKey: [`/api/companies/${id}`],
+  });
+
+  const { data: stores = [], isLoading: loadingStores } = useQuery<CompanyStore[]>({
+    queryKey: [`/api/companies/${id}/stores`],
+  });
+
+  const companyFormSchema = insertCompanySchema.superRefine((data, ctx) => {
+    if (data.phone) {
+      const digits = data.phone.replace(/\D/g, "");
+      if (digits.length > 0 && digits.length !== 10) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+      }
+    }
+  });
+
+  const companyForm = useForm<InsertCompany>({
+    resolver: zodResolver(companyFormSchema),
+    defaultValues: {
+      name: "",
+      status: "active",
+      country: "US",
+      timezone: "America/New_York",
+    },
+  });
+
+  /** Transform a Company DB row to the InsertCompany shape expected by the form.
+   *  posProvider on the DB row is `string | null`; the insert schema requires the
+   *  strict enum value or `undefined`. */
+  const toInsertCompany = (c: Company): InsertCompany => {
+    // Omit DB-only fields (id, createdAt) not present in the insert schema.
+    // posProvider and primarySalesMethod are `string | null` on the DB row but the
+    // insert schema requires a strict enum or undefined — cast them explicitly.
+    // The remaining spread is safe: DB select types are a superset of insert types.
+    const { id: _id, createdAt: _createdAt, ...rest } = c;
+    return {
+      ...(rest as unknown as InsertCompany),
+      posProvider: (rest.posProvider as InsertCompany["posProvider"]) ?? undefined,
+      primarySalesMethod: (rest.primarySalesMethod as InsertCompany["primarySalesMethod"]) ?? undefined,
+    };
+  };
+
+  // Update form when company data loads
+  useEffect(() => {
+    if (company && !isEditingCompany) {
+      // Warn when the DB posProvider value is set but not in the known enum.
+      // Without this check the value would be silently cast and then lost on the
+      // next save, because insertCompanySchema rejects unrecognised strings.
+      if (company.posProvider && !(POS_PROVIDER_VALUES as readonly string[]).includes(company.posProvider)) {
+        console.warn(
+          `[company-detail] posProvider "${company.posProvider}" is not in the current form enum. ` +
+          `It will be cleared when this company is next saved. Add the value to POS_PROVIDER_VALUES in shared/schema.ts to fix this.`
+        );
+        toast({
+          title: "Unrecognised POS provider",
+          description: `The stored POS provider "${company.posProvider}" is not supported by the current form. Saving will clear this value — add it to the schema to preserve it.`,
+          variant: "destructive",
+        });
+      }
+      companyForm.reset(toInsertCompany(company));
+    }
+  }, [company, isEditingCompany]);
+
+  const storeFormSchema = insertCompanyStoreSchema.superRefine((data, ctx) => {
+    if (data.phone) {
+      const digits = data.phone.replace(/\D/g, "");
+      if (digits.length > 0 && digits.length !== 10) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone number must be 10 digits", path: ["phone"] });
+      }
+    }
+  });
+
+  const storeForm = useForm<InsertCompanyStore, any, InsertCompanyStore>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(storeFormSchema) as any,
+    defaultValues: {
+      companyId: id || "",
+      code: "",
+      name: "",
+      status: "active",
+    },
+  });
+
+  // Reset form when editing a store
+  useEffect(() => {
+    if (editingStore && isEditStoreDialogOpen) {
+      storeForm.reset({
+        companyId: editingStore.companyId,
+        name: editingStore.name,
+        code: editingStore.code,
+        phone: editingStore.phone ?? undefined,
+        addressLine1: editingStore.addressLine1 ?? undefined,
+        addressLine2: editingStore.addressLine2 ?? undefined,
+        city: editingStore.city ?? undefined,
+        state: editingStore.state ?? undefined,
+        postalCode: editingStore.postalCode ?? undefined,
+        tccLocationId: editingStore.tccLocationId ?? undefined,
+        status: editingStore.status,
+      });
+    }
+  }, [editingStore, isEditStoreDialogOpen]);
+
+  const updateCompanyMutation = useMutation({
+    mutationFn: async (data: Partial<InsertCompany>) => {
+      const response = await fetch(`/api/companies/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      setIsEditingCompany(false);
+      toast({ title: "Company updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update company", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateStoreMutation = useMutation({
+    mutationFn: async ({ storeId, data }: { storeId: string; data: Partial<InsertCompanyStore> }) => {
+      const response = await fetch(`/api/companies/${id}/stores/${storeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
+      setEditingStore(null);
+      setIsEditStoreDialogOpen(false);
+      toast({ title: "Store updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update store", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const createStoreMutation = useMutation({
+    mutationFn: async (data: InsertCompanyStore) => {
+      const response = await fetch(`/api/companies/${id}/stores`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}/stores`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stores/accessible"] });
+      setIsNewStoreDialogOpen(false);
+      storeForm.reset();
+      toast({ title: "Store created successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create store", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateTierMutation = useMutation({
+    mutationFn: async ({ tier }: { tier: string }) => {
+      const response = await apiRequest("PATCH", `/api/admin/companies/${id}/subscription`, { tier });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      toast({ title: "Subscription tier updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update tier", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleCompanySubmit = (data: InsertCompany) => {
+    updateCompanyMutation.mutate(data);
+  };
+
+  const handleStoreSubmit = (data: InsertCompanyStore) => {
+    // Normalize optional fields: convert empty strings to null for database
+    const normalizedData = {
+      ...data,
+      phone: data.phone?.trim() || null,
+      addressLine1: data.addressLine1?.trim() || null,
+      addressLine2: data.addressLine2?.trim() || null,
+      city: data.city?.trim() || null,
+      state: data.state?.trim() || null,
+      postalCode: data.postalCode?.trim() || null,
+      tccLocationId: data.tccLocationId?.trim() || null,
+    };
+    
+    if (editingStore) {
+      updateStoreMutation.mutate({ storeId: editingStore.id, data: normalizedData });
+    } else {
+      createStoreMutation.mutate(normalizedData);
+    }
+  };
+
+  const { data: usersData } = useQuery<{ users: CompanyUser[] }>({
+    queryKey: [`/api/admin/companies/${id}/users`],
+    enabled: isGlobalAdmin && !!id,
+  });
+  const companyUsers = usersData?.users ?? [];
+
+  const toggleUserMutation = useMutation({
+    mutationFn: async ({ userId, active }: { userId: string; active: number }) => {
+      const response = await apiRequest("PATCH", `/api/admin/users/${userId}`, { active });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/companies/${id}/users`] });
+      toast({ title: "User updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update user", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await apiRequest("DELETE", `/api/admin/users/${userId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/companies/${id}/users`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      toast({ title: "User deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete user", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleDeactivateCompany = () => {
+    if (confirm("Are you sure you want to deactivate this company?")) {
+      updateCompanyMutation.mutate({ status: "inactive" });
+    }
+  };
+
+  const handleActivateCompany = () => {
+    updateCompanyMutation.mutate({ status: "active" });
+  };
+
+  const handleDeactivateStore = (store: CompanyStore) => {
+    if (confirm(`Are you sure you want to deactivate ${store.name}?`)) {
+      updateStoreMutation.mutate({ storeId: store.id, data: { status: "inactive" } });
+    }
+  };
+
+  const handleActivateStore = (store: CompanyStore) => {
+    updateStoreMutation.mutate({ storeId: store.id, data: { status: "active" } });
+  };
+
+  if (loadingCompany || loadingStores) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!company) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-muted-foreground">Company not found</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="border-b p-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/companies")}
+            data-testid="button-back-to-companies"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <Building2 className="h-6 w-6 text-muted-foreground" />
+              <h1 className="text-2xl font-semibold" data-testid="text-company-name">{company.name}</h1>
+              <Badge variant={company.status === "active" ? "default" : "secondary"} data-testid="badge-company-status">
+                {company.status}
+              </Badge>
+              {isGlobalAdmin && (
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={
+                      (company.subscriptionPlan as Tier) === "enterprise" ? "destructive"
+                      : (company.subscriptionPlan as Tier) === "platform" ? "default"
+                      : "secondary"
+                    }
+                    data-testid="badge-subscription-tier"
+                  >
+                    {getTierLabel(company.subscriptionPlan as DbTier)}
+                  </Badge>
+                  <Select
+                    value={TIERS.includes(company.subscriptionPlan as Tier) ? (company.subscriptionPlan as Tier) : "platform"}
+                    onValueChange={(value) => updateTierMutation.mutate({ tier: value })}
+                  >
+                    <SelectTrigger className="h-7 w-24 text-xs" data-testid="select-tier">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIERS.map((t) => (
+                        <SelectItem key={t} value={t} data-testid={`select-tier-option-${t}`}>
+                          {TIER_LABELS[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isEditingCompany ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditingCompany(true)}
+                  data-testid="button-edit-company"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Company
+                </Button>
+                {company.status === "active" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeactivateCompany}
+                    data-testid="button-deactivate-company"
+                  >
+                    Deactivate
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleActivateCompany}
+                    data-testid="button-activate-company"
+                  >
+                    Activate
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsEditingCompany(false);
+                  if (company) companyForm.reset(toInsertCompany(company));
+                }}
+                data-testid="button-cancel-edit-company"
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Company Details</CardTitle>
+            <CardDescription>Basic information about the company</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!isEditingCompany ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Legal Name</div>
+                  <div className="font-medium" data-testid="text-legal-name">{company.legalName || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Contact Email</div>
+                  <div className="font-medium" data-testid="text-contact-email">{company.contactEmail || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Phone</div>
+                  <div className="font-medium" data-testid="text-phone">{company.phone || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Country</div>
+                  <div className="font-medium" data-testid="text-country">{company.country}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Timezone</div>
+                  <div className="font-medium" data-testid="text-timezone">{company.timezone}</div>
+                </div>
+              </div>
+            ) : (
+              <Form {...companyForm}>
+                <form onSubmit={companyForm.handleSubmit(handleCompanySubmit)} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={companyForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Company Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} data-testid="input-company-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={companyForm.control}
+                      name="legalName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Legal Name</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ""} data-testid="input-legal-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={companyForm.control}
+                      name="contactEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Contact Email</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="email" value={field.value || ""} data-testid="input-contact-email" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={companyForm.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-phone" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={companyForm.control}
+                      name="timezone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Timezone</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-timezone">
+                                <SelectValue placeholder="Select timezone" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                              <SelectItem value="America/Chicago">Central Time</SelectItem>
+                              <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                              <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={updateCompanyMutation.isPending} data-testid="button-save-company">
+                      <Save className="h-4 w-4 mr-2" />
+                      {updateCompanyMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            )}
+          </CardContent>
+        </Card>
+
+        <BrandImageCard companyId={id!} brandImagePath={company.brandImagePath ?? null} />
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Store Locations</CardTitle>
+                <CardDescription>Manage physical store locations for this company</CardDescription>
+              </div>
+              <Dialog open={isNewStoreDialogOpen} onOpenChange={setIsNewStoreDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" data-testid="button-new-store">
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Store
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Store</DialogTitle>
+                    <DialogDescription>Add a new store location to this company</DialogDescription>
+                  </DialogHeader>
+                  <Form {...storeForm}>
+                    <form onSubmit={storeForm.handleSubmit(handleStoreSubmit)} className="space-y-4">
+                      <FormField
+                        control={storeForm.control}
+                        name="code"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Store Code</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="S001" data-testid="input-store-code" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={storeForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Store Name</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Downtown Store" data-testid="input-store-name" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={storeForm.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Phone</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-store-phone" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={storeForm.control}
+                        name="addressLine1"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Address Line 1</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ""} data-testid="input-address-line1" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={storeForm.control}
+                        name="addressLine2"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Address Line 2</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ""} placeholder="Apt, Suite, etc." data-testid="input-address-line2" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="grid grid-cols-3 gap-4">
+                        <FormField
+                          control={storeForm.control}
+                          name="city"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>City</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} data-testid="input-city" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={storeForm.control}
+                          name="state"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>State</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} placeholder="TX" data-testid="input-state" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={storeForm.control}
+                          name="postalCode"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>ZIP Code</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ""} data-testid="input-postal-code" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsNewStoreDialogOpen(false)}
+                          data-testid="button-cancel-store"
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={createStoreMutation.isPending} data-testid="button-save-store">
+                          {createStoreMutation.isPending ? "Creating..." : "Create Store"}
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {stores.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground" data-testid="text-no-stores">
+                No stores found. Create your first store to get started.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {stores.map((store) => (
+                  <div
+                    key={store.id}
+                    className="flex items-center justify-between p-4 border rounded-lg hover-elevate"
+                    data-testid={`store-item-${store.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Store className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <div className="font-medium" data-testid={`text-store-name-${store.id}`}>{store.name}</div>
+                        <div className="text-sm text-muted-foreground" data-testid={`text-store-code-${store.id}`}>
+                          {store.code}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={store.status === "active" ? "default" : "secondary"}
+                        data-testid={`badge-store-status-${store.id}`}
+                      >
+                        {store.status}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingStore(store);
+                          setIsEditStoreDialogOpen(true);
+                        }}
+                        data-testid={`button-edit-store-${store.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      {store.status === "active" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeactivateStore(store)}
+                          data-testid={`button-deactivate-store-${store.id}`}
+                        >
+                          Deactivate
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleActivateStore(store)}
+                          data-testid={`button-activate-store-${store.id}`}
+                        >
+                          Activate
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Users Card — global admins only */}
+        {isGlobalAdmin && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <CardTitle>Users</CardTitle>
+                  <CardDescription>
+                    {companyUsers.length} user{companyUsers.length !== 1 ? "s" : ""} in this company
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {companyUsers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground" data-testid="text-no-users">
+                  No users found for this company.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {companyUsers.map((u) => {
+                    const displayName = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email;
+                    const isActive = u.active === 1;
+                    return (
+                      <div
+                        key={u.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                        data-testid={`user-item-${u.id}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="min-w-0">
+                            <div className="font-medium truncate" data-testid={`text-user-name-${u.id}`}>
+                              {displayName}
+                            </div>
+                            <div className="text-sm text-muted-foreground truncate" data-testid={`text-user-email-${u.id}`}>
+                              {u.email}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <Badge variant="outline" className="text-xs capitalize" data-testid={`badge-user-role-${u.id}`}>
+                            {u.role.replace(/_/g, " ")}
+                          </Badge>
+                          <Badge
+                            variant={isActive ? "default" : "secondary"}
+                            data-testid={`badge-user-status-${u.id}`}
+                          >
+                            {isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={isActive ? "Deactivate user" : "Reactivate user"}
+                            onClick={() => toggleUserMutation.mutate({ userId: u.id, active: isActive ? 0 : 1 })}
+                            disabled={toggleUserMutation.isPending}
+                            data-testid={`button-toggle-user-${u.id}`}
+                          >
+                            {isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                title="Delete user permanently"
+                                data-testid={`button-delete-user-${u.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                                  <AlertDialogTitle>Delete User?</AlertDialogTitle>
+                                </div>
+                                <AlertDialogDescription>
+                                  This will permanently delete <strong>{displayName}</strong> ({u.email}) and revoke all their active sessions. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive hover:bg-destructive/90"
+                                  onClick={() => deleteUserMutation.mutate(u.id)}
+                                  disabled={deleteUserMutation.isPending}
+                                  data-testid={`button-confirm-delete-user-${u.id}`}
+                                >
+                                  {deleteUserMutation.isPending ? "Deleting..." : "Delete User"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Edit Store Dialog */}
+      <Dialog open={isEditStoreDialogOpen} onOpenChange={(open) => {
+        setIsEditStoreDialogOpen(open);
+        if (!open) {
+          setEditingStore(null);
+          storeForm.reset({
+            companyId: id || "",
+            code: "",
+            name: "",
+            status: "active",
+          });
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Store</DialogTitle>
+            <DialogDescription>Update store information and settings</DialogDescription>
+          </DialogHeader>
+          {editingStore && (
+            <Form {...storeForm} key={editingStore.id}>
+              <form onSubmit={storeForm.handleSubmit(handleStoreSubmit)} className="space-y-4">
+                <FormField
+                  control={storeForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-edit-store-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Code</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-edit-store-code" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} onChange={(e) => field.onChange(formatPhoneNumber(e.target.value))} data-testid="input-edit-store-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="addressLine1"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address Line 1</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} data-testid="input-edit-address-line1" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={storeForm.control}
+                  name="addressLine2"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address Line 2</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} placeholder="Apt, Suite, etc." data-testid="input-edit-address-line2" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={storeForm.control}
+                    name="city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} data-testid="input-edit-city" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={storeForm.control}
+                    name="state"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>State</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} placeholder="TX" data-testid="input-edit-state" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={storeForm.control}
+                    name="postalCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ZIP Code</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} data-testid="input-edit-postal-code" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={storeForm.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-status">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditStoreDialogOpen(false);
+                      setEditingStore(null);
+                      storeForm.reset({
+                        companyId: id || "",
+                        code: "",
+                        name: "",
+                        status: "active",
+                      });
+                    }}
+                    data-testid="button-cancel-edit-store"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updateStoreMutation.isPending} data-testid="button-save-edit-store">
+                    {updateStoreMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function BrandImageCard({ companyId, brandImagePath }: { companyId: string; brandImagePath: string | null }) {
+  const { toast } = useToast();
+
+  const setMutation = useMutation({
+    mutationFn: async (objectPath: string) =>
+      apiRequest("PUT", `/api/companies/${companyId}/brand-image`, { imageUrl: objectPath }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
+      toast({ title: "Brand background updated" });
+    },
+    onError: () => toast({ title: "Failed to update brand background", variant: "destructive" }),
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/brand-image`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/background-images"] });
+      toast({ title: "Brand background cleared" });
+    },
+    onError: () => toast({ title: "Failed to clear brand background", variant: "destructive" }),
+  });
+
+  return (
+    <TierGate feature="brand_background" fallback={
+      <Card>
+        <CardHeader>
+          <CardTitle>Brand Background Image</CardTitle>
+          <CardDescription>
+            Upload a custom background image for your login and signup screens.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
+            <ImageIcon className="h-5 w-5 shrink-0" />
+            <span>Custom brand backgrounds are available on the Starter plan and above. Contact your administrator to upgrade.</span>
+          </div>
+        </CardContent>
+      </Card>
+    }>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle>Brand Background Image</CardTitle>
+              <CardDescription>
+                Upload a custom background image that replaces the global carousel for this company's login and signup screens.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <ObjectUploader
+                buttonText="Upload Brand Image"
+                buttonVariant="outline"
+                dataTestId="button-upload-brand-image"
+                visibility="public"
+                onUploadComplete={(objectPath) => setMutation.mutate(objectPath)}
+              />
+              {brandImagePath && (
+                <Button
+                  variant="ghost"
+                  onClick={() => clearMutation.mutate()}
+                  disabled={clearMutation.isPending}
+                  data-testid="button-clear-brand-image"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {brandImagePath && (
+          <CardContent>
+            <div className="relative aspect-video max-w-md overflow-hidden rounded-md bg-muted">
+              <img
+                src={brandImagePath}
+                alt="Brand background"
+                className="w-full h-full object-cover"
+                data-testid="img-brand-background"
+              />
+              <div className="absolute bottom-2 left-2">
+                <Badge variant="secondary" className="text-xs">
+                  <ImageIcon className="h-3 w-3 mr-1" />
+                  Active brand image
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        )}
+        {!brandImagePath && (
+          <CardContent>
+            <div className="flex items-center gap-3 p-4 rounded-md bg-muted/50 text-muted-foreground text-sm">
+              <ImageIcon className="h-5 w-5 shrink-0" />
+              <span>No brand image set. The global carousel will be shown instead.</span>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </TierGate>
+  );
+}

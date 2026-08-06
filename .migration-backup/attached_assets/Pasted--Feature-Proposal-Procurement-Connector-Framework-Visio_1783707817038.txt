@@ -1,0 +1,456 @@
+# Feature Proposal: Procurement Connector Framework
+## Vision
+
+Rather than building one-off integrations for every food supplier, FNB Cost Pro should introduce a Procurement Connector Framework that standardizes communication with suppliers regardless of how they exchange data.
+
+The framework should support multiple transport methods (CSV, API, browser automation, OCR, email attachments, etc.) through a common interface so adding new suppliers becomes configuration rather than custom development.
+
+This follows Elon Musk's 5-Step Algorithm:
+
+1. Question the requirement
+2. Delete unnecessary complexity
+3. Simplify the workflow
+4. Accelerate implementation
+5. Automate only after the workflow is proven
+
+---
+
+# Problem
+
+Many restaurant inventory systems attempt to integrate with every supplier through custom APIs.
+
+Problems:
+
+- APIs are expensive to build and maintain
+- Many suppliers have no API
+- APIs frequently change
+- Each integration becomes a separate software project
+- Supplier adoption becomes slow
+
+However, nearly every supplier already provides one or more of:
+
+- Customer ordering portal
+- CSV export
+- CSV import
+- Excel download
+- PDF invoices
+- Email confirmations
+- Electronic order uploads
+
+Instead of replacing supplier systems, FNB should leverage existing workflows.
+
+---
+
+# Goal
+
+Create one Procurement Connector interface that every supplier implements.
+
+The purchasing engine should never know HOW a supplier works.
+
+It should only ask:
+
+- Refresh Prices
+- Retrieve Catalog
+- Submit Order
+- Retrieve Invoice
+- Retrieve Order Status
+
+The connector decides how that happens.
+
+---
+
+# Core Architecture
+
+```
+Purchasing Engine
+        │
+        ▼
+ Procurement Connector Framework
+        │
+        ├──────── API Connector
+        ├──────── CSV Connector
+        ├──────── Excel Connector
+        ├──────── Browser Connector
+        ├──────── Email Connector
+        ├──────── OCR Connector
+        ├──────── Manual Connector
+        └──────── Future Connectors
+```
+
+---
+
+# Connector Object
+
+Each connector advertises capabilities instead of implementation details.
+
+Example
+
+```typescript
+interface ProcurementConnector {
+
+    id: string;
+
+    name: string;
+
+    vendorName: string;
+
+    connectorType:
+        | "api"
+        | "csv"
+        | "excel"
+        | "browser"
+        | "email"
+        | "ocr"
+        | "manual";
+
+    capabilities: {
+
+        retrievePrices: boolean;
+
+        retrieveCatalog: boolean;
+
+        retrieveInvoices: boolean;
+
+        retrieveCredits: boolean;
+
+        uploadOrder: boolean;
+
+        submitOrder: boolean;
+
+        retrieveOrderStatus: boolean;
+
+        retrieveInventory: boolean;
+
+    };
+
+}
+```
+
+---
+
+# Purchasing Engine
+
+The purchasing engine should NEVER contain supplier-specific logic.
+
+Instead it simply requests:
+
+```
+connector.refreshPrices()
+
+connector.uploadOrder()
+
+connector.retrieveInvoices()
+
+connector.retrieveCatalog()
+```
+
+Each connector performs the implementation appropriate for that supplier.
+
+---
+
+# Initial Connector Types
+
+## API
+
+Examples
+
+- Sysco
+- Future supplier APIs
+
+---
+
+## CSV
+
+Supports
+
+- Upload order guide
+- Download order guide
+- Import pricing
+- Export purchase orders
+
+---
+
+## Browser Connector
+
+Examples
+
+Pepper
+
+Supplier ordering portals
+
+Purpose:
+
+Read authenticated pages already open in the user's browser.
+
+Potential future capability:
+
+Populate supplier shopping cart.
+
+---
+
+## Email
+
+Monitor incoming
+
+- invoices
+
+- confirmations
+
+- credits
+
+Parse attachments.
+
+---
+
+## OCR
+
+Extract structured data from
+
+- PDFs
+
+- images
+
+- scanned invoices
+
+- order guides
+
+---
+
+## Manual
+
+Always available fallback.
+
+Allows customer uploads without automation.
+
+---
+
+# Procurement Connector Workflow
+
+```
+Supplier
+
+↓
+
+Connector
+
+↓
+
+Normalized Product Model
+
+↓
+
+Existing Pack Size Parser
+
+↓
+
+Existing Unit Price Engine
+
+↓
+
+Existing Match Engine
+
+↓
+
+Existing Review Screen
+
+↓
+
+Vendor Pricing History
+```
+
+This intentionally reuses existing FNB Cost Pro infrastructure.
+
+---
+
+# Data Model
+
+Every imported value should include provenance.
+
+Example
+
+```
+VendorPriceRecord
+
+Price
+
+Currency
+
+SourceType
+
+ConnectorId
+
+RetrievedAt
+
+ApprovedAt
+
+ApprovedBy
+
+MatchConfidence
+
+IsCurrent
+
+OriginalDocument
+
+OriginalSKU
+```
+
+This allows every displayed price to answer:
+
+- Where did it come from?
+- When was it retrieved?
+- Was it approved?
+- Was it imported or manually entered?
+
+---
+
+# Price Freshness
+
+Prices should never simply be shown.
+
+They should include freshness.
+
+Examples
+
+Portal Verified
+18 minutes ago
+
+Invoice Confirmed
+Yesterday
+
+CSV Import
+3 days ago
+
+Manual Entry
+18 days ago
+
+Refresh Failed
+
+---
+
+# Multi-Store Behavior
+
+If multiple stores share the same supplier account:
+
+Refresh once.
+
+Propagate pricing automatically.
+
+Allow store-specific overrides when required.
+
+---
+
+# Browser Connector (Future)
+
+Long-term goal.
+
+DO NOT automate ordering initially.
+
+Version 1
+
+Read supplier pricing.
+
+Version 2
+
+Read availability.
+
+Version 3
+
+Populate shopping cart.
+
+Version 4
+
+Submit order with approval.
+
+Human approval should always occur before order submission.
+
+---
+
+# AI Opportunity
+
+Long-term vision.
+
+Rather than writing every connector manually:
+
+Customer uploads
+
+- sample order guide
+
+- sample invoice
+
+- sample order export
+
+AI determines:
+
+- columns
+
+- SKU
+
+- pricing
+
+- quantities
+
+- import mapping
+
+Connector becomes mostly configuration.
+
+---
+
+# Constraints
+
+## Must NOT
+
+- Duplicate purchasing logic
+
+- Duplicate existing import logic
+
+- Duplicate pack-size validation
+
+- Duplicate unit conversion
+
+- Duplicate vendor matching
+
+Reuse existing systems wherever possible.
+
+---
+
+## Must
+
+Use the current:
+
+- Vendor Import Pipeline
+
+- Product Matching
+
+- Pack Size Intelligence
+
+- Unit Price Engine
+
+- Pricing History
+
+- Review Workflow
+
+The connector layer exists only to acquire and normalize supplier data.
+
+---
+
+# Design Philosophy
+
+The supplier should be treated as a Data Source, not an Integration.
+
+Adding a new supplier should become:
+
+Configure
+
+Validate
+
+Deploy
+
+rather than
+
+Design
+
+Develop
+
+Maintain
+
+This architecture should make future supplier additions dramatically faster while allowing APIs, browser automation, CSV uploads, OCR, and future AI-generated connectors to coexist under one standardized procurement framework.

@@ -1,0 +1,210 @@
+Because the main application already has the AI chat and all waste/catalog data, the cleanest long-term design may be:
+
+Native app records audio
+        ↓
+Mobile API transcribes only
+        ↓
+Main application /api/waste/interpret
+        ↓
+Main application resolves item and returns draft
+
+In that design, the mobile API server owns only the native-specific audio bridge. The main application owns all domain interpretation.
+
+That is the approach I would favor unless there is a strong reason the mobile API server must own the LLM extraction.
+
+The confirmation screen question
+
+Task #95 currently places the confirmation flow natively:
+
+“Native review screen where the user confirms/edits parsed entries before they are posted.”
+
+That will work, but it creates duplicated Waste UI:
+
+Native review fields
+Wrapped web Waste entry fields
+
+I would avoid building a rich native editor unless the user experience clearly requires it.
+
+A more efficient flow is:
+
+Native microphone modal
+→ transcript
+→ parsed entry
+→ send draft into wrapped Waste page
+→ existing web form opens prefilled
+→ user confirms using web form
+
+That gives you:
+
+One authoritative confirmation form
+One set of validation rules
+One item picker
+One unit picker
+One reason-code implementation
+Immediate web deployability
+Less native rebuild work
+
+The native screen only needs to show:
+
+Listening…
+Transcript captured
+Processing…
+Open Waste Entry
+
+The full correction and submission flow can happen inside the wrapped page.
+
+Recommended bridge
+
+The best bridge is likely postMessage, because the wrapped page is already authenticated through mobileToken.
+
+Native app sends:
+
+webViewRef.current?.postMessage(
+  JSON.stringify({
+    type: "FNB_WASTE_DRAFT",
+    payload: {
+      transcript,
+      entries
+    }
+  })
+);
+
+The embedded Waste page listens for it:
+
+window.addEventListener("message", handleMobileMessage);
+document.addEventListener("message", handleMobileMessage);
+
+The page then:
+
+Validates the message.
+Resolves the draft if it has not already been resolved.
+Prefills the existing wizard.
+Opens at the first ambiguous or missing field.
+Requires normal submission.
+
+For React Native WebView, you may need both window and document listeners depending on platform behavior.
+
+Avoid passing drafts through query strings
+
+Do not do this:
+
+/waste?item=chicken&qty=3&unit=lb
+
+That becomes brittle, exposes data in URLs and does not handle multiple entries well.
+
+Use either:
+
+postMessage
+A temporary server-side draft ID
+Or both
+
+A draft-ID pattern is even more robust:
+
+Native API creates voice draft
+→ returns wasteDraftId
+→ open /waste?embedded=true&draftId=abc123
+→ web page fetches draft
+
+That helps when:
+
+The WebView reloads
+The native app is interrupted
+The user navigates away
+Multiple items are spoken
+The payload is too large for a simple bridge
+You want an audit trail
+Multiple waste entries should be in scope for parsing
+
+The task says “structured waste entries,” plural. That is important.
+
+A chef may say:
+
+“Waste three pounds of chicken breast because it spoiled, two salmon dinners were returned, and one gallon of soup was dropped.”
+
+The parser should return multiple independent drafts.
+
+However, the current POST /api/waste only accepts one entry. For the first release you can submit them sequentially, but I would strongly consider adding:
+
+POST /api/waste/batch
+
+Request:
+
+{
+  "storeId": "uuid",
+  "entries": [...]
+}
+
+Server behavior:
+
+Validate every entry
+Calculate every cost
+Insert within a transaction
+Return per-entry success or failure
+Deduplicate with a client request ID
+
+Without a batch endpoint, three voice entries could partially save and leave the user uncertain.
+
+Web-team dependencies to define now
+
+The mobile team correctly identified the embedded page as an early dependency. I would give the web team these explicit requirements.
+
+Embedded Waste page
+/waste?embedded=true&mobileToken=...
+
+Must:
+
+Accept Bearer/mobile-token authentication
+Hide desktop navigation and redundant chrome
+Default to the authenticated user’s selected store
+Render safely at phone widths
+Support the current stepped wizard
+Receive a voice draft by postMessage or draftId
+Prefill inventory or menu-item entries
+Surface ambiguity rather than guessing
+Notify native code after successful submission
+Existing Waste API shape
+
+Confirm:
+
+POST /api/waste
+{
+  storeId: string;
+  wasteType: "inventory" | "menu_item";
+  inventoryItemId?: string | null;
+  menuItemId?: string | null;
+  qty: number;
+  unitId?: string | null;
+  reasonCode:
+    | "SPOILED"
+    | "DAMAGED"
+    | "OVERPRODUCTION"
+    | "DROPPED"
+    | "CUSTOMER_COMPLAINT"
+    | "QUALITY"
+    | "OTHER";
+  notes?: string | null;
+}
+
+Also document the returned enriched shape and all validation errors.
+
+Authentication boundary
+
+The mobile token is the linchpin, as they said. Make sure it works for all new routes:
+
+/api/waste
+/api/waste/resolve
+/api/waste/drafts/:id
+/api/auth/me
+Any item-search or unit-resolution endpoint
+
+The WebView should not depend on manually copying a JWT into JavaScript storage. Prefer the established bridge that turns mobileToken into authenticated API calls.
+
+Also verify:
+
+Token expiration behavior while the Waste WebView is open
+Refresh/re-auth behavior
+Company/store scope
+Whether the token can be reused outside the app
+Whether URLs containing the token can leak into logs or analytics
+
+Longer term, putting mobileToken directly in a query string is worth revisiting because URLs can be logged. A one-time exchange token or injected Authorization bridge would be safer, but that does not need to block the MVP if this pattern is already established and protected.

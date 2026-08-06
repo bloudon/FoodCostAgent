@@ -1,0 +1,6339 @@
+import { eq, and, or, gt, gte, lte, ne, isNull, isNotNull, inArray, sql, desc, asc, ilike } from "drizzle-orm";
+import { db } from "./db";
+import { cache, CacheKeys } from "./cache";
+import { encryptToken, decryptToken, currentTokenKeyVersion } from "./utils/tokenCrypto";
+import {
+  users, type User, type InsertUser,
+  authSessions, type AuthSession, type InsertAuthSession,
+  apiCredentials, type ApiCredential, type InsertApiCredential,
+  apiCredentialLocations, type ApiCredentialLocation, type InsertApiCredentialLocation,
+  companies, type Company, type InsertCompany,
+  companyStores, type CompanyStore, type InsertCompanyStore,
+  storageLocations, type StorageLocation, type InsertStorageLocation,
+  categories, type Category, type InsertCategory,
+  units, type Unit, type InsertUnit,
+  unitConversions, type UnitConversion, type InsertUnitConversion,
+  inventoryItems, type InventoryItem, type InsertInventoryItem,
+  inventoryItemUnits, type InventoryItemUnit, type InsertInventoryItemUnit,
+  inventoryItemLocations, type InventoryItemLocation, type InsertInventoryItemLocation,
+  inventoryItemPriceHistory, type InventoryItemPriceHistory, type InsertInventoryItemPriceHistory,
+  storeInventoryItems, type StoreInventoryItem, type InsertStoreInventoryItem,
+  vendors, type Vendor, type InsertVendor,
+  storeVendors, type StoreVendor, type InsertStoreVendor,
+  vendorItems, type VendorItem, type InsertVendorItem,
+  recipes, type Recipe, type InsertRecipe,
+  recipeComponents, type RecipeComponent, type InsertRecipeComponent,
+  inventoryCounts, type InventoryCount, type InsertInventoryCount,
+  inventoryCountLines, type InventoryCountLine, type InsertInventoryCountLine,
+  inventoryCountEntries, type InventoryCountEntry, type InsertInventoryCountEntry,
+  purchaseOrders, type PurchaseOrder, type InsertPurchaseOrder,
+  poLines, type POLine, type InsertPOLine,
+  poExportLogs, type PoExportLog, type InsertPoExportLog,
+  receipts, type Receipt, type InsertReceipt,
+  receiptLines, type ReceiptLine, type InsertReceiptLine,
+  posSales, type POSSale, type InsertPOSSale,
+  posSalesLines, type POSSalesLine, type InsertPOSSalesLine,
+  menuItems, type MenuItem, type InsertMenuItem,
+  storeMenuItems, type StoreMenuItem, type InsertStoreMenuItem,
+  storeRecipes, type StoreRecipe, type InsertStoreRecipe,
+  recipeVersions, type RecipeVersion, type InsertRecipeVersion,
+  transferLogs, type TransferLog, type InsertTransferLog,
+  transferOrders, type TransferOrder, type InsertTransferOrder,
+  transferOrderLines, type TransferOrderLine, type InsertTransferOrderLine,
+  wasteLogs, type WasteLog, type InsertWasteLog,
+  companySettings, type CompanySettings, type InsertCompanySettings,
+  systemPreferences, type SystemPreferences, type InsertSystemPreferences,
+  vendorCredentials, type VendorCredentials, type InsertVendorCredentials,
+  ediMessages, type EdiMessage, type InsertEdiMessage,
+  orderGuides, type OrderGuide, type InsertOrderGuide,
+  orderGuideLines, type OrderGuideLine, type InsertOrderGuideLine,
+  orderGuideStores, type OrderGuideStore, type InsertOrderGuideStore,
+  userStores, type UserStore, type InsertUserStore,
+  invitations, type Invitation, type InsertInvitation,
+  salesUploadBatches, type SalesUploadBatch, type InsertSalesUploadBatch,
+  dailyMenuItemSales, type DailyMenuItemSales, type InsertDailyMenuItemSales,
+  recipeCostSnapshots, type RecipeCostSnapshot, type InsertRecipeCostSnapshot,
+  theoreticalUsageRuns, type TheoreticalUsageRun, type InsertTheoreticalUsageRun,
+  theoreticalUsageLines, type TheoreticalUsageLine, type InsertTheoreticalUsageLine,
+  dayparts, type Daypart, type InsertDaypart,
+  quickbooksConnections, type QuickBooksConnection, type InsertQuickBooksConnection,
+  quickbooksVendorMappings, type QuickBooksVendorMapping, type InsertQuickBooksVendorMapping,
+  quickbooksSyncLogs, type QuickBooksSyncLog, type InsertQuickBooksSyncLog,
+  quickbooksTokenLogs, type QuickBooksTokenLog, type InsertQuickBooksTokenLog,
+  qbReconciliations, type QbReconciliation, type InsertQbReconciliation,
+  onboardingProgress, type OnboardingProgress, type InsertOnboardingProgress,
+  menuItemSizes, type MenuItemSize, type InsertMenuItemSize,
+  menuLocationAssignments, type MenuLocationAssignment, type InsertMenuLocationAssignment,
+  stations, type Station, type InsertStation,
+  prepItems, type PrepItem, type InsertPrepItem,
+  prepItemIngredients, type PrepItemIngredient, type InsertPrepItemIngredient,
+  menuItemPrepUsages, type MenuItemPrepUsage, type InsertMenuItemPrepUsage,
+  prepProductionRecords, type PrepProductionRecord, type InsertPrepProductionRecord,
+  prepOnHand, type PrepOnHand, type InsertPrepOnHand,
+  prepChartRuns, type PrepChartRun, type InsertPrepChartRun,
+  prepChartLines, type PrepChartLine, type InsertPrepChartLine,
+  shelfScanSessions, type ShelfScanSession, type InsertShelfScanSession,
+  customerSupplierConnections, type CustomerSupplierConnection, type InsertCustomerSupplierConnection,
+  posConnections, type PosConnection, type InsertPosConnection,
+  posLocationMappings, type PosLocationMapping, type InsertPosLocationMapping,
+  posItemMappings, type PosItemMapping, type InsertPosItemMapping,
+  posSyncJobs, type PosSyncJob, type InsertPosSyncJob,
+  menus, type Menu, type InsertMenu,
+  menuSections, type MenuSection, type InsertMenuSection,
+  menuEntries, type MenuEntry, type InsertMenuEntry,
+} from "@workspace/db";
+
+export interface IStorage {
+  // Users
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserBySsoId(ssoProvider: string, ssoId: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, user: Partial<User>): Promise<User | undefined>;
+  getUsers(companyId?: string): Promise<User[]>;
+  
+  // User-Store assignments
+  getUserStores(userId: string): Promise<UserStore[]>;
+  assignUserToStore(userId: string, storeId: string): Promise<UserStore>;
+  removeUserFromStore(userId: string, storeId: string): Promise<void>;
+
+  // Invitations
+  createInvitation(invitation: InsertInvitation): Promise<Invitation>;
+  getInvitationByToken(token: string): Promise<Invitation | undefined>;
+  getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined>;
+  getPendingInvitations(companyId: string): Promise<Invitation[]>;
+  acceptInvitation(token: string): Promise<Invitation | undefined>;
+  revokeInvitation(id: string, companyId: string | null): Promise<void>;
+  cleanExpiredInvitations(): Promise<void>;
+
+  // Auth Sessions
+  createAuthSession(session: InsertAuthSession): Promise<AuthSession>;
+  getAuthSessionByToken(tokenHash: string): Promise<AuthSession | undefined>;
+  updateAuthSession(id: string, updates: Partial<AuthSession>): Promise<AuthSession | undefined>;
+  revokeAuthSession(id: string): Promise<void>;
+  cleanExpiredSessions(): Promise<void>;
+
+  // API Credentials (HMAC authentication for inbound data feeds)
+  getApiCredentials(companyId: string): Promise<Array<ApiCredential & { locationCount: number }>>;
+  getApiCredential(id: string, companyId: string): Promise<ApiCredential | undefined>;
+  getApiCredentialByKeyId(apiKeyId: string): Promise<ApiCredential | undefined>;
+  createApiCredential(credential: InsertApiCredential): Promise<ApiCredential>;
+  updateApiCredential(id: string, companyId: string, updates: Partial<ApiCredential>): Promise<ApiCredential | undefined>;
+  deleteApiCredential(id: string, companyId: string): Promise<void>;
+  updateApiCredentialLastUsed(apiKeyId: string): Promise<void>;
+  
+  // API Credential Locations
+  getApiCredentialLocations(apiCredentialId: string): Promise<ApiCredentialLocation[]>;
+  setApiCredentialLocations(apiCredentialId: string, storeIds: string[]): Promise<void>;
+  verifyApiCredentialLocation(apiCredentialId: string, storeId: string): Promise<boolean>;
+
+  // Storage Locations
+  getStorageLocations(companyId: string): Promise<StorageLocation[]>;
+  getStorageLocation(id: string, companyId: string): Promise<StorageLocation | undefined>;
+  createStorageLocation(location: InsertStorageLocation): Promise<StorageLocation>;
+  updateStorageLocation(id: string, companyId: string, location: Partial<StorageLocation>): Promise<StorageLocation | undefined>;
+  deleteStorageLocation(id: string, companyId: string): Promise<void>;
+  reorderStorageLocations(companyId: string, locationOrders: { id: string; sortOrder: number }[]): Promise<void>;
+
+  // Categories
+  getCategories(companyId: string, includeInactive?: boolean): Promise<Category[]>;
+  getCategory(id: string, companyId: string): Promise<Category | undefined>;
+  createCategory(category: InsertCategory): Promise<Category>;
+  updateCategory(id: string, companyId: string, category: Partial<Category>): Promise<Category | undefined>;
+  deactivateCategory(id: string, companyId: string): Promise<void>;
+  reactivateCategory(id: string, companyId: string): Promise<Category | undefined>;
+  getCategoryItemCount(id: string, companyId: string): Promise<number>;
+  reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void>;
+
+  // Units
+  getUnits(): Promise<Unit[]>;
+  getUnit(id: string): Promise<Unit | undefined>;
+  createUnit(unit: InsertUnit): Promise<Unit>;
+
+  // Unit Conversions
+  getUnitConversions(): Promise<UnitConversion[]>;
+  getUnitConversion(id: string): Promise<UnitConversion | undefined>;
+  createUnitConversion(conversion: InsertUnitConversion): Promise<UnitConversion>;
+  updateUnitConversion(id: string, conversion: Partial<UnitConversion>): Promise<UnitConversion | undefined>;
+  deleteUnitConversion(id: string): Promise<void>;
+
+  // Inventory Items
+  getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]>;
+  getInventoryItem(id: string): Promise<InventoryItem | undefined>;
+  createInventoryItem(item: InsertInventoryItem): Promise<InventoryItem>;
+  updateInventoryItem(id: string, item: Partial<InventoryItem>, companyId?: string): Promise<InventoryItem | undefined>;
+  getInventoryItemsByName(name: string): Promise<InventoryItem[]>;
+  getInventoryItemsAggregated(): Promise<Array<{
+    name: string;
+    category: string | null;
+    totalOnHandQty: number;
+    locations: Array<{
+      locationId: string;
+      locationName: string;
+      onHandQty: number;
+    }>;
+  }>>;
+  
+  // Inventory Item Locations
+  getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]>;
+  getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>>;
+  setInventoryItemLocations(inventoryItemId: string, locationIds: string[], primaryLocationId?: string): Promise<void>;
+
+  // Inventory Item Units (per-item Recipe / Issue Units)
+  getInventoryItemUnits(inventoryItemId: string): Promise<InventoryItemUnit[]>;
+  getInventoryItemUnitsForCompany(companyId: string): Promise<InventoryItemUnit[]>;
+  createInventoryItemUnit(unit: InsertInventoryItemUnit): Promise<InventoryItemUnit>;
+  updateInventoryItemUnit(id: string, updates: Partial<InventoryItemUnit>): Promise<InventoryItemUnit | undefined>;
+  deleteInventoryItemUnit(id: string): Promise<void>;
+  reorderInventoryItemUnits(inventoryItemId: string, isIssueUnit: number, orderedIds: string[]): Promise<void>;
+
+  // Store Inventory Items
+  getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined>;
+  getStoreInventoryItems(storeId: string): Promise<StoreInventoryItem[]>;
+  getInventoryItemStores(inventoryItemId: string): Promise<StoreInventoryItem[]>;
+  createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem>;
+  updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void>;
+  updateStoreInventoryItem(storeId: string, inventoryItemId: string, updates: Partial<StoreInventoryItem>): Promise<StoreInventoryItem | undefined>;
+  updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined>;
+  removeStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<void>;
+
+  // Vendors
+  getVendors(companyId?: string): Promise<Vendor[]>;
+  getVendor(id: string, companyId?: string): Promise<Vendor | undefined>;
+  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  updateVendor(id: string, vendor: Partial<Vendor>, companyId?: string): Promise<Vendor | undefined>;
+  deleteVendor(id: string, companyId?: string): Promise<void>;
+
+  // Vendor Items
+  getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]>;
+  getVendorItem(id: string): Promise<VendorItem | undefined>;
+  getVendorSkusBatch(inventoryItemIds: string[]): Promise<Map<string, string[]>>;
+  getVendorCasePricesBatch(inventoryItemIds: string[], companyId: string): Promise<Map<string, { casePrice: number; vendorName: string }>>;
+  createVendorItem(vendorItem: InsertVendorItem): Promise<VendorItem>;
+  updateVendorItem(id: string, vendorItem: Partial<InsertVendorItem>): Promise<VendorItem | undefined>;
+  deleteVendorItem(id: string): Promise<void>;
+
+  // Store-Vendor Assignments
+  getStoreVendors(storeId: string): Promise<StoreVendor[]>;
+  getVendorStores(vendorId: string): Promise<StoreVendor[]>;
+  getStoreVendor(storeId: string, vendorId: string): Promise<StoreVendor | undefined>;
+  createStoreVendor(storeVendor: InsertStoreVendor): Promise<StoreVendor>;
+  updateStoreVendor(storeId: string, vendorId: string, updates: Partial<StoreVendor>): Promise<StoreVendor | undefined>;
+  deleteStoreVendor(storeId: string, vendorId: string): Promise<void>;
+  setStoreVendorPrimary(storeId: string, vendorId: string): Promise<void>;
+
+  // Order Guide Store Assignments
+  getOrderGuideStores(orderGuideId: string): Promise<OrderGuideStore[]>;
+  setOrderGuideStores(orderGuideId: string, storeIds: string[]): Promise<void>;
+
+  // Recipes
+  getRecipes(companyId?: string): Promise<Recipe[]>;
+  getRecipe(id: string, companyId?: string): Promise<Recipe | undefined>;
+  createRecipe(recipe: InsertRecipe): Promise<Recipe>;
+  cloneRecipe(sourceRecipeId: string, companyId: string, newName: string, storeIds: string[], sizeName?: string): Promise<Recipe>;
+  updateRecipe(id: string, recipe: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined>;
+  deleteRecipe(id: string, companyId: string): Promise<void>;
+  checkRecipeHasSales(recipeId: string, companyId: string): Promise<boolean>;
+  checkRecipeIsSubRecipe(recipeId: string, companyId: string): Promise<boolean>;
+
+  // Recipe Components
+  getRecipeComponents(recipeId: string): Promise<RecipeComponent[]>;
+  getRecipeComponent(id: string): Promise<RecipeComponent | undefined>;
+  createRecipeComponent(component: InsertRecipeComponent): Promise<RecipeComponent>;
+  updateRecipeComponent(id: string, component: Partial<RecipeComponent>): Promise<RecipeComponent | undefined>;
+  deleteRecipeComponent(id: string): Promise<void>;
+
+  // Store Recipes
+  getStoreRecipes(recipeId: string): Promise<StoreRecipe[]>;
+  createStoreRecipe(storeRecipe: InsertStoreRecipe): Promise<StoreRecipe>;
+
+
+  // Inventory Counts
+  getInventoryCounts(companyId: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]>;
+  getInventoryCount(id: string): Promise<InventoryCount | undefined>;
+  createInventoryCount(count: InsertInventoryCount): Promise<InventoryCount>;
+  deleteInventoryCount(id: string): Promise<void>;
+
+  // Inventory Count Lines
+  getInventoryCountLines(countId: string): Promise<InventoryCountLine[]>;
+  getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined>;
+  createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
+  updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
+  atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined>;
+  deleteInventoryCountLine(id: string): Promise<void>;
+
+  // Inventory Count Entries
+  createInventoryCountEntry(entry: InsertInventoryCountEntry): Promise<InventoryCountEntry>;
+  getEntriesForLines(lineIds: string[]): Promise<InventoryCountEntry[]>;
+  deleteEntriesForLine(lineId: string): Promise<void>;
+  getCountEntry(id: string): Promise<InventoryCountEntry | undefined>;
+  deleteCountEntry(entryId: string): Promise<InventoryCountLine | undefined>;
+  clearCountLine(lineId: string): Promise<InventoryCountLine | undefined>;
+
+  // Item Usage Calculation
+  getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    previousQty: number;
+    receivedQty: number;
+    transferredQty: number;
+    currentQty: number;
+    usage: number;
+    unitId: string;
+    unitName: string;
+    pricePerUnit: number;
+    isNegativeUsage: boolean;
+    previousCountId: string;
+    currentCountId: string;
+    receiptIds: string[];
+    transferOrderIds: string[];
+  }>>;
+
+  // Estimated On-Hand Calculation
+  getEstimatedOnHand(companyId: string, storeId: string): Promise<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    transferredInQty: number;
+    estimatedOnHand: number;
+  }>>;
+
+  // Estimated On-Hand Breakdown (detailed with dates)
+  getEstimatedOnHandBreakdown(companyId: string, storeId: string, inventoryItemId: string): Promise<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    unitName: string;
+    lastCount: {
+      qty: number;
+      date: string;
+    } | null;
+    receipts: Array<{
+      date: string;
+      qty: number;
+      vendorName: string;
+      poId: string | null;
+    }>;
+    waste: Array<{
+      date: string;
+      qty: number;
+      reason: string;
+    }>;
+    theoreticalUsage: Array<{
+      date: string;
+      qty: number;
+    }>;
+    transfersOut: Array<{
+      date: string;
+      qty: number;
+      toStoreName: string;
+      transferId: string;
+    }>;
+    transfersIn: Array<{
+      date: string;
+      qty: number;
+      fromStoreName: string;
+      transferId: string;
+    }>;
+    summary: {
+      lastCountQty: number;
+      receivedQty: number;
+      wasteQty: number;
+      theoreticalUsageQty: number;
+      transferredOutQty: number;
+      transferredInQty: number;
+      estimatedOnHand: number;
+    };
+  } | null>;
+
+  // Purchase Orders
+  getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]>;
+  getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined>;
+  createPurchaseOrder(po: InsertPurchaseOrder): Promise<PurchaseOrder>;
+  updatePurchaseOrder(id: string, po: Partial<PurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: string): Promise<void>;
+
+  // PO Lines
+  getPOLines(poId: string): Promise<POLine[]>;
+  createPOLine(line: InsertPOLine): Promise<POLine>;
+  deletePOLine(id: string): Promise<void>;
+
+  // PO Export Logs
+  createPoExportLog(log: InsertPoExportLog): Promise<PoExportLog>;
+  getPoExportLogs(purchaseOrderId: string, companyId: string): Promise<PoExportLog[]>;
+  confirmPoExportLog(id: string, purchaseOrderId: string, companyId: string, userId: string): Promise<PoExportLog | undefined>;
+
+  // Receipts
+  getReceipts(companyId: string, storeId?: string): Promise<Receipt[]>;
+  getReceipt(id: string): Promise<Receipt | undefined>;
+  createReceipt(receipt: InsertReceipt): Promise<Receipt>;
+  updateReceipt(id: string, data: Partial<InsertReceipt>): Promise<void>;
+
+  // Receipt Lines
+  getReceiptLines(receiptId: string): Promise<ReceiptLine[]>;
+  getReceiptLinesByReceiptId(receiptId: string): Promise<ReceiptLine[]>;
+  createReceiptLine(line: InsertReceiptLine): Promise<ReceiptLine>;
+  updateReceiptLine(id: string, data: Partial<InsertReceiptLine>): Promise<void>;
+
+  // POS Sales
+  getPOSSales(startDate?: Date, endDate?: Date): Promise<POSSale[]>;
+  createPOSSale(sale: InsertPOSSale): Promise<POSSale>;
+
+  // POS Sales Lines
+  getPOSSalesLines(saleId: string): Promise<POSSalesLine[]>;
+  createPOSSalesLine(line: InsertPOSSalesLine): Promise<POSSalesLine>;
+
+  // Menu Items
+  getMenuItems(): Promise<MenuItem[]>;
+  getMenuItem(id: string): Promise<MenuItem | undefined>;
+  getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined>;
+  getMenuItemByRecipeId(recipeId: string, companyId: string): Promise<MenuItem | undefined>;
+  createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+  updateMenuItem(id: string, item: Partial<MenuItem>): Promise<MenuItem | undefined>;
+  // Menu Item Hierarchy
+  getMenuItemsByCompany(companyId: string): Promise<MenuItem[]>;
+  getMenuItemVariants(parentMenuItemId: string): Promise<MenuItem[]>;
+  getMenuItemsWithVariants(companyId: string): Promise<{ parent: MenuItem; variants: MenuItem[] }[]>;
+  createMenuItemVariant(parentId: string, variant: InsertMenuItem): Promise<MenuItem>;
+  linkMenuItemToRecipe(menuItemId: string, recipeId: string): Promise<MenuItem | undefined>;
+  convertToParentMenuItem(menuItemId: string): Promise<MenuItem | undefined>;
+
+  // Store Menu Items
+  getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]>;
+  createStoreMenuItem(item: InsertStoreMenuItem): Promise<StoreMenuItem>;
+
+  // Menu Item Sizes
+  getMenuItemSizes(companyId: string): Promise<MenuItemSize[]>;
+  getMenuItemSize(id: string): Promise<MenuItemSize | undefined>;
+  createMenuItemSize(size: InsertMenuItemSize): Promise<MenuItemSize>;
+  updateMenuItemSize(id: string, size: Partial<MenuItemSize>): Promise<MenuItemSize | undefined>;
+  deleteMenuItemSize(id: string): Promise<void>;
+
+  // Recipe Versions
+  getRecipeVersions(recipeId: string): Promise<RecipeVersion[]>;
+  getRecipeVersion(id: string): Promise<RecipeVersion | undefined>;
+  createRecipeVersion(version: InsertRecipeVersion): Promise<RecipeVersion>;
+
+  // Transfer Logs
+  getTransferLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
+  createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
+
+  // Transfer Orders
+  getTransferOrders(companyId: string, storeId?: string): Promise<TransferOrder[]>;
+  getTransferOrder(id: string): Promise<TransferOrder | undefined>;
+  createTransferOrder(order: InsertTransferOrder): Promise<TransferOrder>;
+  updateTransferOrder(id: string, order: Partial<TransferOrder>): Promise<TransferOrder | undefined>;
+  deleteTransferOrder(id: string): Promise<void>;
+
+  // Transfer Order Lines
+  getTransferOrderLines(transferOrderId: string): Promise<TransferOrderLine[]>;
+  createTransferOrderLine(line: InsertTransferOrderLine): Promise<TransferOrderLine>;
+  updateTransferOrderLine(id: string, line: Partial<TransferOrderLine>): Promise<TransferOrderLine | undefined>;
+  deleteTransferOrderLine(id: string): Promise<void>;
+
+  // Waste Logs
+  getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<WasteLog[]>;
+  createWasteLog(waste: InsertWasteLog): Promise<WasteLog>;
+
+  // Companies
+  getCompanies(): Promise<Company[]>;
+  getCompany(id: string): Promise<Company | undefined>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: string, company: Partial<Company>): Promise<Company | undefined>;
+
+  // Company Stores
+  getCompanyStores(companyId: string): Promise<CompanyStore[]>;
+  getCompanyStore(id: string, companyId?: string): Promise<CompanyStore | undefined>;
+  createCompanyStore(store: InsertCompanyStore): Promise<CompanyStore>;
+  updateCompanyStore(id: string, store: Partial<CompanyStore>): Promise<CompanyStore | undefined>;
+  deleteCompanyStore(id: string): Promise<void>;
+
+  // Company Settings
+  getCompanySettings(): Promise<CompanySettings | undefined>;
+  updateCompanySettings(settings: Partial<CompanySettings>): Promise<CompanySettings>;
+
+  // System Preferences
+  getSystemPreferences(): Promise<SystemPreferences | undefined>;
+  updateSystemPreferences(preferences: Partial<SystemPreferences>): Promise<SystemPreferences>;
+
+  // Customer Supplier Connections (M2 — per-company connector+transport config)
+  getCustomerSupplierConnection(companyId: string, vendorId: string): Promise<CustomerSupplierConnection | null>;
+  getCompanySupplierConnections(companyId: string): Promise<CustomerSupplierConnection[]>;
+  upsertCustomerSupplierConnection(data: InsertCustomerSupplierConnection): Promise<CustomerSupplierConnection>;
+  deleteCustomerSupplierConnection(id: string, companyId: string): Promise<void>;
+
+  // Vendor Credentials
+  getVendorCredentials(): Promise<VendorCredentials[]>;
+  getVendorCredentialsByKey(vendorKey: string): Promise<VendorCredentials | undefined>;
+  createVendorCredentials(credentials: InsertVendorCredentials): Promise<VendorCredentials>;
+  updateVendorCredentials(id: string, credentials: Partial<VendorCredentials>): Promise<VendorCredentials | undefined>;
+  deleteVendorCredentials(id: string): Promise<void>;
+
+  // EDI Messages
+  getEdiMessages(vendorKey?: string, limit?: number): Promise<EdiMessage[]>;
+  getEdiMessage(id: string): Promise<EdiMessage | undefined>;
+  createEdiMessage(message: InsertEdiMessage): Promise<EdiMessage>;
+  updateEdiMessage(id: string, updates: Partial<EdiMessage>): Promise<EdiMessage | undefined>;
+
+  // Order Guides
+  getOrderGuides(vendorKey?: string, limit?: number): Promise<OrderGuide[]>;
+  getOrderGuide(id: string): Promise<OrderGuide | undefined>;
+  createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide>;
+  updateOrderGuideStatus(id: string, status: string): Promise<void>;
+  updateOrderGuideVendor(id: string, vendorId: string | null): Promise<void>;
+  updateOrderGuideRowCount(id: string, rowCount: number, fileName?: string): Promise<void>;
+  supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number>;
+
+  // Order Guide Lines
+  getOrderGuideLines(orderGuideId: string): Promise<OrderGuideLine[]>;
+  createOrderGuideLine(line: InsertOrderGuideLine): Promise<OrderGuideLine>;
+  createOrderGuideLinesBatch(lines: InsertOrderGuideLine[]): Promise<OrderGuideLine[]>;
+
+  // Inventory Item Price History
+  getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]>;
+  createInventoryItemPriceHistory(history: InsertInventoryItemPriceHistory): Promise<InventoryItemPriceHistory>;
+
+  // Inventory item search for count entry - with multi-tenant filtering
+  searchInventoryItems(term: string, companyId: string, storeId?: string): Promise<InventoryItem[]>;
+
+  // Inventory count aggregations
+  getInventoryCountAggregations(countId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    totalQty: number;
+    totalValue: number;
+    countLineIds: string[];
+  }>>;
+
+  getInventoryItemCountDetails(inventoryItemId: string, countId: string): Promise<Array<{
+    countLineId: string;
+    userId: string;
+    userName: string;
+    storageLocationId: string;
+    locationName: string;
+    qty: number;
+    unitId: string;
+    unitName: string;
+    pricePerUnit: number;
+    caseSize: number;
+    totalValue: number;
+    countedAt: Date;
+  }>>;
+
+  // TFC - Dayparts
+  getDayparts(companyId: string): Promise<Daypart[]>;
+  getDaypart(id: string, companyId: string): Promise<Daypart | undefined>;
+  createDaypart(daypart: InsertDaypart): Promise<Daypart>;
+  updateDaypart(id: string, companyId: string, updates: Partial<Daypart>): Promise<Daypart | undefined>;
+
+  // TFC - Sales Upload Batches
+  createSalesUploadBatch(batch: InsertSalesUploadBatch): Promise<SalesUploadBatch>;
+  getSalesUploadBatch(id: string, companyId: string): Promise<SalesUploadBatch | undefined>;
+  getSalesUploadBatches(companyId: string, storeId?: string): Promise<SalesUploadBatch[]>;
+  updateSalesUploadBatchStatus(id: string, companyId: string, status: string, completedAt?: Date, rowsProcessed?: number, rowsFailed?: number, errorLog?: string): Promise<void>;
+
+  // TFC - Daily Menu Item Sales
+  createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]>;
+  /**
+   * Upsert POS sales rows using the partial unique index on
+   * (connectionId, externalOrderId, externalLineItemId).
+   * Re-ingesting the same order line updates qtySold / netSales / sourceBatchId
+   * instead of inserting a duplicate.  Rows without those three fields set
+   * (e.g. rows emitted without valid POS IDs) fall through to a plain INSERT.
+   */
+  upsertPosDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]>;
+  getDailyMenuItemSales(companyId: string, storeId: string, startDate: Date, endDate: Date): Promise<DailyMenuItemSales[]>;
+
+  // TFC - Recipe Cost Snapshots
+  createRecipeCostSnapshot(snapshot: InsertRecipeCostSnapshot): Promise<RecipeCostSnapshot>;
+  getRecipeCostSnapshot(recipeId: string, effectiveDate: Date): Promise<RecipeCostSnapshot | undefined>;
+
+  // TFC - Theoretical Usage Runs
+  createTheoreticalUsageRun(run: InsertTheoreticalUsageRun): Promise<TheoreticalUsageRun>;
+  getTheoreticalUsageRun(id: string, companyId: string): Promise<TheoreticalUsageRun | undefined>;
+  getTheoreticalUsageRuns(companyId: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TheoreticalUsageRun[]>;
+  updateTheoreticalUsageRun(id: string, companyId: string, updates: Partial<TheoreticalUsageRun>): Promise<TheoreticalUsageRun | undefined>;
+
+  // TFC - Theoretical Usage Lines
+  createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]>;
+  getTheoreticalUsageLines(runId: string): Promise<TheoreticalUsageLine[]>;
+
+  // QuickBooks - Connections
+  getQuickBooksConnection(companyId: string, storeId?: string): Promise<QuickBooksConnection | undefined>;
+  getAllQuickBooksConnections(): Promise<QuickBooksConnection[]>;
+  createQuickBooksConnection(connection: InsertQuickBooksConnection): Promise<QuickBooksConnection>;
+  updateQuickBooksConnection(id: string, companyId: string, updates: Partial<QuickBooksConnection>): Promise<QuickBooksConnection | undefined>;
+  updateQuickBooksTokens(companyId: string, storeId: string | null, tokens: { accessToken: string; refreshToken: string; accessTokenExpiresAt: Date; refreshTokenExpiresAt: Date }): Promise<void>;
+  disconnectQuickBooks(companyId: string, storeId?: string): Promise<void>;
+  logQuickBooksTokenEvent(log: InsertQuickBooksTokenLog): Promise<void>;
+  
+  // QuickBooks - Vendor Mappings
+  getQuickBooksVendorMapping(vendorId: string, companyId: string): Promise<QuickBooksVendorMapping | undefined>;
+  getQuickBooksVendorMappings(companyId: string): Promise<QuickBooksVendorMapping[]>;
+  createQuickBooksVendorMapping(mapping: InsertQuickBooksVendorMapping): Promise<QuickBooksVendorMapping>;
+  updateQuickBooksVendorMapping(id: string, companyId: string, updates: Partial<QuickBooksVendorMapping>): Promise<QuickBooksVendorMapping | undefined>;
+  deleteQuickBooksVendorMapping(id: string, companyId: string): Promise<void>;
+  
+  // QuickBooks - Sync Logs
+  getQuickBooksSyncLog(purchaseOrderId: string, companyId: string): Promise<QuickBooksSyncLog | undefined>;
+  getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]>;
+  createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog>;
+  updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined>;
+
+  // QuickBooks - Reconciliations
+  getQbReconciliation(purchaseOrderId: string, companyId: string): Promise<QbReconciliation | undefined>;
+  getQbReconciliations(companyId: string): Promise<QbReconciliation[]>;
+  createQbReconciliation(rec: InsertQbReconciliation): Promise<QbReconciliation>;
+  updateQbReconciliation(purchaseOrderId: string, companyId: string, updates: Partial<QbReconciliation>): Promise<QbReconciliation | undefined>;
+  
+  // Onboarding Progress
+  getOnboardingProgress(companyId: string): Promise<OnboardingProgress | undefined>;
+  createOnboardingProgress(progress: InsertOnboardingProgress): Promise<OnboardingProgress>;
+  updateOnboardingProgress(companyId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress | undefined>;
+  completeOnboarding(companyId: string): Promise<OnboardingProgress | undefined>;
+
+  // Prep Chart — Stations
+  getStations(companyId: string): Promise<Station[]>;
+  getStation(id: string, companyId: string): Promise<Station | undefined>;
+  createStation(station: InsertStation): Promise<Station>;
+  updateStation(id: string, companyId: string, updates: Partial<Station>): Promise<Station | undefined>;
+  deleteStation(id: string, companyId: string): Promise<void>;
+  reorderStations(companyId: string, orderedIds: string[]): Promise<void>;
+
+  // Prep Chart — Prep Items
+  getPrepItems(companyId: string): Promise<PrepItem[]>;
+  getPrepItem(id: string, companyId: string): Promise<PrepItem | undefined>;
+  createPrepItem(item: InsertPrepItem): Promise<PrepItem>;
+  updatePrepItem(id: string, companyId: string, updates: Partial<PrepItem>): Promise<PrepItem | undefined>;
+  deletePrepItem(id: string, companyId: string): Promise<void>;
+
+  // Prep Chart — Prep Item Ingredients
+  getPrepItemIngredients(prepItemId: string, companyId: string): Promise<PrepItemIngredient[]>;
+  createPrepItemIngredient(ingredient: InsertPrepItemIngredient): Promise<PrepItemIngredient>;
+  updatePrepItemIngredient(id: string, companyId: string, updates: Partial<PrepItemIngredient>): Promise<PrepItemIngredient | undefined>;
+  deletePrepItemIngredient(id: string, companyId: string): Promise<void>;
+  replaceAllPrepItemIngredients(prepItemId: string, companyId: string, ingredients: InsertPrepItemIngredient[]): Promise<PrepItemIngredient[]>;
+
+  // Prep Chart — Menu Item Prep Usages
+  getMenuItemPrepUsages(prepItemId: string, companyId: string): Promise<MenuItemPrepUsage[]>;
+  getMenuItemPrepUsagesByMenuItem(menuItemId: string, companyId: string): Promise<MenuItemPrepUsage[]>;
+  createMenuItemPrepUsage(usage: InsertMenuItemPrepUsage): Promise<MenuItemPrepUsage>;
+  deleteMenuItemPrepUsage(id: string, companyId: string): Promise<void>;
+  replaceAllMenuItemPrepUsages(prepItemId: string, companyId: string, usages: InsertMenuItemPrepUsage[]): Promise<MenuItemPrepUsage[]>;
+
+  // Prep Chart — Production Records
+  getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string, startDate?: Date, endDate?: Date): Promise<PrepProductionRecord[]>;
+  createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord>;
+
+  // Prep Chart — On Hand
+  getPrepOnHand(companyId: string, storeId: string, prepItemId?: string): Promise<PrepOnHand[]>;
+  createPrepOnHand(entry: InsertPrepOnHand): Promise<PrepOnHand>;
+  deletePrepOnHand(id: string, companyId: string): Promise<void>;
+  getTotalOnHandQty(prepItemId: string, storeId: string, companyId: string): Promise<number>;
+
+  // Prep Chart — Chart Runs & Lines
+  getPrepChartRuns(companyId: string, storeId: string, businessDate?: Date): Promise<PrepChartRun[]>;
+  getLatestPrepChartRun(companyId: string, storeId: string, businessDate: Date, daypartId?: string): Promise<PrepChartRun | undefined>;
+  createPrepChartRun(run: InsertPrepChartRun): Promise<PrepChartRun>;
+  getPrepChartLines(runId: string, companyId: string): Promise<PrepChartLine[]>;
+  createPrepChartLines(lines: InsertPrepChartLine[]): Promise<PrepChartLine[]>;
+  deletePrepChartLines(runId: string): Promise<void>;
+
+  // Shelf Scan Sessions
+  createShelfScanSession(session: InsertShelfScanSession): Promise<ShelfScanSession>;
+  getShelfScanSessions(companyId: string, storeId?: string): Promise<ShelfScanSession[]>;
+  getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined>;
+  getRecentShelfScanSessions(userId: string, companyId: string, limit?: number): Promise<ShelfScanSession[]>;
+
+  // Mobile Dashboard & Active Sessions
+  getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
+  getRecentAppliedInventoryCounts(companyId: string, storeIds?: string[], limit?: number): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]>;
+  getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]>;
+
+  // POS Connections
+  getPosConnections(companyId: string): Promise<PosConnection[]>;
+  getPosConnectionById(id: string): Promise<PosConnection | undefined>;
+  createPosConnection(data: InsertPosConnection): Promise<PosConnection>;
+  updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined>;
+  deletePosConnection(id: string, companyId: string): Promise<void>;
+  getAllActivePosConnections(): Promise<PosConnection[]>;
+  /**
+   * Returns connections eligible for scheduled sync:
+   *   - status = 'active'
+   *   - company.primary_sales_method = 'pos_connector'
+   *   - connection.provider matches company.pos_provider
+   */
+  getPosConnectionsEligibleForSync(): Promise<PosConnection[]>;
+  /**
+   * Returns the first retained (non-released) connection for a company, if any.
+   * Used by the provider-change guard and OAuth new-connection gate.
+   */
+  getRetainedPosConnectionForCompany(companyId: string): Promise<PosConnection | undefined>;
+
+  // POS Location Mappings
+  getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]>;
+  upsertPosLocationMappings(connectionId: string, companyId: string, mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null; externalTimezone?: string | null }>): Promise<PosLocationMapping[]>;
+
+  // POS Item Mappings
+  getPosItemMappings(connectionId: string): Promise<PosItemMapping[]>;
+  upsertPosItemMappings(connectionId: string, companyId: string, mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null; ignored?: boolean }>): Promise<PosItemMapping[]>;
+  updatePosItemMapping(connectionId: string, externalVariationId: string, updates: { menuItemId?: string | null; ignored?: boolean }): Promise<PosItemMapping | undefined>;
+
+  // POS Sync Jobs
+  createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob>;
+  updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined>;
+  getPosSyncJobs(connectionId: string, limit?: number): Promise<PosSyncJob[]>;
+  /** Returns the currently-running sync job for a connection, if one exists. */
+  getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined>;
+  /**
+   * Returns all pos_sync_jobs rows with status='running' whose startedAt is
+   * older than `thresholdMinutes` (default 30).  Joined with pos_connections so
+   * the caller gets merchantId and connection status without a second query.
+   */
+  getStuckPosSyncJobs(thresholdMinutes?: number): Promise<Array<PosSyncJob & { merchantId: string; connectionStatus: string }>>;
+  /**
+   * Marks all pos_sync_jobs rows with status='running' older than
+   * `thresholdMinutes` (default 60) as 'failed', releasing their locks.
+   * Returns the number of rows updated.
+   */
+  releaseStalePosSyncLocks(thresholdMinutes?: number): Promise<number>;
+  /**
+   * Atomically attempts to acquire a sync lock for a connection by inserting a
+   * `running` job row.  The partial unique index on (connection_id) WHERE
+   * status='running' makes the INSERT the actual lock — two concurrent callers
+   * can never both succeed.  Stale locks (> 30 min) are auto-released on conflict.
+   */
+  tryAcquirePosSyncLock(data: InsertPosSyncJob): Promise<
+    { acquired: true; job: PosSyncJob } |
+    { acquired: false; existingJobId: string; existingStartedAt: Date }
+  >;
+
+  // ── Menu Portfolio ─────────────────────────────────────────────────────────
+  // Menus
+  getMenusByCompany(companyId: string): Promise<Menu[]>;
+  getMenusWithStats(companyId: string): Promise<Array<Menu & { totalItems: number; pricedItems: number }>>;
+  getMenu(id: string, companyId: string): Promise<Menu | undefined>;
+  createMenu(menu: InsertMenu): Promise<Menu>;
+  updateMenu(id: string, companyId: string, updates: Partial<Menu>): Promise<Menu | undefined>;
+  deleteMenu(id: string, companyId: string): Promise<void>;
+  transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined>;
+  duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu>;
+  computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport>;
+
+  // Menu Location Assignments
+  getMenuLocationAssignments(menuId: string, companyId: string, accessibleStoreIds?: string[] | null): Promise<MenuLocationAssignment[]>;
+  addMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<MenuLocationAssignment>;
+  removeMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<void>;
+
+  // Menu Forecast
+  computeMenuForecast(menuId: string, companyId: string): Promise<import("./services/menuForecastService").ForecastReport>;
+
+  // Menu Sections
+  getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]>;
+  getMenuSection(id: string, companyId: string): Promise<MenuSection | undefined>;
+  createMenuSection(section: InsertMenuSection): Promise<MenuSection>;
+  updateMenuSection(id: string, companyId: string, updates: Partial<MenuSection>): Promise<MenuSection | undefined>;
+  deleteMenuSection(id: string, companyId: string): Promise<void>;
+  reorderMenuSections(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void>;
+
+  // Menu Entries
+  getMenuEntries(menuId: string, companyId: string): Promise<MenuEntry[]>;
+  getMenuEntry(id: string, companyId: string): Promise<MenuEntry | undefined>;
+  createMenuEntry(entry: InsertMenuEntry): Promise<MenuEntry>;
+  updateMenuEntry(id: string, companyId: string, updates: Partial<MenuEntry>): Promise<MenuEntry | undefined>;
+  deleteMenuEntry(id: string, companyId: string): Promise<void>;
+  reorderMenuEntries(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void>;
+}
+
+// ── POS token encryption helpers (module-level, used by DatabaseStorage) ──────
+
+/** Encrypt tokens in a new PosConnection payload before INSERT. */
+function encryptPosConnectionTokens<T extends { accessToken: string; refreshToken?: string | null }>(
+  data: T,
+): T & { tokenKeyVersion: number } {
+  return {
+    ...data,
+    accessToken: encryptToken(data.accessToken),
+    refreshToken: data.refreshToken ? encryptToken(data.refreshToken) : data.refreshToken,
+    tokenKeyVersion: currentTokenKeyVersion(),
+  };
+}
+
+/** Decrypt tokens in a PosConnection row after SELECT. */
+function decryptPosConnectionTokens(row: PosConnection): PosConnection {
+  return {
+    ...row,
+    accessToken: decryptToken(row.accessToken),
+    refreshToken: row.refreshToken ? decryptToken(row.refreshToken) : row.refreshToken,
+  };
+}
+
+/**
+ * Encrypt token fields in a partial UPDATE payload.
+ * Only encrypts fields that are present in the update object.
+ */
+function encryptPosConnectionTokenUpdates(
+  updates: Partial<PosConnection>,
+): Partial<PosConnection> {
+  const result: Partial<PosConnection> = { ...updates };
+  if (updates.accessToken !== undefined) {
+    result.accessToken = encryptToken(updates.accessToken);
+    result.tokenKeyVersion = currentTokenKeyVersion();
+  }
+  if (updates.refreshToken !== undefined && updates.refreshToken !== null) {
+    result.refreshToken = encryptToken(updates.refreshToken);
+    result.tokenKeyVersion = currentTokenKeyVersion();
+  }
+  return result;
+}
+
+export class DatabaseStorage implements IStorage {
+  // Users
+  async getUser(id: string): Promise<User | undefined> {
+    // @ts-ignore
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUsersByIds(userIds: string[], companyId: string): Promise<Map<string, { id: string; firstName: string; lastName: string; fullName: string }>> {
+    if (userIds.length === 0) {
+      return new Map();
+    }
+    
+    const uniqueIds = Array.from(new Set(userIds.filter(id => id)));
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+    
+    // Only fetch users belonging to the same company (tenant isolation)
+    const foundUsers = await db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(users).where(
+      and(
+        // @ts-ignore
+        inArray(users.id, uniqueIds),
+        // @ts-ignore
+        eq(users.companyId, companyId)
+      )
+    );
+    
+    const userMap = new Map<string, { id: string; firstName: string; lastName: string; fullName: string }>();
+    for (const user of foundUsers) {
+      userMap.set(user.id, {
+        id: user.id,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        fullName: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unknown User',
+      });
+    }
+    
+    return userMap;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    // @ts-ignore
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async getUserBySsoId(ssoProvider: string, ssoId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(
+        // @ts-ignore
+        eq(users.ssoProvider, ssoProvider),
+        // @ts-ignore
+        eq(users.ssoId, ssoId)
+      )
+    );
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [user] = await db.update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(eq(users.id, id))
+      .returning();
+    return user || undefined;
+  }
+
+  async getUsers(companyId?: string): Promise<User[]> {
+    if (companyId) {
+      // @ts-ignore
+      return await db.select().from(users).where(eq(users.companyId, companyId));
+    }
+    return await db.select().from(users);
+  }
+
+  // User-Store assignments
+  async getUserStores(userId: string): Promise<UserStore[]> {
+    // @ts-ignore
+    return await db.select().from(userStores).where(eq(userStores.userId, userId));
+  }
+
+  async assignUserToStore(userId: string, storeId: string): Promise<UserStore> {
+    const [userStore] = await db.insert(userStores)
+      .values({ userId, storeId })
+      .returning();
+    return userStore;
+  }
+
+  async removeUserFromStore(userId: string, storeId: string): Promise<void> {
+    await db.delete(userStores)
+      .where(and(
+        // @ts-ignore
+        eq(userStores.userId, userId),
+        // @ts-ignore
+        eq(userStores.storeId, storeId)
+      ));
+  }
+
+  // Invitations
+  async createInvitation(insertInvitation: InsertInvitation): Promise<Invitation> {
+    const [invitation] = await db.insert(invitations).values(insertInvitation).returning();
+    return invitation;
+  }
+
+  async getInvitationByToken(token: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(invitations)
+      .where(and(
+        // @ts-ignore
+        eq(invitations.token, token),
+        // @ts-ignore
+        isNull(invitations.acceptedAt),
+        // @ts-ignore
+        gte(invitations.expiresAt, new Date())
+      ));
+    return invitation || undefined;
+  }
+
+  async getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .select()
+      .from(invitations)
+      .where(and(
+        // @ts-ignore
+        eq(invitations.email, email),
+        // @ts-ignore
+        eq(invitations.companyId, companyId),
+        // @ts-ignore
+        isNull(invitations.acceptedAt),
+        // @ts-ignore
+        gte(invitations.expiresAt, new Date())
+      ))
+      .orderBy(invitations.createdAt)
+      .limit(1);
+    return invitation || undefined;
+  }
+
+  async getPendingInvitations(companyId: string): Promise<Invitation[]> {
+    return await db
+      .select()
+      .from(invitations)
+      .where(and(
+        // @ts-ignore
+        eq(invitations.companyId, companyId),
+        // @ts-ignore
+        isNull(invitations.acceptedAt),
+        // @ts-ignore
+        gte(invitations.expiresAt, new Date())
+      ))
+      .orderBy(invitations.createdAt);
+  }
+
+  async acceptInvitation(token: string): Promise<Invitation | undefined> {
+    const [invitation] = await db
+      .update(invitations)
+      .set({ acceptedAt: new Date() })
+      .where(and(
+        // @ts-ignore
+        eq(invitations.token, token),
+        // @ts-ignore
+        isNull(invitations.acceptedAt),
+        // @ts-ignore
+        gte(invitations.expiresAt, new Date())
+      ))
+      .returning();
+    return invitation || undefined;
+  }
+
+  async revokeInvitation(id: string, companyId: string | null): Promise<void> {
+    console.log(`[revokeInvitation] Attempting to delete invitation ${id} for company ${companyId}`);
+    
+    // Build WHERE conditions
+    const conditions = companyId
+      // @ts-ignore
+      ? and(eq(invitations.id, id), eq(invitations.companyId, companyId))
+      // @ts-ignore
+      : eq(invitations.id, id);
+    
+    const deleted = await db.delete(invitations)
+      .where(conditions)
+      .returning();
+    
+    console.log(`[revokeInvitation] Deleted ${deleted.length} invitations`);
+    
+    if (deleted.length === 0) {
+      throw new Error("Invitation not found or already revoked");
+    }
+  }
+
+  async cleanExpiredInvitations(): Promise<void> {
+    await db.delete(invitations)
+      // @ts-ignore
+      .where(lte(invitations.expiresAt, new Date()));
+  }
+
+  // Auth Sessions
+  async createAuthSession(insertSession: InsertAuthSession): Promise<AuthSession> {
+    const [session] = await db.insert(authSessions).values(insertSession).returning();
+    return session;
+  }
+
+  async getAuthSessionByToken(tokenHash: string): Promise<AuthSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(authSessions)
+      .where(and(
+        // @ts-ignore
+        eq(authSessions.tokenHash, tokenHash),
+        // @ts-ignore
+        isNull(authSessions.revokedAt),
+        // @ts-ignore
+        gte(authSessions.expiresAt, new Date())
+      ));
+    return session || undefined;
+  }
+
+  async updateAuthSession(id: string, updates: Partial<AuthSession>): Promise<AuthSession | undefined> {
+    const [session] = await db
+      .update(authSessions)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(authSessions.id, id))
+      .returning();
+    
+    // Invalidate cache when session is updated (Phase 2 optimization)
+    if (session) {
+      await cache.del(CacheKeys.session(session.tokenHash));
+    }
+    
+    return session || undefined;
+  }
+
+  async revokeAuthSession(id: string): Promise<void> {
+    // Get session before revoking to invalidate cache
+    const session = await db.query.authSessions.findFirst({
+      // @ts-ignore
+      where: eq(authSessions.id, id),
+    });
+    
+    await db
+      .update(authSessions)
+      .set({ revokedAt: new Date() })
+      // @ts-ignore
+      .where(eq(authSessions.id, id));
+    
+    // Invalidate cache when session is revoked (Phase 2 optimization)
+    if (session) {
+      await cache.del(CacheKeys.session(session.tokenHash));
+      if (session.userId) {
+        await cache.del(CacheKeys.user(session.userId));
+      }
+    }
+  }
+
+  async cleanExpiredSessions(): Promise<void> {
+    const now = new Date();
+    await db
+      .delete(authSessions)
+      .where(or(
+        // @ts-ignore
+        lte(authSessions.expiresAt, now),
+        // @ts-ignore
+        isNotNull(authSessions.revokedAt)
+      ));
+  }
+
+  // API Credentials
+  async getApiCredentials(companyId: string): Promise<Array<ApiCredential & { locationCount: number }>> {
+    const credentials = await db.select().from(apiCredentials)
+      // @ts-ignore
+      .where(eq(apiCredentials.companyId, companyId))
+      .orderBy(apiCredentials.createdAt);
+    
+    // Get location counts for each credential
+    const credentialsWithCounts = await Promise.all(
+      // @ts-ignore
+      credentials.map(async (cred) => {
+        const locations = await db.select().from(apiCredentialLocations)
+          // @ts-ignore
+          .where(eq(apiCredentialLocations.apiCredentialId, cred.id));
+        return {
+          ...cred,
+          locationCount: locations.length
+        };
+      })
+    );
+    
+    return credentialsWithCounts;
+  }
+
+  async getApiCredential(id: string, companyId: string): Promise<ApiCredential | undefined> {
+    const [credential] = await db.select().from(apiCredentials)
+      .where(and(
+        // @ts-ignore
+        eq(apiCredentials.id, id),
+        // @ts-ignore
+        eq(apiCredentials.companyId, companyId)
+      ));
+    return credential;
+  }
+
+  async getApiCredentialByKeyId(apiKeyId: string): Promise<ApiCredential | undefined> {
+    const [credential] = await db.select().from(apiCredentials)
+      // @ts-ignore
+      .where(eq(apiCredentials.apiKeyId, apiKeyId));
+    return credential;
+  }
+
+  async createApiCredential(credential: InsertApiCredential): Promise<ApiCredential> {
+    const [newCredential] = await db.insert(apiCredentials)
+      .values(credential)
+      .returning();
+    return newCredential;
+  }
+
+  async updateApiCredential(id: string, companyId: string, updates: Partial<ApiCredential>): Promise<ApiCredential | undefined> {
+    const [updated] = await db.update(apiCredentials)
+      .set(updates)
+      .where(and(
+        // @ts-ignore
+        eq(apiCredentials.id, id),
+        // @ts-ignore
+        eq(apiCredentials.companyId, companyId)
+      ))
+      .returning();
+    return updated;
+  }
+
+  async deleteApiCredential(id: string, companyId: string): Promise<void> {
+    // First delete all location mappings
+    await db.delete(apiCredentialLocations)
+      // @ts-ignore
+      .where(eq(apiCredentialLocations.apiCredentialId, id));
+    
+    // Then delete the credential
+    await db.delete(apiCredentials)
+      .where(and(
+        // @ts-ignore
+        eq(apiCredentials.id, id),
+        // @ts-ignore
+        eq(apiCredentials.companyId, companyId)
+      ));
+  }
+
+  async updateApiCredentialLastUsed(apiKeyId: string): Promise<void> {
+    await db.update(apiCredentials)
+      .set({ lastUsedAt: new Date() })
+      // @ts-ignore
+      .where(eq(apiCredentials.apiKeyId, apiKeyId));
+  }
+
+  // API Credential Locations
+  async getApiCredentialLocations(apiCredentialId: string): Promise<ApiCredentialLocation[]> {
+    return db.select().from(apiCredentialLocations)
+      // @ts-ignore
+      .where(eq(apiCredentialLocations.apiCredentialId, apiCredentialId));
+  }
+
+  async setApiCredentialLocations(apiCredentialId: string, storeIds: string[]): Promise<void> {
+    // Delete existing location mappings
+    await db.delete(apiCredentialLocations)
+      // @ts-ignore
+      .where(eq(apiCredentialLocations.apiCredentialId, apiCredentialId));
+    
+    // Insert new location mappings
+    if (storeIds.length > 0) {
+      await db.insert(apiCredentialLocations)
+        .values(storeIds.map(storeId => ({
+          apiCredentialId,
+          storeId
+        })));
+    }
+  }
+
+  async verifyApiCredentialLocation(apiCredentialId: string, storeId: string): Promise<boolean> {
+    const [location] = await db.select().from(apiCredentialLocations)
+      .where(and(
+        // @ts-ignore
+        eq(apiCredentialLocations.apiCredentialId, apiCredentialId),
+        // @ts-ignore
+        eq(apiCredentialLocations.storeId, storeId)
+      ));
+    return !!location;
+  }
+
+  // Storage Locations
+  async getStorageLocations(companyId: string): Promise<StorageLocation[]> {
+    return db.select().from(storageLocations)
+      // @ts-ignore
+      .where(eq(storageLocations.companyId, companyId))
+      .orderBy(storageLocations.sortOrder);
+  }
+
+  async getStorageLocation(id: string, companyId: string): Promise<StorageLocation | undefined> {
+    const [location] = await db.select().from(storageLocations)
+      .where(and(
+        // @ts-ignore
+        eq(storageLocations.id, id),
+        // @ts-ignore
+        eq(storageLocations.companyId, companyId)
+      ));
+    return location || undefined;
+  }
+
+  async createStorageLocation(insertLocation: InsertStorageLocation): Promise<StorageLocation> {
+    const [location] = await db.insert(storageLocations).values(insertLocation).returning();
+    return location;
+  }
+
+  async updateStorageLocation(id: string, companyId: string, updates: Partial<StorageLocation>): Promise<StorageLocation | undefined> {
+    const [location] = await db
+      .update(storageLocations)
+      .set(updates)
+      .where(and(
+        // @ts-ignore
+        eq(storageLocations.id, id),
+        // @ts-ignore
+        eq(storageLocations.companyId, companyId)
+      ))
+      .returning();
+    return location || undefined;
+  }
+
+  async deleteStorageLocation(id: string, companyId: string): Promise<void> {
+    await db.delete(storageLocations)
+      .where(and(
+        // @ts-ignore
+        eq(storageLocations.id, id),
+        // @ts-ignore
+        eq(storageLocations.companyId, companyId)
+      ));
+  }
+
+  async reorderStorageLocations(companyId: string, locationOrders: { id: string; sortOrder: number }[]): Promise<void> {
+    // Update all locations in a transaction
+    // @ts-ignore
+    await db.transaction(async (tx) => {
+      for (const { id, sortOrder } of locationOrders) {
+        await tx
+          .update(storageLocations)
+          .set({ sortOrder })
+          .where(and(
+            // @ts-ignore
+            eq(storageLocations.id, id),
+            // @ts-ignore
+            eq(storageLocations.companyId, companyId)
+          ));
+      }
+    });
+  }
+
+  // Categories
+  async getCategories(companyId: string, includeInactive = false): Promise<Category[]> {
+    const conditions = includeInactive
+      // @ts-ignore
+      ? [eq(categories.companyId, companyId)]
+      // @ts-ignore
+      : [eq(categories.companyId, companyId), eq(categories.isActive, 1)];
+    return db.select().from(categories)
+      .where(and(...conditions))
+      .orderBy(categories.sortOrder);
+  }
+
+  async getCategory(id: string, companyId: string): Promise<Category | undefined> {
+    const [category] = await db.select().from(categories)
+      .where(and(
+        // @ts-ignore
+        eq(categories.id, id),
+        // @ts-ignore
+        eq(categories.companyId, companyId)
+      ));
+    return category || undefined;
+  }
+
+  async createCategory(insertCategory: InsertCategory): Promise<Category> {
+    const [category] = await db.insert(categories).values(insertCategory).returning();
+    return category;
+  }
+
+  async updateCategory(id: string, companyId: string, updates: Partial<Category>): Promise<Category | undefined> {
+    // Strip companyId from updates to prevent cross-tenant reassignment
+    const { companyId: _, ...safeUpdates } = updates;
+    const [category] = await db
+      .update(categories)
+      .set(safeUpdates)
+      .where(and(
+        // @ts-ignore
+        eq(categories.id, id),
+        // @ts-ignore
+        eq(categories.companyId, companyId)
+      ))
+      .returning();
+    return category || undefined;
+  }
+
+  async deactivateCategory(id: string, companyId: string): Promise<void> {
+    await db.update(categories)
+      .set({ isActive: 0 })
+      .where(and(
+        // @ts-ignore
+        eq(categories.id, id),
+        // @ts-ignore
+        eq(categories.companyId, companyId)
+      ));
+  }
+
+  async reactivateCategory(id: string, companyId: string): Promise<Category | undefined> {
+    const [category] = await db.update(categories)
+      .set({ isActive: 1 })
+      .where(and(
+        // @ts-ignore
+        eq(categories.id, id),
+        // @ts-ignore
+        eq(categories.companyId, companyId)
+      ))
+      .returning();
+    return category || undefined;
+  }
+
+  async getCategoryItemCount(id: string, companyId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(inventoryItems)
+      .where(and(
+        // @ts-ignore
+        eq(inventoryItems.categoryId, id),
+        // @ts-ignore
+        eq(inventoryItems.companyId, companyId)
+      ));
+    return result[0]?.count ?? 0;
+  }
+
+  async reorderCategories(companyId: string, categoryOrders: { id: string; sortOrder: number }[]): Promise<void> {
+    // Update all categories in a transaction
+    // @ts-ignore
+    await db.transaction(async (tx) => {
+      for (const { id, sortOrder } of categoryOrders) {
+        await tx
+          .update(categories)
+          .set({ sortOrder })
+          .where(and(
+            // @ts-ignore
+            eq(categories.id, id),
+            // @ts-ignore
+            eq(categories.companyId, companyId)
+          ));
+      }
+    });
+  }
+
+  // Units
+  async getUnits(): Promise<Unit[]> {
+    return db.select().from(units).orderBy(units.kind, units.toBaseRatio);
+  }
+
+  async getUnit(id: string): Promise<Unit | undefined> {
+    // @ts-ignore
+    const [unit] = await db.select().from(units).where(eq(units.id, id));
+    return unit || undefined;
+  }
+
+  async createUnit(insertUnit: InsertUnit): Promise<Unit> {
+    const [unit] = await db.insert(units).values(insertUnit).returning();
+    return unit;
+  }
+
+  // Unit Conversions
+  async getUnitConversions(): Promise<UnitConversion[]> {
+    return db.select().from(unitConversions);
+  }
+
+  async getUnitConversion(id: string): Promise<UnitConversion | undefined> {
+    // @ts-ignore
+    const [conversion] = await db.select().from(unitConversions).where(eq(unitConversions.id, id));
+    return conversion || undefined;
+  }
+
+  async createUnitConversion(insertConversion: InsertUnitConversion): Promise<UnitConversion> {
+    const [conversion] = await db.insert(unitConversions).values(insertConversion).returning();
+    return conversion;
+  }
+
+  async updateUnitConversion(id: string, updates: Partial<UnitConversion>): Promise<UnitConversion | undefined> {
+    const [conversion] = await db
+      .update(unitConversions)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(unitConversions.id, id))
+      .returning();
+    return conversion || undefined;
+  }
+
+  async deleteUnitConversion(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(unitConversions).where(eq(unitConversions.id, id));
+  }
+
+  // Inventory Items
+  async getInventoryItems(locationId?: string, storeId?: string, companyId?: string): Promise<InventoryItem[]> {
+    const conditions = [];
+    
+    // Always filter by company if provided (multi-tenant safety)
+    if (companyId) {
+      // @ts-ignore
+      conditions.push(eq(inventoryItems.companyId, companyId));
+    }
+    
+    // When filtering by store, we need to join with store_inventory_items and use store-specific active status
+    // Use INNER JOIN to only show items that have been associated with this store
+    if (storeId) {
+      let query = db.select({ 
+        inventoryItem: inventoryItems,
+        storeActive: storeInventoryItems.active,
+        onHandQty: storeInventoryItems.onHandQty,
+        parLevel: storeInventoryItems.parLevel,
+        reorderLevel: storeInventoryItems.reorderLevel
+      }).from(inventoryItems)
+        .innerJoin(storeInventoryItems, and(
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId)
+        ));
+      
+      // Legacy: filter by storage location (DEPRECATED)
+      if (locationId) {
+        // @ts-ignore
+        query = query.innerJoin(inventoryItemLocations, eq(inventoryItemLocations.inventoryItemId, inventoryItems.id));
+        // @ts-ignore
+        conditions.push(eq(inventoryItemLocations.storageLocationId, locationId));
+      }
+      
+      const result = await query.where(conditions.length > 0 ? and(...conditions) : undefined);
+      // Use store-specific values (active status, onHandQty, par/reorder levels)
+      // @ts-ignore
+      return result.map(row => ({
+        ...row.inventoryItem,
+        active: row.storeActive,
+        onHandQty: row.onHandQty,
+        parLevel: row.parLevel ?? row.inventoryItem.parLevel,
+        reorderLevel: row.reorderLevel ?? row.inventoryItem.reorderLevel
+      }));
+    }
+    
+    // No store filter - return items with global active status
+    let query = db.select().from(inventoryItems);
+    
+    // Legacy: filter by storage location (DEPRECATED)
+    if (locationId) {
+      // @ts-ignore
+      query = query.innerJoin(inventoryItemLocations, eq(inventoryItemLocations.inventoryItemId, inventoryItems.id));
+      // @ts-ignore
+      conditions.push(eq(inventoryItemLocations.storageLocationId, locationId));
+    }
+    
+    if (conditions.length > 0) {
+      return query.where(and(...conditions));
+    }
+    
+    // Fallback: return all items
+    return query;
+  }
+
+  async getInventoryItem(id: string, storeId?: string): Promise<InventoryItem | undefined> {
+    // If storeId provided, join with store_inventory_items to get store-specific values
+    if (storeId) {
+      const result = await db.select({ 
+        inventoryItem: inventoryItems,
+        storeActive: storeInventoryItems.active,
+        onHandQty: storeInventoryItems.onHandQty,
+        parLevel: storeInventoryItems.parLevel,
+        reorderLevel: storeInventoryItems.reorderLevel
+      }).from(inventoryItems)
+        .innerJoin(storeInventoryItems, and(
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId)
+        ))
+        // @ts-ignore
+        .where(eq(inventoryItems.id, id));
+      
+      if (result.length === 0) return undefined;
+      
+      const row = result[0];
+      return {
+        ...row.inventoryItem,
+        active: row.storeActive,
+        onHandQty: row.onHandQty,
+        parLevel: row.parLevel ?? row.inventoryItem.parLevel,
+        reorderLevel: row.reorderLevel ?? row.inventoryItem.reorderLevel
+      };
+    }
+    
+    // No storeId - return global item
+    // @ts-ignore
+    const [item] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id));
+    return item || undefined;
+  }
+
+  async createInventoryItem(insertItem: InsertInventoryItem): Promise<InventoryItem> {
+    const [item] = await db.insert(inventoryItems).values(insertItem).returning();
+    return item;
+  }
+
+  async updateInventoryItem(id: string, updates: Partial<InventoryItem>, companyId?: string): Promise<InventoryItem | undefined> {
+    // @ts-ignore
+    const conditions = [eq(inventoryItems.id, id)];
+    if (companyId) {
+      // @ts-ignore
+      conditions.push(eq(inventoryItems.companyId, companyId));
+    }
+    const [item] = await db
+      .update(inventoryItems)
+      .set(updates)
+      .where(and(...conditions))
+      .returning();
+    return item || undefined;
+  }
+
+  async getInventoryItemsByName(name: string): Promise<InventoryItem[]> {
+    // @ts-ignore
+    return db.select().from(inventoryItems).where(eq(inventoryItems.name, name));
+  }
+
+  async getInventoryItemsAggregated(): Promise<Array<{
+    name: string;
+    category: string | null;
+    totalOnHandQty: number;
+    locations: Array<{
+      locationId: string;
+      locationName: string;
+      onHandQty: number;
+    }>;
+  }>> {
+    const items = await db.select().from(inventoryItems);
+    const locations = await db.select().from(storageLocations);
+    
+    const grouped = new Map<string, {
+      name: string;
+      category: string | null;
+      totalOnHandQty: number;
+      locations: Array<{
+        locationId: string;
+        locationName: string;
+        onHandQty: number;
+      }>;
+    }>();
+
+    for (const item of items) {
+      const key = `${item.name}-${item.categoryId || 'null'}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          name: item.name,
+          category: item.categoryId,
+          totalOnHandQty: 0,
+          locations: []
+        });
+      }
+
+      const group = grouped.get(key)!;
+      group.totalOnHandQty += item.onHandQty;
+      
+      // @ts-ignore
+      const location = locations.find(l => l.id === item.storageLocationId);
+      group.locations.push({
+        locationId: item.storageLocationId,
+        locationName: location?.name || 'Unknown',
+        onHandQty: item.onHandQty
+      });
+    }
+
+    return Array.from(grouped.values());
+  }
+
+  // Inventory Item Locations
+  async getInventoryItemLocations(inventoryItemId: string): Promise<InventoryItemLocation[]> {
+    return db
+      .select()
+      .from(inventoryItemLocations)
+      // @ts-ignore
+      .where(eq(inventoryItemLocations.inventoryItemId, inventoryItemId));
+  }
+
+  async getInventoryItemLocationsBatch(inventoryItemIds: string[]): Promise<Map<string, InventoryItemLocation[]>> {
+    if (inventoryItemIds.length === 0) {
+      return new Map();
+    }
+
+    const allLocations = await db
+      .select()
+      .from(inventoryItemLocations)
+      // @ts-ignore
+      .where(inArray(inventoryItemLocations.inventoryItemId, inventoryItemIds));
+
+    // Group by inventory item ID
+    const grouped = new Map<string, InventoryItemLocation[]>();
+    for (const location of allLocations) {
+      const existing = grouped.get(location.inventoryItemId) || [];
+      existing.push(location);
+      grouped.set(location.inventoryItemId, existing);
+    }
+
+    return grouped;
+  }
+
+  async setInventoryItemLocations(
+    inventoryItemId: string,
+    locationIds: string[],
+    primaryLocationId?: string
+  ): Promise<void> {
+    // Delete existing locations
+    await db
+      .delete(inventoryItemLocations)
+      // @ts-ignore
+      .where(eq(inventoryItemLocations.inventoryItemId, inventoryItemId));
+    
+    // Insert new locations
+    if (locationIds.length > 0) {
+      const primary = primaryLocationId || locationIds[0];
+      await db.insert(inventoryItemLocations).values(
+        locationIds.map(locationId => ({
+          inventoryItemId,
+          storageLocationId: locationId,
+          isPrimary: locationId === primary ? 1 : 0
+        }))
+      );
+    }
+  }
+
+  // Inventory Item Units (per-item Recipe / Issue Units)
+  async getInventoryItemUnits(inventoryItemId: string): Promise<InventoryItemUnit[]> {
+    return db
+      .select()
+      .from(inventoryItemUnits)
+      // @ts-ignore
+      .where(eq(inventoryItemUnits.inventoryItemId, inventoryItemId))
+      // @ts-ignore
+      .orderBy(asc(inventoryItemUnits.isIssueUnit), asc(inventoryItemUnits.sortOrder));
+  }
+
+  async getInventoryItemUnitsForCompany(companyId: string): Promise<InventoryItemUnit[]> {
+    return db
+      .select()
+      .from(inventoryItemUnits)
+      // @ts-ignore
+      .where(eq(inventoryItemUnits.companyId, companyId));
+  }
+
+  async createInventoryItemUnit(insertUnit: InsertInventoryItemUnit): Promise<InventoryItemUnit> {
+    const [row] = await db.insert(inventoryItemUnits).values(insertUnit).returning();
+    return row;
+  }
+
+  async updateInventoryItemUnit(
+    id: string,
+    updates: Partial<InventoryItemUnit>
+  ): Promise<InventoryItemUnit | undefined> {
+    const [row] = await db
+      .update(inventoryItemUnits)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(inventoryItemUnits.id, id))
+      .returning();
+    return row || undefined;
+  }
+
+  async deleteInventoryItemUnit(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(inventoryItemUnits).where(eq(inventoryItemUnits.id, id));
+  }
+
+  async reorderInventoryItemUnits(
+    inventoryItemId: string,
+    isIssueUnit: number,
+    orderedIds: string[]
+  ): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db
+        .update(inventoryItemUnits)
+        .set({ sortOrder: i })
+        .where(
+          and(
+            // @ts-ignore
+            eq(inventoryItemUnits.id, orderedIds[i]),
+            // @ts-ignore
+            eq(inventoryItemUnits.inventoryItemId, inventoryItemId),
+            // @ts-ignore
+            eq(inventoryItemUnits.isIssueUnit, isIssueUnit)
+          )
+        );
+    }
+  }
+
+  // Store Inventory Items
+  async getStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<StoreInventoryItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(storeInventoryItems)
+      .where(
+        and(
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      );
+    return item || undefined;
+  }
+
+  async createStoreInventoryItem(insertItem: InsertStoreInventoryItem): Promise<StoreInventoryItem> {
+    const [item] = await db.insert(storeInventoryItems).values(insertItem).returning();
+    return item;
+  }
+
+  async updateStoreInventoryItemActive(storeId: string, inventoryItemId: string, active: number): Promise<void> {
+    await db
+      .update(storeInventoryItems)
+      .set({ active })
+      .where(
+        and(
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      );
+  }
+
+  async updateStoreInventoryItem(storeId: string, inventoryItemId: string, updates: Partial<StoreInventoryItem>): Promise<StoreInventoryItem | undefined> {
+    const [updated] = await db
+      .update(storeInventoryItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateStoreInventoryItemQuantity(storeId: string, inventoryItemId: string, quantityDelta: number): Promise<StoreInventoryItem | undefined> {
+    const [updated] = await db
+      .update(storeInventoryItems)
+      .set({ 
+        onHandQty: sql`${storeInventoryItems.onHandQty} + ${quantityDelta}`,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async getStoreInventoryItems(storeId: string): Promise<StoreInventoryItem[]> {
+    return db
+      .select()
+      .from(storeInventoryItems)
+      // @ts-ignore
+      .where(eq(storeInventoryItems.storeId, storeId));
+  }
+
+  async getInventoryItemStores(inventoryItemId: string): Promise<StoreInventoryItem[]> {
+    return db
+      .select()
+      .from(storeInventoryItems)
+      // @ts-ignore
+      .where(eq(storeInventoryItems.inventoryItemId, inventoryItemId));
+  }
+
+  async removeStoreInventoryItem(storeId: string, inventoryItemId: string): Promise<void> {
+    await db
+      .delete(storeInventoryItems)
+      .where(
+        and(
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, inventoryItemId)
+        )
+      );
+  }
+
+  // Vendors
+  async getVendors(companyId?: string): Promise<Vendor[]> {
+    if (companyId) {
+      // @ts-ignore
+      return db.select().from(vendors).where(eq(vendors.companyId, companyId));
+    }
+    return db.select().from(vendors);
+  }
+
+  async getVendor(id: string, companyId?: string): Promise<Vendor | undefined> {
+    if (companyId) {
+      const [vendor] = await db.select().from(vendors).where(
+        // @ts-ignore
+        and(eq(vendors.id, id), eq(vendors.companyId, companyId))
+      );
+      return vendor || undefined;
+    }
+    // @ts-ignore
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor || undefined;
+  }
+
+  async createVendor(insertVendor: InsertVendor): Promise<Vendor> {
+    const [vendor] = await db.insert(vendors).values(insertVendor).returning();
+    return vendor;
+  }
+
+  async updateVendor(id: string, updates: Partial<Vendor>, companyId?: string): Promise<Vendor | undefined> {
+    // @ts-ignore
+    const conditions = [eq(vendors.id, id)];
+    if (companyId) {
+      // @ts-ignore
+      conditions.push(eq(vendors.companyId, companyId));
+    }
+    const [vendor] = await db
+      .update(vendors)
+      .set(updates)
+      .where(and(...conditions))
+      .returning();
+    return vendor || undefined;
+  }
+
+  async deleteVendor(id: string, companyId?: string): Promise<void> {
+    // @ts-ignore
+    const conditions = [eq(vendors.id, id)];
+    if (companyId) {
+      // @ts-ignore
+      conditions.push(eq(vendors.companyId, companyId));
+    }
+    await db.delete(vendors).where(and(...conditions));
+  }
+
+  // Vendor Items
+  async getVendorItems(vendorId?: string, companyId?: string, storeId?: string): Promise<VendorItem[]> {
+    // Build conditions
+    const conditions = [];
+    
+    if (vendorId) {
+      // @ts-ignore
+      conditions.push(eq(vendorItems.vendorId, vendorId));
+    }
+    
+    // Filter by store: only show vendor items where the inventory item is active at the selected store
+    if (storeId) {
+      const result = await db
+        .select({
+          id: vendorItems.id,
+          vendorId: vendorItems.vendorId,
+          inventoryItemId: vendorItems.inventoryItemId,
+          vendorSku: vendorItems.vendorSku,
+          brandName: vendorItems.brandName,
+          purchaseUnitId: vendorItems.purchaseUnitId,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+          packUom: vendorItems.packUom,
+          lastPrice: vendorItems.lastPrice,
+          lastCasePrice: vendorItems.lastCasePrice,
+          active: vendorItems.active,
+        })
+        .from(vendorItems)
+        .innerJoin(storeInventoryItems, and(
+          // @ts-ignore
+          eq(storeInventoryItems.inventoryItemId, vendorItems.inventoryItemId),
+          // @ts-ignore
+          eq(storeInventoryItems.storeId, storeId),
+          // @ts-ignore
+          eq(storeInventoryItems.active, 1)
+        ))
+        .where(conditions.length > 0 ? and(...conditions) : undefined);
+      
+      return result as VendorItem[];
+    }
+    
+    // Filter by company if provided - join with vendors table
+    if (companyId) {
+      // @ts-ignore
+      const companyConditions = [eq(vendors.companyId, companyId)];
+      
+      // Also apply vendorId filter if provided
+      if (conditions.length > 0) {
+        companyConditions.push(...conditions);
+      }
+      
+      return db
+        .select({
+          id: vendorItems.id,
+          vendorId: vendorItems.vendorId,
+          inventoryItemId: vendorItems.inventoryItemId,
+          vendorSku: vendorItems.vendorSku,
+          brandName: vendorItems.brandName,
+          purchaseUnitId: vendorItems.purchaseUnitId,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+          packUom: vendorItems.packUom,
+          lastPrice: vendorItems.lastPrice,
+          lastCasePrice: vendorItems.lastCasePrice,
+          active: vendorItems.active,
+        })
+        .from(vendorItems)
+        // @ts-ignore
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        .where(and(...companyConditions)) as unknown as Promise<VendorItem[]>;
+    }
+    
+    if (conditions.length > 0) {
+      return db.select().from(vendorItems).where(and(...conditions));
+    }
+    
+    return db.select().from(vendorItems);
+  }
+
+  async getVendorItemsByInventoryItem(inventoryItemId: string): Promise<VendorItem[]> {
+    // @ts-ignore
+    return db.select().from(vendorItems).where(eq(vendorItems.inventoryItemId, inventoryItemId));
+  }
+
+  async getVendorItemsLastOrderDates(vendorItemIds: string[]): Promise<Record<string, Date>> {
+    if (vendorItemIds.length === 0) {
+      return {};
+    }
+    
+    // Get the most recent receipt date for each vendor item from receipt lines
+    const results = await db
+      .select({
+        vendorItemId: receiptLines.vendorItemId,
+        receivedAt: sql<Date>`MAX(${receipts.receivedAt})`.as("max_received_at"),
+      })
+      .from(receiptLines)
+      // @ts-ignore
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      .where(and(
+        // @ts-ignore
+        inArray(receiptLines.vendorItemId, vendorItemIds),
+        // @ts-ignore
+        eq(receipts.status, "completed")
+      ))
+      .groupBy(receiptLines.vendorItemId);
+    
+    const dateMap: Record<string, Date> = {};
+    for (const row of results) {
+      if (row.receivedAt) {
+        dateMap[row.vendorItemId] = row.receivedAt;
+      }
+    }
+    return dateMap;
+  }
+
+  async getVendorItem(id: string): Promise<VendorItem | undefined> {
+    // @ts-ignore
+    const [vendorItem] = await db.select().from(vendorItems).where(eq(vendorItems.id, id));
+    return vendorItem || undefined;
+  }
+
+  async getVendorSkusBatch(inventoryItemIds: string[]): Promise<Map<string, string[]>> {
+    if (inventoryItemIds.length === 0) {
+      return new Map();
+    }
+
+    const items = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        vendorSku: vendorItems.vendorSku,
+      })
+      .from(vendorItems)
+      // @ts-ignore
+      .where(inArray(vendorItems.inventoryItemId, inventoryItemIds));
+
+    const grouped = new Map<string, string[]>();
+    for (const item of items) {
+      if (item.vendorSku) {
+        const existing = grouped.get(item.inventoryItemId) || [];
+        existing.push(item.vendorSku);
+        grouped.set(item.inventoryItemId, existing);
+      }
+    }
+
+    return grouped;
+  }
+
+  async getVendorCasePricesBatch(
+    inventoryItemIds: string[],
+    companyId: string
+  ): Promise<Map<string, { casePrice: number; vendorName: string }>> {
+    if (inventoryItemIds.length === 0) return new Map();
+
+    // DISTINCT ON picks one vendor item per inventory item, ordered by updated_at DESC so
+    // the most recently modified record wins. updated_at is set on every updateVendorItem call;
+    // rows pre-dating the column have updated_at = migration timestamp (all equal → tie-broken
+    // by id DESC, which is deterministic). Case price is always computed as lastPrice × caseSize
+    // per the task spec — lastCasePrice is the portal input value and is not used here.
+    // @ts-ignore
+    const vis = await db.execute<{
+      inventory_item_id: string;
+      vendor_id: string;
+      last_price: number;
+      case_size: number;
+    }>(
+      sql`SELECT DISTINCT ON (inventory_item_id)
+            inventory_item_id,
+            vendor_id,
+            last_price,
+            case_size
+          FROM vendor_items
+          WHERE inventory_item_id IN (${sql.join(inventoryItemIds.map(id => sql`${id}`), sql`, `)})
+            AND active = 1
+          ORDER BY inventory_item_id, updated_at DESC NULLS LAST, id DESC`
+    );
+
+    if (vis.rows.length === 0) return new Map();
+
+    const vendorList = await db
+      .select({ id: vendors.id, name: vendors.name })
+      .from(vendors)
+      // @ts-ignore
+      .where(eq(vendors.companyId, companyId));
+
+    // @ts-ignore
+    const vendorNameMap = new Map(vendorList.map(v => [v.id, v.name]));
+
+    // Case price = lastPrice × caseSize (per spec).
+    // lastPrice is the derived unit price; multiply by caseSize to get per-case cost.
+    const result = new Map<string, { casePrice: number; vendorName: string }>();
+    for (const vi of vis.rows) {
+      const casePrice = vi.last_price * vi.case_size;
+      if (casePrice > 0) {
+        result.set(vi.inventory_item_id, {
+          casePrice,
+          // @ts-ignore
+          vendorName: vendorNameMap.get(vi.vendor_id) || 'Unknown',
+        });
+      }
+    }
+    return result;
+  }
+
+  async createVendorItem(insertVI: InsertVendorItem): Promise<VendorItem> {
+    const [vendorItem] = await db.insert(vendorItems).values(insertVI).returning();
+    return vendorItem;
+  }
+
+  async updateVendorItem(id: string, updates: Partial<InsertVendorItem>): Promise<VendorItem | undefined> {
+    const [vendorItem] = await db
+      .update(vendorItems)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(eq(vendorItems.id, id))
+      .returning();
+    return vendorItem || undefined;
+  }
+
+  async deleteVendorItem(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(vendorItems).where(eq(vendorItems.id, id));
+  }
+
+  // Store-Vendor Assignments
+  async getStoreVendors(storeId: string): Promise<StoreVendor[]> {
+    // @ts-ignore
+    return db.select().from(storeVendors).where(eq(storeVendors.storeId, storeId));
+  }
+
+  async getVendorStores(vendorId: string): Promise<StoreVendor[]> {
+    // @ts-ignore
+    return db.select().from(storeVendors).where(eq(storeVendors.vendorId, vendorId));
+  }
+
+  async getStoreVendor(storeId: string, vendorId: string): Promise<StoreVendor | undefined> {
+    const rows = await db.select().from(storeVendors)
+      .where(and(
+        // @ts-ignore
+        eq(storeVendors.storeId, storeId),
+        // @ts-ignore
+        eq(storeVendors.vendorId, vendorId)
+      ));
+    return rows[0];
+  }
+
+  async createStoreVendor(storeVendor: InsertStoreVendor): Promise<StoreVendor> {
+    const rows = await db.insert(storeVendors).values(storeVendor).returning();
+    return rows[0];
+  }
+
+  async updateStoreVendor(storeId: string, vendorId: string, updates: Partial<StoreVendor>): Promise<StoreVendor | undefined> {
+    const rows = await db.update(storeVendors)
+      .set(updates)
+      .where(and(
+        // @ts-ignore
+        eq(storeVendors.storeId, storeId),
+        // @ts-ignore
+        eq(storeVendors.vendorId, vendorId)
+      ))
+      .returning();
+    return rows[0];
+  }
+
+  async deleteStoreVendor(storeId: string, vendorId: string): Promise<void> {
+    await db.delete(storeVendors)
+      .where(and(
+        // @ts-ignore
+        eq(storeVendors.storeId, storeId),
+        // @ts-ignore
+        eq(storeVendors.vendorId, vendorId)
+      ));
+  }
+
+  async setStoreVendorPrimary(storeId: string, vendorId: string): Promise<void> {
+    await db.update(storeVendors)
+      .set({ isPrimary: 0 })
+      // @ts-ignore
+      .where(eq(storeVendors.storeId, storeId));
+    await db.update(storeVendors)
+      .set({ isPrimary: 1 })
+      .where(and(
+        // @ts-ignore
+        eq(storeVendors.storeId, storeId),
+        // @ts-ignore
+        eq(storeVendors.vendorId, vendorId)
+      ));
+  }
+
+  // Order Guide Store Assignments
+  async getOrderGuideStores(orderGuideId: string): Promise<OrderGuideStore[]> {
+    // @ts-ignore
+    return db.select().from(orderGuideStores).where(eq(orderGuideStores.orderGuideId, orderGuideId));
+  }
+
+  async setOrderGuideStores(orderGuideId: string, storeIds: string[]): Promise<void> {
+    // @ts-ignore
+    await db.delete(orderGuideStores).where(eq(orderGuideStores.orderGuideId, orderGuideId));
+    if (storeIds.length > 0) {
+      const values = storeIds.map(storeId => ({ orderGuideId, storeId }));
+      await db.insert(orderGuideStores).values(values);
+    }
+  }
+
+  // Recipes
+  async getRecipes(companyId?: string): Promise<Recipe[]> {
+    if (companyId) {
+      // @ts-ignore
+      return db.select().from(recipes).where(eq(recipes.companyId, companyId));
+    }
+    return db.select().from(recipes);
+  }
+
+  async getRecipe(id: string, companyId?: string): Promise<Recipe | undefined> {
+    if (companyId) {
+      // @ts-ignore
+      const [recipe] = await db.select().from(recipes).where(and(eq(recipes.id, id), eq(recipes.companyId, companyId)));
+      return recipe || undefined;
+    }
+    // @ts-ignore
+    const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
+    return recipe || undefined;
+  }
+
+  async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
+    const [recipe] = await db.insert(recipes).values(insertRecipe).returning();
+    return recipe;
+  }
+
+  async cloneRecipe(sourceRecipeId: string, companyId: string, newName: string, storeIds: string[], sizeName?: string): Promise<Recipe> {
+    // Get the source recipe
+    const sourceRecipe = await this.getRecipe(sourceRecipeId, companyId);
+    if (!sourceRecipe) {
+      throw new Error("Source recipe not found");
+    }
+
+    // Get source recipe components
+    const sourceComponents = await this.getRecipeComponents(sourceRecipeId);
+
+    // The parent recipe is either the source's parent (if it already has one) or the source itself
+    const parentRecipeId = sourceRecipe.parentRecipeId || sourceRecipeId;
+
+    // Mark the parent recipe as "Base" if it doesn't have a size yet and this is the first child
+    if (!sourceRecipe.parentRecipeId && !sourceRecipe.sizeName) {
+      await this.updateRecipe(sourceRecipeId, { sizeName: 'Base' }, companyId);
+    }
+
+    // Create the cloned recipe
+    const clonedRecipe = await this.createRecipe({
+      name: newName,
+      // @ts-ignore
+      companyId,
+      yieldQty: sourceRecipe.yieldQty,
+      yieldUnitId: sourceRecipe.yieldUnitId,
+      computedCost: sourceRecipe.computedCost,
+      canBeIngredient: sourceRecipe.canBeIngredient,
+      isPlaceholder: 0,
+      parentRecipeId,
+      sizeName: sizeName || null,
+    });
+
+    // Clone all components
+    for (const comp of sourceComponents) {
+      await this.createRecipeComponent({
+        recipeId: clonedRecipe.id,
+        componentType: comp.componentType,
+        componentId: comp.componentId,
+        qty: comp.qty,
+        unitId: comp.unitId,
+        sortOrder: comp.sortOrder,
+      });
+    }
+
+    // Create store assignments
+    for (const storeId of storeIds) {
+      await db.insert(storeRecipes).values({
+        recipeId: clonedRecipe.id,
+        storeId,
+        companyId,
+      }).onConflictDoNothing();
+    }
+
+    return clonedRecipe;
+  }
+
+  async updateRecipe(id: string, updates: Partial<Recipe>, companyId?: string): Promise<Recipe | undefined> {
+    // @ts-ignore
+    const conditions = [eq(recipes.id, id)];
+    if (companyId) {
+      // @ts-ignore
+      conditions.push(eq(recipes.companyId, companyId));
+    }
+    const [recipe] = await db
+      .update(recipes)
+      .set(updates)
+      .where(and(...conditions))
+      .returning();
+    return recipe || undefined;
+  }
+
+  async deleteRecipe(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(storeRecipes).where(eq(storeRecipes.recipeId, id));
+    // @ts-ignore
+    await db.delete(recipeComponents).where(eq(recipeComponents.recipeId, id));
+    // @ts-ignore
+    await db.delete(recipes).where(and(eq(recipes.id, id), eq(recipes.companyId, companyId)));
+  }
+
+  async checkRecipeHasSales(recipeId: string, companyId: string): Promise<boolean> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(dailyMenuItemSales)
+      // @ts-ignore
+      .innerJoin(menuItems, eq(dailyMenuItemSales.menuItemId, menuItems.id))
+      .where(and(
+        // @ts-ignore
+        eq(menuItems.recipeId, recipeId),
+        // @ts-ignore
+        eq(menuItems.companyId, companyId)
+      ));
+    return (result[0]?.count || 0) > 0;
+  }
+
+  async checkRecipeIsSubRecipe(recipeId: string, companyId: string): Promise<boolean> {
+    const result = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(recipeComponents)
+      // @ts-ignore
+      .innerJoin(recipes, eq(recipeComponents.recipeId, recipes.id))
+      .where(and(
+        // @ts-ignore
+        eq(recipeComponents.componentType, "recipe"),
+        // @ts-ignore
+        eq(recipeComponents.componentId, recipeId),
+        // @ts-ignore
+        eq(recipes.companyId, companyId)
+      ));
+    return (result[0]?.count || 0) > 0;
+  }
+
+  // Recipe Components
+  async getRecipeComponents(recipeId: string): Promise<RecipeComponent[]> {
+    // @ts-ignore
+    return db.select().from(recipeComponents).where(eq(recipeComponents.recipeId, recipeId));
+  }
+
+  async getRecipeComponent(id: string): Promise<RecipeComponent | undefined> {
+    // @ts-ignore
+    const [component] = await db.select().from(recipeComponents).where(eq(recipeComponents.id, id));
+    return component || undefined;
+  }
+
+  async createRecipeComponent(insertComponent: InsertRecipeComponent): Promise<RecipeComponent> {
+    const [component] = await db.insert(recipeComponents).values(insertComponent).returning();
+    return component;
+  }
+
+  async updateRecipeComponent(id: string, updates: Partial<RecipeComponent>): Promise<RecipeComponent | undefined> {
+    const [component] = await db
+      .update(recipeComponents)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(recipeComponents.id, id))
+      .returning();
+    return component || undefined;
+  }
+
+  async deleteRecipeComponent(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(recipeComponents).where(eq(recipeComponents.id, id));
+  }
+
+  // Store Recipes
+  async getStoreRecipes(recipeId: string): Promise<StoreRecipe[]> {
+    // @ts-ignore
+    return db.select().from(storeRecipes).where(eq(storeRecipes.recipeId, recipeId));
+  }
+
+  async createStoreRecipe(storeRecipe: InsertStoreRecipe): Promise<StoreRecipe> {
+    const [result] = await db.insert(storeRecipes).values(storeRecipe).returning();
+    return result;
+  }
+
+  // Inventory Counts
+  async getInventoryCounts(companyId: string, storeId?: string, storageLocationId?: string): Promise<InventoryCount[]> {
+    if (!companyId) throw new Error("getInventoryCounts requires a companyId");
+    // @ts-ignore
+    const conditions = [eq(inventoryCounts.companyId, companyId)];
+    
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(inventoryCounts.storeId, storeId));
+    }
+    if (storageLocationId) {
+      // @ts-ignore
+      conditions.push(eq(inventoryCounts.storageLocationId, storageLocationId));
+    }
+    
+    return db.select().from(inventoryCounts).where(and(...conditions));
+  }
+
+  async getInventoryCount(id: string): Promise<InventoryCount | undefined> {
+    // @ts-ignore
+    const [count] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, id));
+    return count || undefined;
+  }
+
+  async createInventoryCount(insertCount: InsertInventoryCount): Promise<InventoryCount> {
+    const [count] = await db.insert(inventoryCounts).values(insertCount).returning();
+    return count;
+  }
+
+  async deleteInventoryCount(id: string): Promise<void> {
+    // First delete all count lines for this session (cascade)
+    // @ts-ignore
+    await db.delete(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, id));
+    // Then delete the count session itself
+    // @ts-ignore
+    await db.delete(inventoryCounts).where(eq(inventoryCounts.id, id));
+  }
+
+  // Inventory Count Lines
+  async getInventoryCountLines(countId: string): Promise<InventoryCountLine[]> {
+    return db.select()
+      .from(inventoryCountLines)
+      // @ts-ignore
+      .where(eq(inventoryCountLines.inventoryCountId, countId))
+      .orderBy(inventoryCountLines.id); // Maintain stable order by insertion (ID)
+  }
+
+  async getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined> {
+    // @ts-ignore
+    const [line] = await db.select().from(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+    return line || undefined;
+  }
+
+  async createInventoryCountLine(insertLine: InsertInventoryCountLine): Promise<InventoryCountLine> {
+    const [line] = await db.insert(inventoryCountLines).values(insertLine).returning();
+    return line;
+  }
+
+  async updateInventoryCountLine(id: string, updates: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined> {
+    const [line] = await db
+      .update(inventoryCountLines)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(inventoryCountLines.id, id))
+      .returning();
+    return line || undefined;
+  }
+
+  async atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined> {
+    // @ts-ignore
+    return db.transaction(async (tx) => {
+      const [updatedLine] = await tx
+        .update(inventoryCountLines)
+        .set({
+          qty: sql`COALESCE(${inventoryCountLines.qty}, 0) + ${addQty}`,
+          caseQty: null,
+          containerQty: null,
+          looseUnits: null,
+        })
+        // @ts-ignore
+        .where(eq(inventoryCountLines.id, id))
+        .returning();
+      if (!updatedLine) return undefined;
+      if (addQty !== 0) {
+        await tx.insert(inventoryCountEntries).values({
+          inventoryCountLineId: id,
+          qty: addQty,
+          userId,
+        });
+      }
+      return { line: updatedLine, entryQty: addQty };
+    });
+  }
+
+  async deleteInventoryCountLine(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+  }
+
+  // Inventory Count Entries
+  async createInventoryCountEntry(entry: InsertInventoryCountEntry): Promise<InventoryCountEntry> {
+    const [created] = await db.insert(inventoryCountEntries).values(entry).returning();
+    return created;
+  }
+
+  async getEntriesForLines(lineIds: string[]): Promise<InventoryCountEntry[]> {
+    if (lineIds.length === 0) return [];
+    return db.select().from(inventoryCountEntries)
+      // @ts-ignore
+      .where(inArray(inventoryCountEntries.inventoryCountLineId, lineIds))
+      // @ts-ignore
+      .orderBy(asc(inventoryCountEntries.enteredAt));
+  }
+
+  async deleteEntriesForLine(lineId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
+  }
+
+  async getCountEntry(id: string): Promise<InventoryCountEntry | undefined> {
+    // @ts-ignore
+    const [entry] = await db.select().from(inventoryCountEntries).where(eq(inventoryCountEntries.id, id));
+    return entry;
+  }
+
+  async deleteCountEntry(entryId: string): Promise<InventoryCountLine | undefined> {
+    // @ts-ignore
+    return db.transaction(async (tx) => {
+      // @ts-ignore
+      const [entry] = await tx.select().from(inventoryCountEntries).where(eq(inventoryCountEntries.id, entryId));
+      if (!entry) return undefined;
+      // @ts-ignore
+      await tx.delete(inventoryCountEntries).where(eq(inventoryCountEntries.id, entryId));
+      const remaining = await tx.select().from(inventoryCountEntries)
+        // @ts-ignore
+        .where(eq(inventoryCountEntries.inventoryCountLineId, entry.inventoryCountLineId))
+        // @ts-ignore
+        .orderBy(asc(inventoryCountEntries.enteredAt));
+      // @ts-ignore
+      const newQty = remaining.reduce((sum, e) => sum + e.qty, 0);
+      const [updatedLine] = await tx.update(inventoryCountLines)
+        .set({ qty: newQty })
+        // @ts-ignore
+        .where(eq(inventoryCountLines.id, entry.inventoryCountLineId))
+        .returning();
+      return updatedLine;
+    });
+  }
+
+  async clearCountLine(lineId: string): Promise<InventoryCountLine | undefined> {
+    // @ts-ignore
+    return db.transaction(async (tx) => {
+      // @ts-ignore
+      const [line] = await tx.select().from(inventoryCountLines).where(eq(inventoryCountLines.id, lineId));
+      if (!line) return undefined;
+      // @ts-ignore
+      await tx.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
+      const [updatedLine] = await tx.update(inventoryCountLines)
+        .set({ qty: 0, caseQty: null, containerQty: null, looseUnits: null })
+        // @ts-ignore
+        .where(eq(inventoryCountLines.id, lineId))
+        .returning();
+      return updatedLine;
+    });
+  }
+
+  // Item Usage Calculation
+  async getItemUsageBetweenCounts(storeId: string, previousCountId: string, currentCountId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    category: string | null;
+    previousQty: number;
+    receivedQty: number;
+    transferredQty: number;
+    currentQty: number;
+    usage: number;
+    unitId: string;
+    unitName: string;
+    pricePerUnit: number;
+    isNegativeUsage: boolean;
+    previousCountId: string;
+    currentCountId: string;
+    receiptIds: string[];
+    transferOrderIds: string[];
+  }>> {
+    // Get both count records to retrieve their count dates
+    // @ts-ignore
+    const [previousCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, previousCountId));
+    // @ts-ignore
+    const [currentCount] = await db.select().from(inventoryCounts).where(eq(inventoryCounts.id, currentCountId));
+
+    if (!previousCount || !currentCount) {
+      return [];
+    }
+
+    // Validate both counts belong to the same store and company (data isolation)
+    if (previousCount.storeId !== storeId || currentCount.storeId !== storeId) {
+      return [];
+    }
+
+    if (previousCount.companyId !== currentCount.companyId) {
+      return [];
+    }
+
+    const companyId = previousCount.companyId;
+
+    // CRITICAL: Verify the store actually belongs to this company to prevent cross-tenant data access
+    // @ts-ignore
+    const [store] = await db.select().from(companyStores).where(eq(companyStores.id, storeId));
+    if (!store || store.companyId !== companyId) {
+      return [];
+    }
+
+    // Get all count lines for previous count, aggregated by inventoryItemId
+    const previousLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+      })
+      .from(inventoryCountLines)
+      // @ts-ignore
+      .where(eq(inventoryCountLines.inventoryCountId, previousCountId))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all count lines for current count, aggregated by inventoryItemId.
+    // Also pull a quantity-weighted average of the FROZEN unitCost snapshot
+    // (captured when the count was taken) so the variance report is immune to
+    // later live-price drift, costing-method toggles, etc.
+    const currentLines = await db
+      .select({
+        inventoryItemId: inventoryCountLines.inventoryItemId,
+        totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        unitId: inventoryCountLines.unitId,
+        // Quantity-weighted unit cost; falls back to plain MAX when total qty
+        // is 0 to avoid division-by-zero (zero-qty lines still carry a cost).
+        snapshotUnitCost: sql<number>`COALESCE(
+            CASE WHEN SUM(${inventoryCountLines.qty}) > 0
+              THEN SUM(${inventoryCountLines.qty} * ${inventoryCountLines.unitCost}) / SUM(${inventoryCountLines.qty})
+              ELSE MAX(${inventoryCountLines.unitCost})
+            END,
+          0)`.as('snapshot_unit_cost'),
+      })
+      .from(inventoryCountLines)
+      // @ts-ignore
+      .where(eq(inventoryCountLines.inventoryCountId, currentCountId))
+      .groupBy(inventoryCountLines.inventoryItemId, inventoryCountLines.unitId);
+
+    // Get all receipts for purchase orders delivered between the two count dates
+    // Use expected delivery date (when inventory arrived) with fallback to receivedAt
+    // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
+    const allReceipts = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        receiptId: receipts.id,
+        receivedQty: receiptLines.receivedQty,
+        purchaseOrderId: receipts.purchaseOrderId,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
+      })
+      .from(receiptLines)
+      // @ts-ignore
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      // @ts-ignore
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      // @ts-ignore
+      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(receipts.companyId, companyId),
+          // @ts-ignore
+          eq(receipts.storeId, storeId),
+          // @ts-ignore
+          inArray(receipts.status, ['locked', 'completed'])
+        )
+      );
+
+    // Filter by delivery date (expectedDate if available, otherwise receivedAt)
+    // @ts-ignore
+    const receivedItems = allReceipts.filter(item => {
+      const deliveryDate = item.expectedDate || item.receivedAt;
+      if (!deliveryDate) return false;
+      
+      const deliveryTimestamp = new Date(deliveryDate).getTime();
+      const startTimestamp = new Date(previousCount.countDate).getTime();
+      const endTimestamp = new Date(currentCount.countDate).getTime();
+      
+      return deliveryTimestamp >= startTimestamp && deliveryTimestamp <= endTimestamp;
+    });
+
+    // Get all outbound transfers between the two count dates for this store
+    // CRITICAL: Filter by companyId to ensure multi-tenant data isolation
+    const transferredItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        transferOrderId: transferOrders.id,
+        shippedQty: transferOrderLines.shippedQty,
+      })
+      .from(transferOrderLines)
+      // @ts-ignore
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(transferOrders.companyId, companyId),
+          // @ts-ignore
+          eq(transferOrders.fromStoreId, storeId),
+          // @ts-ignore
+          gte(transferOrders.completedAt, previousCount.countDate),
+          // @ts-ignore
+          lte(transferOrders.completedAt, currentCount.countDate),
+          // @ts-ignore
+          eq(transferOrders.status, 'completed')
+        )
+      );
+
+    // Create maps for easy lookup
+    const previousMap = new Map<string, { qty: number; unitId: string }>(
+      // @ts-ignore
+      previousLines.map(l => [l.inventoryItemId, { qty: l.totalQty, unitId: l.unitId }])
+    );
+    const currentMap = new Map<string, { qty: number; unitId: string; snapshotUnitCost: number }>(
+      // @ts-ignore
+      currentLines.map(l => [l.inventoryItemId, {
+        qty: l.totalQty,
+        unitId: l.unitId,
+        snapshotUnitCost: Number(l.snapshotUnitCost) || 0,
+      }])
+    );
+    
+    // Aggregate received items by inventory item with receipt IDs
+    const receivedMap = new Map<string, { qty: number; receiptIds: Set<string> }>();
+    for (const item of receivedItems) {
+      if (!receivedMap.has(item.inventoryItemId)) {
+        receivedMap.set(item.inventoryItemId, { qty: 0, receiptIds: new Set() });
+      }
+      const existing = receivedMap.get(item.inventoryItemId)!;
+      existing.qty += item.receivedQty;
+      existing.receiptIds.add(item.receiptId);
+    }
+
+    // Aggregate transferred items by inventory item with transfer order IDs
+    const transferredMap = new Map<string, { qty: number; transferOrderIds: Set<string> }>();
+    for (const item of transferredItems) {
+      if (!transferredMap.has(item.inventoryItemId)) {
+        transferredMap.set(item.inventoryItemId, { qty: 0, transferOrderIds: new Set() });
+      }
+      const existing = transferredMap.get(item.inventoryItemId)!;
+      existing.qty += item.shippedQty || 0;
+      existing.transferOrderIds.add(item.transferOrderId);
+    }
+
+    // Get all unique inventory item IDs from all sources
+    const allItemIds = new Set([
+      ...Array.from(previousMap.keys()),
+      ...Array.from(currentMap.keys()),
+    ]);
+
+    // Get inventory item details for all items including price
+    const itemDetails = await db
+      .select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        categoryId: inventoryItems.categoryId,
+        unitId: inventoryItems.unitId,
+        unitName: units.name,
+        pricePerUnit: inventoryItems.pricePerUnit,
+        avgCostPerUnit: inventoryItems.avgCostPerUnit,
+      })
+      .from(inventoryItems)
+      // @ts-ignore
+      .innerJoin(units, eq(inventoryItems.unitId, units.id))
+      // @ts-ignore
+      .where(inArray(inventoryItems.id, Array.from(allItemIds)));
+
+    // @ts-ignore
+    const itemDetailsMap = new Map(itemDetails.map(item => [item.id, item]));
+
+    // Resolve company costing method (Last Cost vs WAC) once. Used only as a
+    // fallback when the count line snapshot cost is missing (legacy rows).
+    const [companyForCosting] = await db
+      .select({ costingMethod: companies.costingMethod })
+      .from(companies)
+      // @ts-ignore
+      .where(eq(companies.id, companyId));
+    const costingMethod = companyForCosting?.costingMethod === "weighted_average" ? "weighted_average" : "last_cost";
+
+    // Calculate usage for each item
+    const usageData = Array.from(allItemIds).map(itemId => {
+      const item = itemDetailsMap.get(itemId);
+      const previousQty = previousMap.get(itemId)?.qty || 0;
+      const currentEntry = currentMap.get(itemId);
+      const currentQty = currentEntry?.qty || 0;
+      const receivedData = receivedMap.get(itemId);
+      const receivedQty = receivedData?.qty || 0;
+      const receiptIds = receivedData ? Array.from(receivedData.receiptIds) : [];
+      const transferredData = transferredMap.get(itemId);
+      const transferredQty = transferredData?.qty || 0;
+      const transferOrderIds = transferredData ? Array.from(transferredData.transferOrderIds) : [];
+
+      // Usage = Previous + Received - Transferred - Current
+      const usage = (previousQty + receivedQty - transferredQty) - currentQty;
+      const isNegativeUsage = usage < 0;
+
+      // Prefer the FROZEN unit cost captured on the current count's lines so
+      // historical variance dollars do not drift when the company toggles
+      // costing method or when the live item price changes after the count.
+      // Fall back to the live cost (resolved per the company's selected
+      // method) when the snapshot is missing — this happens for legacy count
+      // rows written before the snapshot column existed.
+      const snapshotCost = currentEntry?.snapshotUnitCost || 0;
+      const liveCost = costingMethod === "weighted_average"
+        // @ts-ignore
+        ? (item?.avgCostPerUnit || item?.pricePerUnit || 0)
+        // @ts-ignore
+        : (item?.pricePerUnit || 0);
+      const pricePerUnit = snapshotCost > 0 ? snapshotCost : liveCost;
+
+      return {
+        inventoryItemId: itemId,
+        // @ts-ignore
+        inventoryItemName: item?.name || 'Unknown',
+        // @ts-ignore
+        category: item?.categoryId || null,
+        previousQty,
+        receivedQty,
+        transferredQty,
+        currentQty,
+        usage,
+        // @ts-ignore
+        unitId: item?.unitId || '',
+        // @ts-ignore
+        unitName: item?.unitName || 'unit',
+        pricePerUnit,
+        isNegativeUsage,
+        previousCountId,
+        currentCountId,
+        receiptIds,
+        transferOrderIds,
+      };
+    });
+
+    return usageData;
+  }
+
+  // Estimated On-Hand Calculation
+  async getEstimatedOnHand(companyId: string, storeId: string): Promise<Array<{
+    inventoryItemId: string;
+    lastCountQty: number;
+    lastCountDate: string | null;
+    receivedQty: number;
+    wasteQty: number;
+    theoreticalUsageQty: number;
+    transferredOutQty: number;
+    transferredInQty: number;
+    estimatedOnHand: number;
+  }>> {
+    // Get all inventory counts for this store, ordered by date descending
+    const counts = await db
+      .select()
+      .from(inventoryCounts)
+      .where(and(
+        // @ts-ignore
+        eq(inventoryCounts.companyId, companyId),
+        // @ts-ignore
+        eq(inventoryCounts.storeId, storeId),
+        // @ts-ignore
+        eq(inventoryCounts.applied, 1) // Only consider applied counts
+      ))
+      // @ts-ignore
+      .orderBy(desc(inventoryCounts.countDate));
+    
+    if (counts.length === 0) {
+      return [];
+    }
+    
+    const mostRecentCount = counts[0];
+    const isPowerCount = mostRecentCount.isPowerSession === 1;
+    
+    // Find the most recent regular (non-power) count for non-power items
+    // @ts-ignore
+    const mostRecentRegularCount = counts.find(c => c.isPowerSession !== 1);
+    
+    // Get power item IDs to determine which baseline to use for each item
+    const powerItems = await db
+      .select({ id: inventoryItems.id })
+      .from(inventoryItems)
+      .where(and(
+        // @ts-ignore
+        eq(inventoryItems.companyId, companyId),
+        // @ts-ignore
+        eq(inventoryItems.isPowerItem, 1)
+      ));
+    // @ts-ignore
+    const powerItemIds = new Set(powerItems.map(p => p.id));
+    
+    // Helper function to format date as YYYY-MM-DD string
+    const formatDateString = (date: Date): string => {
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    // Determine baseline counts and dates for power vs non-power items
+    // Power items: use most recent power count if available, otherwise most recent regular count
+    // Non-power items: always use most recent regular count
+    const powerItemBaselineCount = isPowerCount ? mostRecentCount : mostRecentRegularCount;
+    const regularItemBaselineCount = mostRecentRegularCount;
+    
+    // If there's no regular count at all, non-power items have no baseline
+    const powerCountDate = powerItemBaselineCount?.countDate;
+    const regularCountDate = regularItemBaselineCount?.countDate;
+    
+    const powerCountDateString = powerCountDate ? formatDateString(powerCountDate) : null;
+    const regularCountDateString = regularCountDate ? formatDateString(regularCountDate) : null;
+    
+    // Get count lines for power item baseline
+    let powerCountMap = new Map<string, number>();
+    if (powerItemBaselineCount) {
+      const powerCountLines = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        })
+        .from(inventoryCountLines)
+        // @ts-ignore
+        .where(eq(inventoryCountLines.inventoryCountId, powerItemBaselineCount.id))
+        .groupBy(inventoryCountLines.inventoryItemId);
+      // @ts-ignore
+      powerCountMap = new Map(powerCountLines.map(l => [l.inventoryItemId, l.totalQty]));
+    }
+    
+    // Get count lines for regular item baseline (if different from power)
+    let regularCountMap = new Map<string, number>();
+    if (regularItemBaselineCount && regularItemBaselineCount.id !== powerItemBaselineCount?.id) {
+      const regularCountLines = await db
+        .select({
+          inventoryItemId: inventoryCountLines.inventoryItemId,
+          totalQty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+        })
+        .from(inventoryCountLines)
+        // @ts-ignore
+        .where(eq(inventoryCountLines.inventoryCountId, regularItemBaselineCount.id))
+        .groupBy(inventoryCountLines.inventoryItemId);
+      // @ts-ignore
+      regularCountMap = new Map(regularCountLines.map(l => [l.inventoryItemId, l.totalQty]));
+    } else if (regularItemBaselineCount) {
+      // Same count as power items
+      regularCountMap = powerCountMap;
+    }
+    
+    // Determine the earliest baseline date we need to query from
+    // This ensures we get all activity that might be relevant
+    const earliestBaselineDate = regularCountDate && powerCountDate 
+      ? (regularCountDate < powerCountDate ? regularCountDate : powerCountDate)
+      : (regularCountDate || powerCountDate || new Date());
+    
+    // Get all receipts since the earliest baseline date
+    const allReceipts = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        receivedQty: receiptLines.receivedQty,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
+      })
+      .from(receiptLines)
+      // @ts-ignore
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      // @ts-ignore
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      // @ts-ignore
+      .innerJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(receipts.companyId, companyId),
+          // @ts-ignore
+          eq(receipts.storeId, storeId),
+          // @ts-ignore
+          inArray(receipts.status, ['locked', 'completed'])
+        )
+      );
+    
+    // Get waste logs since earliest baseline
+    const wasteLogsData = await db
+      .select({
+        inventoryItemId: wasteLogs.inventoryItemId,
+        qty: wasteLogs.qty,
+        wastedAt: wasteLogs.wastedAt,
+      })
+      .from(wasteLogs)
+      .where(
+        and(
+          // @ts-ignore
+          eq(wasteLogs.companyId, companyId),
+          // @ts-ignore
+          eq(wasteLogs.storeId, storeId),
+          // @ts-ignore
+          eq(wasteLogs.wasteType, 'inventory'),
+          // @ts-ignore
+          gte(wasteLogs.wastedAt, earliestBaselineDate)
+        )
+      );
+    
+    // Get theoretical usage runs since earliest baseline
+    const theoreticalUsageRunsData = await db
+      .select()
+      .from(theoreticalUsageRuns)
+      .where(
+        and(
+          // @ts-ignore
+          eq(theoreticalUsageRuns.companyId, companyId),
+          // @ts-ignore
+          eq(theoreticalUsageRuns.storeId, storeId),
+          // @ts-ignore
+          gt(theoreticalUsageRuns.salesDate, earliestBaselineDate),
+          // @ts-ignore
+          eq(theoreticalUsageRuns.status, 'completed')
+        )
+      );
+    
+    // @ts-ignore
+    const runIds = theoreticalUsageRunsData.map(r => r.id);
+    
+    // Get all theoretical usage lines with their run's sales date
+    let theoreticalUsageLinesWithDate: Array<{ inventoryItemId: string; requiredQtyBaseUnit: number; salesDate: Date }> = [];
+    if (runIds.length > 0) {
+      const lines = await db
+        .select({
+          inventoryItemId: theoreticalUsageLines.inventoryItemId,
+          requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
+          runId: theoreticalUsageLines.runId,
+        })
+        .from(theoreticalUsageLines)
+        // @ts-ignore
+        .where(inArray(theoreticalUsageLines.runId, runIds));
+      
+      // Map run IDs to their sales dates
+      // @ts-ignore
+      const runDateMap = new Map(theoreticalUsageRunsData.map(r => [r.id, r.salesDate]));
+      // @ts-ignore
+      theoreticalUsageLinesWithDate = lines.map(l => ({
+        inventoryItemId: l.inventoryItemId,
+        requiredQtyBaseUnit: l.requiredQtyBaseUnit,
+        salesDate: runDateMap.get(l.runId)!,
+      }));
+    }
+    
+    // Get outbound transfers since earliest baseline
+    const transferredItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+      })
+      .from(transferOrderLines)
+      // @ts-ignore
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(transferOrders.companyId, companyId),
+          // @ts-ignore
+          eq(transferOrders.fromStoreId, storeId),
+          // @ts-ignore
+          gte(transferOrders.completedAt, earliestBaselineDate),
+          // @ts-ignore
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get inbound transfers since earliest baseline
+    const transferredInItems = await db
+      .select({
+        inventoryItemId: transferOrderLines.inventoryItemId,
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+      })
+      .from(transferOrderLines)
+      // @ts-ignore
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(transferOrders.companyId, companyId),
+          // @ts-ignore
+          eq(transferOrders.toStoreId, storeId),
+          // @ts-ignore
+          gte(transferOrders.completedAt, earliestBaselineDate),
+          // @ts-ignore
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get all unique inventory item IDs from all sources
+    const allItemIds = new Set([
+      ...Array.from(powerCountMap.keys()),
+      ...Array.from(regularCountMap.keys()),
+      // @ts-ignore
+      ...allReceipts.map(r => r.inventoryItemId),
+      // @ts-ignore
+      ...wasteLogsData.filter(w => w.inventoryItemId).map(w => w.inventoryItemId!),
+      ...theoreticalUsageLinesWithDate.map(t => t.inventoryItemId),
+      // @ts-ignore
+      ...transferredItems.map(t => t.inventoryItemId),
+      // @ts-ignore
+      ...transferredInItems.map(t => t.inventoryItemId),
+    ]);
+    
+    // Calculate estimated on-hand for each item using the appropriate baseline
+    const estimatedOnHandData = Array.from(allItemIds).map(itemId => {
+      const isPowerItem = powerItemIds.has(itemId);
+      
+      // Use appropriate baseline count and date based on item type
+      const baselineCountMap = isPowerItem ? powerCountMap : regularCountMap;
+      const baselineDate = isPowerItem ? powerCountDate : regularCountDate;
+      const baselineDateString = isPowerItem ? powerCountDateString : regularCountDateString;
+      
+      // If no baseline date exists for this item type, skip it
+      if (!baselineDate) {
+        return null;
+      }
+      
+      const lastCountQty = baselineCountMap.get(itemId) || 0;
+      
+      // Filter receipts by delivery date after this item's baseline
+      const receivedQty = allReceipts
+        // @ts-ignore
+        .filter(r => {
+          if (r.inventoryItemId !== itemId) return false;
+          const deliveryDate = r.expectedDate || r.receivedAt;
+          if (!deliveryDate) return false;
+          return new Date(deliveryDate) > new Date(baselineDate);
+        })
+        // @ts-ignore
+        .reduce((sum, r) => sum + r.receivedQty, 0);
+      
+      // Filter waste by date after baseline
+      const wasteQty = wasteLogsData
+        // @ts-ignore
+        .filter(w => w.inventoryItemId === itemId && new Date(w.wastedAt) >= new Date(baselineDate))
+        // @ts-ignore
+        .reduce((sum, w) => sum + w.qty, 0);
+      
+      // Filter theoretical usage by sales date after baseline
+      const theoreticalUsageQty = theoreticalUsageLinesWithDate
+        .filter(t => t.inventoryItemId === itemId && new Date(t.salesDate) > new Date(baselineDate))
+        .reduce((sum, t) => sum + t.requiredQtyBaseUnit, 0);
+      
+      // Filter outbound transfers by completion date after baseline
+      const transferredOutQty = transferredItems
+        // @ts-ignore
+        .filter(t => t.inventoryItemId === itemId && t.completedAt && new Date(t.completedAt) >= new Date(baselineDate))
+        // @ts-ignore
+        .reduce((sum, t) => sum + (t.shippedQty || 0), 0);
+      
+      // Filter inbound transfers by completion date after baseline
+      const transferredInQty = transferredInItems
+        // @ts-ignore
+        .filter(t => t.inventoryItemId === itemId && t.completedAt && new Date(t.completedAt) >= new Date(baselineDate))
+        // @ts-ignore
+        .reduce((sum, t) => sum + (t.shippedQty || 0), 0);
+      
+      // Formula: On-Hand = Last Count + Received + Transferred In - Waste - Theoretical Usage - Transferred Out
+      const estimatedOnHand = lastCountQty + receivedQty + transferredInQty - wasteQty - theoreticalUsageQty - transferredOutQty;
+      
+      return {
+        inventoryItemId: itemId,
+        lastCountQty,
+        lastCountDate: baselineDateString,
+        receivedQty,
+        wasteQty,
+        theoreticalUsageQty,
+        transferredOutQty,
+        transferredInQty,
+        estimatedOnHand: Math.max(0, estimatedOnHand),
+      };
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
+    
+    return estimatedOnHandData;
+  }
+
+  // Estimated On-Hand Breakdown (detailed with dates)
+  async getEstimatedOnHandBreakdown(companyId: string, storeId: string, inventoryItemId: string): Promise<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    unitName: string;
+    lastCount: {
+      qty: number;
+      date: string;
+    } | null;
+    receipts: Array<{
+      date: string;
+      qty: number;
+      vendorName: string;
+      poId: string;
+    }>;
+    waste: Array<{
+      date: string;
+      qty: number;
+      reason: string;
+    }>;
+    theoreticalUsage: Array<{
+      date: string;
+      qty: number;
+    }>;
+    transfersOut: Array<{
+      date: string;
+      qty: number;
+      toStoreName: string;
+      transferId: string;
+    }>;
+    transfersIn: Array<{
+      date: string;
+      qty: number;
+      fromStoreName: string;
+      transferId: string;
+    }>;
+    summary: {
+      lastCountQty: number;
+      receivedQty: number;
+      wasteQty: number;
+      theoreticalUsageQty: number;
+      transferredOutQty: number;
+      transferredInQty: number;
+      estimatedOnHand: number;
+    };
+  } | null> {
+    // Get inventory item details
+    const [item] = await db
+      .select({
+        id: inventoryItems.id,
+        name: inventoryItems.name,
+        unitName: units.name,
+      })
+      .from(inventoryItems)
+      // @ts-ignore
+      .leftJoin(units, eq(inventoryItems.unitId, units.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(inventoryItems.id, inventoryItemId),
+          // @ts-ignore
+          eq(inventoryItems.companyId, companyId)
+        )
+      );
+    
+    if (!item) return null;
+    
+    // Get the most recent inventory count for this store
+    const counts = await db
+      .select()
+      .from(inventoryCounts)
+      .where(and(
+        // @ts-ignore
+        eq(inventoryCounts.companyId, companyId),
+        // @ts-ignore
+        eq(inventoryCounts.storeId, storeId)
+      ))
+      // @ts-ignore
+      .orderBy(desc(inventoryCounts.countDate));
+    
+    if (counts.length === 0) return null;
+    
+    const lastCount = counts[0];
+    const lastCountDate = lastCount.countDate;
+    
+    // Helper function to convert Date to YYYY-MM-DD using UTC methods
+    const toDateString = (date: Date): string => {
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    // Get count quantity for this specific item
+    const [countLine] = await db
+      .select({
+        qty: sql<number>`SUM(${inventoryCountLines.qty})`.as('total_qty'),
+      })
+      .from(inventoryCountLines)
+      .where(
+        and(
+          // @ts-ignore
+          eq(inventoryCountLines.inventoryCountId, lastCount.id),
+          // @ts-ignore
+          eq(inventoryCountLines.inventoryItemId, inventoryItemId)
+        )
+      )
+      .groupBy(inventoryCountLines.inventoryItemId);
+    
+    const lastCountQty = countLine?.qty || 0;
+    const lastCountInfo = {
+      qty: lastCountQty,
+      date: toDateString(lastCountDate),
+    };
+    
+    // Get receipts since last count
+    const receiptsData = await db
+      .select({
+        receivedQty: receiptLines.receivedQty,
+        expectedDate: purchaseOrders.expectedDate,
+        receivedAt: receipts.receivedAt,
+        vendorName: vendors.name,
+        poId: purchaseOrders.id,
+      })
+      .from(receiptLines)
+      // @ts-ignore
+      .innerJoin(receipts, eq(receiptLines.receiptId, receipts.id))
+      // @ts-ignore
+      .innerJoin(vendorItems, eq(receiptLines.vendorItemId, vendorItems.id))
+      // @ts-ignore
+      .leftJoin(purchaseOrders, eq(receipts.purchaseOrderId, purchaseOrders.id))
+      // @ts-ignore
+      .leftJoin(vendors, eq(purchaseOrders.vendorId, vendors.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(vendorItems.inventoryItemId, inventoryItemId),
+          // @ts-ignore
+          eq(receipts.companyId, companyId),
+          // @ts-ignore
+          eq(receipts.storeId, storeId),
+          // @ts-ignore
+          inArray(receipts.status, ['locked', 'completed'])
+        )
+      );
+    
+    // Filter and format receipts
+    const formattedReceipts = receiptsData
+      // @ts-ignore
+      .filter(r => {
+        const deliveryDate = r.expectedDate || r.receivedAt;
+        if (!deliveryDate) return false;
+        return new Date(deliveryDate) > new Date(lastCountDate);
+      })
+      // @ts-ignore
+      .map(r => ({
+        date: toDateString(r.expectedDate || r.receivedAt!),
+        qty: r.receivedQty,
+        vendorName: r.vendorName || 'Direct Receipt',
+        poId: r.poId || null,
+      }));
+    
+    // Get waste logs since last count
+    const wasteData = await db
+      .select({
+        qty: wasteLogs.qty,
+        wastedAt: wasteLogs.wastedAt,
+        reasonCode: wasteLogs.reasonCode,
+      })
+      .from(wasteLogs)
+      .where(
+        and(
+          // @ts-ignore
+          eq(wasteLogs.inventoryItemId, inventoryItemId),
+          // @ts-ignore
+          eq(wasteLogs.companyId, companyId),
+          // @ts-ignore
+          eq(wasteLogs.storeId, storeId),
+          // @ts-ignore
+          eq(wasteLogs.wasteType, 'inventory'),
+          // @ts-ignore
+          gte(wasteLogs.wastedAt, lastCountDate)
+        )
+      );
+    
+    // Helper function to convert reasonCode to human-readable text
+    const formatReasonCode = (code: string): string => {
+      const reasonMap: Record<string, string> = {
+        'SPOILED': 'Spoiled',
+        'DAMAGED': 'Damaged',
+        'OVERPRODUCTION': 'Overproduction',
+        'DROPPED': 'Dropped',
+        'EXPIRED': 'Expired',
+        'CONTAMINATED': 'Contaminated',
+        'OTHER': 'Other',
+      };
+      return reasonMap[code] || code || 'No reason provided';
+    };
+    
+    // @ts-ignore
+    const waste = wasteData.map(w => ({
+      date: toDateString(w.wastedAt),
+      qty: w.qty,
+      reason: formatReasonCode(w.reasonCode),
+    }));
+    
+    // Get theoretical usage since last count
+    const theoreticalUsageRunsData = await db
+      .select({
+        id: theoreticalUsageRuns.id,
+        salesDate: theoreticalUsageRuns.salesDate,
+      })
+      .from(theoreticalUsageRuns)
+      .where(
+        and(
+          // @ts-ignore
+          eq(theoreticalUsageRuns.companyId, companyId),
+          // @ts-ignore
+          eq(theoreticalUsageRuns.storeId, storeId),
+          // @ts-ignore
+          gt(theoreticalUsageRuns.salesDate, lastCountDate),
+          // @ts-ignore
+          eq(theoreticalUsageRuns.status, 'completed')
+        )
+      );
+    
+    // @ts-ignore
+    const runIds = theoreticalUsageRunsData.map(r => r.id);
+    
+    let theoreticalUsageData: Array<{ date: string; qty: number }> = [];
+    if (runIds.length > 0) {
+      const lines = await db
+        .select({
+          runId: theoreticalUsageLines.runId,
+          requiredQtyBaseUnit: theoreticalUsageLines.requiredQtyBaseUnit,
+        })
+        .from(theoreticalUsageLines)
+        .where(
+          and(
+            // @ts-ignore
+            inArray(theoreticalUsageLines.runId, runIds),
+            // @ts-ignore
+            eq(theoreticalUsageLines.inventoryItemId, inventoryItemId)
+          )
+        );
+      
+      // Group by date
+      const usageByDate = new Map<string, number>();
+      for (const line of lines) {
+        // @ts-ignore
+        const run = theoreticalUsageRunsData.find(r => r.id === line.runId);
+        if (run) {
+          const dateStr = toDateString(run.salesDate);
+          usageByDate.set(dateStr, (usageByDate.get(dateStr) || 0) + line.requiredQtyBaseUnit);
+        }
+      }
+      
+      theoreticalUsageData = Array.from(usageByDate.entries()).map(([date, qty]) => ({
+        date,
+        qty,
+      }));
+    }
+    
+    // Get outbound transfers since last count
+    const transfersOutData = await db
+      .select({
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+        toStoreId: transferOrders.toStoreId,
+        transferId: transferOrders.id,
+      })
+      .from(transferOrderLines)
+      // @ts-ignore
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(transferOrderLines.inventoryItemId, inventoryItemId),
+          // @ts-ignore
+          eq(transferOrders.companyId, companyId),
+          // @ts-ignore
+          eq(transferOrders.fromStoreId, storeId),
+          // @ts-ignore
+          gte(transferOrders.completedAt, lastCountDate),
+          // @ts-ignore
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get inbound transfers since last count (where this store is the destination)
+    const transfersInData = await db
+      .select({
+        shippedQty: transferOrderLines.shippedQty,
+        completedAt: transferOrders.completedAt,
+        fromStoreId: transferOrders.fromStoreId,
+        transferId: transferOrders.id,
+      })
+      .from(transferOrderLines)
+      // @ts-ignore
+      .innerJoin(transferOrders, eq(transferOrderLines.transferOrderId, transferOrders.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(transferOrderLines.inventoryItemId, inventoryItemId),
+          // @ts-ignore
+          eq(transferOrders.companyId, companyId),
+          // @ts-ignore
+          eq(transferOrders.toStoreId, storeId),
+          // @ts-ignore
+          gte(transferOrders.completedAt, lastCountDate),
+          // @ts-ignore
+          eq(transferOrders.status, 'completed')
+        )
+      );
+    
+    // Get store names for outbound transfers
+    // @ts-ignore
+    const toStoreIds = [...new Set(transfersOutData.map(t => t.toStoreId))];
+    // @ts-ignore
+    const fromStoreIds = [...new Set(transfersInData.map(t => t.fromStoreId))];
+    const allStoreIds = [...new Set([...toStoreIds, ...fromStoreIds])];
+    
+    let storeNamesMap = new Map<string, string>();
+    if (allStoreIds.length > 0) {
+      const storesData = await db
+        .select({
+          id: companyStores.id,
+          name: companyStores.name,
+        })
+        .from(companyStores)
+        // @ts-ignore
+        .where(inArray(companyStores.id, allStoreIds));
+      
+      // @ts-ignore
+      storeNamesMap = new Map(storesData.map(s => [s.id, s.name]));
+    }
+    
+    const transfersOut = transfersOutData
+      // @ts-ignore
+      .filter(t => t.completedAt !== null)
+      // @ts-ignore
+      .map(t => ({
+        date: toDateString(t.completedAt!),
+        qty: t.shippedQty || 0,
+        toStoreName: storeNamesMap.get(t.toStoreId) || 'Unknown Store',
+        transferId: t.transferId,
+      }));
+    
+    const transfersIn = transfersInData
+      // @ts-ignore
+      .filter(t => t.completedAt !== null)
+      // @ts-ignore
+      .map(t => ({
+        date: toDateString(t.completedAt!),
+        qty: t.shippedQty || 0,
+        fromStoreName: storeNamesMap.get(t.fromStoreId) || 'Unknown Store',
+        transferId: t.transferId,
+      }));
+    
+    // Calculate totals
+    // @ts-ignore
+    const receivedQty = formattedReceipts.reduce((sum, r) => sum + r.qty, 0);
+    // @ts-ignore
+    const wasteQty = waste.reduce((sum, w) => sum + w.qty, 0);
+    const theoreticalUsageQty = theoreticalUsageData.reduce((sum, t) => sum + t.qty, 0);
+    // @ts-ignore
+    const transferredOutQty = transfersOut.reduce((sum, t) => sum + t.qty, 0);
+    // @ts-ignore
+    const transferredInQty = transfersIn.reduce((sum, t) => sum + t.qty, 0);
+    const estimatedOnHand = Math.max(0, lastCountQty + receivedQty + transferredInQty - wasteQty - theoreticalUsageQty - transferredOutQty);
+    
+    return {
+      inventoryItemId: item.id,
+      inventoryItemName: item.name,
+      unitName: item.unitName || 'unit',
+      lastCount: lastCountInfo,
+      receipts: formattedReceipts,
+      waste,
+      theoreticalUsage: theoreticalUsageData,
+      transfersOut,
+      transfersIn,
+      summary: {
+        lastCountQty,
+        receivedQty,
+        wasteQty,
+        theoreticalUsageQty,
+        transferredOutQty,
+        transferredInQty,
+        estimatedOnHand,
+      },
+    };
+  }
+
+  // Purchase Orders
+  async getPurchaseOrders(companyId: string, storeId?: string): Promise<PurchaseOrder[]> {
+    // @ts-ignore
+    const conditions = [eq(purchaseOrders.companyId, companyId)];
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(purchaseOrders.storeId, storeId));
+    }
+    return db.select().from(purchaseOrders).where(and(...conditions));
+  }
+
+  async getPurchaseOrder(id: string, companyId: string): Promise<PurchaseOrder | undefined> {
+    const [po] = await db.select().from(purchaseOrders).where(
+      and(
+        // @ts-ignore
+        eq(purchaseOrders.id, id),
+        // @ts-ignore
+        eq(purchaseOrders.companyId, companyId)
+      )
+    );
+    return po || undefined;
+  }
+
+  async createPurchaseOrder(insertPO: InsertPurchaseOrder): Promise<PurchaseOrder> {
+    const [po] = await db.insert(purchaseOrders).values(insertPO).returning();
+    return po;
+  }
+
+  async updatePurchaseOrder(id: string, updates: Partial<PurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [po] = await db
+      .update(purchaseOrders)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(purchaseOrders.id, id))
+      .returning();
+    return po || undefined;
+  }
+
+  async deletePurchaseOrder(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+  }
+
+  // PO Lines
+  async getPOLines(poId: string): Promise<POLine[]> {
+    // @ts-ignore
+    return db.select().from(poLines).where(eq(poLines.purchaseOrderId, poId));
+  }
+
+  async createPOLine(insertLine: InsertPOLine): Promise<POLine> {
+    const [line] = await db.insert(poLines).values(insertLine).returning();
+    return line;
+  }
+
+  async deletePOLine(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(poLines).where(eq(poLines.id, id));
+  }
+
+  // PO Export Logs
+  async createPoExportLog(insertLog: InsertPoExportLog): Promise<PoExportLog> {
+    const [log] = await db.insert(poExportLogs).values(insertLog).returning();
+    return log;
+  }
+
+  async getPoExportLogs(purchaseOrderId: string, companyId: string): Promise<PoExportLog[]> {
+    return db
+      .select()
+      .from(poExportLogs)
+      .where(
+        and(
+          // @ts-ignore
+          eq(poExportLogs.purchaseOrderId, purchaseOrderId),
+          // @ts-ignore
+          eq(poExportLogs.companyId, companyId)
+        )
+      )
+      // @ts-ignore
+      .orderBy(desc(poExportLogs.exportedAt));
+  }
+
+  async confirmPoExportLog(id: string, purchaseOrderId: string, companyId: string, userId: string): Promise<PoExportLog | undefined> {
+    const [log] = await db
+      .update(poExportLogs)
+      .set({ manuallyConfirmedAt: new Date(), manuallyConfirmedBy: userId })
+      .where(
+        and(
+          // @ts-ignore
+          eq(poExportLogs.id, id),
+          // @ts-ignore
+          eq(poExportLogs.purchaseOrderId, purchaseOrderId),
+          // @ts-ignore
+          eq(poExportLogs.companyId, companyId)
+        )
+      )
+      .returning();
+    return log || undefined;
+  }
+
+  // Receipts
+  async getReceipts(companyId: string, storeId?: string): Promise<Receipt[]> {
+    // @ts-ignore
+    const conditions = [eq(receipts.companyId, companyId)];
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(receipts.storeId, storeId));
+    }
+    return db.select().from(receipts).where(and(...conditions));
+  }
+
+  async getReceipt(id: string): Promise<Receipt | undefined> {
+    // @ts-ignore
+    const [receipt] = await db.select().from(receipts).where(eq(receipts.id, id));
+    return receipt || undefined;
+  }
+
+  async createReceipt(insertReceipt: InsertReceipt): Promise<Receipt> {
+    const [receipt] = await db.insert(receipts).values(insertReceipt).returning();
+    return receipt;
+  }
+
+  async updateReceipt(id: string, data: Partial<InsertReceipt>): Promise<void> {
+    // @ts-ignore
+    await db.update(receipts).set(data).where(eq(receipts.id, id));
+  }
+
+  // Receipt Lines
+  async getReceiptLines(receiptId: string): Promise<ReceiptLine[]> {
+    // @ts-ignore
+    return db.select().from(receiptLines).where(eq(receiptLines.receiptId, receiptId));
+  }
+
+  async getReceiptLinesByReceiptId(receiptId: string): Promise<ReceiptLine[]> {
+    return db
+      .select({
+        id: receiptLines.id,
+        receiptId: receiptLines.receiptId,
+        vendorItemId: receiptLines.vendorItemId,
+        receivedQty: receiptLines.receivedQty,
+        unitId: receiptLines.unitId,
+        priceEach: receiptLines.priceEach,
+        unitName: units.name,
+      })
+      .from(receiptLines)
+      // @ts-ignore
+      .leftJoin(units, eq(receiptLines.unitId, units.id))
+      // @ts-ignore
+      .where(eq(receiptLines.receiptId, receiptId));
+  }
+
+  async createReceiptLine(insertLine: InsertReceiptLine): Promise<ReceiptLine> {
+    // Ensure priceEach is set (convert from pricePerUnit if needed)
+    const dataToInsert = {
+      ...insertLine,
+      priceEach: insertLine.priceEach ?? insertLine.pricePerUnit ?? 0
+    };
+    const [line] = await db.insert(receiptLines).values(dataToInsert).returning();
+    return line;
+  }
+
+  async updateReceiptLine(id: string, data: Partial<InsertReceiptLine>): Promise<void> {
+    // @ts-ignore
+    await db.update(receiptLines).set(data).where(eq(receiptLines.id, id));
+  }
+
+  // POS Sales
+  async getPOSSales(startDate?: Date, endDate?: Date): Promise<POSSale[]> {
+    if (startDate && endDate) {
+      return db
+        .select()
+        .from(posSales)
+        // @ts-ignore
+        .where(and(gte(posSales.occurredAt, startDate), lte(posSales.occurredAt, endDate)));
+    } else if (startDate) {
+      // @ts-ignore
+      return db.select().from(posSales).where(gte(posSales.occurredAt, startDate));
+    } else if (endDate) {
+      // @ts-ignore
+      return db.select().from(posSales).where(lte(posSales.occurredAt, endDate));
+    }
+    return db.select().from(posSales);
+  }
+
+  async createPOSSale(insertSale: InsertPOSSale): Promise<POSSale> {
+    const [sale] = await db.insert(posSales).values(insertSale).returning();
+    return sale;
+  }
+
+  // POS Sales Lines
+  async getPOSSalesLines(saleId: string): Promise<POSSalesLine[]> {
+    // @ts-ignore
+    return db.select().from(posSalesLines).where(eq(posSalesLines.posSalesId, saleId));
+  }
+
+  async createPOSSalesLine(insertLine: InsertPOSSalesLine): Promise<POSSalesLine> {
+    const [line] = await db.insert(posSalesLines).values(insertLine).returning();
+    return line;
+  }
+
+  // Menu Items
+  async getMenuItems(): Promise<MenuItem[]> {
+    return db.select().from(menuItems);
+  }
+
+  async getMenuItem(id: string): Promise<MenuItem | undefined> {
+    // @ts-ignore
+    const [item] = await db.select().from(menuItems).where(eq(menuItems.id, id));
+    return item || undefined;
+  }
+
+  async getMenuItemByPLU(pluSku: string): Promise<MenuItem | undefined> {
+    // @ts-ignore
+    const [item] = await db.select().from(menuItems).where(eq(menuItems.pluSku, pluSku));
+    return item || undefined;
+  }
+
+  async createMenuItem(insertItem: InsertMenuItem): Promise<MenuItem> {
+    const [item] = await db.insert(menuItems).values(insertItem).returning();
+    return item;
+  }
+
+  async getMenuItemByRecipeId(recipeId: string, companyId: string): Promise<MenuItem | undefined> {
+    const [item] = await db.select().from(menuItems)
+      // @ts-ignore
+      .where(and(eq(menuItems.recipeId, recipeId), eq(menuItems.companyId, companyId)));
+    return item || undefined;
+  }
+
+  async updateMenuItem(id: string, item: Partial<MenuItem>): Promise<MenuItem | undefined> {
+    // @ts-ignore
+    const [updated] = await db.update(menuItems).set(item).where(eq(menuItems.id, id)).returning();
+    return updated || undefined;
+  }
+
+  // Menu Item Hierarchy
+  async getMenuItemsByCompany(companyId: string): Promise<MenuItem[]> {
+    return db.select().from(menuItems)
+      // @ts-ignore
+      .where(eq(menuItems.companyId, companyId))
+      .orderBy(menuItems.name, menuItems.sortOrder);
+  }
+
+  async getMenuItemVariants(parentMenuItemId: string): Promise<MenuItem[]> {
+    return db.select().from(menuItems)
+      // @ts-ignore
+      .where(eq(menuItems.parentMenuItemId, parentMenuItemId))
+      .orderBy(menuItems.sortOrder);
+  }
+
+  async getMenuItemsWithVariants(companyId: string): Promise<{ parent: MenuItem; variants: MenuItem[] }[]> {
+    // Get all menu items for the company
+    const allItems = await db.select().from(menuItems)
+      // @ts-ignore
+      .where(eq(menuItems.companyId, companyId))
+      .orderBy(menuItems.name, menuItems.sortOrder);
+    
+    // Group parent items (those without parentMenuItemId) with their variants
+    // @ts-ignore
+    const parentItems = allItems.filter(item => !item.parentMenuItemId);
+    // @ts-ignore
+    const childItems = allItems.filter(item => item.parentMenuItemId);
+    
+    // Create the grouped result
+    // @ts-ignore
+    return parentItems.map(parent => ({
+      parent,
+      // @ts-ignore
+      variants: childItems.filter(child => child.parentMenuItemId === parent.id)
+        // @ts-ignore
+        .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    }));
+  }
+
+  async createMenuItemVariant(parentId: string, variant: InsertMenuItem): Promise<MenuItem> {
+    // Get the parent to ensure it exists and get company context
+    const parent = await this.getMenuItem(parentId);
+    if (!parent) {
+      throw new Error('Parent menu item not found');
+    }
+    
+    // Get the count of existing variants for sortOrder
+    const existingVariants = await this.getMenuItemVariants(parentId);
+    const sortOrder = existingVariants.length;
+    
+    // Create the variant with parent reference; inherit department fields from parent
+    const [item] = await db.insert(menuItems).values({
+      ...variant,
+      companyId: parent.companyId,
+      parentMenuItemId: parentId,
+      department: variant.department || parent.department,
+      menuDepartmentId: variant.menuDepartmentId ?? parent.menuDepartmentId,
+      category: variant.category || parent.category,
+      sortOrder,
+    }).returning();
+    
+    return item;
+  }
+
+  async linkMenuItemToRecipe(menuItemId: string, recipeId: string): Promise<MenuItem | undefined> {
+    const [updated] = await db.update(menuItems)
+      .set({ recipeId })
+      // @ts-ignore
+      .where(eq(menuItems.id, menuItemId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async convertToParentMenuItem(menuItemId: string): Promise<MenuItem | undefined> {
+    // This converts a single-sized menu item to a parent item
+    // by setting size to null and ensuring it can have children
+    const [updated] = await db.update(menuItems)
+      .set({ 
+        size: null,
+        parentMenuItemId: null // Ensure it's not a child of anything
+      })
+      // @ts-ignore
+      .where(eq(menuItems.id, menuItemId))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Store Menu Items
+  async getStoreMenuItems(menuItemId: string): Promise<StoreMenuItem[]> {
+    // @ts-ignore
+    return db.select().from(storeMenuItems).where(eq(storeMenuItems.menuItemId, menuItemId));
+  }
+
+  async createStoreMenuItem(insertItem: InsertStoreMenuItem): Promise<StoreMenuItem> {
+    const [item] = await db.insert(storeMenuItems).values(insertItem).returning();
+    return item;
+  }
+
+  // Menu Item Sizes
+  async getMenuItemSizes(companyId: string): Promise<MenuItemSize[]> {
+    return db.select().from(menuItemSizes)
+      // @ts-ignore
+      .where(eq(menuItemSizes.companyId, companyId))
+      // @ts-ignore
+      .orderBy(asc(menuItemSizes.sortOrder));
+  }
+
+  async getMenuItemSize(id: string): Promise<MenuItemSize | undefined> {
+    // @ts-ignore
+    const [size] = await db.select().from(menuItemSizes).where(eq(menuItemSizes.id, id));
+    return size;
+  }
+
+  async createMenuItemSize(insertSize: InsertMenuItemSize): Promise<MenuItemSize> {
+    const [size] = await db.insert(menuItemSizes).values(insertSize).returning();
+    return size;
+  }
+
+  async updateMenuItemSize(id: string, data: Partial<MenuItemSize>): Promise<MenuItemSize | undefined> {
+    const [updated] = await db.update(menuItemSizes)
+      .set(data)
+      // @ts-ignore
+      .where(eq(menuItemSizes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuItemSize(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(menuItemSizes).where(eq(menuItemSizes.id, id));
+  }
+
+  // Recipe Versions
+  async getRecipeVersions(recipeId: string): Promise<RecipeVersion[]> {
+    // @ts-ignore
+    return db.select().from(recipeVersions).where(eq(recipeVersions.recipeId, recipeId)).orderBy(recipeVersions.versionNumber);
+  }
+
+  async getRecipeVersion(id: string): Promise<RecipeVersion | undefined> {
+    // @ts-ignore
+    const [version] = await db.select().from(recipeVersions).where(eq(recipeVersions.id, id));
+    return version || undefined;
+  }
+
+  async createRecipeVersion(insertVersion: InsertRecipeVersion): Promise<RecipeVersion> {
+    const [version] = await db.insert(recipeVersions).values(insertVersion).returning();
+    return version;
+  }
+
+  // Transfer Logs
+  async getTransferLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]> {
+    let query = db.select().from(transferLogs);
+    // @ts-ignore
+    const conditions = [eq(transferLogs.companyId, companyId)];
+    
+    if (inventoryItemId) {
+      // @ts-ignore
+      conditions.push(eq(transferLogs.inventoryItemId, inventoryItemId));
+    }
+    if (storeId) {
+      conditions.push(
+        or(
+          // @ts-ignore
+          eq(transferLogs.fromStoreId, storeId),
+          // @ts-ignore
+          eq(transferLogs.toStoreId, storeId)
+        )!
+      );
+    }
+    if (startDate) {
+      // @ts-ignore
+      conditions.push(gte(transferLogs.transferredAt, startDate));
+    }
+    if (endDate) {
+      // @ts-ignore
+      conditions.push(lte(transferLogs.transferredAt, endDate));
+    }
+    
+    return query.where(and(...conditions));
+  }
+
+  async createTransferLog(insertTransfer: InsertTransferLog): Promise<TransferLog> {
+    const [transfer] = await db.insert(transferLogs).values(insertTransfer).returning();
+    return transfer;
+  }
+
+  // Transfer Orders
+  async getTransferOrders(companyId: string, storeId?: string): Promise<TransferOrder[]> {
+    // @ts-ignore
+    const conditions = [eq(transferOrders.companyId, companyId)];
+    if (storeId) {
+      conditions.push(
+        or(
+          // @ts-ignore
+          eq(transferOrders.fromStoreId, storeId),
+          // @ts-ignore
+          eq(transferOrders.toStoreId, storeId)
+        )!
+      );
+    }
+    return db.select().from(transferOrders).where(and(...conditions)).orderBy(transferOrders.createdAt);
+  }
+
+  async getTransferOrder(id: string): Promise<TransferOrder | undefined> {
+    // @ts-ignore
+    const [order] = await db.select().from(transferOrders).where(eq(transferOrders.id, id));
+    return order || undefined;
+  }
+
+  async createTransferOrder(insertOrder: InsertTransferOrder): Promise<TransferOrder> {
+    const [order] = await db.insert(transferOrders).values(insertOrder).returning();
+    return order;
+  }
+
+  async updateTransferOrder(id: string, updates: Partial<TransferOrder>): Promise<TransferOrder | undefined> {
+    const [order] = await db
+      .update(transferOrders)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(transferOrders.id, id))
+      .returning();
+    return order || undefined;
+  }
+
+  async deleteTransferOrder(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(transferOrders).where(eq(transferOrders.id, id));
+  }
+
+  // Transfer Order Lines
+  async getTransferOrderLines(transferOrderId: string): Promise<TransferOrderLine[]> {
+    // @ts-ignore
+    return db.select().from(transferOrderLines).where(eq(transferOrderLines.transferOrderId, transferOrderId));
+  }
+
+  async createTransferOrderLine(insertLine: InsertTransferOrderLine): Promise<TransferOrderLine> {
+    const [line] = await db.insert(transferOrderLines).values(insertLine).returning();
+    return line;
+  }
+
+  async updateTransferOrderLine(id: string, updates: Partial<TransferOrderLine>): Promise<TransferOrderLine | undefined> {
+    const [line] = await db
+      .update(transferOrderLines)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(transferOrderLines.id, id))
+      .returning();
+    return line || undefined;
+  }
+
+  async deleteTransferOrderLine(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(transferOrderLines).where(eq(transferOrderLines.id, id));
+  }
+
+  // Waste Logs
+  async getWasteLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<any[]> {
+    // @ts-ignore
+    const conditions = [eq(wasteLogs.companyId, companyId)];
+    
+    if (inventoryItemId) {
+      // @ts-ignore
+      conditions.push(eq(wasteLogs.inventoryItemId, inventoryItemId));
+    }
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(wasteLogs.storeId, storeId));
+    }
+    if (startDate) {
+      // @ts-ignore
+      conditions.push(gte(wasteLogs.wastedAt, startDate));
+    }
+    if (endDate) {
+      // @ts-ignore
+      conditions.push(lte(wasteLogs.wastedAt, endDate));
+    }
+    
+    const logs = await db
+      .select({
+        id: wasteLogs.id,
+        wasteType: wasteLogs.wasteType,
+        inventoryItemId: wasteLogs.inventoryItemId,
+        menuItemId: wasteLogs.menuItemId,
+        inventoryItemName: inventoryItems.name,
+        menuItemName: menuItems.name,
+        qty: wasteLogs.qty,
+        unitId: wasteLogs.unitId,
+        unitName: units.name,
+        reasonCode: wasteLogs.reasonCode,
+        notes: wasteLogs.notes,
+        wastedAt: wasteLogs.wastedAt,
+        totalValue: wasteLogs.totalValue,
+        storeId: wasteLogs.storeId,
+        storeName: companyStores.name,
+      })
+      .from(wasteLogs)
+      // @ts-ignore
+      .leftJoin(inventoryItems, eq(wasteLogs.inventoryItemId, inventoryItems.id))
+      // @ts-ignore
+      .leftJoin(menuItems, eq(wasteLogs.menuItemId, menuItems.id))
+      // @ts-ignore
+      .leftJoin(units, eq(wasteLogs.unitId, units.id))
+      // @ts-ignore
+      .leftJoin(companyStores, eq(wasteLogs.storeId, companyStores.id))
+      .where(and(...conditions));
+    
+    return logs;
+  }
+
+  async createWasteLog(insertWaste: InsertWasteLog): Promise<WasteLog> {
+    const [waste] = await db.insert(wasteLogs).values(insertWaste).returning();
+    return waste;
+  }
+
+  // Companies
+  async getCompanies(): Promise<Company[]> {
+    return await db.select().from(companies);
+  }
+
+  async getCompany(id: string): Promise<Company | undefined> {
+    // @ts-ignore
+    const [company] = await db.select().from(companies).where(eq(companies.id, id));
+    return company || undefined;
+  }
+
+  async createCompany(insertCompany: InsertCompany): Promise<Company> {
+    // @ts-ignore
+    return await db.transaction(async (tx) => {
+      // Create the company
+      const [company] = await tx.insert(companies).values(insertCompany).returning();
+      
+      // Create default categories for the new company
+      await tx.insert(categories).values([
+        { companyId: company.id, name: "Produce",             sortOrder: 1,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Dairy",               sortOrder: 2,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Proteins",            sortOrder: 3,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Seafood",             sortOrder: 4,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Frozen",              sortOrder: 5,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Walk-In",             sortOrder: 6,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Dry/Pantry",          sortOrder: 7,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Bread/Dough",         sortOrder: 8,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Spices & Seasonings", sortOrder: 9,  showAsIngredient: 1 },
+        { companyId: company.id, name: "Beverages",           sortOrder: 10, showAsIngredient: 1 },
+        { companyId: company.id, name: "Cleaning & Supplies", sortOrder: 11, showAsIngredient: 0 },
+      ]);
+      
+      return company;
+    });
+  }
+
+  async updateCompany(id: string, updates: Partial<Company>): Promise<Company | undefined> {
+    const [company] = await db
+      .update(companies)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(companies.id, id))
+      .returning();
+    return company || undefined;
+  }
+
+  // Company Stores
+  async getCompanyStores(companyId: string): Promise<CompanyStore[]> {
+    // @ts-ignore
+    return await db.select().from(companyStores).where(eq(companyStores.companyId, companyId));
+  }
+
+  async getCompanyStore(id: string, companyId?: string): Promise<CompanyStore | undefined> {
+    const conditions = companyId
+      // @ts-ignore
+      ? and(eq(companyStores.id, id), eq(companyStores.companyId, companyId))
+      // @ts-ignore
+      : eq(companyStores.id, id);
+    const [store] = await db.select().from(companyStores).where(conditions);
+    return store || undefined;
+  }
+
+  async createCompanyStore(insertStore: InsertCompanyStore): Promise<CompanyStore> {
+    const [store] = await db.insert(companyStores).values(insertStore).returning();
+    return store;
+  }
+
+  async updateCompanyStore(id: string, updates: Partial<CompanyStore>): Promise<CompanyStore | undefined> {
+    const [store] = await db
+      .update(companyStores)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(companyStores.id, id))
+      .returning();
+    return store || undefined;
+  }
+
+  async deleteCompanyStore(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(companyStores).where(eq(companyStores.id, id));
+  }
+
+  // Company Settings
+  async getCompanySettings(): Promise<CompanySettings | undefined> {
+    const [settings] = await db.select().from(companySettings).limit(1);
+    return settings || undefined;
+  }
+
+  async updateCompanySettings(updates: Partial<CompanySettings>): Promise<CompanySettings> {
+    const existing = await this.getCompanySettings();
+    
+    if (existing) {
+      const [updated] = await db
+        .update(companySettings)
+        .set({ ...updates, updatedAt: new Date() })
+        // @ts-ignore
+        .where(eq(companySettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(companySettings)
+        .values(updates as InsertCompanySettings)
+        .returning();
+      return created;
+    }
+  }
+
+  // System Preferences
+  async getSystemPreferences(): Promise<SystemPreferences | undefined> {
+    const [prefs] = await db.select().from(systemPreferences).limit(1);
+    return prefs || undefined;
+  }
+
+  async updateSystemPreferences(updates: Partial<SystemPreferences>): Promise<SystemPreferences> {
+    const existing = await this.getSystemPreferences();
+    
+    if (existing) {
+      const [updated] = await db
+        .update(systemPreferences)
+        .set({ ...updates, updatedAt: new Date() })
+        // @ts-ignore
+        .where(eq(systemPreferences.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(systemPreferences)
+        .values(updates as InsertSystemPreferences)
+        .returning();
+      return created;
+    }
+  }
+
+  // Vendor Credentials
+  async getVendorCredentials(): Promise<VendorCredentials[]> {
+    return await db.select().from(vendorCredentials);
+  }
+
+  async getVendorCredentialsByKey(vendorKey: string): Promise<VendorCredentials | undefined> {
+    const [creds] = await db
+      .select()
+      .from(vendorCredentials)
+      // @ts-ignore
+      .where(eq(vendorCredentials.vendorKey, vendorKey))
+      .limit(1);
+    return creds || undefined;
+  }
+
+  async createVendorCredentials(credentials: InsertVendorCredentials): Promise<VendorCredentials> {
+    const [created] = await db
+      .insert(vendorCredentials)
+      .values(credentials)
+      .returning();
+    return created;
+  }
+
+  async updateVendorCredentials(id: string, updates: Partial<VendorCredentials>): Promise<VendorCredentials | undefined> {
+    const [updated] = await db
+      .update(vendorCredentials)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(eq(vendorCredentials.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVendorCredentials(id: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(vendorCredentials).where(eq(vendorCredentials.id, id));
+  }
+
+  // EDI Messages
+  async getEdiMessages(vendorKey?: string, limit: number = 100): Promise<EdiMessage[]> {
+    let query = db.select().from(ediMessages);
+    
+    if (vendorKey) {
+      // @ts-ignore
+      query = query.where(eq(ediMessages.vendorKey, vendorKey)) as any;
+    }
+    
+    return query.orderBy(ediMessages.createdAt).limit(limit);
+  }
+
+  async getEdiMessage(id: string): Promise<EdiMessage | undefined> {
+    // @ts-ignore
+    const results = await db.select().from(ediMessages).where(eq(ediMessages.id, id));
+    return results[0];
+  }
+
+  async createEdiMessage(message: InsertEdiMessage): Promise<EdiMessage> {
+    const results = await db.insert(ediMessages).values(message).returning();
+    return results[0];
+  }
+
+  async updateEdiMessage(id: string, updates: Partial<EdiMessage>): Promise<EdiMessage | undefined> {
+    const results = await db
+      .update(ediMessages)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(ediMessages.id, id))
+      .returning();
+    return results[0];
+  }
+
+  // Order Guides
+  async getOrderGuides(vendorKey?: string, limit: number = 50): Promise<OrderGuide[]> {
+    let query = db.select().from(orderGuides);
+    
+    if (vendorKey) {
+      // @ts-ignore
+      query = query.where(eq(orderGuides.vendorKey, vendorKey)) as any;
+    }
+    
+    return query.orderBy(orderGuides.fetchedAt).limit(limit);
+  }
+
+  async getOrderGuide(id: string): Promise<OrderGuide | undefined> {
+    // @ts-ignore
+    const results = await db.select().from(orderGuides).where(eq(orderGuides.id, id));
+    return results[0];
+  }
+
+  async createOrderGuide(guide: InsertOrderGuide): Promise<OrderGuide> {
+    const results = await db.insert(orderGuides).values(guide).returning();
+    return results[0];
+  }
+
+  async updateOrderGuideStatus(id: string, status: string): Promise<void> {
+    await db
+      .update(orderGuides)
+      .set({ status })
+      // @ts-ignore
+      .where(eq(orderGuides.id, id));
+  }
+
+  async updateOrderGuideVendor(id: string, vendorId: string | null): Promise<void> {
+    await db
+      .update(orderGuides)
+      .set({ vendorId })
+      // @ts-ignore
+      .where(eq(orderGuides.id, id));
+  }
+
+  async updateOrderGuideRowCount(id: string, rowCount: number, fileName?: string): Promise<void> {
+    const updates: Record<string, any> = { rowCount };
+    if (fileName !== undefined) updates.fileName = fileName;
+    await db
+      .update(orderGuides)
+      .set(updates)
+      // @ts-ignore
+      .where(eq(orderGuides.id, id));
+  }
+
+  async supersedePreviousOrderGuides(vendorId: string, excludeGuideId?: string): Promise<number> {
+    const conditions = [
+      // @ts-ignore
+      eq(orderGuides.vendorId, vendorId),
+      // @ts-ignore
+      ne(orderGuides.status, 'superseded'),
+    ];
+    
+    if (excludeGuideId) {
+      // @ts-ignore
+      conditions.push(ne(orderGuides.id, excludeGuideId));
+    }
+    
+    const result = await db
+      .update(orderGuides)
+      .set({ status: 'superseded' })
+      .where(and(...conditions))
+      .returning();
+    
+    return result.length;
+  }
+
+  // Order Guide Lines
+  async getOrderGuideLines(orderGuideId: string): Promise<OrderGuideLine[]> {
+    return db
+      .select()
+      .from(orderGuideLines)
+      // @ts-ignore
+      .where(eq(orderGuideLines.orderGuideId, orderGuideId));
+  }
+
+  async createOrderGuideLine(line: InsertOrderGuideLine): Promise<OrderGuideLine> {
+    const results = await db.insert(orderGuideLines).values(line).returning();
+    return results[0];
+  }
+
+  async createOrderGuideLinesBatch(lines: InsertOrderGuideLine[]): Promise<OrderGuideLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(orderGuideLines).values(lines).returning();
+  }
+
+  // Inventory Item Price History
+  async getInventoryItemPriceHistory(inventoryItemId: string): Promise<InventoryItemPriceHistory[]> {
+    return db
+      .select()
+      .from(inventoryItemPriceHistory)
+      // @ts-ignore
+      .where(eq(inventoryItemPriceHistory.inventoryItemId, inventoryItemId))
+      .orderBy(inventoryItemPriceHistory.effectiveAt);
+  }
+
+  async createInventoryItemPriceHistory(insertHistory: InsertInventoryItemPriceHistory): Promise<InventoryItemPriceHistory> {
+    const [history] = await db.insert(inventoryItemPriceHistory).values(insertHistory).returning();
+    return history;
+  }
+
+  // Inventory item search for count entry - searches by name, PLU/SKU, barcode, and vendor SKU
+  // Multi-tenant safe: filters by companyId, optionally by storeId
+  async searchInventoryItems(term: string, companyId: string, storeId?: string): Promise<InventoryItem[]> {
+    const searchTerm = `%${term.toLowerCase()}%`;
+    
+    // Build base conditions for company and active filtering
+    const baseConditions = [
+      // @ts-ignore
+      eq(inventoryItems.companyId, companyId),
+      // @ts-ignore
+      eq(inventoryItems.active, 1),
+    ];
+    
+    // First get inventory items matching name, plu, or barcode
+    const directMatches = await db
+      .select()
+      .from(inventoryItems)
+      .where(
+        and(
+          ...baseConditions,
+          or(
+            // @ts-ignore
+            ilike(inventoryItems.name, searchTerm),
+            // @ts-ignore
+            ilike(inventoryItems.pluSku, searchTerm),
+            // @ts-ignore
+            ilike(inventoryItems.barcode, searchTerm)
+          )
+        )
+      );
+    
+    // Then get inventory items matching vendor SKU (scoped to same company)
+    const vendorSkuMatches = await db
+      .select({
+        inventoryItem: inventoryItems
+      })
+      .from(vendorItems)
+      // @ts-ignore
+      .innerJoin(inventoryItems, eq(vendorItems.inventoryItemId, inventoryItems.id))
+      .where(
+        and(
+          // @ts-ignore
+          eq(inventoryItems.companyId, companyId),
+          // @ts-ignore
+          eq(inventoryItems.active, 1),
+          // @ts-ignore
+          ilike(vendorItems.vendorSku, searchTerm)
+        )
+      );
+    
+    // Combine and dedupe results
+    let allItems = [...directMatches];
+    // @ts-ignore
+    const seenIds = new Set(directMatches.map(i => i.id));
+    for (const match of vendorSkuMatches) {
+      if (!seenIds.has(match.inventoryItem.id)) {
+        allItems.push(match.inventoryItem);
+        seenIds.add(match.inventoryItem.id);
+      }
+    }
+    
+    // If storeId provided, filter to items assigned to that store
+    if (storeId) {
+      const storeItemIds = await db
+        .select({ inventoryItemId: storeInventoryItems.inventoryItemId })
+        .from(storeInventoryItems)
+        .where(
+          and(
+            // @ts-ignore
+            eq(storeInventoryItems.storeId, storeId),
+            // @ts-ignore
+            eq(storeInventoryItems.active, 1)
+          )
+        );
+      // @ts-ignore
+      const validIds = new Set(storeItemIds.map(si => si.inventoryItemId));
+      allItems = allItems.filter(item => validIds.has(item.id));
+    }
+    
+    return allItems;
+  }
+
+  // Inventory count aggregations
+  async getInventoryCountAggregations(countId: string): Promise<Array<{
+    inventoryItemId: string;
+    inventoryItemName: string;
+    totalQty: number;
+    totalValue: number;
+    countLineIds: string[];
+  }>> {
+    return [];
+  }
+
+  async getInventoryItemCountDetails(inventoryItemId: string, countId: string): Promise<Array<{
+    countLineId: string;
+    userId: string;
+    userName: string;
+    storageLocationId: string;
+    locationName: string;
+    qty: number;
+    unitId: string;
+    unitName: string;
+    pricePerUnit: number;
+    caseSize: number;
+    totalValue: number;
+    countedAt: Date;
+  }>> {
+    return [];
+  }
+
+  // TFC - Dayparts
+  async getDayparts(companyId: string): Promise<Daypart[]> {
+    return db
+      .select()
+      .from(dayparts)
+      // @ts-ignore
+      .where(eq(dayparts.companyId, companyId))
+      .orderBy(dayparts.sortOrder);
+  }
+
+  async getDaypart(id: string, companyId: string): Promise<Daypart | undefined> {
+    const [daypart] = await db
+      .select()
+      .from(dayparts)
+      // @ts-ignore
+      .where(and(eq(dayparts.id, id), eq(dayparts.companyId, companyId)));
+    return daypart || undefined;
+  }
+
+  async createDaypart(insertDaypart: InsertDaypart): Promise<Daypart> {
+    const [daypart] = await db.insert(dayparts).values(insertDaypart).returning();
+    return daypart;
+  }
+
+  async updateDaypart(id: string, companyId: string, updates: Partial<Daypart>): Promise<Daypart | undefined> {
+    const [daypart] = await db
+      .update(dayparts)
+      .set(updates)
+      // @ts-ignore
+      .where(and(eq(dayparts.id, id), eq(dayparts.companyId, companyId)))
+      .returning();
+    return daypart || undefined;
+  }
+
+  // TFC - Sales Upload Batches
+  async createSalesUploadBatch(batch: InsertSalesUploadBatch): Promise<SalesUploadBatch> {
+    const [newBatch] = await db.insert(salesUploadBatches).values(batch).returning();
+    return newBatch;
+  }
+
+  async getSalesUploadBatch(id: string, companyId: string): Promise<SalesUploadBatch | undefined> {
+    const [batch] = await db
+      .select()
+      .from(salesUploadBatches)
+      // @ts-ignore
+      .where(and(eq(salesUploadBatches.id, id), eq(salesUploadBatches.companyId, companyId)));
+    return batch || undefined;
+  }
+
+  async getSalesUploadBatches(companyId: string, storeId?: string): Promise<SalesUploadBatch[]> {
+    // @ts-ignore
+    const conditions = [eq(salesUploadBatches.companyId, companyId)];
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(salesUploadBatches.storeId, storeId));
+    }
+    return db
+      .select()
+      .from(salesUploadBatches)
+      .where(and(...conditions))
+      .orderBy(salesUploadBatches.uploadedAt);
+  }
+
+  async updateSalesUploadBatchStatus(
+    id: string,
+    companyId: string,
+    status: string,
+    completedAt?: Date,
+    rowsProcessed?: number,
+    rowsFailed?: number,
+    errorLog?: string
+  ): Promise<void> {
+    const updates: Partial<SalesUploadBatch> = { status };
+    if (completedAt !== undefined) updates.completedAt = completedAt;
+    if (rowsProcessed !== undefined) updates.rowsProcessed = rowsProcessed;
+    if (rowsFailed !== undefined) updates.rowsFailed = rowsFailed;
+    if (errorLog !== undefined) updates.errorLog = errorLog;
+
+    await db
+      .update(salesUploadBatches)
+      .set(updates)
+      // @ts-ignore
+      .where(and(eq(salesUploadBatches.id, id), eq(salesUploadBatches.companyId, companyId)));
+  }
+
+  // TFC - Daily Menu Item Sales
+  async createDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]> {
+    if (sales.length === 0) return [];
+    return db.insert(dailyMenuItemSales).values(sales).returning();
+  }
+
+  async upsertPosDailyMenuItemSales(sales: InsertDailyMenuItemSales[]): Promise<DailyMenuItemSales[]> {
+    if (sales.length === 0) return [];
+    // ON CONFLICT on the partial unique index (connection_id, external_order_id,
+    // external_line_item_id) WHERE all three are NOT NULL — re-ingesting the same
+    // Square order line overwrites qtySold/netSales/sourceBatchId rather than
+    // inserting a duplicate.  Rows without the three POS fields fall through to
+    // a plain INSERT (the partial index WHERE condition is false → no conflict).
+    return db
+      .insert(dailyMenuItemSales)
+      .values(sales)
+      .onConflictDoUpdate({
+        target: [
+          dailyMenuItemSales.connectionId,
+          dailyMenuItemSales.externalOrderId,
+          dailyMenuItemSales.externalLineItemId,
+        ],
+        set: {
+          qtySold: sql`excluded.qty_sold`,
+          netSales: sql`excluded.net_sales`,
+          sourceBatchId: sql`excluded.source_batch_id`,
+        },
+      })
+      .returning();
+  }
+
+  async getDailyMenuItemSales(
+    companyId: string,
+    storeId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DailyMenuItemSales[]> {
+    return db
+      .select()
+      .from(dailyMenuItemSales)
+      .where(
+        and(
+          // @ts-ignore
+          eq(dailyMenuItemSales.companyId, companyId),
+          // @ts-ignore
+          eq(dailyMenuItemSales.storeId, storeId),
+          // @ts-ignore
+          gte(dailyMenuItemSales.salesDate, startDate),
+          // @ts-ignore
+          lte(dailyMenuItemSales.salesDate, endDate)
+        )
+      )
+      .orderBy(dailyMenuItemSales.salesDate);
+  }
+
+  // TFC - Recipe Cost Snapshots
+  async createRecipeCostSnapshot(snapshot: InsertRecipeCostSnapshot): Promise<RecipeCostSnapshot> {
+    const [newSnapshot] = await db.insert(recipeCostSnapshots).values(snapshot).returning();
+    return newSnapshot;
+  }
+
+  async getRecipeCostSnapshot(recipeId: string, effectiveDate: Date): Promise<RecipeCostSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(recipeCostSnapshots)
+      .where(
+        and(
+          // @ts-ignore
+          eq(recipeCostSnapshots.recipeId, recipeId),
+          // @ts-ignore
+          lte(recipeCostSnapshots.effectiveDate, effectiveDate)
+        )
+      )
+      .orderBy(recipeCostSnapshots.effectiveDate)
+      .limit(1);
+    return snapshot || undefined;
+  }
+
+  // TFC - Theoretical Usage Runs
+  async createTheoreticalUsageRun(run: InsertTheoreticalUsageRun): Promise<TheoreticalUsageRun> {
+    const [newRun] = await db.insert(theoreticalUsageRuns).values(run).returning();
+    return newRun;
+  }
+
+  async getTheoreticalUsageRun(id: string, companyId: string): Promise<TheoreticalUsageRun | undefined> {
+    const [run] = await db
+      .select()
+      .from(theoreticalUsageRuns)
+      // @ts-ignore
+      .where(and(eq(theoreticalUsageRuns.id, id), eq(theoreticalUsageRuns.companyId, companyId)));
+    return run || undefined;
+  }
+
+  async getTheoreticalUsageRuns(
+    companyId: string,
+    storeId?: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TheoreticalUsageRun[]> {
+    // @ts-ignore
+    const conditions = [eq(theoreticalUsageRuns.companyId, companyId)];
+    if (storeId) {
+      // @ts-ignore
+      conditions.push(eq(theoreticalUsageRuns.storeId, storeId));
+    }
+    if (startDate) {
+      // @ts-ignore
+      conditions.push(gte(theoreticalUsageRuns.salesDate, startDate));
+    }
+    if (endDate) {
+      // @ts-ignore
+      conditions.push(lte(theoreticalUsageRuns.salesDate, endDate));
+    }
+    return db
+      .select()
+      .from(theoreticalUsageRuns)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(theoreticalUsageRuns.salesDate));
+  }
+
+  async updateTheoreticalUsageRun(
+    id: string,
+    companyId: string,
+    updates: Partial<TheoreticalUsageRun>
+  ): Promise<TheoreticalUsageRun | undefined> {
+    const [run] = await db
+      .update(theoreticalUsageRuns)
+      .set(updates)
+      // @ts-ignore
+      .where(and(eq(theoreticalUsageRuns.id, id), eq(theoreticalUsageRuns.companyId, companyId)))
+      .returning();
+    return run || undefined;
+  }
+
+  // TFC - Theoretical Usage Lines
+  async createTheoreticalUsageLines(lines: InsertTheoreticalUsageLine[]): Promise<TheoreticalUsageLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(theoreticalUsageLines).values(lines).returning();
+  }
+
+  async getTheoreticalUsageLines(runId: string): Promise<TheoreticalUsageLine[]> {
+    return db
+      .select()
+      .from(theoreticalUsageLines)
+      // @ts-ignore
+      .where(eq(theoreticalUsageLines.runId, runId))
+      .orderBy(theoreticalUsageLines.inventoryItemId);
+  }
+
+  async getTheoreticalUsageLinesForRuns(
+    runIds: string[],
+    inventoryItemId: string
+  ): Promise<TheoreticalUsageLine[]> {
+    if (runIds.length === 0) return [];
+    
+    return db
+      .select()
+      .from(theoreticalUsageLines)
+      .where(
+        and(
+          // @ts-ignore
+          inArray(theoreticalUsageLines.runId, runIds),
+          // @ts-ignore
+          eq(theoreticalUsageLines.inventoryItemId, inventoryItemId)
+        )
+      );
+  }
+
+  // QuickBooks - Connections
+  async getQuickBooksConnection(companyId: string, storeId?: string): Promise<QuickBooksConnection | undefined> {
+    // Store-level connection overrides company-level connection
+    // First check for store-level connection if storeId provided
+    if (storeId) {
+      const [storeConnection] = await db
+        .select()
+        .from(quickbooksConnections)
+        .where(
+          and(
+            // @ts-ignore
+            eq(quickbooksConnections.companyId, companyId),
+            // @ts-ignore
+            eq(quickbooksConnections.storeId, storeId),
+            // @ts-ignore
+            eq(quickbooksConnections.isActive, 1)
+          )
+        );
+      
+      if (storeConnection) {
+        return storeConnection;
+      }
+    }
+
+    // Fall back to company-level connection (storeId is null)
+    const [companyConnection] = await db
+      .select()
+      .from(quickbooksConnections)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId),
+          // @ts-ignore
+          isNull(quickbooksConnections.storeId),
+          // @ts-ignore
+          eq(quickbooksConnections.isActive, 1)
+        )
+      );
+    
+    return companyConnection || undefined;
+  }
+
+  async createQuickBooksConnection(connection: InsertQuickBooksConnection): Promise<QuickBooksConnection> {
+    const [newConnection] = await db
+      .insert(quickbooksConnections)
+      .values(connection)
+      .returning();
+    return newConnection;
+  }
+
+  async updateQuickBooksConnection(id: string, companyId: string, updates: Partial<QuickBooksConnection>): Promise<QuickBooksConnection | undefined> {
+    const [updated] = await db
+      .update(quickbooksConnections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksConnections.id, id),
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateQuickBooksTokens(
+    companyId: string,
+    storeId: string | null,
+    tokens: { accessToken: string; refreshToken: string; accessTokenExpiresAt: Date; refreshTokenExpiresAt: Date }
+  ): Promise<void> {
+    const whereConditions = storeId
+      ? and(
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId),
+          // @ts-ignore
+          eq(quickbooksConnections.storeId, storeId)
+        )
+      : and(
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId),
+          // @ts-ignore
+          isNull(quickbooksConnections.storeId)
+        );
+
+    await db
+      .update(quickbooksConnections)
+      .set({ ...tokens, updatedAt: new Date() })
+      .where(whereConditions);
+  }
+
+  async disconnectQuickBooks(companyId: string, storeId?: string): Promise<void> {
+    const whereConditions = storeId
+      ? and(
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId),
+          // @ts-ignore
+          eq(quickbooksConnections.storeId, storeId)
+        )
+      : and(
+          // @ts-ignore
+          eq(quickbooksConnections.companyId, companyId),
+          // @ts-ignore
+          isNull(quickbooksConnections.storeId)
+        );
+
+    await db
+      .update(quickbooksConnections)
+      .set({ isActive: 0, updatedAt: new Date() })
+      .where(whereConditions);
+  }
+
+  async getAllQuickBooksConnections(): Promise<QuickBooksConnection[]> {
+    // Return all active connections with non-expired refresh tokens
+    const now = new Date();
+    return db
+      .select()
+      .from(quickbooksConnections)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksConnections.isActive, 1),
+          // @ts-ignore
+          gte(quickbooksConnections.refreshTokenExpiresAt, now)
+        )
+      );
+  }
+
+  async logQuickBooksTokenEvent(log: InsertQuickBooksTokenLog): Promise<void> {
+    await db.insert(quickbooksTokenLogs).values(log);
+  }
+
+  // QuickBooks - Vendor Mappings
+  async getQuickBooksVendorMapping(vendorId: string, companyId: string): Promise<QuickBooksVendorMapping | undefined> {
+    const [mapping] = await db
+      .select()
+      .from(quickbooksVendorMappings)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksVendorMappings.vendorId, vendorId),
+          // @ts-ignore
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      );
+    return mapping || undefined;
+  }
+
+  async getQuickBooksVendorMappings(companyId: string): Promise<QuickBooksVendorMapping[]> {
+    return db
+      .select()
+      .from(quickbooksVendorMappings)
+      // @ts-ignore
+      .where(eq(quickbooksVendorMappings.companyId, companyId));
+  }
+
+  async createQuickBooksVendorMapping(mapping: InsertQuickBooksVendorMapping): Promise<QuickBooksVendorMapping> {
+    const [newMapping] = await db
+      .insert(quickbooksVendorMappings)
+      .values(mapping)
+      .returning();
+    return newMapping;
+  }
+
+  async updateQuickBooksVendorMapping(id: string, companyId: string, updates: Partial<QuickBooksVendorMapping>): Promise<QuickBooksVendorMapping | undefined> {
+    const [updated] = await db
+      .update(quickbooksVendorMappings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksVendorMappings.id, id),
+          // @ts-ignore
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteQuickBooksVendorMapping(id: string, companyId: string): Promise<void> {
+    await db
+      .delete(quickbooksVendorMappings)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksVendorMappings.id, id),
+          // @ts-ignore
+          eq(quickbooksVendorMappings.companyId, companyId)
+        )
+      );
+  }
+
+  // QuickBooks - Sync Logs
+  async getQuickBooksSyncLog(purchaseOrderId: string, companyId: string): Promise<QuickBooksSyncLog | undefined> {
+    const [log] = await db
+      .select()
+      .from(quickbooksSyncLogs)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksSyncLogs.purchaseOrderId, purchaseOrderId),
+          // @ts-ignore
+          eq(quickbooksSyncLogs.companyId, companyId)
+        )
+      )
+      // @ts-ignore
+      .orderBy(desc(quickbooksSyncLogs.createdAt));
+    return log || undefined;
+  }
+
+  async getQuickBooksSyncLogs(companyId: string, syncStatus?: string): Promise<QuickBooksSyncLog[]> {
+    if (syncStatus) {
+      return db
+        .select()
+        .from(quickbooksSyncLogs)
+        .where(
+          and(
+            // @ts-ignore
+            eq(quickbooksSyncLogs.companyId, companyId),
+            // @ts-ignore
+            eq(quickbooksSyncLogs.syncStatus, syncStatus)
+          )
+        )
+        // @ts-ignore
+        .orderBy(desc(quickbooksSyncLogs.createdAt));
+    }
+    
+    return db
+      .select()
+      .from(quickbooksSyncLogs)
+      // @ts-ignore
+      .where(eq(quickbooksSyncLogs.companyId, companyId))
+      // @ts-ignore
+      .orderBy(desc(quickbooksSyncLogs.createdAt));
+  }
+
+  async createQuickBooksSyncLog(log: InsertQuickBooksSyncLog): Promise<QuickBooksSyncLog> {
+    const [newLog] = await db
+      .insert(quickbooksSyncLogs)
+      .values(log)
+      .returning();
+    return newLog;
+  }
+
+  async updateQuickBooksSyncLog(id: string, companyId: string, updates: Partial<QuickBooksSyncLog>): Promise<QuickBooksSyncLog | undefined> {
+    const [updated] = await db
+      .update(quickbooksSyncLogs)
+      .set(updates)
+      .where(
+        and(
+          // @ts-ignore
+          eq(quickbooksSyncLogs.id, id),
+          // @ts-ignore
+          eq(quickbooksSyncLogs.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  // QuickBooks - Reconciliations
+  async getQbReconciliation(purchaseOrderId: string, companyId: string): Promise<QbReconciliation | undefined> {
+    const [rec] = await db
+      .select()
+      .from(qbReconciliations)
+      .where(
+        and(
+          // @ts-ignore
+          eq(qbReconciliations.purchaseOrderId, purchaseOrderId),
+          // @ts-ignore
+          eq(qbReconciliations.companyId, companyId)
+        )
+      );
+    return rec || undefined;
+  }
+
+  async getQbReconciliations(companyId: string): Promise<QbReconciliation[]> {
+    return db
+      .select()
+      .from(qbReconciliations)
+      // @ts-ignore
+      .where(eq(qbReconciliations.companyId, companyId))
+      // @ts-ignore
+      .orderBy(desc(qbReconciliations.reconciledAt));
+  }
+
+  async createQbReconciliation(rec: InsertQbReconciliation): Promise<QbReconciliation> {
+    const [newRec] = await db
+      .insert(qbReconciliations)
+      .values(rec)
+      .returning();
+    return newRec;
+  }
+
+  async updateQbReconciliation(purchaseOrderId: string, companyId: string, updates: Partial<QbReconciliation>): Promise<QbReconciliation | undefined> {
+    const [updated] = await db
+      .update(qbReconciliations)
+      .set(updates)
+      .where(
+        and(
+          // @ts-ignore
+          eq(qbReconciliations.purchaseOrderId, purchaseOrderId),
+          // @ts-ignore
+          eq(qbReconciliations.companyId, companyId)
+        )
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  // Onboarding Progress
+  async getOnboardingProgress(companyId: string): Promise<OnboardingProgress | undefined> {
+    const [progress] = await db
+      .select()
+      .from(onboardingProgress)
+      // @ts-ignore
+      .where(eq(onboardingProgress.companyId, companyId));
+    return progress || undefined;
+  }
+
+  async createOnboardingProgress(insertProgress: InsertOnboardingProgress): Promise<OnboardingProgress> {
+    const [progress] = await db
+      .insert(onboardingProgress)
+      .values(insertProgress)
+      .returning();
+    return progress;
+  }
+
+  async updateOnboardingProgress(companyId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress | undefined> {
+    const [updated] = await db
+      .update(onboardingProgress)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(eq(onboardingProgress.companyId, companyId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async completeOnboarding(companyId: string): Promise<OnboardingProgress | undefined> {
+    const [completed] = await db
+      .update(onboardingProgress)
+      .set({ 
+        isCompleted: 1, 
+        completedAt: new Date(),
+        updatedAt: new Date()
+      })
+      // @ts-ignore
+      .where(eq(onboardingProgress.companyId, companyId))
+      .returning();
+    return completed || undefined;
+  }
+
+  // ============ PREP CHART MODULE ============
+
+  // Stations
+  async getStations(companyId: string): Promise<Station[]> {
+    return db.select().from(stations)
+      // @ts-ignore
+      .where(eq(stations.companyId, companyId))
+      // @ts-ignore
+      .orderBy(asc(stations.sortOrder), asc(stations.name));
+  }
+
+  async getStation(id: string, companyId: string): Promise<Station | undefined> {
+    const [s] = await db.select().from(stations)
+      // @ts-ignore
+      .where(and(eq(stations.id, id), eq(stations.companyId, companyId)));
+    return s || undefined;
+  }
+
+  async createStation(station: InsertStation): Promise<Station> {
+    const [s] = await db.insert(stations).values(station).returning();
+    return s;
+  }
+
+  async updateStation(id: string, companyId: string, updates: Partial<Station>): Promise<Station | undefined> {
+    const [s] = await db.update(stations).set(updates)
+      // @ts-ignore
+      .where(and(eq(stations.id, id), eq(stations.companyId, companyId)))
+      .returning();
+    return s || undefined;
+  }
+
+  async deleteStation(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(stations).where(and(eq(stations.id, id), eq(stations.companyId, companyId)));
+  }
+
+  async reorderStations(companyId: string, orderedIds: string[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.update(stations)
+        .set({ sortOrder: i })
+        // @ts-ignore
+        .where(and(eq(stations.id, orderedIds[i]), eq(stations.companyId, companyId)));
+    }
+  }
+
+  // Prep Items
+  async getPrepItems(companyId: string): Promise<PrepItem[]> {
+    return db.select().from(prepItems)
+      // @ts-ignore
+      .where(eq(prepItems.companyId, companyId))
+      // @ts-ignore
+      .orderBy(asc(prepItems.name));
+  }
+
+  async getPrepItem(id: string, companyId: string): Promise<PrepItem | undefined> {
+    const [p] = await db.select().from(prepItems)
+      // @ts-ignore
+      .where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)));
+    return p || undefined;
+  }
+
+  async createPrepItem(item: InsertPrepItem): Promise<PrepItem> {
+    const [p] = await db.insert(prepItems).values(item).returning();
+    return p;
+  }
+
+  async updatePrepItem(id: string, companyId: string, updates: Partial<PrepItem>): Promise<PrepItem | undefined> {
+    const [p] = await db.update(prepItems)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)))
+      .returning();
+    return p || undefined;
+  }
+
+  async deletePrepItem(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.prepItemId, id), eq(prepItemIngredients.companyId, companyId)));
+    // @ts-ignore
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.prepItemId, id), eq(menuItemPrepUsages.companyId, companyId)));
+    // @ts-ignore
+    await db.delete(prepItems).where(and(eq(prepItems.id, id), eq(prepItems.companyId, companyId)));
+  }
+
+  // Prep Item Ingredients
+  async getPrepItemIngredients(prepItemId: string, companyId: string): Promise<PrepItemIngredient[]> {
+    return db.select().from(prepItemIngredients)
+      // @ts-ignore
+      .where(and(eq(prepItemIngredients.prepItemId, prepItemId), eq(prepItemIngredients.companyId, companyId)))
+      // @ts-ignore
+      .orderBy(asc(prepItemIngredients.sortOrder));
+  }
+
+  async createPrepItemIngredient(ingredient: InsertPrepItemIngredient): Promise<PrepItemIngredient> {
+    const [i] = await db.insert(prepItemIngredients).values(ingredient).returning();
+    return i;
+  }
+
+  async updatePrepItemIngredient(id: string, companyId: string, updates: Partial<PrepItemIngredient>): Promise<PrepItemIngredient | undefined> {
+    const [i] = await db.update(prepItemIngredients).set(updates)
+      // @ts-ignore
+      .where(and(eq(prepItemIngredients.id, id), eq(prepItemIngredients.companyId, companyId)))
+      .returning();
+    return i || undefined;
+  }
+
+  async deletePrepItemIngredient(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.id, id), eq(prepItemIngredients.companyId, companyId)));
+  }
+
+  async replaceAllPrepItemIngredients(prepItemId: string, companyId: string, ingredients: InsertPrepItemIngredient[]): Promise<PrepItemIngredient[]> {
+    // @ts-ignore
+    await db.delete(prepItemIngredients).where(and(eq(prepItemIngredients.prepItemId, prepItemId), eq(prepItemIngredients.companyId, companyId)));
+    if (ingredients.length === 0) return [];
+    return db.insert(prepItemIngredients).values(ingredients).returning();
+  }
+
+  // Menu Item Prep Usages
+  async getMenuItemPrepUsages(prepItemId: string, companyId: string): Promise<MenuItemPrepUsage[]> {
+    return db.select().from(menuItemPrepUsages)
+      // @ts-ignore
+      .where(and(eq(menuItemPrepUsages.prepItemId, prepItemId), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async getMenuItemPrepUsagesByMenuItem(menuItemId: string, companyId: string): Promise<MenuItemPrepUsage[]> {
+    return db.select().from(menuItemPrepUsages)
+      // @ts-ignore
+      .where(and(eq(menuItemPrepUsages.menuItemId, menuItemId), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async createMenuItemPrepUsage(usage: InsertMenuItemPrepUsage): Promise<MenuItemPrepUsage> {
+    const [u] = await db.insert(menuItemPrepUsages).values(usage).returning();
+    return u;
+  }
+
+  async deleteMenuItemPrepUsage(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.id, id), eq(menuItemPrepUsages.companyId, companyId)));
+  }
+
+  async replaceAllMenuItemPrepUsages(prepItemId: string, companyId: string, usages: InsertMenuItemPrepUsage[]): Promise<MenuItemPrepUsage[]> {
+    // @ts-ignore
+    await db.delete(menuItemPrepUsages).where(and(eq(menuItemPrepUsages.prepItemId, prepItemId), eq(menuItemPrepUsages.companyId, companyId)));
+    if (usages.length === 0) return [];
+    return db.insert(menuItemPrepUsages).values(usages).returning();
+  }
+
+  // Prep Production Records
+  async getPrepProductionRecords(companyId: string, storeId?: string, prepItemId?: string, startDate?: Date, endDate?: Date): Promise<PrepProductionRecord[]> {
+    // @ts-ignore
+    const conditions = [eq(prepProductionRecords.companyId, companyId)];
+    // @ts-ignore
+    if (storeId) conditions.push(eq(prepProductionRecords.storeId, storeId));
+    // @ts-ignore
+    if (prepItemId) conditions.push(eq(prepProductionRecords.prepItemId, prepItemId));
+    // @ts-ignore
+    if (startDate) conditions.push(gte(prepProductionRecords.producedAt, startDate));
+    // @ts-ignore
+    if (endDate) conditions.push(lte(prepProductionRecords.producedAt, endDate));
+    return db.select().from(prepProductionRecords)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(prepProductionRecords.producedAt))
+      .limit(500);
+  }
+
+  async createPrepProductionRecord(record: InsertPrepProductionRecord): Promise<PrepProductionRecord> {
+    const [r] = await db.insert(prepProductionRecords).values(record).returning();
+    return r;
+  }
+
+  // Prep On Hand
+  async getPrepOnHand(companyId: string, storeId: string, prepItemId?: string): Promise<PrepOnHand[]> {
+    const conditions = [
+      // @ts-ignore
+      eq(prepOnHand.companyId, companyId),
+      // @ts-ignore
+      eq(prepOnHand.storeId, storeId),
+      // @ts-ignore
+      gt(prepOnHand.expiresAt, new Date()),
+    ];
+    // @ts-ignore
+    if (prepItemId) conditions.push(eq(prepOnHand.prepItemId, prepItemId));
+    return db.select().from(prepOnHand)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(asc(prepOnHand.expiresAt));
+  }
+
+  async createPrepOnHand(entry: InsertPrepOnHand): Promise<PrepOnHand> {
+    const [e] = await db.insert(prepOnHand).values(entry).returning();
+    return e;
+  }
+
+  async deletePrepOnHand(id: string, companyId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(prepOnHand).where(and(eq(prepOnHand.id, id), eq(prepOnHand.companyId, companyId)));
+  }
+
+  async getTotalOnHandQty(prepItemId: string, storeId: string, companyId: string): Promise<number> {
+    const rows = await db.select({ qty: prepOnHand.quantityOnHand })
+      .from(prepOnHand)
+      .where(and(
+        // @ts-ignore
+        eq(prepOnHand.prepItemId, prepItemId),
+        // @ts-ignore
+        eq(prepOnHand.storeId, storeId),
+        // @ts-ignore
+        eq(prepOnHand.companyId, companyId),
+        // @ts-ignore
+        gt(prepOnHand.expiresAt, new Date()),
+      ));
+    // @ts-ignore
+    return rows.reduce((sum, r) => sum + (r.qty ?? 0), 0);
+  }
+
+  // Prep Chart Runs & Lines
+  async getPrepChartRuns(companyId: string, storeId: string, businessDate?: Date): Promise<PrepChartRun[]> {
+    // @ts-ignore
+    const conditions = [eq(prepChartRuns.companyId, companyId), eq(prepChartRuns.storeId, storeId)];
+    if (businessDate) {
+      const start = new Date(businessDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(businessDate);
+      end.setHours(23, 59, 59, 999);
+      // @ts-ignore
+      conditions.push(gte(prepChartRuns.businessDate, start), lte(prepChartRuns.businessDate, end));
+    }
+    // @ts-ignore
+    return db.select().from(prepChartRuns).where(and(...conditions)).orderBy(desc(prepChartRuns.generatedAt));
+  }
+
+  async getLatestPrepChartRun(companyId: string, storeId: string, businessDate: Date, daypartId?: string): Promise<PrepChartRun | undefined> {
+    const start = new Date(businessDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(businessDate);
+    end.setHours(23, 59, 59, 999);
+    const conditions = [
+      // @ts-ignore
+      eq(prepChartRuns.companyId, companyId),
+      // @ts-ignore
+      eq(prepChartRuns.storeId, storeId),
+      // @ts-ignore
+      gte(prepChartRuns.businessDate, start),
+      // @ts-ignore
+      lte(prepChartRuns.businessDate, end),
+    ];
+    // @ts-ignore
+    if (daypartId) conditions.push(eq(prepChartRuns.daypartId, daypartId));
+    // @ts-ignore
+    else conditions.push(isNull(prepChartRuns.daypartId));
+    const [run] = await db.select().from(prepChartRuns)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(prepChartRuns.generatedAt))
+      .limit(1);
+    return run || undefined;
+  }
+
+  async createPrepChartRun(run: InsertPrepChartRun): Promise<PrepChartRun> {
+    const [r] = await db.insert(prepChartRuns).values(run).returning();
+    return r;
+  }
+
+  async getPrepChartLines(runId: string, companyId: string): Promise<PrepChartLine[]> {
+    return db.select().from(prepChartLines)
+      // @ts-ignore
+      .where(and(eq(prepChartLines.prepChartRunId, runId), eq(prepChartLines.companyId, companyId)))
+      // @ts-ignore
+      .orderBy(asc(prepChartLines.stationId));
+  }
+
+  async createPrepChartLines(lines: InsertPrepChartLine[]): Promise<PrepChartLine[]> {
+    if (lines.length === 0) return [];
+    return db.insert(prepChartLines).values(lines).returning();
+  }
+
+  async deletePrepChartLines(runId: string): Promise<void> {
+    // @ts-ignore
+    await db.delete(prepChartLines).where(eq(prepChartLines.prepChartRunId, runId));
+  }
+
+  // ===== Shelf Scan Sessions =====
+  async createShelfScanSession(session: InsertShelfScanSession): Promise<ShelfScanSession> {
+    const [s] = await db.insert(shelfScanSessions).values(session).returning();
+    return s;
+  }
+
+  async getShelfScanSessions(companyId: string, storeId?: string): Promise<ShelfScanSession[]> {
+    // @ts-ignore
+    const conditions = [eq(shelfScanSessions.companyId, companyId)];
+    // @ts-ignore
+    if (storeId) conditions.push(eq(shelfScanSessions.storeId, storeId));
+    return db.select().from(shelfScanSessions)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(shelfScanSessions.createdAt))
+      .limit(50);
+  }
+
+  async getShelfScanSession(id: string, companyId: string): Promise<ShelfScanSession | undefined> {
+    const [s] = await db.select().from(shelfScanSessions)
+      // @ts-ignore
+      .where(and(eq(shelfScanSessions.id, id), eq(shelfScanSessions.companyId, companyId)));
+    return s || undefined;
+  }
+
+  async getRecentShelfScanSessions(userId: string, companyId: string, limit = 10): Promise<ShelfScanSession[]> {
+    const conditions = [
+      // @ts-ignore
+      eq(shelfScanSessions.companyId, companyId),
+      // @ts-ignore
+      eq(shelfScanSessions.userId, userId),
+    ];
+    return db.select().from(shelfScanSessions)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(shelfScanSessions.createdAt))
+      .limit(limit);
+  }
+
+  async getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]> {
+    const conditions = [
+      // @ts-ignore
+      eq(inventoryCounts.companyId, companyId),
+      // @ts-ignore
+      eq(inventoryCounts.applied, 0),
+    ];
+    // @ts-ignore
+    if (storeId) conditions.push(eq(inventoryCounts.storeId, storeId));
+    return db.select().from(inventoryCounts)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(desc(inventoryCounts.countedAt));
+  }
+
+  async getRecentAppliedInventoryCounts(
+    companyId: string,
+    storeIds?: string[],
+    limit = 5,
+  ): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]> {
+    const conditions = [
+      // @ts-ignore
+      eq(inventoryCounts.companyId, companyId),
+      // @ts-ignore
+      eq(inventoryCounts.applied, 1),
+    ];
+    if (storeIds && storeIds.length > 0) {
+      // @ts-ignore
+      conditions.push(inArray(inventoryCounts.storeId, storeIds));
+    }
+
+    const rows = await db
+      .select({
+        id: inventoryCounts.id,
+        name: inventoryCounts.name,
+        storeId: inventoryCounts.storeId,
+        countDate: inventoryCounts.countDate,
+        lineCount: sql<number>`count(${inventoryCountLines.id})::int`,
+      })
+      .from(inventoryCounts)
+      // @ts-ignore
+      .leftJoin(inventoryCountLines, eq(inventoryCountLines.inventoryCountId, inventoryCounts.id))
+      .where(and(...conditions))
+      .groupBy(inventoryCounts.id, inventoryCounts.name, inventoryCounts.storeId, inventoryCounts.countDate)
+      // @ts-ignore
+      .orderBy(desc(inventoryCounts.countDate))
+      .limit(limit);
+
+    // @ts-ignore
+    return rows.map(r => ({
+      id: r.id,
+      name: r.name ?? null,
+      storeId: r.storeId ?? null,
+      countDate: r.countDate,
+      lineCount: r.lineCount ?? 0,
+    }));
+  }
+
+  async getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]> {
+    if (countIds.length === 0) return [];
+    const rows = await db
+      .select({
+        countId: inventoryCountLines.inventoryCountId,
+        totalItems: sql<number>`count(*)::int`,
+        countedItems: sql<number>`count(*) filter (where ${inventoryCountLines.qty} > 0)::int`,
+      })
+      .from(inventoryCountLines)
+      // @ts-ignore
+      .where(inArray(inventoryCountLines.inventoryCountId, countIds))
+      .groupBy(inventoryCountLines.inventoryCountId);
+    // @ts-ignore
+    return rows.map(r => ({
+      countId: r.countId,
+      totalItems: r.totalItems,
+      countedItems: r.countedItems,
+    }));
+  }
+
+  // ===== Customer Supplier Connections (M2) =====
+
+  async getCustomerSupplierConnection(companyId: string, vendorId: string): Promise<CustomerSupplierConnection | null> {
+    const [row] = await db
+      .select()
+      .from(customerSupplierConnections)
+      .where(and(
+        // @ts-ignore
+        eq(customerSupplierConnections.companyId, companyId),
+        // @ts-ignore
+        eq(customerSupplierConnections.vendorId, vendorId),
+      ))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async getCompanySupplierConnections(companyId: string): Promise<CustomerSupplierConnection[]> {
+    return db
+      .select()
+      .from(customerSupplierConnections)
+      // @ts-ignore
+      .where(eq(customerSupplierConnections.companyId, companyId))
+      // @ts-ignore
+      .orderBy(asc(customerSupplierConnections.createdAt));
+  }
+
+  async upsertCustomerSupplierConnection(data: InsertCustomerSupplierConnection): Promise<CustomerSupplierConnection> {
+    const existing = await this.getCustomerSupplierConnection(data.companyId, data.vendorId);
+    if (existing) {
+      const [updated] = await db
+        .update(customerSupplierConnections)
+        .set({ ...data, updatedAt: new Date() })
+        // @ts-ignore
+        .where(eq(customerSupplierConnections.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(customerSupplierConnections)
+      .values(data)
+      .returning();
+    return created;
+  }
+
+  async deleteCustomerSupplierConnection(id: string, companyId: string): Promise<void> {
+    await db
+      .delete(customerSupplierConnections)
+      .where(and(
+        // @ts-ignore
+        eq(customerSupplierConnections.id, id),
+        // @ts-ignore
+        eq(customerSupplierConnections.companyId, companyId),
+      ));
+  }
+
+  // ===== POS Connections =====
+
+  async getPosConnections(companyId: string): Promise<PosConnection[]> {
+    const rows = await db
+      .select()
+      .from(posConnections)
+      // @ts-ignore
+      .where(and(eq(posConnections.companyId, companyId), ne(posConnections.status, "deleted")))
+      // @ts-ignore
+      .orderBy(desc(posConnections.createdAt));
+    return rows.map(decryptPosConnectionTokens);
+  }
+
+  async getPosConnectionById(id: string): Promise<PosConnection | undefined> {
+    // @ts-ignore
+    const [row] = await db.select().from(posConnections).where(eq(posConnections.id, id)).limit(1);
+    return row ? decryptPosConnectionTokens(row) : undefined;
+  }
+
+  async createPosConnection(data: InsertPosConnection): Promise<PosConnection> {
+    const [row] = await db.insert(posConnections).values(encryptPosConnectionTokens(data)).returning();
+    return decryptPosConnectionTokens(row);
+  }
+
+  async updatePosConnection(id: string, companyId: string, updates: Partial<PosConnection>): Promise<PosConnection | undefined> {
+    const [row] = await db
+      .update(posConnections)
+      .set({ ...encryptPosConnectionTokenUpdates(updates), updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)))
+      .returning();
+    return row ? decryptPosConnectionTokens(row) : undefined;
+  }
+
+  // See docs/pos-connection-lifecycle.md for a full description of what the
+  // "released" status means, what data is retained, and how reconnection works.
+  async deletePosConnection(id: string, companyId: string): Promise<void> {
+    // "released" = intentionally disconnected by the user.
+    // Distinct from "disconnected" (token revocation) so the provider-change
+    // guard can tell the difference and only release the block on user intent.
+    // Tokens are left encrypted-but-inactive; mappings and sync history are
+    // preserved on the connection row and linked tables.
+    await db
+      .update(posConnections)
+      .set({ status: "released", updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(posConnections.id, id), eq(posConnections.companyId, companyId)));
+  }
+
+  async getAllActivePosConnections(): Promise<PosConnection[]> {
+    // @ts-ignore
+    const rows = await db.select().from(posConnections).where(eq(posConnections.status, "active"));
+    return rows.map(decryptPosConnectionTokens);
+  }
+
+  async getPosConnectionsEligibleForSync(): Promise<PosConnection[]> {
+    // Returns connections whose company has opted into pos_connector as primary
+    // method AND whose provider matches the company's selected posProvider.
+    // Uses a raw join so we can filter in one query rather than N+1 fetches.
+    const result = await db.execute(sql`
+      SELECT pc.*
+      FROM pos_connections pc
+      JOIN companies c ON pc.company_id = c.id
+      WHERE pc.status = 'active'
+        AND c.primary_sales_method = 'pos_connector'
+        AND c.pos_provider = pc.provider
+    `);
+    const rows = (result as any).rows ?? [];
+    // Map raw snake_case DB rows to camelCase PosConnection shape then decrypt
+    return rows.map((row: any) => decryptPosConnectionTokens({
+      id: row.id,
+      companyId: row.company_id,
+      provider: row.provider,
+      merchantId: row.merchant_id,
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      tokenExpiresAt: row.token_expires_at,
+      tokenKeyVersion: row.token_key_version ?? 0,
+      tokenRefreshedAt: row.token_refreshed_at,
+      syncCursor: row.sync_cursor,
+      lastSyncedAt: row.last_synced_at,
+      status: row.status,
+      connectedByUserId: row.connected_by_user_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    } as PosConnection));
+  }
+
+  async getRetainedPosConnectionForCompany(companyId: string): Promise<PosConnection | undefined> {
+    // A "retained" connection is one that has not been explicitly released by the
+    // user. Both "active" and "disconnected" (token revoked) connections are retained.
+    const [row] = await db
+      .select()
+      .from(posConnections)
+      .where(
+        and(
+          // @ts-ignore
+          eq(posConnections.companyId, companyId),
+          sql`${posConnections.status} <> 'released'`,
+        ),
+      )
+      // @ts-ignore
+      .orderBy(desc(posConnections.createdAt))
+      .limit(1);
+    return row ? decryptPosConnectionTokens(row) : undefined;
+  }
+
+  // ===== POS Location Mappings =====
+
+  async getPosLocationMappings(connectionId: string): Promise<PosLocationMapping[]> {
+    return db
+      .select()
+      .from(posLocationMappings)
+      // @ts-ignore
+      .where(eq(posLocationMappings.connectionId, connectionId))
+      // @ts-ignore
+      .orderBy(asc(posLocationMappings.externalLocationName));
+  }
+
+  async upsertPosLocationMappings(
+    connectionId: string,
+    companyId: string,
+    mappings: Array<{ externalLocationId: string; externalLocationName: string; storeId: string | null; externalTimezone?: string | null }>,
+  ): Promise<PosLocationMapping[]> {
+    const results: PosLocationMapping[] = [];
+    for (const m of mappings) {
+      const existing = await db
+        .select()
+        .from(posLocationMappings)
+        .where(and(
+          // @ts-ignore
+          eq(posLocationMappings.connectionId, connectionId),
+          // @ts-ignore
+          eq(posLocationMappings.externalLocationId, m.externalLocationId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Always update name and storeId; only overwrite timezone when caller provides one
+        // (the user-facing mapping form doesn't send timezone, so we preserve the seeded value).
+        const updatePayload: Partial<typeof posLocationMappings.$inferSelect> = {
+          storeId: m.storeId,
+          externalLocationName: m.externalLocationName,
+        };
+        if (m.externalTimezone !== undefined) {
+          updatePayload.externalTimezone = m.externalTimezone;
+        }
+        const [updated] = await db
+          .update(posLocationMappings)
+          .set(updatePayload)
+          // @ts-ignore
+          .where(eq(posLocationMappings.id, existing[0].id))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db
+          .insert(posLocationMappings)
+          .values({ connectionId, companyId, ...m })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  // ===== POS Item Mappings =====
+
+  async getPosItemMappings(connectionId: string): Promise<PosItemMapping[]> {
+    return db
+      .select()
+      .from(posItemMappings)
+      // @ts-ignore
+      .where(eq(posItemMappings.connectionId, connectionId))
+      // @ts-ignore
+      .orderBy(asc(posItemMappings.externalItemName), asc(posItemMappings.externalVariationName));
+  }
+
+  async upsertPosItemMappings(
+    connectionId: string,
+    companyId: string,
+    mappings: Array<{ externalItemId: string; externalVariationId: string; externalItemName: string; externalVariationName: string; menuItemId: string | null; ignored?: boolean }>,
+  ): Promise<PosItemMapping[]> {
+    const results: PosItemMapping[] = [];
+    for (const m of mappings) {
+      const existing = await db
+        .select()
+        .from(posItemMappings)
+        .where(and(
+          // @ts-ignore
+          eq(posItemMappings.connectionId, connectionId),
+          // @ts-ignore
+          eq(posItemMappings.externalVariationId, m.externalVariationId),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Only update menuItemId, ignored, and updatedAt — never overwrite the name snapshot
+        // captured at mapping-creation time. This ensures that renaming or deleting
+        // a variation in Square does not break the display of historical mappings.
+        const [updated] = await db
+          .update(posItemMappings)
+          .set({
+            menuItemId: m.menuItemId,
+            ignored: m.ignored ? 1 : 0,
+            updatedAt: new Date(),
+          })
+          // @ts-ignore
+          .where(eq(posItemMappings.id, existing[0].id))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db
+          .insert(posItemMappings)
+          .values({ connectionId, companyId, ...m, ignored: m.ignored ? 1 : 0 })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  async updatePosItemMapping(
+    connectionId: string,
+    externalVariationId: string,
+    updates: { menuItemId?: string | null; ignored?: boolean },
+  ): Promise<PosItemMapping | undefined> {
+    const set: Partial<typeof posItemMappings.$inferSelect> = { updatedAt: new Date() };
+    if (updates.menuItemId !== undefined) set.menuItemId = updates.menuItemId;
+    if (updates.ignored !== undefined) set.ignored = updates.ignored ? 1 : 0;
+    const [row] = await db
+      .update(posItemMappings)
+      .set(set)
+      .where(and(
+        // @ts-ignore
+        eq(posItemMappings.connectionId, connectionId),
+        // @ts-ignore
+        eq(posItemMappings.externalVariationId, externalVariationId),
+      ))
+      .returning();
+    return row;
+  }
+
+  // ===== POS Sync Jobs =====
+
+  async createPosSyncJob(data: InsertPosSyncJob): Promise<PosSyncJob> {
+    const [row] = await db.insert(posSyncJobs).values(data).returning();
+    return row;
+  }
+
+  async updatePosSyncJob(id: string, updates: Partial<PosSyncJob>): Promise<PosSyncJob | undefined> {
+    // @ts-ignore
+    const [row] = await db.update(posSyncJobs).set(updates).where(eq(posSyncJobs.id, id)).returning();
+    return row;
+  }
+
+  async getPosSyncJobs(connectionId: string, limit = 10): Promise<PosSyncJob[]> {
+    return db
+      .select()
+      .from(posSyncJobs)
+      // @ts-ignore
+      .where(eq(posSyncJobs.connectionId, connectionId))
+      // @ts-ignore
+      .orderBy(desc(posSyncJobs.createdAt))
+      .limit(limit);
+  }
+
+  async getRunningPosSyncJob(connectionId: string): Promise<PosSyncJob | undefined> {
+    const [row] = await db
+      .select()
+      .from(posSyncJobs)
+      .where(and(
+        // @ts-ignore
+        eq(posSyncJobs.connectionId, connectionId),
+        // @ts-ignore
+        eq(posSyncJobs.status, "running"),
+      ))
+      .limit(1);
+    return row;
+  }
+
+  async getStuckPosSyncJobs(thresholdMinutes = 30): Promise<Array<PosSyncJob & { merchantId: string; connectionStatus: string }>> {
+    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+    const rows = await db
+      .select({
+        id: posSyncJobs.id,
+        connectionId: posSyncJobs.connectionId,
+        companyId: posSyncJobs.companyId,
+        jobType: posSyncJobs.jobType,
+        status: posSyncJobs.status,
+        startedAt: posSyncJobs.startedAt,
+        completedAt: posSyncJobs.completedAt,
+        daysBackfilled: posSyncJobs.daysBackfilled,
+        rowsIngested: posSyncJobs.rowsIngested,
+        rowsSkipped: posSyncJobs.rowsSkipped,
+        adhocItems: posSyncJobs.adhocItems,
+        errorMessage: posSyncJobs.errorMessage,
+        createdAt: posSyncJobs.createdAt,
+        merchantId: posConnections.merchantId,
+        connectionStatus: posConnections.status,
+      })
+      .from(posSyncJobs)
+      // @ts-ignore
+      .innerJoin(posConnections, eq(posSyncJobs.connectionId, posConnections.id))
+      .where(and(
+        // @ts-ignore
+        eq(posSyncJobs.status, "running"),
+        // @ts-ignore
+        lte(posSyncJobs.startedAt, cutoff),
+      ))
+      // @ts-ignore
+      .orderBy(asc(posSyncJobs.startedAt));
+    return rows as Array<PosSyncJob & { merchantId: string; connectionStatus: string }>;
+  }
+
+  async releaseStalePosSyncLocks(thresholdMinutes = 60): Promise<number> {
+    const cutoff = new Date(Date.now() - thresholdMinutes * 60 * 1000);
+    const updated = await db
+      .update(posSyncJobs)
+      .set({
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: `Job auto-expired — stuck in running state for over ${thresholdMinutes} minutes`,
+      })
+      .where(and(
+        // @ts-ignore
+        eq(posSyncJobs.status, "running"),
+        // @ts-ignore
+        lte(posSyncJobs.startedAt, cutoff),
+      ))
+      .returning({ id: posSyncJobs.id });
+    return updated.length;
+  }
+
+  async tryAcquirePosSyncLock(data: InsertPosSyncJob): Promise<
+    { acquired: true; job: PosSyncJob } |
+    { acquired: false; existingJobId: string; existingStartedAt: Date }
+  > {
+    const STALE_LOCK_MS = 30 * 60 * 1000;
+    let staleCleaned = false;
+
+    while (true) {
+      try {
+        const [row] = await db.insert(posSyncJobs).values(data).returning();
+        return { acquired: true, job: row };
+      } catch (err: any) {
+        // 23505 = PostgreSQL unique_violation — the partial unique index fired
+        if (err.code !== "23505") throw err;
+      }
+
+      // INSERT failed — find the blocking job
+      const running = await this.getRunningPosSyncJob(data.connectionId);
+      if (!running) {
+        // The running job just completed between our INSERT and this SELECT — retry
+        continue;
+      }
+
+      const age = Date.now() - new Date(running.startedAt!).getTime();
+      if (age < STALE_LOCK_MS || staleCleaned) {
+        // Active non-stale lock (or already tried releasing a stale one)
+        return { acquired: false, existingJobId: running.id, existingStartedAt: running.startedAt as Date };
+      }
+
+      // Stale lock — mark failed, then retry once
+      staleCleaned = true;
+      await this.updatePosSyncJob(running.id, {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: "Job timed out — stale lock auto-released after 30 min",
+      });
+      console.warn(`[POS Lock] Stale lock released for connection ${data.connectionId} (job ${running.id})`);
+      // Next loop iteration retries the INSERT
+    }
+  }
+
+  // ── Menu Portfolio ─────────────────────────────────────────────────────────
+
+  async getMenusByCompany(companyId: string): Promise<Menu[]> {
+    return db.select().from(menus)
+      // @ts-ignore
+      .where(eq(menus.companyId, companyId))
+      // @ts-ignore
+      .orderBy(asc(menus.createdAt));
+  }
+
+  /** Returns menus enriched with rich dashboard stats — used by the portfolio page.
+   *
+   * @param accessibleStoreIds  When non-null, location names and counts are
+   *   restricted to stores in this list (store-level staff scoping).
+   *   Pass null to include all locations (global / company admins).
+   */
+  async getMenusWithStats(
+    companyId: string,
+    accessibleStoreIds: string[] | null = null,
+  ): Promise<Array<Menu & {
+    totalItems: number; pricedItems: number;
+    itemCount: number; sectionCount: number; totalSectionCount: number;
+    recipedItems: number; locationCount: number; locationNames: string[];
+    effectiveStatus: string;
+  }>> {
+    // Each stat uses an independent scalar subquery to avoid row-multiplication
+    // when joining sections × entries × recipes × locations simultaneously.
+
+    // Build optional store-id filter fragment used in the location subqueries.
+    const storeFilter =
+      accessibleStoreIds !== null && accessibleStoreIds.length > 0
+        ? sql` AND mla.store_id = ANY(ARRAY[${sql.join(
+            accessibleStoreIds.map((id) => sql`${id}`),
+            sql`, `,
+          )}]::text[])`
+        : accessibleStoreIds !== null && accessibleStoreIds.length === 0
+          ? sql` AND FALSE` // user has no assigned stores — show nothing
+          : sql``; // null → no filter (admins)
+
+    const result = await db.execute(sql`
+      SELECT
+        m.id,
+        m.company_id,
+        m.name,
+        m.menu_type,
+        m.status,
+        m.description,
+        m.effective_start,
+        m.effective_end,
+        m.recurrence_days,
+        m.recurrence_time_start,
+        m.recurrence_time_end,
+        m.created_by,
+        m.updated_by,
+        m.created_at,
+        m.updated_at,
+
+        -- Canonical effective status (server-resolved, never stale)
+        CASE
+          WHEN m.status = 'retired' THEN 'archived'
+          WHEN m.effective_end IS NOT NULL
+               AND m.effective_end < NOW()
+               AND m.status <> 'live'   THEN 'expired'
+          WHEN m.status = 'scheduled'
+               AND m.effective_start IS NOT NULL
+               AND m.effective_start > NOW() THEN 'scheduled'
+          WHEN m.status = 'scheduled'   THEN 'live'
+          ELSE m.status
+        END AS effective_status,
+
+        -- Total entry count (each placement counts separately)
+        (SELECT COUNT(*)::int
+         FROM menu_entries
+         WHERE menu_id = m.id) AS item_count,
+
+        -- Priced entries: positive sell price only (market-price / complimentary excluded)
+        (SELECT COUNT(*)::int
+         FROM menu_entries
+         WHERE menu_id = m.id
+           AND price IS NOT NULL
+           AND price > 0) AS priced_items,
+
+        -- Recipe-linked entries (has ≥1 row in menu_item_recipes — does NOT imply costed)
+        (SELECT COUNT(DISTINCT me.id)::int
+         FROM menu_entries me
+         JOIN menu_item_recipes mir ON mir.menu_item_id = me.menu_item_id
+         WHERE me.menu_id = m.id) AS reciped_items,
+
+        -- Sections with at least one entry (empty sections are warnings, not counted here)
+        (SELECT COUNT(DISTINCT ms.id)::int
+         FROM menu_sections ms
+         WHERE ms.menu_id = m.id
+           AND EXISTS (
+             SELECT 1 FROM menu_entries
+             WHERE menu_id = m.id AND menu_section_id = ms.id
+           )) AS section_count,
+
+        -- Total section count (for computing empty-section warnings on client)
+        (SELECT COUNT(*)::int
+         FROM menu_sections
+         WHERE menu_id = m.id) AS total_section_count,
+
+        -- Active assigned location count (scoped to accessible stores)
+        (SELECT COUNT(*)::int
+         FROM menu_location_assignments mla
+         JOIN company_stores cs ON cs.id = mla.store_id
+         WHERE mla.menu_id = m.id
+           AND cs.status = 'active'
+           ${storeFilter}) AS location_count,
+
+        -- Active assigned location names (sorted, empty array if none; scoped to accessible stores)
+        (SELECT COALESCE(array_agg(cs.name ORDER BY cs.name), ARRAY[]::text[])
+         FROM menu_location_assignments mla
+         JOIN company_stores cs ON cs.id = mla.store_id
+         WHERE mla.menu_id = m.id
+           AND cs.status = 'active'
+           ${storeFilter}) AS location_names
+
+      FROM menus m
+      WHERE m.company_id = ${companyId}
+      ORDER BY m.created_at ASC
+    `);
+    const raw: any[] = (result as any).rows ?? [];
+    return raw.map((r) => ({
+      id:                  r.id,
+      companyId:           r.company_id,
+      name:                r.name,
+      menuType:            r.menu_type,
+      status:              r.status,
+      description:         r.description,
+      effectiveStart:      r.effective_start,
+      effectiveEnd:        r.effective_end,
+      recurrenceDays:      r.recurrence_days ?? null,
+      recurrenceTimeStart: r.recurrence_time_start ?? null,
+      recurrenceTimeEnd:   r.recurrence_time_end ?? null,
+      createdBy:           r.created_by,
+      updatedBy:           r.updated_by,
+      createdAt:           r.created_at,
+      updatedAt:           r.updated_at,
+      effectiveStatus:     r.effective_status ?? r.status,
+      itemCount:           r.item_count        ?? 0,
+      totalItems:          r.item_count        ?? 0,  // backward-compat alias
+      pricedItems:         r.priced_items      ?? 0,
+      recipedItems:        r.reciped_items     ?? 0,
+      sectionCount:        r.section_count     ?? 0,
+      totalSectionCount:   r.total_section_count ?? 0,
+      locationCount:       r.location_count    ?? 0,
+      locationNames:       Array.isArray(r.location_names) ? r.location_names : [],
+    }));
+  }
+
+  async getMenu(id: string, companyId: string): Promise<Menu | undefined> {
+    const [menu] = await db.select().from(menus)
+      // @ts-ignore
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)));
+    return menu;
+  }
+
+  async createMenu(menu: InsertMenu): Promise<Menu> {
+    const [row] = await db.insert(menus).values(menu).returning();
+    return row;
+  }
+
+  async updateMenu(id: string, companyId: string, updates: Partial<Menu>): Promise<Menu | undefined> {
+    const [row] = await db.update(menus)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenu(id: string, companyId: string): Promise<void> {
+    await db.delete(menus)
+      // @ts-ignore
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)));
+  }
+
+  async transitionMenuStatus(id: string, companyId: string, status: string, updatedBy?: string): Promise<Menu | undefined> {
+    const valid = ["draft", "ready", "scheduled", "live", "retired"];
+    if (!valid.includes(status)) throw new Error(`Invalid status: ${status}`);
+    const current = await this.getMenu(id, companyId);
+    if (!current) return undefined;
+
+    // Allowed transitions:
+    //   draft → ready
+    //   ready → scheduled | live | draft
+    //   scheduled → live | ready | draft
+    //   live → retired
+    //   retired → draft
+    const transitions: Record<string, string[]> = {
+      draft:     ["ready"],
+      ready:     ["scheduled", "live", "draft"],
+      scheduled: ["live", "ready", "draft"],
+      live:      ["retired"],
+      retired:   ["draft"],
+    };
+    if (!transitions[current.status]?.includes(status)) {
+      throw new Error(`Invalid transition from '${current.status}' to '${status}'`);
+    }
+
+    const [row] = await db.update(menus)
+      .set({ status, updatedBy: updatedBy ?? null, updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(menus.id, id), eq(menus.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async duplicateMenu(id: string, companyId: string, newName?: string | null, userId?: string): Promise<Menu> {
+    const source = await this.getMenu(id, companyId);
+    if (!source) throw new Error("Menu not found");
+
+    const name = newName?.trim() || `${source.name} (copy)`;
+
+    // Create the new menu (always starts as draft, copies recurrence schedule)
+    const [newMenu] = await db.insert(menus).values({
+      companyId,
+      name,
+      menuType: source.menuType,
+      status: "draft",
+      description: source.description,
+      effectiveStart: source.effectiveStart,
+      effectiveEnd: source.effectiveEnd,
+      recurrenceDays: source.recurrenceDays,
+      recurrenceTimeStart: source.recurrenceTimeStart,
+      recurrenceTimeEnd: source.recurrenceTimeEnd,
+      createdBy: userId ?? null,
+      updatedBy: userId ?? null,
+    }).returning();
+
+    // Copy sections
+    const sourceSections = await this.getMenuSections(id, companyId);
+    const sectionIdMap = new Map<string, string>(); // old → new
+    for (const sec of sourceSections) {
+      const [newSec] = await db.insert(menuSections).values({
+        menuId: newMenu.id,
+        companyId,
+        name: sec.name,
+        displayOrder: sec.displayOrder,
+      }).returning();
+      sectionIdMap.set(sec.id, newSec.id);
+    }
+
+    // Copy entries
+    const sourceEntries = await this.getMenuEntries(id, companyId);
+    for (const ent of sourceEntries) {
+      await db.insert(menuEntries).values({
+        menuId: newMenu.id,
+        menuSectionId: ent.menuSectionId ? (sectionIdMap.get(ent.menuSectionId) ?? null) : null,
+        menuItemId: ent.menuItemId,
+        companyId,
+        displayOrder: ent.displayOrder,
+        price: ent.price,
+        displayNameOverride: ent.displayNameOverride,
+        descriptionOverride: ent.descriptionOverride,
+        featured: ent.featured,
+        active: ent.active,
+      });
+    }
+
+    return newMenu;
+  }
+
+  async computeMenuReadiness(menuId: string, companyId: string): Promise<import("./services/menuReadinessService").ReadinessReport> {
+    const { computeMenuReadinessImpl } = await import("./services/menuReadinessService");
+    return computeMenuReadinessImpl(menuId, companyId);
+  }
+
+  // Menu Location Assignments
+  async getMenuLocationAssignments(menuId: string, companyId: string, accessibleStoreIds?: string[] | null): Promise<MenuLocationAssignment[]> {
+    const conditions = [
+      // @ts-ignore
+      eq(menuLocationAssignments.menuId, menuId),
+      // @ts-ignore
+      eq(menuLocationAssignments.companyId, companyId),
+    ];
+    if (accessibleStoreIds !== null && accessibleStoreIds !== undefined) {
+      // @ts-ignore
+      conditions.push(inArray(menuLocationAssignments.storeId, accessibleStoreIds.length > 0 ? accessibleStoreIds : [""]));
+    }
+    return db.select().from(menuLocationAssignments)
+      .where(and(...conditions))
+      // @ts-ignore
+      .orderBy(asc(menuLocationAssignments.createdAt));
+  }
+
+  async addMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<MenuLocationAssignment> {
+    // On conflict (duplicate), return the existing row
+    const [row] = await db.insert(menuLocationAssignments)
+      .values({ menuId, storeId, companyId })
+      .onConflictDoNothing()
+      .returning();
+    if (row) return row;
+    const [existing] = await db.select().from(menuLocationAssignments)
+      // @ts-ignore
+      .where(and(eq(menuLocationAssignments.menuId, menuId), eq(menuLocationAssignments.storeId, storeId)));
+    return existing;
+  }
+
+  async removeMenuLocationAssignment(menuId: string, storeId: string, companyId: string): Promise<void> {
+    await db.delete(menuLocationAssignments)
+      .where(and(
+        // @ts-ignore
+        eq(menuLocationAssignments.menuId, menuId),
+        // @ts-ignore
+        eq(menuLocationAssignments.storeId, storeId),
+        // @ts-ignore
+        eq(menuLocationAssignments.companyId, companyId),
+      ));
+  }
+
+  async computeMenuForecast(menuId: string, companyId: string): Promise<import("./services/menuForecastService").ForecastReport> {
+    const { computeMenuForecastImpl } = await import("./services/menuForecastService");
+    return computeMenuForecastImpl(menuId, companyId);
+  }
+
+  // Menu Sections
+  async getMenuSections(menuId: string, companyId: string): Promise<MenuSection[]> {
+    return db.select().from(menuSections)
+      // @ts-ignore
+      .where(and(eq(menuSections.menuId, menuId), eq(menuSections.companyId, companyId)))
+      // @ts-ignore
+      .orderBy(asc(menuSections.displayOrder));
+  }
+
+  async getMenuSection(id: string, companyId: string): Promise<MenuSection | undefined> {
+    const [sec] = await db.select().from(menuSections)
+      // @ts-ignore
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)));
+    return sec;
+  }
+
+  async createMenuSection(section: InsertMenuSection): Promise<MenuSection> {
+    const [row] = await db.insert(menuSections).values(section).returning();
+    return row;
+  }
+
+  async updateMenuSection(id: string, companyId: string, updates: Partial<MenuSection>): Promise<MenuSection | undefined> {
+    const [row] = await db.update(menuSections)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenuSection(id: string, companyId: string): Promise<void> {
+    // Nullify entries that referenced this section (entries become unsectioned)
+    await db.update(menuEntries)
+      .set({ menuSectionId: null })
+      // @ts-ignore
+      .where(and(eq(menuEntries.menuSectionId, id), eq(menuEntries.companyId, companyId)));
+    await db.delete(menuSections)
+      // @ts-ignore
+      .where(and(eq(menuSections.id, id), eq(menuSections.companyId, companyId)));
+  }
+
+  async reorderMenuSections(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const { id, displayOrder } of orders) {
+      await db.update(menuSections)
+        .set({ displayOrder, updatedAt: new Date() })
+        .where(and(
+          // @ts-ignore
+          eq(menuSections.id, id),
+          // @ts-ignore
+          eq(menuSections.menuId, menuId),
+          // @ts-ignore
+          eq(menuSections.companyId, companyId),
+        ));
+    }
+  }
+
+  // Menu Entries
+  async getMenuEntries(menuId: string, companyId: string): Promise<MenuEntry[]> {
+    return db.select().from(menuEntries)
+      // @ts-ignore
+      .where(and(eq(menuEntries.menuId, menuId), eq(menuEntries.companyId, companyId)))
+      // @ts-ignore
+      .orderBy(asc(menuEntries.displayOrder));
+  }
+
+  async getMenuEntry(id: string, companyId: string): Promise<MenuEntry | undefined> {
+    const [entry] = await db.select().from(menuEntries)
+      // @ts-ignore
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)));
+    return entry;
+  }
+
+  async createMenuEntry(entry: InsertMenuEntry): Promise<MenuEntry> {
+    const [row] = await db.insert(menuEntries).values(entry).returning();
+    return row;
+  }
+
+  async updateMenuEntry(id: string, companyId: string, updates: Partial<MenuEntry>): Promise<MenuEntry | undefined> {
+    const [row] = await db.update(menuEntries)
+      .set({ ...updates, updatedAt: new Date() })
+      // @ts-ignore
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)))
+      .returning();
+    return row;
+  }
+
+  async deleteMenuEntry(id: string, companyId: string): Promise<void> {
+    await db.delete(menuEntries)
+      // @ts-ignore
+      .where(and(eq(menuEntries.id, id), eq(menuEntries.companyId, companyId)));
+  }
+
+  async reorderMenuEntries(menuId: string, companyId: string, orders: { id: string; displayOrder: number }[]): Promise<void> {
+    for (const { id, displayOrder } of orders) {
+      await db.update(menuEntries)
+        .set({ displayOrder, updatedAt: new Date() })
+        .where(and(
+          // @ts-ignore
+          eq(menuEntries.id, id),
+          // @ts-ignore
+          eq(menuEntries.menuId, menuId),
+          // @ts-ignore
+          eq(menuEntries.companyId, companyId),
+        ));
+    }
+  }
+}
+
+export const storage = new DatabaseStorage();

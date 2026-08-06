@@ -1,0 +1,2071 @@
+import { useState, useEffect, useRef, Fragment } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useParams, Link, useLocation as useWouterLocation } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Camera, Package, DollarSign, Layers, X, Lock, LockOpen, Search, ArrowUp, Star, CheckCircle2, ArrowUpDown, ArrowUpAZ, ArrowDownAZ, Plus, Check, ChevronDown, Scale, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndoableDelete } from "@/hooks/use-undoable-delete";
+import { formatUnitName } from "@/lib/utils";
+import type { Company, CompanyStore } from "@shared/schema";
+
+type CountMode = 'catch' | 'case' | 'simple';
+
+function getCountMode(category: any, location: any): CountMode {
+  if (category?.isCatchWeightCategory === 1) {
+    return 'catch';
+  }
+  if (location?.allowCaseCounting === 1) {
+    return 'case';
+  }
+  return 'simple';
+}
+
+interface CountQuantityEditorProps {
+  line: any;
+  item: any;
+  mode: CountMode;
+  isEditing: boolean;
+  editingQty: string;
+  editingCaseQty: string;
+  editingContainerQty: string;
+  editingLooseUnits: string;
+  onFocus: () => void;
+  onQtyChange: (value: string) => void;
+  onCaseQtyChange: (value: string) => void;
+  onContainerQtyChange: (value: string) => void;
+  onLooseUnitsChange: (value: string) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  readOnly?: boolean;
+}
+
+function CountQuantityEditor({
+  line,
+  item,
+  mode,
+  isEditing,
+  editingQty,
+  editingCaseQty,
+  editingContainerQty,
+  editingLooseUnits,
+  onFocus,
+  onQtyChange,
+  onCaseQtyChange,
+  onContainerQtyChange,
+  onLooseUnitsChange,
+  onBlur,
+  onKeyDown,
+  readOnly = false
+}: CountQuantityEditorProps) {
+  if (mode === 'case') {
+    const hasContainerSize = item?.containerSize && item?.casePkgCount;
+    const caseQty = isEditing ? editingCaseQty : (line.caseQty != null ? line.caseQty.toString() : '');
+    const containerQty = isEditing ? editingContainerQty : (line.containerQty != null ? line.containerQty.toString() : '');
+    const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits != null ? line.looseUnits.toString() : '');
+    
+    const containerLabel = item?.containerLabel || "container";
+    
+    let totalQty: number;
+    if (hasContainerSize) {
+      totalQty = ((parseFloat(caseQty.toString()) || 0) * item.casePkgCount * item.containerSize) +
+                 ((parseFloat(containerQty.toString()) || 0) * item.containerSize) +
+                 (parseFloat(looseUnits.toString()) || 0);
+    } else {
+      totalQty = ((parseFloat(caseQty.toString()) || 0) * (item?.caseSize || 0)) +
+                 (parseFloat(looseUnits.toString()) || 0);
+    }
+    
+    return (
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-1">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 sm:flex-none flex-wrap">
+          <div className="flex flex-col flex-1 sm:flex-none">
+            <label className="text-xs text-muted-foreground mb-1">Cases</label>
+            <Input
+              type="number"
+              step="1"
+              min="0"
+              value={caseQty}
+              onFocus={onFocus}
+              onChange={(e) => onCaseQtyChange(e.target.value)}
+              onBlur={onBlur}
+              onKeyDown={onKeyDown}
+              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              disabled={readOnly}
+              data-testid={`input-case-qty-${line.id}`}
+            />
+          </div>
+          {hasContainerSize && (
+            <div className="flex flex-col flex-1 sm:flex-none">
+              <label className="text-xs text-muted-foreground mb-1 capitalize">{containerLabel}s</label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={containerQty}
+                onFocus={onFocus}
+                onChange={(e) => onContainerQtyChange(e.target.value)}
+                onBlur={onBlur}
+                onKeyDown={onKeyDown}
+                className="w-full sm:w-24 h-10 sm:h-9 text-base"
+                disabled={readOnly}
+                data-testid={`input-container-qty-${line.id}`}
+              />
+            </div>
+          )}
+          <div className="flex flex-col flex-1 sm:flex-none">
+            <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={looseUnits}
+              onFocus={onFocus}
+              onChange={(e) => onLooseUnitsChange(e.target.value)}
+              onBlur={onBlur}
+              onKeyDown={onKeyDown}
+              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              disabled={readOnly}
+              data-testid={`input-loose-units-${line.id}`}
+            />
+          </div>
+        </div>
+        <div className="flex-1 text-right w-full sm:w-auto">
+          <div className="text-base font-semibold font-mono text-muted-foreground">
+            = {totalQty.toFixed(2)} {item?.unitName}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Both 'catch' and 'simple' modes show a single quantity field
+  // Catch weight categories use a direct qty field for accurate scale measurements
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      value={isEditing ? editingQty : line.qty}
+      onFocus={onFocus}
+      onChange={(e) => onQtyChange(e.target.value)}
+      onBlur={onBlur}
+      onKeyDown={onKeyDown}
+      className="w-full sm:w-32 h-10 sm:h-9 text-base"
+      disabled={readOnly}
+      data-testid={`input-qty-${line.id}`}
+    />
+  );
+}
+
+// Helper function to generate URL-safe anchor IDs
+function generateAnchorId(prefix: string, value: string): string {
+  // For UUIDs and already URL-safe strings (like location IDs), use as-is
+  const isUrlSafe = /^[a-z0-9-]+$/i.test(value);
+  if (isUrlSafe) {
+    return `${prefix}-${value}`;
+  }
+  
+  // For categories with special characters, create a unique hash to prevent collisions
+  const sanitized = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  // Simple hash to distinguish similar category names
+  const hash = value.split('').reduce((acc, char) => {
+    return ((acc << 5) - acc) + char.charCodeAt(0);
+  }, 0);
+  return `${prefix}-${sanitized}-${Math.abs(hash)}`;
+}
+
+function compactRelativeTime(date: Date): string {
+  const t = date.getTime();
+  if (Number.isNaN(t)) return '—';
+  const diffMs = Math.max(0, Date.now() - t);
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return '<1m';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay <= 30) return `${diffDay}d`;
+  return '>30d';
+}
+
+function getInitials(fullName: string): string {
+  return fullName.split(' ').map(n => n[0]).filter(Boolean).join('').toUpperCase().slice(0, 3);
+}
+
+function EntryHistory({ entries, lineId, isCatchWeight, unitAbbr, countId, readOnly }: { entries: any[]; lineId?: string; isCatchWeight?: boolean; unitAbbr?: string; countId?: string; readOnly?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const { toast } = useToast();
+  const scheduleDelete = useUndoableDelete();
+
+  const clearMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/inventory-count-lines/${lineId}/clear`);
+    },
+    onSuccess: () => {
+      if (countId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      }
+      setShowClearConfirm(false);
+      setOpen(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to clear entries", variant: "destructive" });
+      setShowClearConfirm(false);
+    },
+  });
+
+  // Early return after all hooks
+  if (!entries || entries.length <= 1) return null;
+
+  const unit = unitAbbr || 'unit';
+
+  let runningTotal = 0;
+  const entriesWithTotals = entries.map((entry: any) => {
+    runningTotal += entry.qty;
+    return { ...entry, runningTotal };
+  });
+
+  // Fixed grid columns so each row aligns vertically across rows.
+  // Catch weight: qty | running total | "by XX" | time | delete
+  // Otherwise:    qty | "by XX" | time | delete
+  const gridCols = isCatchWeight
+    ? 'grid-cols-[5rem_5.5rem_3rem_1fr_auto]'
+    : 'grid-cols-[4rem_3rem_1fr_auto]';
+
+  return (
+    <>
+      <div className="mt-1.5" data-testid="entry-history-toggle">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-toggle-entry-history"
+          >
+            <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+            {isCatchWeight ? `${entries.length} packages` : `${entries.length} entries`}
+          </button>
+          {!readOnly && lineId && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              disabled={clearMutation.isPending}
+              className="text-xs text-muted-foreground/60 hover:text-destructive transition-colors disabled:opacity-40"
+              title="Clear all entries"
+              data-testid="button-clear-all-entries"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {open && (
+          <div className={`mt-1 border-t pt-1.5 grid gap-x-2 gap-y-0.5 text-xs items-center ${gridCols}`}>
+            {entriesWithTotals.map((entry: any) => {
+              const qtyDisplay = isCatchWeight ? entry.qty.toFixed(2) : `${entry.qty}`;
+              const qtyStr = entry.qty > 0 ? `+${qtyDisplay}` : qtyDisplay;
+              return (
+                <Fragment key={entry.id}>
+                  <span
+                    className="font-mono font-semibold text-foreground tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                    data-testid={`entry-row-${entry.id}`}
+                  >
+                    {isCatchWeight ? `${qtyStr} ${unit}` : qtyStr}
+                  </span>
+                  {isCatchWeight && (
+                    <span
+                      className="font-mono text-muted-foreground/80 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
+                      data-testid={`entry-running-total-${entry.id}`}
+                    >
+                      = {entry.runningTotal.toFixed(2)} {unit}
+                    </span>
+                  )}
+                  <span className="text-muted-foreground whitespace-nowrap overflow-hidden text-ellipsis">
+                    {entry.userName ? `by ${getInitials(entry.userName)}` : ''}
+                  </span>
+                  <span className="text-muted-foreground/60 whitespace-nowrap tabular-nums">
+                    {compactRelativeTime(new Date(entry.enteredAt))}
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => {
+                        const cacheKey = ["/api/inventory-count-lines", countId];
+                        const previousData = queryClient.getQueryData(cacheKey);
+                        scheduleDelete({
+                          label: "Count entry removed",
+                          onOptimisticRemove: () =>
+                            queryClient.setQueryData(cacheKey, (old: any) => {
+                              if (!old) return old;
+                              return old.map((line: any) => {
+                                if (line.id !== lineId) return line;
+                                return {
+                                  ...line,
+                                  entries: line.entries.filter(
+                                    (e: any) => e.id !== entry.id
+                                  ),
+                                };
+                              });
+                            }),
+                          onCommit: async () => {
+                            await apiRequest(
+                              "DELETE",
+                              `/api/inventory-count-entries/${entry.id}`
+                            );
+                            queryClient.invalidateQueries({ queryKey: cacheKey });
+                          },
+                          onRestore: () =>
+                            queryClient.setQueryData(cacheKey, previousData),
+                        });
+                      }}
+                      className="text-muted-foreground/40 hover:text-destructive transition-colors pl-1"
+                      title="Remove this entry"
+                      data-testid={`button-delete-entry-${entry.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all entries?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all {entries.length} entries and reset the count for this item to zero. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear-entries">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+              data-testid="button-confirm-clear-entries"
+            >
+              {clearMutation.isPending ? "Clearing…" : "Clear all entries"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+export default function CountSession() {
+  const params = useParams();
+  const countId = params.id;
+  const [, navigate] = useWouterLocation();
+  
+  // Get URL search parameters for filtering and navigation
+  const urlParams = new URLSearchParams(window.location.search);
+  const filterItemId = urlParams.get('item');
+  const filterLocationId = urlParams.get('location');
+  const sourceCountId = urlParams.get('from');
+  
+  const [groupBy, setGroupBy] = useState<"location" | "category" | "all-entries">("location"); // Toggle between location, category grouping, and flat all-entries view
+  const [allEntriesSortCol, setAllEntriesSortCol] = useState<"item" | "location">("item");
+  const [allEntriesSortDir, setAllEntriesSortDir] = useState<"asc" | "desc">("asc");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedLocation, setSelectedLocation] = useState<string>(filterLocationId || "all");
+  const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
+  const [search, setSearch] = useState("");
+  const [openAccordionSections, setOpenAccordionSections] = useState<string[]>([]);
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  
+  // Update filters when URL parameters change
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const itemFilter = params.get('item');
+    if (itemFilter) {
+      setSelectedItemId(itemFilter);
+    } else {
+      setSelectedItemId("all");
+    }
+    const locationFilter = params.get('location');
+    if (locationFilter) {
+      setSelectedLocation(locationFilter);
+    }
+  }, [window.location.search]);
+  
+  const [editingQty, setEditingQty] = useState<string>("");
+  const [editingCaseQty, setEditingCaseQty] = useState<string>("");
+  const [editingContainerQty, setEditingContainerQty] = useState<string>("");
+  const [editingLooseUnits, setEditingLooseUnits] = useState<string>("");
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [addingToLineId, setAddingToLineId] = useState<string | null>(null);
+  const [addMoreQty, setAddMoreQty] = useState<string>("");
+  const [hasCamera, setHasCamera] = useState(false);
+  const [scanningLineId, setScanningLineId] = useState<string | null>(null);
+  const scanFileInputRef = useRef<HTMLInputElement>(null);
+  const [wasTabPressed, setWasTabPressed] = useState(false);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+    parLevel: "",
+    reorderLevel: "",
+  });
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const { data: count, isLoading: countLoading } = useQuery<any>({
+    queryKey: ["/api/inventory-counts", countId],
+  });
+
+  // Fetch company and store information for this count
+  const { data: company } = useQuery<Company>({
+    queryKey: count?.companyId ? [`/api/companies/${count.companyId}`] : [],
+    enabled: !!count?.companyId,
+  });
+
+  const { data: store } = useQuery<CompanyStore>({
+    queryKey: count?.storeId ? [`/api/stores/${count.storeId}`] : [],
+    enabled: !!count?.storeId,
+  });
+
+  const { data: countLines, isLoading: linesLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory-count-lines", countId],
+    enabled: !!countId,
+  });
+
+  const { data: previousData } = useQuery<{previousCountId: string | null, lines: any[]}>({
+    queryKey: ["/api/inventory-counts", countId, "previous-lines"],
+    enabled: !!countId,
+  });
+  
+  const previousCountId = previousData?.previousCountId || null;
+  const previousLines = previousData?.lines || [];
+
+  const { data: storageLocations } = useQuery<any[]>({
+    queryKey: ["/api/storage-locations"],
+  });
+
+  const { data: inventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
+  const { data: units } = useQuery<any[]>({
+    queryKey: ["/api/units"],
+  });
+
+  const { data: categoriesData } = useQuery<any[]>({
+    queryKey: ["/api/categories"],
+  });
+  
+  // Initialize and reset accordion sections when data loads or groupBy changes
+  useEffect(() => {
+    if (countLines && countLines.length > 0) {
+      // Group lines to get all groupKeys for the current groupBy mode
+      const grouped: Record<string, any[]> = {};
+      countLines.forEach(line => {
+        let groupKey: string;
+        if (groupBy === "location") {
+          groupKey = line.inventoryItem?.storageLocationId || "unknown";
+        } else {
+          groupKey = line.inventoryItem?.category || "Uncategorized";
+        }
+        if (!grouped[groupKey]) {
+          grouped[groupKey] = [];
+        }
+        grouped[groupKey].push(line);
+      });
+      
+      // Reset accordion sections to open all current groups
+      // This ensures stale keys from previous groupBy mode are removed
+      setOpenAccordionSections(Object.keys(grouped));
+    }
+  }, [countLines, groupBy]);
+
+  // Handle scroll event to show/hide back to top button
+  useEffect(() => {
+    const handleScroll = (event?: Event) => {
+      const scrollEl = contentScrollRef.current;
+      const scrollTop = scrollEl ? scrollEl.scrollTop : (window.scrollY || document.documentElement.scrollTop || document.body.scrollTop);
+      setShowBackToTop(scrollTop > 300);
+    };
+
+    const scrollEl = contentScrollRef.current;
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleScroll);
+    }
+    window.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      if (scrollEl) {
+        scrollEl.removeEventListener('scroll', handleScroll);
+      }
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices) return;
+    // Optimistically enable when mediaDevices exists — enumerateDevices can
+    // under-report videoinput on mobile Safari before permission is granted.
+    setHasCamera(true);
+    if (!navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      // Only hide the button when we can definitively confirm no camera is present
+      // (non-empty device list with zero videoinput entries).
+      if (devices.length > 0 && !devices.some(d => d.kind === 'videoinput')) {
+        setHasCamera(false);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: { id: string; qty?: number; addQty?: number; caseQty?: number | null; containerQty?: number | null; looseUnits?: number | null; accumulate?: boolean }) => {
+      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, { 
+        qty: data.qty,
+        addQty: data.addQty,
+        caseQty: data.caseQty,
+        containerQty: data.containerQty,
+        looseUnits: data.looseUnits,
+        accumulate: data.accumulate ?? false,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      // Don't show toast for every field change - it's too noisy
+      // Don't clear editing state here - let the next field's onFocus handle it
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update count",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getCurrentQty = (line: any, mode: CountMode, item: any) => {
+    if (editingLineId === line.id) {
+      if (mode === 'case') {
+        const cases = parseFloat(editingCaseQty) || 0;
+        const containers = parseFloat(editingContainerQty) || 0;
+        const loose = parseFloat(editingLooseUnits) || 0;
+        if (item?.containerSize && item?.casePkgCount) {
+          return (cases * item.casePkgCount * item.containerSize) + (containers * item.containerSize) + loose;
+        }
+        const caseSize = item?.caseSize || 0;
+        return (cases * caseSize) + loose;
+      } else {
+        return parseFloat(editingQty) || 0;
+      }
+    }
+    return line.qty;
+  };
+
+  const handleStartEdit = (line: any, mode: CountMode) => {
+    if (editingLineId === line.id) {
+      return;
+    }
+    
+    setEditingLineId(line.id);
+    
+    if (mode === 'case') {
+      if (line.caseQty != null || line.containerQty != null || line.looseUnits != null) {
+        setEditingCaseQty(line.caseQty != null ? line.caseQty.toString() : '');
+        setEditingContainerQty(line.containerQty != null ? line.containerQty.toString() : '');
+        setEditingLooseUnits(line.looseUnits != null ? line.looseUnits.toString() : '');
+      } else {
+        setEditingCaseQty('');
+        setEditingContainerQty('');
+        setEditingLooseUnits('');
+      }
+      setEditingQty("");
+    } else {
+      setEditingQty(line.qty.toString());
+      setEditingCaseQty("");
+      setEditingContainerQty("");
+      setEditingLooseUnits("");
+    }
+  };
+
+  const handleSaveEdit = (lineId: string, mode: CountMode, item: any) => {
+    if (count && count.canEdit === false) {
+      return;
+    }
+    
+    let qty: number;
+    let caseQty: number | null = null;
+    let containerQty: number | null = null;
+    let looseUnits: number | null = null;
+    
+    if (mode === 'case') {
+      const casesValue = editingCaseQty.trim();
+      const containersValue = editingContainerQty.trim();
+      const looseValue = editingLooseUnits.trim();
+      
+      const cases = casesValue !== '' ? parseFloat(casesValue) : 0;
+      const containers = containersValue !== '' ? parseFloat(containersValue) : 0;
+      const loose = looseValue !== '' ? parseFloat(looseValue) : 0;
+      
+      if (item?.containerSize && item?.casePkgCount) {
+        qty = (cases * item.casePkgCount * item.containerSize) + (containers * item.containerSize) + loose;
+      } else {
+        qty = (cases * (item?.caseSize || 0)) + loose;
+      }
+      
+      if (casesValue !== '' || containersValue !== '' || looseValue !== '') {
+        caseQty = casesValue !== '' ? cases : 0;
+        containerQty = containersValue !== '' ? containers : 0;
+        looseUnits = looseValue !== '' ? loose : 0;
+      }
+    } else {
+      qty = parseFloat(editingQty) || 0;
+    }
+    
+    if (!isNaN(qty) && qty >= 0) {
+      updateMutation.mutate({ id: lineId, qty, caseQty, containerQty, looseUnits });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingLineId(null);
+    setEditingQty("");
+    setEditingCaseQty("");
+    setEditingContainerQty("");
+    setEditingLooseUnits("");
+  };
+
+  const handleOpenItemEdit = (item: any) => {
+    setEditingItem(item);
+    setItemEditForm({
+      name: item.name || "",
+      categoryId: item.categoryId || "",
+      pricePerUnit: item.pricePerUnit?.toString() || "",
+      caseSize: item.caseSize?.toString() || "",
+      parLevel: item.parLevel?.toString() || "",
+      reorderLevel: item.reorderLevel?.toString() || "",
+    });
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+      parLevel: "",
+      reorderLevel: "",
+    });
+  };
+
+  const updateItemMutation = useMutation({
+    mutationFn: async (data: any) => {
+      // Update the inventory item
+      await apiRequest("PATCH", `/api/inventory-items/${editingItem.id}`, data);
+      
+      // If price was updated and we're in a count session, update the count line's unitCost snapshot
+      if (data.pricePerUnit !== undefined && countId) {
+        const lineToUpdate = countLines?.find(line => line.inventoryItemId === editingItem.id);
+        if (lineToUpdate) {
+          await apiRequest("PATCH", `/api/inventory-count-lines/${lineToUpdate.id}`, {
+            unitCost: data.pricePerUnit,
+          });
+        }
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+      toast({
+        title: "Success",
+        description: "Item and count values updated successfully",
+      });
+      handleCloseItemEdit();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveItem = () => {
+    const updates: any = {
+      name: itemEditForm.name,
+      categoryId: (itemEditForm.categoryId && itemEditForm.categoryId !== "none") ? itemEditForm.categoryId : null,
+      pricePerUnit: parseFloat(itemEditForm.pricePerUnit),
+      caseSize: parseFloat(itemEditForm.caseSize),
+      parLevel: itemEditForm.parLevel ? parseFloat(itemEditForm.parLevel) : null,
+      reorderLevel: itemEditForm.reorderLevel ? parseFloat(itemEditForm.reorderLevel) : null,
+    };
+
+    if (!updates.name || isNaN(updates.pricePerUnit) || isNaN(updates.caseSize)) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    updateItemMutation.mutate(updates);
+  };
+
+  const handleScanFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const lineId = addingToLineId;
+    if (!file || !lineId) return;
+    setScanningLineId(lineId);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("lineId", lineId);
+      const res = await fetch("/api/mobile/catch-weight-scan", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      const data = await res.json();
+      const weight = data.weightPerPackage ?? data.netWeight;
+      if (weight != null) {
+        setAddMoreQty(String(weight));
+        toast({ title: "Label scanned", description: `Detected weight: ${weight} ${data.weightUnit ?? ""}`.trim() });
+      } else {
+        toast({ title: "Could not read weight", description: "No weight found on the label.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
+    } finally {
+      setScanningLineId(null);
+      if (scanFileInputRef.current) scanFileInputRef.current.value = "";
+    }
+  };
+
+  const applyCountMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/inventory-counts/${countId}/apply`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+      toast({
+        title: "Inventory Count Applied",
+        description: "On-hand quantities have been updated to match the counted values",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to apply count",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Helper function to scroll to a section and open it
+  const scrollToSection = (groupKey: string, prefix: string) => {
+    const anchorId = generateAnchorId(prefix, groupKey);
+    
+    // Open the target accordion section if not already open
+    const needsToOpen = !openAccordionSections.includes(groupKey);
+    if (needsToOpen) {
+      setOpenAccordionSections(prev => [...prev, groupKey]);
+    }
+    
+    // Wait for accordion expansion before scrolling
+    const waitForExpansionAndScroll = () => {
+      const element = document.getElementById(anchorId);
+      if (!element) return;
+      
+      const checkAndScroll = () => {
+        // Check for reduced motion preference
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        element.scrollIntoView({
+          behavior: prefersReducedMotion ? 'auto' : 'smooth',
+          block: 'start',
+        });
+        
+        // Focus the element for accessibility
+        requestAnimationFrame(() => {
+          const trigger = element.querySelector('[role="button"]');
+          if (trigger instanceof HTMLElement) {
+            trigger.focus({ preventScroll: true });
+          }
+        });
+      };
+      
+      // If accordion was already open or doesn't need animation, scroll immediately
+      if (!needsToOpen) {
+        requestAnimationFrame(checkAndScroll);
+        return;
+      }
+      
+      // Wait for accordion transition to complete (typical transition is 200-300ms)
+      setTimeout(checkAndScroll, 300);
+    };
+    
+    requestAnimationFrame(waitForExpansionAndScroll);
+  };
+
+  const unlockCountMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-counts/${countId}/unlock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Unlocked",
+        description: "You can now edit this inventory count session",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to unlock session",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const lockCountMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/inventory-counts/${countId}/lock`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts", countId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Count Completed",
+        description: "Inventory count has been completed and locked",
+      });
+      // Navigate back to sessions index, pre-filtered to this count's store
+      const storeId = count?.storeId;
+      navigate(storeId ? `/inventory-sessions?store=${storeId}` : "/inventory-sessions");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to complete count",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Get unique categories from inventory items
+  const categories = Array.from(new Set(
+    inventoryItems?.map((p: any) => p.category).filter(Boolean) || []
+  )).sort();
+
+  // Filter lines based on location (for category accordion)
+  let linesForCategoryTotals = countLines || [];
+  if (selectedLocation !== "all") {
+    linesForCategoryTotals = linesForCategoryTotals.filter(line => {
+      const item = line.inventoryItem;
+      const locationId = item?.storageLocationId || "unknown";
+      return locationId === selectedLocation;
+    });
+  }
+
+  // Calculate category totals from filtered lines (by location/empty, not by category)
+  const categoryTotals = linesForCategoryTotals.reduce((acc: any, line) => {
+    const item = line.inventoryItem;
+    const category = item?.category || "Uncategorized";
+    const value = line.qty * (line.unitCost || 0);
+    
+    if (!acc[category]) {
+      acc[category] = { count: 0, value: 0, items: 0 };
+    }
+    acc[category].count += line.qty;
+    acc[category].value += value;
+    acc[category].items += 1;
+    return acc;
+  }, {}) || {};
+
+  // Filter lines based on category (for location accordion)
+  let linesForLocationTotals = countLines || [];
+  if (selectedCategory !== "all") {
+    linesForLocationTotals = linesForLocationTotals.filter(line => {
+      const item = line.inventoryItem;
+      const category = item?.category || "Uncategorized";
+      return category === selectedCategory;
+    });
+  }
+
+  // Calculate location totals from filtered lines (by category/empty, not by location)
+  const locationTotals = linesForLocationTotals.reduce((acc: any, line) => {
+    const item = line.inventoryItem;
+    const locationId = item?.storageLocationId || "unknown";
+    const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
+    const value = line.qty * (line.unitCost || 0);
+    
+    if (!acc[locationId]) {
+      acc[locationId] = { name: locationName, count: 0, value: 0, items: 0 };
+    }
+    acc[locationId].count += line.qty;
+    acc[locationId].value += value;
+    acc[locationId].items += 1;
+    return acc;
+  }, {}) || {};
+
+  // Filter lines for display (all filters applied)
+  let filteredLines = countLines || [];
+  
+  // Text search filter
+  if (search) {
+    filteredLines = filteredLines.filter(line => {
+      const item = line.inventoryItem;
+      const matchesName = item?.name?.toLowerCase().includes(search.toLowerCase());
+      const matchesPluSku = item?.pluSku?.toLowerCase().includes(search.toLowerCase());
+      return matchesName || matchesPluSku;
+    });
+  }
+  
+  if (selectedCategory !== "all") {
+    filteredLines = filteredLines.filter(line => {
+      const item = line.inventoryItem;
+      const category = item?.category || "Uncategorized";
+      return category === selectedCategory;
+    });
+  }
+  
+  if (selectedLocation !== "all") {
+    filteredLines = filteredLines.filter(line => {
+      const item = line.inventoryItem;
+      const locationId = item?.storageLocationId || "unknown";
+      return locationId === selectedLocation;
+    });
+  }
+  
+  if (selectedItemId !== "all") {
+    filteredLines = filteredLines.filter(line => line.inventoryItemId === selectedItemId);
+  }
+
+  // Note: Items maintain their natural order (as created in database)
+  // This prevents items from jumping around when counts are recorded
+
+  // Create a lookup map for previous quantities by inventory item ID
+  // Aggregate all previous lines for the same item across all locations
+  // This shows the TOTAL previous quantity count for each item
+  const previousQuantitiesByItemId = (previousLines || []).reduce((acc: any, line) => {
+    if (!acc[line.inventoryItemId]) {
+      acc[line.inventoryItemId] = 0;
+    }
+    acc[line.inventoryItemId] += line.qty;
+    return acc;
+  }, {});
+
+  // Calculate totals from FILTERED lines so stats match what's displayed
+  const totalValue = filteredLines.reduce((sum, line) => {
+    return sum + (line.qty * (line.unitCost || 0));
+  }, 0);
+
+  const totalItems = filteredLines.length;
+  
+  // Calculate unique categories in filtered results
+  const displayedCategories = new Set(
+    filteredLines.map(line => line.inventoryItem?.category || "Uncategorized")
+  ).size;
+
+  const countDate = count ? new Date(count.countedAt) : null;
+
+  if (countLoading || linesLoading) {
+    return (
+      <div className="p-8">
+        <Skeleton className="h-8 w-64 mb-8" />
+        <div className="grid gap-4 md:grid-cols-3 mb-8">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+        <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
+  const isReadOnly = count && (count.canEdit === false || count.applied === 1);
+  
+  return (
+    <div className="h-full flex flex-col overflow-x-hidden">
+      {/* Pinned title zone */}
+      <div className="flex-shrink-0 px-4 pt-4 pb-0 sm:px-8 sm:pt-8">
+      <div className="mb-4 sm:mb-8">
+        <Link href={sourceCountId ? `/count/${sourceCountId}` : "/inventory-sessions"}>
+          <Button variant="ghost" className="mb-4" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            <span className="hidden sm:inline">{sourceCountId ? "Back to Previous Session" : "Back to Sessions"}</span>
+            <span className="sm:hidden">Back</span>
+          </Button>
+        </Link>
+        
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-3xl font-semibold tracking-tight" data-testid="text-session-title">
+                Count Session
+              </h1>
+              {company && store && (
+                <span className="text-sm sm:text-xl text-muted-foreground font-normal">
+                  {store.name}
+                </span>
+              )}
+              {count?.isPowerSession === 1 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 text-xs font-medium" data-testid="badge-power-session">
+                  <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                  Power Count
+                </span>
+              )}
+            </div>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              {countDate?.toLocaleDateString()} {countDate?.toLocaleTimeString()}
+              {count?.isPowerSession === 1 && " • Power items only"}
+            </p>
+            <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
+              {!isReadOnly
+                ? "Click a quantity to edit. Use filters to view items by category or location."
+                : "Historical count (read-only). Use filters to view items by category or location."}
+            </p>
+          </div>
+        </div>
+      </div>
+      </div>{/* end flex-shrink-0 */}
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-auto px-4 pb-4 sm:px-8 sm:pb-8" ref={contentScrollRef}>
+
+      {/* Read-Only Banner */}
+      {isReadOnly && (
+        <Alert className="mb-8 border-amber-500/50 bg-amber-500/10" data-testid="alert-read-only">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <strong>Historical Session (Read-Only)</strong> - This inventory count is from a previous date and cannot be edited. Only administrators can modify historical data.
+              </AlertDescription>
+            </div>
+            {(user?.role === "global_admin" || user?.role === "company_admin") && count?.applied === 1 && (
+              <Button
+                onClick={() => unlockCountMutation.mutate()}
+                disabled={unlockCountMutation.isPending}
+                variant="outline"
+                size="sm"
+                data-testid="button-unlock-session"
+              >
+                <LockOpen className="h-4 w-4 mr-2" />
+                {unlockCountMutation.isPending ? "Unlocking..." : "Unlock Session"}
+              </Button>
+            )}
+          </div>
+        </Alert>
+      )}
+
+      {/* Mini Dashboard - Sticky Stats Bar */}
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b mb-4 sm:mb-8 sm:-mx-8 px-4 sm:px-8 py-2 sm:py-3">
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Stats — grouped so they shrink together before buttons get squeezed */}
+          <div className="flex items-center gap-3 sm:gap-5 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <DollarSign className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Value</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-total-value">
+                  ${totalValue.toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Package className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Items</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-total-items">
+                  {totalItems}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Layers className="h-4 w-4 text-muted-foreground hidden sm:block" />
+              <div>
+                <div className="text-xs text-muted-foreground leading-none mb-0.5">Cat.</div>
+                <div className="text-sm font-bold font-mono leading-none" data-testid="text-dashboard-categories">
+                  {displayedCategories}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {!isReadOnly && count && count.applied === 0 && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                onClick={() => applyCountMutation.mutate()}
+                disabled={applyCountMutation.isPending}
+                variant="outline"
+                size="sm"
+                data-testid="button-apply-count"
+              >
+                <Package className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">
+                  {applyCountMutation.isPending ? "Applying..." : "Apply Count"}
+                </span>
+              </Button>
+              <Button
+                onClick={() => lockCountMutation.mutate()}
+                disabled={lockCountMutation.isPending}
+                variant="default"
+                size="sm"
+                data-testid="button-complete-count"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                {lockCountMutation.isPending ? "..." : "Done"}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Category Totals */}
+      <Card className="mb-4 sm:mb-8">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="categories" className="border-0">
+            <AccordionTrigger className="px-4 pt-3 pb-2 hover:no-underline" tabIndex={-1}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm sm:text-base">Categories</span>
+                <span className="text-xs text-muted-foreground font-normal hidden sm:inline">— tap to filter</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+                {Object.entries(categoryTotals).filter(([_, data]: [string, any]) => data.items > 0).map(([category, data]: [string, any]) => (
+                  <div 
+                    key={category} 
+                    className={`border rounded-md p-2.5 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                      selectedCategory === category ? 'bg-accent border-accent-border' : ''
+                    }`}
+                    onClick={() => {
+                      if (selectedCategory === category) {
+                        setSelectedCategory("all");
+                      } else {
+                        setSelectedCategory(category);
+                        setGroupBy("category");
+                        scrollToSection(category, "category");
+                      }
+                    }}
+                    tabIndex={-1}
+                    data-testid={`card-category-${category.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <div className="font-medium text-sm truncate">{category}</div>
+                    <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                      <span>{data.items} items</span>
+                      <span className="font-mono font-semibold text-foreground">${data.value.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Card>
+
+      {/* Location Totals */}
+      <Card className="mb-4 sm:mb-8">
+        <Accordion type="single" collapsible>
+          <AccordionItem value="locations" className="border-0">
+            <AccordionTrigger className="px-4 pt-3 pb-2 hover:no-underline" tabIndex={-1}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm sm:text-base">Locations</span>
+                <span className="text-xs text-muted-foreground font-normal hidden sm:inline">— tap to filter</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-4 pb-4">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+                {Object.entries(locationTotals)
+                  .filter(([_, data]: [string, any]) => data.items > 0)
+                  .sort((a, b) => {
+                    const locA = storageLocations?.find(l => l.id === a[0]);
+                    const locB = storageLocations?.find(l => l.id === b[0]);
+                    return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
+                  })
+                  .map(([locationId, data]: [string, any]) => (
+                  <div 
+                    key={locationId} 
+                    className={`border rounded-md p-2.5 hover-elevate active-elevate-2 cursor-pointer transition-colors ${
+                      selectedLocation === locationId ? 'bg-accent border-accent-border' : ''
+                    }`}
+                    onClick={() => {
+                      if (selectedLocation === locationId) {
+                        setSelectedLocation("all");
+                      } else {
+                        setSelectedLocation(locationId);
+                        setGroupBy("location");
+                        scrollToSection(locationId, "location");
+                      }
+                    }}
+                    tabIndex={-1}
+                    data-testid={`card-location-${data.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <div className="font-medium text-sm truncate">{data.name}</div>
+                    <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                      <span>{data.items} items</span>
+                      <span className="font-mono font-semibold text-foreground">${data.value.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </Card>
+
+      {/* Count Lines Table */}
+      <Card>
+        <CardHeader className="gap-2 pb-3">
+          {/* Single row: Search + filter icons + clear */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+              <Input
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 w-full h-11 border-orange-500/40 focus-visible:ring-orange-500/50"
+                data-testid="input-search-count-lines"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {(selectedCategory !== "all" || selectedLocation !== "all" || selectedItemId !== "all" || search) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedCategory("all");
+                    setSelectedLocation("all");
+                    setSelectedItemId("all");
+                    setSearch("");
+                  }}
+                  data-testid="button-clear-filters"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
+              <Button
+                variant={groupBy === "location" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("location")}
+                data-testid="button-group-location"
+              >
+                <Layers className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Location</span>
+              </Button>
+              <Button
+                variant={groupBy === "category" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("category")}
+                data-testid="button-group-category"
+              >
+                <Package className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Category</span>
+              </Button>
+              <Button
+                variant={groupBy === "all-entries" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setGroupBy("all-entries")}
+                data-testid="button-group-all-entries"
+              >
+                <ArrowUpDown className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">All Entries</span>
+              </Button>
+            </div>
+          </div>
+          {selectedItemId !== "all" && (
+            <div className="text-sm text-muted-foreground truncate max-w-[200px]">
+              <span className="font-medium">{filteredLines[0]?.inventoryItem?.name || 'Unknown Item'}</span>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {groupBy === "all-entries" ? (
+              filteredLines && filteredLines.length > 0 ? (
+                (() => {
+                  const handleSortClick = (col: "item" | "location") => {
+                    if (allEntriesSortCol === col) {
+                      setAllEntriesSortDir(d => d === "asc" ? "desc" : "asc");
+                    } else {
+                      setAllEntriesSortCol(col);
+                      setAllEntriesSortDir("asc");
+                    }
+                  };
+
+                  const SortIcon = ({ col }: { col: "item" | "location" }) => {
+                    if (allEntriesSortCol !== col) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground/50" />;
+                    return allEntriesSortDir === "asc"
+                      ? <ArrowUpAZ className="h-3.5 w-3.5 ml-1" />
+                      : <ArrowDownAZ className="h-3.5 w-3.5 ml-1" />;
+                  };
+
+                  const sorted = [...filteredLines].sort((a, b) => {
+                    let valA: string;
+                    let valB: string;
+                    if (allEntriesSortCol === "item") {
+                      valA = (a.inventoryItem?.name || "").toLowerCase();
+                      valB = (b.inventoryItem?.name || "").toLowerCase();
+                    } else {
+                      valA = (a.storageLocationName || storageLocations?.find(l => l.id === a.storageLocationId)?.name || "").toLowerCase();
+                      valB = (b.storageLocationName || storageLocations?.find(l => l.id === b.storageLocationId)?.name || "").toLowerCase();
+                    }
+                    const cmp = valA.localeCompare(valB);
+                    return allEntriesSortDir === "asc" ? cmp : -cmp;
+                  });
+
+                  return (
+                    <Table data-testid="table-all-entries" wrapperClassName="rounded-md border max-h-[calc(100vh-380px)]">
+                        <TableHeader className="sticky top-0 z-10 bg-card">
+                          <TableRow>
+                            <TableHead>
+                              <button
+                                className="flex items-center font-semibold hover:text-foreground transition-colors"
+                                onClick={() => handleSortClick("item")}
+                                data-testid="button-sort-item"
+                              >
+                                Item
+                                <SortIcon col="item" />
+                              </button>
+                            </TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center font-semibold hover:text-foreground transition-colors"
+                                onClick={() => handleSortClick("location")}
+                                data-testid="button-sort-location"
+                              >
+                                Location
+                                <SortIcon col="location" />
+                              </button>
+                            </TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Cases</TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Containers</TableHead>
+                            <TableHead className="hidden sm:table-cell text-right">Loose Units</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-right">Value</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sorted.map((line) => {
+                            const item = line.inventoryItem;
+                            const locationName = line.storageLocationName || storageLocations?.find(l => l.id === line.storageLocationId)?.name || "Unknown";
+                            const lineValue = line.qty * (line.unitCost || 0);
+                            const unitAbbr = line.unitAbbreviation || item?.unitName || "";
+                            return (
+                              <TableRow key={line.id} data-testid={`row-entry-${line.id}`}>
+                                <TableCell className="font-medium" data-testid={`text-entry-item-${line.id}`}>
+                                  {item?.name || "Unknown"}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground" data-testid={`text-entry-location-${line.id}`}>
+                                  {locationName}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-cases-${line.id}`}>
+                                  {line.caseQty != null ? line.caseQty : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-containers-${line.id}`}>
+                                  {line.containerQty != null ? line.containerQty : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="hidden sm:table-cell text-right font-mono" data-testid={`text-entry-loose-${line.id}`}>
+                                  {line.looseUnits != null ? line.looseUnits : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-semibold" data-testid={`text-entry-qty-${line.id}`}>
+                                  {line.qty.toFixed(2)} <span className="text-muted-foreground font-normal text-xs">{unitAbbr}</span>
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-semibold" data-testid={`text-entry-value-${line.id}`}>
+                                  ${lineValue.toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                    </Table>
+                  );
+                })()
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No items to display
+                </div>
+              )
+            ) : filteredLines && filteredLines.length > 0 ? (
+              (() => {
+                // Group by location or category based on groupBy state
+                const grouped: Record<string, any[]> = {};
+                const groupOrder: string[] = []; // Track the order groups appear
+                
+                filteredLines.forEach(line => {
+                  let groupKey: string;
+                  if (groupBy === "location") {
+                    const item = line.inventoryItem;
+                    groupKey = item?.storageLocationId || "unknown";
+                  } else {
+                    const item = line.inventoryItem;
+                    groupKey = item?.category || "Uncategorized";
+                  }
+                  
+                  if (!grouped[groupKey]) {
+                    grouped[groupKey] = [];
+                    groupOrder.push(groupKey);
+                  }
+                  grouped[groupKey].push(line);
+                });
+
+                // Sort groupOrder by storage location sortOrder when grouping by location
+                if (groupBy === "location") {
+                  groupOrder.sort((a, b) => {
+                    const locA = storageLocations?.find(l => l.id === a);
+                    const locB = storageLocations?.find(l => l.id === b);
+                    return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
+                  });
+                }
+
+                return (
+                  <Accordion 
+                    type="multiple" 
+                    value={openAccordionSections}
+                    onValueChange={setOpenAccordionSections}
+                    className="w-full"
+                    key={groupOrder.join(',') + groupBy} // Force remount when filtered items or groupBy changes
+                  >
+                    {groupOrder.map((groupKey) => {
+                      const lines = grouped[groupKey];
+                      
+                      // Get group name
+                      let groupName: string;
+                      if (groupBy === "location") {
+                        groupName = storageLocations?.find(l => l.id === groupKey)?.name || "Unknown Location";
+                      } else {
+                        groupName = groupKey;
+                      }
+                      
+                      // Calculate aggregate totals for this group
+                      const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
+                      const totalValue = lines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
+                      
+                      // Generate anchor ID for this section
+                      const anchorId = generateAnchorId(groupBy, groupKey);
+                      
+                      return (
+                        <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="border rounded-md mb-2">
+                          <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
+                            <div className="flex items-center justify-between w-full pr-4">
+                              <div className="flex items-center gap-4 flex-1">
+                                <span className="font-medium text-left">
+                                  {groupName}
+                                </span>
+                                <span className="text-sm text-muted-foreground hidden sm:inline">
+                                  {lines.length} items
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-mono font-semibold">${totalValue.toFixed(2)}</div>
+                                <div className="text-xs text-muted-foreground hidden sm:block">Total Value</div>
+                              </div>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            {groupBy === "category" ? (
+                              // Category view: Group by item, show locations underneath
+                              <div className="space-y-2 p-2">
+                                {(() => {
+                                  // Group lines by inventory item
+                                  const itemGroups: Record<string, any[]> = {};
+                                  lines.forEach(line => {
+                                    const itemId = line.inventoryItemId;
+                                    if (!itemGroups[itemId]) {
+                                      itemGroups[itemId] = [];
+                                    }
+                                    itemGroups[itemId].push(line);
+                                  });
+                                  
+                                  return Object.entries(itemGroups).map(([itemId, itemLines]) => {
+                                    const firstLine = itemLines[0];
+                                    const item = firstLine.inventoryItem;
+                                    
+                                    // Calculate current total for this item across ALL locations (not just current group)
+                                    const allItemLines = countLines?.filter(l => l.inventoryItemId === itemId) || [];
+                                    const currentTotal = allItemLines.reduce((sum, l) => sum + l.qty, 0);
+                                    const itemTotalValue = allItemLines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
+                                    
+                                    // Get previous total from previous session (aggregated across all locations)
+                                    const previousTotal = previousLines
+                                      .filter(pl => pl.inventoryItemId === itemId)
+                                      .reduce((sum, pl) => sum + (pl.qty || 0), 0);
+                                    
+                                    const unitName = item?.unitName || 'unit';
+                                    const unitAbbr = firstLine.unitAbbreviation || 'unit';
+                                    const catData = categoriesData?.find(c => c.id === item?.categoryId);
+                                    const isCatchWeight = (catData as any)?.isCatchWeightCategory === 1;
+                                    
+                                    return (
+                                      <div key={itemId} className="border rounded-lg p-3 space-y-3" data-testid={`item-group-${itemId}`}>
+                                        {/* Item Header */}
+                                        <div className="flex items-center justify-between gap-4 pb-2 border-b">
+                                          <div className="flex-1">
+                                            {isReadOnly ? (
+                                              <div className="font-medium" data-testid={`text-item-name-${itemId}`}>
+                                                {item?.name || 'Unknown'}
+                                              </div>
+                                            ) : (
+                                              <button
+                                                onClick={() => handleOpenItemEdit(item)}
+                                                className="text-left hover:underline font-medium"
+                                                tabIndex={-1}
+                                                data-testid={`button-edit-item-${itemId}`}
+                                              >
+                                                {item?.name || 'Unknown'}
+                                              </button>
+                                            )}
+                                            {isCatchWeight && (
+                                              <Badge variant="outline" className="mt-0.5 text-xs py-0 px-1.5 gap-0.5 text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                <Scale className="h-2.5 w-2.5" />
+                                                Catch Weight
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-3 sm:gap-6 text-sm">
+                                            <div className="font-mono font-semibold" data-testid={`text-item-total-qty-${itemId}`}>
+                                              {currentTotal.toFixed(2)}
+                                            </div>
+                                            <div className="text-muted-foreground">
+                                              {unitAbbr}
+                                            </div>
+                                            <div className="font-mono hidden sm:block" data-testid={`text-item-unit-price-${itemId}`}>
+                                              ${(firstLine.unitCost || 0).toFixed(2)}
+                                            </div>
+                                            <div className="font-mono font-semibold" data-testid={`text-item-total-value-${itemId}`}>
+                                              ${itemTotalValue.toFixed(2)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Location Inputs */}
+                                        <div className="grid grid-cols-1 gap-2">
+                                          {itemLines.map((line, idx) => {
+                                            const category = categoriesData?.find(c => c.id === item?.categoryId);
+                                            const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                            const mode = getCountMode(category, location);
+                                            
+                                            return (
+                                            <div key={line.id} className={`grid grid-cols-1 sm:grid-cols-[160px_1fr_100px] gap-2 items-center px-2 py-1.5 rounded ${idx % 2 === 0 ? '' : 'bg-muted/20'}`} data-testid={`location-input-${line.id}`}>
+                                              <label className="text-sm text-muted-foreground">
+                                                {line.storageLocationName || 'Unknown'}:
+                                              </label>
+                                              {isReadOnly ? (
+                                                <>
+                                                  <div className="h-9 sm:h-10 flex items-center font-mono font-semibold" data-testid={`text-qty-${line.id}`}>
+                                                    {line.qty}
+                                                  </div>
+                                                  <div className="text-right font-mono font-semibold text-muted-foreground">
+                                                    ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                  </div>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <CountQuantityEditor
+                                                    line={line}
+                                                    item={item}
+                                                    mode={mode}
+                                                    isEditing={editingLineId === line.id}
+                                                    editingQty={editingQty}
+                                                    editingCaseQty={editingCaseQty}
+                                                    editingContainerQty={editingContainerQty}
+                                                    editingLooseUnits={editingLooseUnits}
+                                                    onFocus={() => handleStartEdit(line, mode)}
+                                                    onQtyChange={setEditingQty}
+                                                    onCaseQtyChange={setEditingCaseQty}
+                                                    onContainerQtyChange={setEditingContainerQty}
+                                                    onLooseUnitsChange={setEditingLooseUnits}
+                                                    onBlur={() => {
+                                                      if (editingLineId === line.id) {
+                                                        handleSaveEdit(line.id, mode, item);
+                                                      }
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
+                                                        handleSaveEdit(line.id, mode, item);
+                                                        // Focus next input if available
+                                                        if (idx < itemLines.length - 1) {
+                                                          const nextLine = itemLines[idx + 1];
+                                                          setTimeout(() => {
+                                                            const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                            if (nextInput) {
+                                                              nextInput.focus();
+                                                              nextInput.select();
+                                                            }
+                                                          }, 0);
+                                                        }
+                                                      } else if (e.key === 'Escape') {
+                                                        handleCancelEdit();
+                                                      }
+                                                    }}
+                                                  />
+                                                  <div className="text-right font-mono font-semibold text-muted-foreground">
+                                                    ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                                  </div>
+                                                </>
+                                              )}
+                                              <div className="sm:col-span-3">
+                                                <EntryHistory entries={line.entries || []} lineId={line.id} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
+                                              </div>
+                                            </div>
+                                            );
+                                          })}
+                                        </div>
+                                        
+                                        {/* Item Footer */}
+                                        {previousTotal > 0 && previousCountId && (
+                                          <div className="pt-2 border-t">
+                                            <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>
+                                              <div className="text-sm text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${itemId}`}>
+                                                Previous count: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
+                                              </div>
+                                            </Link>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            ) : (
+                              // Location view: Compact layout similar to category view
+                              <div className="space-y-2 p-2">
+                                {lines.map((line, idx) => {
+                                  const item = line.inventoryItem;
+                                  const unitName = item?.unitName || 'unit';
+                                  const unitAbbr = line.unitAbbreviation || 'unit';
+                                  const category = categoriesData?.find(c => c.id === item?.categoryId);
+                                  const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                  const mode = getCountMode(category, location);
+                                  
+                                  // Get previous quantity for this specific item at this location
+                                  const previousLine = previousLines.find(
+                                    pl => pl.inventoryItemId === line.inventoryItemId && 
+                                          pl.storageLocationId === line.storageLocationId
+                                  );
+                                  const previousQty = previousLine?.qty || 0;
+                                  
+                                  return (
+                                    <div key={line.id} className="border rounded-md p-2.5 space-y-1.5" data-testid={`item-input-${line.id}`}>
+                                      {/* Item Info Header — always horizontal */}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          {isReadOnly ? (
+                                            <div className="font-medium text-sm leading-snug" data-testid={`text-item-name-${line.inventoryItemId}`}>
+                                              {item?.name || 'Unknown'}
+                                            </div>
+                                          ) : (
+                                            <button
+                                              onClick={() => handleOpenItemEdit(item)}
+                                              className="text-left hover:underline font-medium text-sm leading-snug w-full"
+                                              tabIndex={-1}
+                                              data-testid={`button-edit-item-${line.inventoryItemId}`}
+                                            >
+                                              {item?.name || 'Unknown'}
+                                            </button>
+                                          )}
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
+                                            <span>{item?.category || 'Uncategorized'}</span>
+                                            {mode === 'catch' && (
+                                              <Badge variant="outline" className="text-xs py-0 px-1.5 gap-0.5 text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                                                <Scale className="h-2.5 w-2.5" />
+                                                Catch Weight
+                                              </Badge>
+                                            )}
+                                            {mode === 'case' && item?.caseSize && (
+                                              <span>· Case: {item.caseSize} {unitAbbr}</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="text-xs font-mono text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
+                                          ${(line.unitCost || 0).toFixed(2)}/{unitAbbr}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Quantity Input — no "Qty:" label, value shown inline */}
+                                      <div className="flex items-center gap-2">
+                                        {isReadOnly ? (
+                                          <>
+                                            <div className="flex-1 h-9 flex items-center font-mono font-semibold text-sm" data-testid={`text-qty-${line.id}`}>
+                                              {line.qty} {unitAbbr}
+                                            </div>
+                                            <div className="text-sm font-semibold font-mono">
+                                              = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="flex-1">
+                                              {addingToLineId === line.id ? (
+                                                <div className="flex flex-col gap-1">
+                                                  {mode === 'catch' && (
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                                        <Scale className="h-3 w-3" />
+                                                        Enter package weight ({unitAbbr})
+                                                        {(line.entries?.length ?? 0) > 0 && (
+                                                          <span className="ml-1 text-muted-foreground" data-testid={`text-package-count-${line.id}`}>
+                                                            &mdash; {line.entries.length} package{line.entries.length !== 1 ? 's' : ''} entered
+                                                          </span>
+                                                        )}
+                                                      </span>
+                                                      {hasCamera && (
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          className="h-7 gap-1 text-xs shrink-0"
+                                                          disabled={scanningLineId === line.id}
+                                                          onClick={() => {
+                                                            scanFileInputRef.current?.click();
+                                                          }}
+                                                          data-testid={`button-scan-label-${line.id}`}
+                                                        >
+                                                          <Camera className="h-3 w-3" />
+                                                          {scanningLineId === line.id ? "Scanning…" : "Scan Label"}
+                                                        </Button>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                  <div className="flex items-center gap-1.5">
+                                                  <span className="text-xs text-muted-foreground font-mono">{line.qty} {unitAbbr} +</span>
+                                                  <Input
+                                                    type="number"
+                                                    value={addMoreQty}
+                                                    onChange={e => setAddMoreQty(e.target.value)}
+                                                    className="h-9 text-base w-24"
+                                                    placeholder={mode === 'catch' ? `0.00 ${unitAbbr}` : "0"}
+                                                    autoFocus
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        if (updateMutation.isPending) return;
+                                                        const addAmt = parseFloat(addMoreQty) || 0;
+                                                        updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
+                                                        setAddingToLineId(null);
+                                                        setAddMoreQty("");
+                                                      } else if (e.key === 'Escape') {
+                                                        setAddingToLineId(null);
+                                                        setAddMoreQty("");
+                                                      }
+                                                    }}
+                                                    data-testid={`input-add-more-${line.id}`}
+                                                  />
+                                                  <Button
+                                                    size="icon"
+                                                    variant="default"
+                                                    className="h-9 w-9 shrink-0"
+                                                    disabled={updateMutation.isPending}
+                                                    onClick={() => {
+                                                      if (updateMutation.isPending) return;
+                                                      const addAmt = parseFloat(addMoreQty) || 0;
+                                                      updateMutation.mutate({ id: line.id, addQty: addAmt, accumulate: true });
+                                                      setAddingToLineId(null);
+                                                      setAddMoreQty("");
+                                                    }}
+                                                    data-testid={`button-confirm-add-more-${line.id}`}
+                                                  >
+                                                    <Check className="h-4 w-4" />
+                                                  </Button>
+                                                  <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-9 w-9 shrink-0"
+                                                    onClick={() => { setAddingToLineId(null); setAddMoreQty(""); }}
+                                                    data-testid={`button-cancel-add-more-${line.id}`}
+                                                  >
+                                                    <X className="h-4 w-4" />
+                                                  </Button>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <CountQuantityEditor
+                                                line={line}
+                                                item={item}
+                                                mode={mode}
+                                                isEditing={editingLineId === line.id}
+                                                editingQty={editingQty}
+                                                editingCaseQty={editingCaseQty}
+                                                editingContainerQty={editingContainerQty}
+                                                editingLooseUnits={editingLooseUnits}
+                                                onFocus={() => handleStartEdit(line, mode)}
+                                                onQtyChange={setEditingQty}
+                                                onCaseQtyChange={setEditingCaseQty}
+                                                onContainerQtyChange={setEditingContainerQty}
+                                                onLooseUnitsChange={setEditingLooseUnits}
+                                                onBlur={() => {
+                                                  if (editingLineId === line.id) {
+                                                    handleSaveEdit(line.id, mode, item);
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
+                                                    handleSaveEdit(line.id, mode, item);
+                                                    if (idx < lines.length - 1) {
+                                                      const nextLine = lines[idx + 1];
+                                                      setTimeout(() => {
+                                                        const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
+                                                        if (nextInput) {
+                                                          nextInput.focus();
+                                                          nextInput.select();
+                                                        }
+                                                      }, 0);
+                                                    }
+                                                  } else if (e.key === 'Escape') {
+                                                    handleCancelEdit();
+                                                  }
+                                                }}
+                                              />
+                                              )}
+                                            </div>
+                                            <div className="text-sm font-semibold font-mono shrink-0">
+                                              = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
+                                            </div>
+                                            {addingToLineId !== line.id && (
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-9 w-9 shrink-0 text-muted-foreground"
+                                                onClick={() => { setAddingToLineId(line.id); setAddMoreQty(""); }}
+                                                title="Add to this count"
+                                                data-testid={`button-add-more-${line.id}`}
+                                              >
+                                                <Plus className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                      {previousQty > 0 && previousCountId && (
+                                        <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
+                                          <div className="text-xs text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${line.id}`}>
+                                            Prev: <span className="font-mono">{previousQty.toFixed(2)}</span> {formatUnitName(unitName)}
+                                          </div>
+                                        </Link>
+                                      )}
+                                      <EntryHistory entries={line.entries || []} isCatchWeight={mode === 'catch'} unitAbbr={unitAbbr} countId={countId} readOnly={!!isReadOnly} />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
+                );
+              })()
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No items to display
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <input
+        ref={scanFileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        aria-hidden
+        onChange={handleScanFileChange}
+        data-testid="input-scan-label-file"
+      />
+
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update the details for this inventory item. Required fields are marked with an asterisk (*).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                data-testid="input-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select
+                value={itemEditForm.categoryId || undefined}
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-item-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No category</SelectItem>
+                  {categoriesData?.map((cat: any) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-price">Price Per Unit *</Label>
+                <Input
+                  id="item-price"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.pricePerUnit}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                  data-testid="input-item-price"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-case-size">Case Size *</Label>
+                <Input
+                  id="item-case-size"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.caseSize}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, caseSize: e.target.value })}
+                  data-testid="input-item-case-size"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-par-level">Par Level</Label>
+                <Input
+                  id="item-par-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.parLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, parLevel: e.target.value })}
+                  data-testid="input-item-par-level"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-reorder-level">Reorder Level</Label>
+                <Input
+                  id="item-reorder-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.reorderLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, reorderLevel: e.target.value })}
+                  data-testid="input-item-reorder-level"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseItemEdit}
+              data-testid="button-cancel-item"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveItem}
+              disabled={updateItemMutation.isPending}
+              data-testid="button-save-item"
+            >
+              {updateItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Back to Top Button */}
+      {showBackToTop && (
+        <Button
+          onClick={() => {
+            if (contentScrollRef.current) {
+              contentScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+          }}
+          size="icon"
+          className="fixed bottom-6 right-6 z-50 h-12 w-12 rounded-full shadow-lg"
+          data-testid="button-back-to-top"
+        >
+          <ArrowUp className="h-5 w-5" />
+        </Button>
+      )}
+      </div>{/* end flex-1 overflow-auto */}
+    </div>
+  );
+}

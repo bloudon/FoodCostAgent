@@ -1,0 +1,1830 @@
+Skip to content
+bloudon
+FoodCostAgent
+Repository navigation
+Code
+Issues
+Pull requests
+Actions
+Projects
+Wiki
+Security and quality
+Insights
+Settings
+Playwright Tests
+fix: patch two failing Playwright tests #15
+All jobs
+Run details
+Annotations
+1 error and 1 warning
+Run Playwright browser tests
+failed 2 hours ago in 8m 23s
+Search logs
+1s
+23s
+2s
+2s
+18s
+22s
+1s
+1s
+1s
+7m 7s
+Run npx playwright test
+[WebServer] 
+[WebServer] > rest-express@1.5.0 dev
+[WebServer] > NODE_ENV=development tsx server/index.ts
+[WebServer] 
+[WebServer] ℹ️ Redis cache not configured (REDIS_URL not set)
+[WebServer] [DB] Using standard PostgreSQL driver (local/VPS mode)
+[WebServer] ✅ Startup migrations applied
+[WebServer] [BackgroundImages] Seeded 21 default images
+[WebServer] [Migration] menu_descriptions error: error: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+[WebServer]     at /home/runner/work/FoodCostAgent/FoodCostAgent/node_modules/pg-pool/index.js:45:11
+[WebServer]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[WebServer]     at async migrateMenuDescriptions (/home/runner/work/FoodCostAgent/FoodCostAgent/server/routes.ts:385:7) {
+[WebServer]   length: 251,
+[WebServer]   severity: 'ERROR',
+[WebServer]   code: '23505',
+[WebServer]   detail: 'Key (typname, typnamespace)=(_migrations, 2200) already exists.',
+[WebServer]   hint: undefined,
+[WebServer]   position: undefined,
+[WebServer]   internalPosition: undefined,
+[WebServer]   internalQuery: undefined,
+[WebServer]   where: undefined,
+[WebServer]   schema: 'pg_catalog',
+[WebServer]   table: 'pg_type',
+[WebServer]   column: undefined,
+[WebServer]   dataType: undefined,
+[WebServer]   constraint: 'pg_type_typname_nsp_index',
+[WebServer]   file: 'nbtinsert.c',
+[WebServer]   line: '664',
+[WebServer]   routine: '_bt_check_unique'
+[WebServer] }
+[WebServer] [Migration] container_size_hierarchy error: error: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+[WebServer]     at /home/runner/work/FoodCostAgent/FoodCostAgent/node_modules/pg-pool/index.js:45:11
+[WebServer]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[WebServer]     at async migrateContainerSizeHierarchy (/home/runner/work/FoodCostAgent/FoodCostAgent/server/routes.ts:297:7) {
+[WebServer]   length: 251,
+[WebServer]   severity: 'ERROR',
+[WebServer]   code: '23505',
+[WebServer]   detail: 'Key (typname, typnamespace)=(_migrations, 2200) already exists.',
+[WebServer]   hint: undefined,
+[WebServer]   position: undefined,
+[WebServer]   internalPosition: undefined,
+[WebServer]   internalQuery: undefined,
+[WebServer]   where: undefined,
+[WebServer]   schema: 'pg_catalog',
+[WebServer]   table: 'pg_type',
+[WebServer]   column: undefined,
+[WebServer]   dataType: undefined,
+[WebServer]   constraint: 'pg_type_typname_nsp_index',
+[WebServer]   file: 'nbtinsert.c',
+[WebServer]   line: '664',
+[WebServer]   routine: '_bt_check_unique'
+[WebServer] }
+[WebServer] [Migration] receipt_receive_by_unit error: error: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+[WebServer]     at /home/runner/work/FoodCostAgent/FoodCostAgent/node_modules/pg-pool/index.js:45:11
+[WebServer]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[WebServer]     at async migrateReceiptReceiveByUnit (/home/runner/work/FoodCostAgent/FoodCostAgent/server/routes.ts:269:7) {
+[WebServer]   length: 251,
+[WebServer]   severity: 'ERROR',
+[WebServer]   code: '23505',
+[WebServer]   detail: 'Key (typname, typnamespace)=(_migrations, 2200) already exists.',
+[WebServer]   hint: undefined,
+[WebServer]   position: undefined,
+[WebServer]   internalPosition: undefined,
+[WebServer]   internalQuery: undefined,
+[WebServer]   where: undefined,
+[WebServer]   schema: 'pg_catalog',
+[WebServer]   table: 'pg_type',
+[WebServer]   column: undefined,
+[WebServer]   dataType: undefined,
+[WebServer]   constraint: 'pg_type_typname_nsp_index',
+[WebServer]   file: 'nbtinsert.c',
+[WebServer]   line: '664',
+[WebServer]   routine: '_bt_check_unique'
+[WebServer] }
+[WebServer] [Migration] mobile_dashboard_columns error: error: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+[WebServer]     at /home/runner/work/FoodCostAgent/FoodCostAgent/node_modules/pg-pool/index.js:45:11
+[WebServer]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[WebServer]     at async migrateMobileDashboardColumns (/home/runner/work/FoodCostAgent/FoodCostAgent/server/routes.ts:328:7) {
+[WebServer]   length: 251,
+[WebServer]   severity: 'ERROR',
+[WebServer]   code: '23505',
+[WebServer]   detail: 'Key (typname, typnamespace)=(_migrations, 2200) already exists.',
+[WebServer]   hint: undefined,
+[WebServer]   position: undefined,
+[WebServer]   internalPosition: undefined,
+[WebServer]   internalQuery: undefined,
+[WebServer]   where: undefined,
+[WebServer]   schema: 'pg_catalog',
+[WebServer]   table: 'pg_type',
+[WebServer]   column: undefined,
+[WebServer]   dataType: undefined,
+[WebServer]   constraint: 'pg_type_typname_nsp_index',
+[WebServer]   file: 'nbtinsert.c',
+[WebServer]   line: '664',
+[WebServer]   routine: '_bt_check_unique'
+[WebServer] }
+[WebServer] [Migration] vendor_receive_by_unit error: error: duplicate key value violates unique constraint "pg_type_typname_nsp_index"
+[WebServer]     at /home/runner/work/FoodCostAgent/FoodCostAgent/node_modules/pg-pool/index.js:45:11
+[WebServer]     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[WebServer]     at async migrateReceiveByUnit (/home/runner/work/FoodCostAgent/FoodCostAgent/server/routes.ts:237:7) {
+[WebServer]   length: 251,
+[WebServer]   severity: 'ERROR',
+[WebServer]   code: '23505',
+[WebServer]   detail: 'Key (typname, typnamespace)=(_migrations, 2200) already exists.',
+[WebServer]   hint: undefined,
+[WebServer]   position: undefined,
+[WebServer]   internalPosition: undefined,
+[WebServer]   internalQuery: undefined,
+[WebServer]   where: undefined,
+[WebServer]   schema: 'pg_catalog',
+[WebServer]   table: 'pg_type',
+[WebServer]   column: undefined,
+[WebServer]   dataType: undefined,
+[WebServer]   constraint: 'pg_type_typname_nsp_index',
+[WebServer]   file: 'nbtinsert.c',
+[WebServer]   line: '664',
+[WebServer]   routine: '_bt_check_unique'
+[WebServer] }
+[WebServer] [Storage] Environment detected: local (VPS)
+[WebServer] [Storage] Using local filesystem storage with company isolation
+[WebServer] [TierMigration] First deploy: set all 3 companies to pro/active
+[WebServer] [Migration] Applied preferred_language
+[WebServer] ✅ WebSocket POS streaming enabled at /ws/pos
+[WebServer] 🌱 Seeding database with pizza restaurant data...
+[WebServer] 📏 Seeding comprehensive kitchen units...
+[WebServer] ✅ All 41 comprehensive kitchen units already seeded
+[WebServer] 📏 Created default menu item sizes for Brian's Pizza
+[WebServer] 📏 Created default menu item sizes for The Breakfast Nook
+[WebServer] ✅ Database already seeded
+[WebServer] ✅ All unit conversions already present
+[WebServer] 🏢 Creating Brian's Pizza company and stores...
+[WebServer] 🔗 Migrating vendors to store assignments...
+[WebServer]    Created 1 store-vendor assignments
+[WebServer] 2:18:52 AM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+[WebServer] 2:18:52 AM [express] ✅ Session cleanup completed
+[WebServer] 2:18:53 AM [express] serving on port 5000
+[WebServer] Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+[WebServer]   npx update-browserslist-db@latest
+[WebServer]   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+Running 72 tests using 1 worker
+
+[WebServer] 2:18:57 AM [express] POST /api/onboarding/menu-scan 401 in 2ms :: {"error":"Not authenticated"}
+  ✓   1 [chromium] › tests/ai-scan-endpoints.spec.ts:155:3 › POST /api/onboarding/menu-scan — menu photo to recipe names › requires authentication — 401 without a session cookie (1.1s)
+[WebServer] 
+[WebServer] warn - The class `duration-[1500ms]` is ambiguous and matches multiple utilities.
+[WebServer] warn - If this is content and not a class, replace it with `duration-&lsqb;1500ms&rsqb;` to silence this warning.
+[WebServer] 
+[WebServer] A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+[WebServer] 2:18:59 AM [express] POST /api/auth/login 200 in 1718ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e…
+[WebServer] 2:18:59 AM [express] POST /api/onboarding/menu-scan 400 in 107ms :: {"error":"Invalid request","deta…
+  ✓   2 [chromium] › tests/ai-scan-endpoints.spec.ts:163:3 › POST /api/onboarding/menu-scan — menu photo to recipe names › returns 400 when imageObjectPath is missing (2.5s)
+  -   3 [chromium] › tests/ai-scan-endpoints.spec.ts:172:3 › POST /api/onboarding/menu-scan — menu photo to recipe names › uploads a real image, calls GPT-4o Vision, and response matches expected shape
+[WebServer] 2:18:59 AM [express] POST /api/onboarding/invoice-scan 401 in 0ms :: {"error":"Not authenticated"}
+  ✓   4 [chromium] › tests/ai-scan-endpoints.spec.ts:215:3 › POST /api/onboarding/invoice-scan — invoice photo to line items › requires authentication — 401 without a session cookie (7ms)
+[WebServer] 2:19:00 AM [express] POST /api/auth/login 200 in 113ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e5…
+[WebServer] 2:19:00 AM [express] POST /api/onboarding/invoice-scan 400 in 2ms :: {"error":"Invalid request","det…
+  ✓   5 [chromium] › tests/ai-scan-endpoints.spec.ts:223:3 › POST /api/onboarding/invoice-scan — invoice photo to line items › returns 400 when imageObjectPath is missing (132ms)
+  -   6 [chromium] › tests/ai-scan-endpoints.spec.ts:232:3 › POST /api/onboarding/invoice-scan — invoice photo to line items › uploads a real image, calls GPT-4o Vision, and response matches expected shape
+[WebServer] 2:19:00 AM [express] POST /api/recipe-import/scan 401 in 1ms :: {"error":"Not authenticated"}
+  ✓   7 [chromium] › tests/ai-scan-endpoints.spec.ts:288:3 › POST /api/recipe-import/scan — recipe card photo to recipe details › requires authentication — 401 without a session cookie (6ms)
+[WebServer] 2:19:00 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:00 AM [express] POST /api/recipe-import/scan 400 in 4ms :: {"error":"imageObjectPath is require…
+  ✓   8 [chromium] › tests/ai-scan-endpoints.spec.ts:296:3 › POST /api/recipe-import/scan — recipe card photo to recipe details › returns 400 when imageObjectPath is missing (83ms)
+  -   9 [chromium] › tests/ai-scan-endpoints.spec.ts:305:3 › POST /api/recipe-import/scan — recipe card photo to recipe details › uploads a real image, calls GPT-4o Vision, and response matches expected shape
+[WebServer] 2:19:00 AM [express] POST /api/mobile/sweep-scan 401 in 2ms :: {"error":"Not authenticated"}
+  ✓  10 [chromium] › tests/ai-scan-endpoints.spec.ts:351:3 › POST /api/mobile/sweep-scan — shelf photo to inventory item list › requires authentication — 401 without a *** (8ms)
+[WebServer] 2:19:00 AM [express] POST /api/mobile/login 200 in 70ms :: {"token":"aShgdFvEVEF8Bi61Ex69N-WCWrXnD5g…
+[WebServer] 2:19:00 AM [express] POST /api/mobile/sweep-scan 400 in 3ms :: {"error":"At least one image is requi…
+  ✓  11 [chromium] › tests/ai-scan-endpoints.spec.ts:364:3 › POST /api/mobile/sweep-scan — shelf photo to inventory item list › returns 400 when no image file is attached (83ms)
+  -  12 [chromium] › tests/ai-scan-endpoints.spec.ts:372:3 › POST /api/mobile/sweep-scan — shelf photo to inventory item list › sends a real image directly to the endpoint, calls GPT-4o Vision, response matches expected shape
+[WebServer] 2:19:01 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:01 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  13 [chromium] › tests/floor-staff-quick-start-count.spec.ts:131:3 › Floor-staff quick-start count modal › clicking Start New Count opens the modal for a floor-staff user (1.2s)
+[WebServer] 2:19:02 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:02 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  14 [chromium] › tests/floor-staff-quick-start-count.spec.ts:145:3 › Floor-staff quick-start count modal › store picker is visible when the floor-staff user has multiple stores (1.1s)
+[WebServer] 2:19:03 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:03 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  15 [chromium] › tests/floor-staff-quick-start-count.spec.ts:158:3 › Floor-staff quick-start count modal › store picker is hidden when the floor-staff user has only one store (1.0s)
+[WebServer] 2:19:04 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:04 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 0ms :: {"error":…
+  ✓  16 [chromium] › tests/floor-staff-quick-start-count.spec.ts:171:3 › Floor-staff quick-start count modal › confirming the modal creates a session and navigates to /count/:id/mobile (single store) (1.4s)
+[WebServer] 2:19:06 AM [express] GET /api/stores/accessible 401 in 2ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:06 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  17 [chromium] › tests/floor-staff-quick-start-count.spec.ts:191:3 › Floor-staff quick-start count modal › confirming with a store selected creates a session and navigates to /count/:id/mobile (multi-store) (1.7s)
+[WebServer] 2:19:07 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:07 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  18 [chromium] › tests/floor-staff-quick-start-count.spec.ts:221:3 › Floor-staff quick-start count modal › cancel button dismisses the modal without navigating away (1.3s)
+[WebServer] 2:19:09 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:09 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+  ✓  19 [chromium] › tests/floor-staff-quick-start-count.spec.ts:237:3 › Floor-staff quick-start count modal › modal shows no-locations message when floor-staff has no stores assigned (1.0s)
+[WebServer] 2:19:10 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:10 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 0ms :: {"error":…
+[WebServer] 2:19:10 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+[WebServer] 2:19:10 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:10 AM [express] GET /api/inventory-items 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:10 AM [express] GET /api/inventory-counts 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  20 [chromium] › tests/floor-staff-quick-start-count.spec.ts:252:3 › Admin and manager role bypasses the modal › company_admin clicking Start New Count navigates directly to /inventory-sessions (1.1s)
+[WebServer] 2:19:11 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:11 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+[WebServer] 2:19:11 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+[WebServer] 2:19:11 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:11 AM [express] GET /api/inventory-items 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:11 AM [express] GET /api/inventory-counts 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  21 [chromium] › tests/floor-staff-quick-start-count.spec.ts:266:3 › Admin and manager role bypasses the modal › store_manager clicking Start New Count navigates directly to /inventory-sessions (1.1s)
+[WebServer] 2:19:12 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:12 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+[WebServer] 2:19:12 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 401 in 1ms :: {"error":…
+[WebServer] 2:19:12 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:12 AM [express] GET /api/inventory-items 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:12 AM [express] GET /api/inventory-counts 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  22 [chromium] › tests/floor-staff-quick-start-count.spec.ts:280:3 › Admin and manager role bypasses the modal › global_admin clicking Start New Count navigates directly to /inventory-sessions (1.0s)
+[WebServer] 2:19:12 AM [express] GET /api/inventory-counts 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  23 [chromium] › tests/inventory-session-isolation.spec.ts:66:3 › Unauthenticated access is rejected › GET /api/inventory-counts → 401 (309ms)
+[WebServer] 2:19:12 AM [express] GET /api/inventory-counts/dfc5aa03-0055-4b2e-ab88-fb4a11750b12 401 in 0ms :: {"…
+  ✓  24 [chromium] › tests/inventory-session-isolation.spec.ts:71:3 › Unauthenticated access is rejected › GET /api/inventory-counts/:id → 401 (4ms)
+[WebServer] 2:19:12 AM [express] GET /api/inventory-counts/dfc5aa03-0055-4b2e-ab88-fb4a11750b12/previous-lines 4…
+  ✓  25 [chromium] › tests/inventory-session-isolation.spec.ts:78:3 › Unauthenticated access is rejected › GET /api/inventory-counts/:id/previous-lines → 401 (5ms)
+[WebServer] 2:19:13 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:13 AM [express] GET /api/inventory-counts 200 in 7ms :: [{"id":"5f72014d-2b56-43ad-bc07-1dbf679…
+  ✓  26 [chromium] › tests/inventory-session-isolation.spec.ts:97:3 › Cross-company isolation (Company A cannot see Company B data) › GET /api/inventory-counts only returns sessions belonging to the authenticated company (13ms)
+[WebServer] 2:19:13 AM [express] GET /api/inventory-counts/dfc5aa03-0055-4b2e-ab88-fb4a11750b12 404 in 2ms :: {"…
+  ✓  27 [chromium] › tests/inventory-session-isolation.spec.ts:116:3 › Cross-company isolation (Company A cannot see Company B data) › GET /api/inventory-counts/:id with a Company B id → 404 for Company A user (8ms)
+[WebServer] 2:19:13 AM [express] GET /api/inventory-counts/dfc5aa03-0055-4b2e-ab88-fb4a11750b12/previous-lines 4…
+  ✓  28 [chromium] › tests/inventory-session-isolation.spec.ts:127:3 › Cross-company isolation (Company A cannot see Company B data) › GET /api/inventory-counts/:id/previous-lines with a Company B id → 404 for Company A user (6ms)
+[WebServer] 2:19:13 AM [express] GET /api/inventory-counts/5f72014d-2b56-43ad-bc07-1dbf679336c5 200 in 5ms :: {"…
+  ✓  29 [chromium] › tests/inventory-session-isolation.spec.ts:137:3 › Cross-company isolation (Company A cannot see Company B data) › GET /api/inventory-counts/:id with a Company A id → 200 for Company A user (12ms)
+[WebServer] 2:19:13 AM [express] GET /api/inventory-counts/5f72014d-2b56-43ad-bc07-1dbf679336c5/previous-lines 2…
+  ✓  30 [chromium] › tests/inventory-session-isolation.spec.ts:149:3 › Cross-company isolation (Company A cannot see Company B data) › GET /api/inventory-counts/:id/previous-lines with a Company A id → 200 for Company A user (6ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  31 [chromium] › tests/menu-insights-isolation.spec.ts:71:3 › Unauthenticated access is rejected › GET /api/menu-insights → 401 without a session cookie (4ms)
+[WebServer] 2:19:13 AM [express] POST /api/auth/login 200 in 70ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 8ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  32 [chromium] › tests/menu-insights-isolation.spec.ts:88:3 › Company A (Brian's Pizza) — data isolation › returns 200 with the expected response shape (15ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 4ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  33 [chromium] › tests/menu-insights-isolation.spec.ts:109:3 › Company A (Brian's Pizza) — data isolation › menu items count is scoped to Company A (not 0 — CI fixture exists) (8ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 4ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  34 [chromium] › tests/menu-insights-isolation.spec.ts:119:3 › Company A (Brian's Pizza) — data isolation › ingredient list includes the Company A sentinel but NOT the Company B sentinel (10ms)
+[WebServer] 2:19:13 AM [express] POST /api/auth/login 200 in 69ms :: {"user":{"id":"f0a15995-d227-4003-9d03-2896…
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 5ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  35 [chromium] › tests/menu-insights-isolation.spec.ts:154:3 › Company B (The Breakfast Nook) — data isolation › returns 200 with the expected response shape (10ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 3ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  36 [chromium] › tests/menu-insights-isolation.spec.ts:175:3 › Company B (The Breakfast Nook) — data isolation › menu items count is scoped to Company B (not 0 — CI fixture exists) (7ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 3ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  37 [chromium] › tests/menu-insights-isolation.spec.ts:185:3 › Company B (The Breakfast Nook) — data isolation › ingredient list includes the Company B sentinel but NOT the Company A sentinel (8ms)
+[WebServer] 2:19:13 AM [express] POST /api/auth/login 200 in 70ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:13 AM [express] POST /api/auth/login 200 in 70ms :: {"user":{"id":"f0a15995-d227-4003-9d03-2896…
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 8ms :: {"totalMenuItems":1,"departmentBreakdown":…
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 16ms :: {"totalMenuItems":1,"departmentBreakdown"…
+  ✓  38 [chromium] › tests/menu-insights-isolation.spec.ts:224:3 › Bidirectional cross-company scoping › Company A and Company B see disjoint ingredient sets for their CI sentinel values (26ms)
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 4ms :: {"totalMenuItems":1,"departmentBreakdown":…
+[WebServer] 2:19:13 AM [express] GET /api/menu-insights 200 in 5ms :: {"totalMenuItems":1,"departmentBreakdown":…
+  ✓  39 [chromium] › tests/menu-insights-isolation.spec.ts:246:3 › Bidirectional cross-company scoping › each company's uniqueIngredientCount reflects only its own scoped recipes (14ms)
+[WebServer] 2:19:13 AM [express] POST /api/mobile/sessions 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  40 [chromium] › tests/mobile-session-api.spec.ts:53:3 › Mobile sessions endpoint — unauthenticated › POST /api/mobile/sessions without auth → 401 (4ms)
+[WebServer] 2:19:13 AM [express] GET /api/mobile/dashboard 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  41 [chromium] › tests/mobile-session-api.spec.ts:61:3 › Mobile sessions endpoint — unauthenticated › GET /api/mobile/dashboard without auth → 401 (3ms)
+[WebServer] 2:19:13 AM [express] POST /api/mobile/login 200 in 69ms :: {"token":"1UdCXTVS-IhKBVfpA_lv2btsjhCeqUX…
+[WebServer] 2:19:14 AM [express] GET /api/mobile/dashboard 200 in 9ms :: {"role":"company_admin","userName":"adm…
+  ✓  42 [chromium] › tests/mobile-session-api.spec.ts:77:3 › GET /api/mobile/dashboard — authenticated › returns 200 with role, stores, activeSessions, recentSessions fields (15ms)
+[WebServer] 2:19:14 AM [express] GET /api/mobile/dashboard 200 in 6ms :: {"role":"company_admin","userName":"adm…
+  ✓  43 [chromium] › tests/mobile-session-api.spec.ts:98:3 › GET /api/mobile/dashboard — authenticated › stores array items have id and name fields (10ms)
+[WebServer] 2:19:14 AM [express] POST /api/mobile/login 200 in 69ms :: {"token":"-662rOflT2SHNhBOiQ7PmKBpQwizm_S…
+[WebServer] 2:19:14 AM [express] GET /api/mobile/stores 200 in 3ms :: [{"id":"ci-store-brians-001","name":"Brian…
+[WebServer] 2:19:14 AM [express] POST /api/mobile/sessions 201 in 5ms :: {"id":"9795f0b5-c12c-47f2-88af-fc724f76…
+  ✓  44 [chromium] › tests/mobile-session-api.spec.ts:139:3 › POST /api/mobile/sessions — authenticated › creates a session and returns { id, name, storeId, lineCount } (11ms)
+[WebServer] 2:19:14 AM [express] POST /api/mobile/sessions 400 in 1ms :: {"error":"storeId is required"}
+  ✓  45 [chromium] › tests/mobile-session-api.spec.ts:171:3 › POST /api/mobile/sessions — authenticated › missing storeId returns 400 (Bad Request) (6ms)
+[WebServer] 2:19:14 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:14 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:14 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:15 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:15 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:15 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:15 AM [express] POST /api/auth/login 200 in 84ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:15 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:16 AM [express] GET /api/auth/me 200 in 11ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:19:16 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:19:16 AM [express] GET /api/purchase-orders 200 in 15ms :: []
+[WebServer] 2:19:16 AM [express] GET /api/storage-locations 200 in 26ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:19:16 AM [express] GET /api/recipes/missing-ingredients 200 in 22ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:19:16 AM [express] GET /api/receipts 200 in 44ms :: []
+[WebServer] 2:19:16 AM [express] GET /api/transfer-orders 200 in 53ms :: []
+[WebServer] 2:19:16 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 18ms :: {"id":"a…
+[WebServer] 2:19:16 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:16 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:16 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:16 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:19:16 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✓  46 [chromium] › tests/onboarding-invoice-scan.spec.ts:88:3 › Onboarding invoice scan — wizard Step 3 › navigating to /onboarding/setup renders the wizard stepper without crashing (4.1s)
+[WebServer] 2:19:19 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:19 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:19 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:19 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:19 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:19 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:20 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:20 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:20 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:20 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:19:20 AM [express] GET /api/storage-locations 200 in 14ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:19:20 AM [express] GET /api/purchase-orders 200 in 17ms :: []
+[WebServer] 2:19:20 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:19:20 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:19:20 AM [express] GET /api/recipes/missing-ingredients 200 in 20ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:19:20 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:20 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:20 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:20 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 6ms :: {"id":"ad…
+[WebServer] 2:19:20 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:19:21 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:21 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:21 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:21 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 10ms :: {"id":"a…
+[WebServer] 2:19:21 AM [express] GET /api/stores/accessible 200 in 10ms :: [{"id":"ci-store-brians-001","company…
+  ✘  47 [chromium] › tests/onboarding-invoice-scan.spec.ts:104:3 › Onboarding invoice scan — wizard Step 3 › Step 3 upload card is visible when wizard state is at step 3 (10.3s)
+[WebServer] 2:19:31 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:31 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:31 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:32 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:32 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:32 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:32 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:32 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:33 AM [express] GET /api/auth/me 200 in 15ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:19:33 AM [express] GET /api/storage-locations 200 in 16ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:19:33 AM [express] GET /api/purchase-orders 200 in 14ms :: []
+[WebServer] 2:19:33 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:19:33 AM [express] GET /api/transfer-orders 200 in 23ms :: []
+[WebServer] 2:19:33 AM [express] GET /api/stores/accessible 200 in 32ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:19:33 AM [express] GET /api/recipes/missing-ingredients 200 in 20ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:19:33 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:33 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:33 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:33 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 6ms :: {"id":"ad…
+[WebServer] 2:19:33 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:19:35 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:35 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:35 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:35 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 7ms :: {"id":"ad…
+[WebServer] 2:19:35 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  48 [chromium] › tests/onboarding-invoice-scan.spec.ts:104:3 › Onboarding invoice scan — wizard Step 3 › Step 3 upload card is visible when wizard state is at step 3 (retry #1) (12.5s)
+[WebServer] 2:19:44 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:44 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:44 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:45 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:45 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 200 in 11ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:19:45 AM [express] GET /api/storage-locations 200 in 16ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:19:45 AM [express] GET /api/purchase-orders 200 in 24ms :: []
+[WebServer] 2:19:45 AM [express] GET /api/receipts 200 in 23ms :: []
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:45 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:45 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:19:45 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:19:47 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:47 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:47 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:47 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:19:47 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  49 [chromium] › tests/onboarding-invoice-scan.spec.ts:104:3 › Onboarding invoice scan — wizard Step 3 › Step 3 upload card is visible when wizard state is at step 3 (retry #2) (10.5s)
+[WebServer] 2:19:56 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:56 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:56 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:56 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:56 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:19:56 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:19:57 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:19:57 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:57 AM [express] GET /api/storage-locations 200 in 10ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:19:57 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:19:57 AM [express] GET /api/auth/me 200 in 16ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:19:57 AM [express] GET /api/stores/accessible 200 in 18ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:19:57 AM [express] GET /api/receipts 200 in 16ms :: []
+[WebServer] 2:19:57 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:19:57 AM [express] GET /api/recipes/missing-ingredients 200 in 10ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:19:57 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:57 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:57 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:58 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:19:58 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:19:59 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:59 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:59 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:19:59 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 6ms :: {"id":"ad…
+[WebServer] 2:19:59 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  50 [chromium] › tests/onboarding-invoice-scan.spec.ts:118:3 › Onboarding invoice scan — wizard Step 3 › review table renders without crashing when API returns case-price fallback items (11.6s)
+[WebServer] 2:20:09 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:09 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:09 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:10 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:10 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:10 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:10 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:20:10 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:10 AM [express] GET /api/storage-locations 200 in 7ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:20:10 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:10 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:20:10 AM [express] GET /api/receipts 200 in 10ms :: []
+[WebServer] 2:20:10 AM [express] GET /api/purchase-orders 200 in 16ms :: []
+[WebServer] 2:20:10 AM [express] GET /api/transfer-orders 200 in 17ms :: []
+[WebServer] 2:20:10 AM [express] GET /api/recipes/missing-ingredients 200 in 15ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:20:10 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 6ms :: {"id":"ad…
+[WebServer] 2:20:11 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:11 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:11 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:12 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:12 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:20:14 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:14 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:14 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:14 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 7ms :: {"id":"ad…
+[WebServer] 2:20:14 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  51 [chromium] › tests/onboarding-invoice-scan.spec.ts:118:3 › Onboarding invoice scan — wizard Step 3 › review table renders without crashing when API returns case-price fallback items (retry #1) (13.5s)
+[WebServer] 2:20:23 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:23 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:23 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:24 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:24 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:24 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:24 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:20:24 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:24 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:24 AM [express] GET /api/storage-locations 200 in 11ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:20:24 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:20:24 AM [express] GET /api/receipts 200 in 11ms :: []
+[WebServer] 2:20:24 AM [express] GET /api/purchase-orders 200 in 15ms :: []
+[WebServer] 2:20:24 AM [express] GET /api/transfer-orders 200 in 16ms :: []
+[WebServer] 2:20:24 AM [express] GET /api/recipes/missing-ingredients 200 in 11ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:20:25 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:25 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:25 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:25 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:25 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:20:27 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:27 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:27 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:27 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:27 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  52 [chromium] › tests/onboarding-invoice-scan.spec.ts:118:3 › Onboarding invoice scan — wizard Step 3 › review table renders without crashing when API returns case-price fallback items (retry #2) (11.5s)
+[WebServer] 2:20:36 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:36 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:36 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:37 AM [express] GET /api/auth/me 401 in 2ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:37 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:37 AM [express] GET /api/background-images 200 in 7ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:37 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:20:37 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:37 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:37 AM [express] GET /api/storage-locations 200 in 12ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:20:37 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:20:37 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:20:37 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:20:37 AM [express] GET /api/transfer-orders 200 in 17ms :: []
+[WebServer] 2:20:37 AM [express] GET /api/recipes/missing-ingredients 200 in 17ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:20:38 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:38 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:38 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:38 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:38 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:20:39 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:39 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:39 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:39 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:39 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  53 [chromium] › tests/onboarding-invoice-scan.spec.ts:194:3 › Onboarding invoice scan — wizard Step 3 › review table — default actions: zero-price → skip, case-only → create (11.5s)
+[WebServer] 2:20:49 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:49 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:49 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:50 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:50 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:20:50 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:20:50 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:20:50 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:50 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:50 AM [express] GET /api/storage-locations 200 in 11ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:20:50 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:20:50 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:20:50 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:20:50 AM [express] GET /api/recipes/missing-ingredients 200 in 15ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:20:50 AM [express] GET /api/transfer-orders 200 in 29ms :: []
+[WebServer] 2:20:50 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:50 AM [express] GET /api/onboarding/milestones 200 in 40ms :: {"milestones":[{"id":"menu_scan",…
+[WebServer] 2:20:52 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:52 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:52 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:52 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:20:52 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:20:54 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:54 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:54 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:20:54 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 8ms :: {"id":"ad…
+[WebServer] 2:20:54 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  54 [chromium] › tests/onboarding-invoice-scan.spec.ts:194:3 › Onboarding invoice scan — wizard Step 3 › review table — default actions: zero-price → skip, case-only → create (retry #1) (13.5s)
+[WebServer] 2:21:03 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:03 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:03 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:04 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:04 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:04 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:04 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:21:04 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:04 AM [express] GET /api/storage-locations 200 in 7ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:21:04 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:21:04 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:21:04 AM [express] GET /api/purchase-orders 200 in 13ms :: []
+[WebServer] 2:21:04 AM [express] GET /api/receipts 200 in 13ms :: []
+[WebServer] 2:21:04 AM [express] GET /api/transfer-orders 200 in 16ms :: []
+[WebServer] 2:21:04 AM [express] GET /api/recipes/missing-ingredients 200 in 11ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:21:05 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:05 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:05 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:05 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 8ms :: {"id":"ad…
+[WebServer] 2:21:05 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:21:07 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:07 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:07 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:07 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:21:07 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  55 [chromium] › tests/onboarding-invoice-scan.spec.ts:194:3 › Onboarding invoice scan — wizard Step 3 › review table — default actions: zero-price → skip, case-only → create (retry #2) (11.5s)
+[WebServer] 2:21:16 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:16 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:16 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:17 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:17 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:17 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:17 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:21:17 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:17 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:17 AM [express] GET /api/storage-locations 200 in 9ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:21:17 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:21:17 AM [express] GET /api/purchase-orders 200 in 15ms :: []
+[WebServer] 2:21:17 AM [express] GET /api/receipts 200 in 13ms :: []
+[WebServer] 2:21:17 AM [express] GET /api/transfer-orders 200 in 19ms :: []
+[WebServer] 2:21:17 AM [express] GET /api/recipes/missing-ingredients 200 in 15ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:21:18 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:21:19 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+  ✓  56 [chromium] › tests/onboarding-plan-step.spec.ts:133:3 › Onboarding plan step — wizard Step 2 › Step 2 plan card is visible when wizard state is at step 2 and company is on free tier (6.5s)
+[WebServer] 2:21:22 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:22 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:22 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:23 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:23 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:23 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:23 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:21:23 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:23 AM [express] GET /api/storage-locations 200 in 7ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:21:23 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:21:23 AM [express] GET /api/stores/accessible 200 in 19ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:21:23 AM [express] GET /api/purchase-orders 200 in 19ms :: []
+[WebServer] 2:21:23 AM [express] GET /api/receipts 200 in 19ms :: []
+[WebServer] 2:21:23 AM [express] GET /api/transfer-orders 200 in 23ms :: []
+[WebServer] 2:21:23 AM [express] GET /api/recipes/missing-ingredients 200 in 17ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:21:24 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:21:26 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  57 [chromium] › tests/onboarding-plan-step.spec.ts:150:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true triggers polling state then auto-advances to step 3 (17.0s)
+[WebServer] 2:21:41 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:41 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:41 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:43 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:43 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:21:43 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:21:43 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:21:43 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:21:43 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:21:43 AM [express] GET /api/storage-locations 200 in 9ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:21:43 AM [express] GET /api/stores/accessible 200 in 15ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:21:43 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:21:43 AM [express] GET /api/transfer-orders 200 in 19ms :: []
+[WebServer] 2:21:43 AM [express] GET /api/purchase-orders 200 in 20ms :: []
+[WebServer] 2:21:43 AM [express] GET /api/recipes/missing-ingredients 200 in 15ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:21:43 AM [express] GET /api/onboarding/milestones 200 in 11ms :: {"milestones":[{"id":"menu_scan",…
+[WebServer] 2:21:44 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:21:47 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  58 [chromium] › tests/onboarding-plan-step.spec.ts:150:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true triggers polling state then auto-advances to step 3 (retry #1) (20.0s)
+[WebServer] 2:22:02 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:02 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:02 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:03 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:03 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:03 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:03 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:22:03 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:22:03 AM [express] GET /api/auth/me 200 in 13ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:22:03 AM [express] GET /api/stores/accessible 200 in 22ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:22:03 AM [express] GET /api/purchase-orders 200 in 20ms :: []
+[WebServer] 2:22:03 AM [express] GET /api/receipts 200 in 23ms :: []
+[WebServer] 2:22:03 AM [express] GET /api/storage-locations 200 in 27ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:22:03 AM [express] GET /api/transfer-orders 200 in 27ms :: []
+[WebServer] 2:22:03 AM [express] GET /api/recipes/missing-ingredients 200 in 25ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:22:04 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:22:05 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  59 [chromium] › tests/onboarding-plan-step.spec.ts:150:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true triggers polling state then auto-advances to step 3 (retry #2) (17.2s)
+[WebServer] 2:22:20 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:20 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:20 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:21 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:21 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:21 AM [express] GET /api/background-images 200 in 7ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:21 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:22:21 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:22:21 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:22:21 AM [express] GET /api/storage-locations 200 in 12ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:22:21 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:22:21 AM [express] GET /api/purchase-orders 200 in 19ms :: []
+[WebServer] 2:22:21 AM [express] GET /api/receipts 200 in 22ms :: []
+[WebServer] 2:22:21 AM [express] GET /api/transfer-orders 200 in 23ms :: []
+[WebServer] 2:22:21 AM [express] GET /api/recipes/missing-ingredients 200 in 20ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:22:22 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:22:24 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  60 [chromium] › tests/onboarding-plan-step.spec.ts:199:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true shows polling spinner while waiting for subscription webhook (20.3s)
+[WebServer] 2:22:42 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:42 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:42 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:43 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:43 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:22:43 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:22:43 AM [express] POST /api/auth/login 200 in 74ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:22:43 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:22:44 AM [express] GET /api/storage-locations 200 in 9ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:22:44 AM [express] GET /api/auth/me 200 in 11ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:22:44 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:22:44 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/transfer-orders 200 in 22ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/recipes/missing-ingredients 200 in 18ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:22:44 AM [express] GET /api/onboarding/milestones 200 in 6ms :: {"milestones":[{"id":"menu_scan","…
+[WebServer] 2:22:44 AM [express] GET /api/dashboard/reorder-list 200 in 16ms :: {"items":[],"hasParLevels":false}
+[WebServer] 2:22:44 AM [express] GET /api/menu-items 200 in 19ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/purchase-orders/deadlines 200 in 22ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/inventory-items 200 in 33ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/inventory-counts 200 in 37ms :: [{"id":"5f72014d-2b56-43ad-bc07-1dbf67…
+[WebServer] 2:22:44 AM [express] GET /api/tfc/variance/summaries 200 in 37ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/inventory-items/estimated-on-hand 200 in 10ms :: []
+[WebServer] 2:22:44 AM [express] GET /api/waste 200 in 13ms :: []
+[WebServer] 2:22:45 AM [express] GET /api/stores/accessible 200 in 4ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:22:47 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  61 [chromium] › tests/onboarding-plan-step.spec.ts:199:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true shows polling spinner while waiting for subscription webhook (retry #1) (22.5s)
+[WebServer] 2:23:05 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:05 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:05 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:06 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:06 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:06 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:06 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:23:06 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:23:06 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:23:06 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:23:06 AM [express] GET /api/auth/me 200 in 16ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:23:06 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:23:06 AM [express] GET /api/receipts 200 in 14ms :: []
+[WebServer] 2:23:06 AM [express] GET /api/transfer-orders 200 in 17ms :: []
+[WebServer] 2:23:06 AM [express] GET /api/recipes/missing-ingredients 200 in 12ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:23:07 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:23:09 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  62 [chromium] › tests/onboarding-plan-step.spec.ts:199:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true shows polling spinner while waiting for subscription webhook (retry #2) (20.2s)
+[WebServer] 2:23:27 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:27 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:27 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:28 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:28 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:28 AM [express] GET /api/background-images 200 in 8ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:28 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:23:28 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:23:28 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:23:28 AM [express] GET /api/purchase-orders 200 in 10ms :: []
+[WebServer] 2:23:28 AM [express] GET /api/auth/me 200 in 14ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:23:28 AM [express] GET /api/stores/accessible 200 in 15ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:23:28 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:23:28 AM [express] GET /api/transfer-orders 200 in 15ms :: []
+[WebServer] 2:23:28 AM [express] GET /api/recipes/missing-ingredients 200 in 11ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:23:29 AM [express] GET /api/stores/accessible 200 in 10ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:23:30 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  63 [chromium] › tests/onboarding-plan-step.spec.ts:247:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button advances to step 3 when API returns paid tier (14.5s)
+[WebServer] 2:23:43 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:43 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:43 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:44 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:44 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:23:44 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:23:45 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:23:45 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:23:45 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:23:45 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:23:45 AM [express] GET /api/purchase-orders 200 in 11ms :: []
+[WebServer] 2:23:45 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:23:45 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:23:45 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:23:45 AM [express] GET /api/recipes/missing-ingredients 200 in 14ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:23:45 AM [express] GET /api/onboarding/milestones 200 in 11ms :: {"milestones":[{"id":"menu_scan",…
+[WebServer] 2:23:46 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:23:48 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  64 [chromium] › tests/onboarding-plan-step.spec.ts:247:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button advances to step 3 when API returns paid tier (retry #1) (17.2s)
+[WebServer] 2:24:01 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:01 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:01 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:02 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:02 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:02 AM [express] GET /api/background-images 200 in 7ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:02 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:02 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:02 AM [express] GET /api/storage-locations 200 in 7ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:24:02 AM [express] GET /api/auth/me 200 in 11ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:24:02 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:02 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:24:02 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:24:02 AM [express] GET /api/purchase-orders 200 in 20ms :: []
+[WebServer] 2:24:02 AM [express] GET /api/recipes/missing-ingredients 200 in 20ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:24:03 AM [express] GET /api/stores/accessible 200 in 6ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:04 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+  ✘  65 [chromium] › tests/onboarding-plan-step.spec.ts:247:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button advances to step 3 when API returns paid tier (retry #2) (14.4s)
+[WebServer] 2:24:16 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:16 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:16 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:17 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:17 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:17 AM [express] GET /api/background-images 200 in 6ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:17 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:17 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:17 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:17 AM [express] GET /api/receipts 200 in 8ms :: []
+[WebServer] 2:24:17 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:17 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:24:17 AM [express] GET /api/storage-locations 200 in 13ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:24:17 AM [express] GET /api/transfer-orders 200 in 14ms :: []
+[WebServer] 2:24:17 AM [express] GET /api/recipes/missing-ingredients 200 in 15ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:24:18 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:20 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+  ✓  66 [chromium] › tests/onboarding-plan-step.spec.ts:282:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button shows error toast when API still returns free tier (6.6s)
+[WebServer] 2:24:23 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:23 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:23 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:24 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:24 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:24 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:24 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:24 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:24 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:24 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:24:24 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:24 AM [express] GET /api/receipts 200 in 11ms :: []
+[WebServer] 2:24:24 AM [express] GET /api/purchase-orders 200 in 17ms :: []
+[WebServer] 2:24:24 AM [express] GET /api/transfer-orders 200 in 19ms :: []
+[WebServer] 2:24:24 AM [express] GET /api/recipes/missing-ingredients 200 in 12ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:24:25 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:26 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:28 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+  ✓  67 [chromium] › tests/onboarding-plan-step.spec.ts:303:3 › Onboarding plan step — wizard Step 2 › "View Plans & Pricing" button navigates to /choose-plan with returnTo param (6.2s)
+[WebServer] 2:24:29 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:29 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:29 AM [express] GET /api/background-images 200 in 2ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:30 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:30 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:30 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:30 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:30 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:30 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:30 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:24:30 AM [express] GET /api/stores/accessible 200 in 13ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:30 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:24:30 AM [express] GET /api/purchase-orders 200 in 15ms :: []
+[WebServer] 2:24:30 AM [express] GET /api/transfer-orders 200 in 15ms :: []
+[WebServer] 2:24:30 AM [express] GET /api/recipes/missing-ingredients 200 in 10ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:24:31 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:33 AM [express] GET /api/stores/accessible 200 in 5ms :: [{"id":"ci-store-brians-001","companyI…
+  ✓  68 [chromium] › tests/onboarding-plan-step.spec.ts:324:3 › Onboarding plan step — wizard Step 2 › stepper shows step 2 (Plan) as active when wizard is at step 2 (6.2s)
+[WebServer] 2:24:35 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:35 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:35 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:36 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:36 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:36 AM [express] GET /api/storage-locations 200 in 7ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:24:36 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:24:36 AM [express] GET /api/purchase-orders 200 in 9ms :: []
+[WebServer] 2:24:36 AM [express] GET /api/stores/accessible 200 in 12ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:36 AM [express] GET /api/receipts 200 in 9ms :: []
+[WebServer] 2:24:36 AM [express] GET /api/transfer-orders 200 in 14ms :: []
+[WebServer] 2:24:36 AM [express] GET /api/recipes/missing-ingredients 200 in 8ms :: [{"id":"ci-recipe-brians-001…
+[WebServer] 2:24:36 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:36 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:36 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:36 AM [express] GET /api/vendors 200 in 5ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:24:36 AM [express] GET /api/stores/accessible 200 in 7ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:36 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✓  69 [chromium] › tests/order-guide-scan.spec.ts:21:3 › Order Guide Scan — multi-page invoice scan flow › navigates to /order-guide-scan and shows Step 1 configuration UI (1.6s)
+[WebServer] 2:24:37 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:37 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:37 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:37 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:37 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:37 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:37 AM [express] GET /api/storage-locations 200 in 12ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:24:37 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:24:37 AM [express] GET /api/receipts 200 in 11ms :: []
+[WebServer] 2:24:37 AM [express] GET /api/stores/accessible 200 in 19ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:37 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:24:38 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:38 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:38 AM [express] GET /api/auth/me 200 in 6ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:38 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:24:38 AM [express] GET /api/vendors 200 in 8ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:24:38 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+[WebServer] 2:24:38 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 208ms …
+  ✘  70 [chromium] › tests/order-guide-scan.spec.ts:35:3 › Order Guide Scan — multi-page invoice scan flow › loads step 2 when ogId URL param points to an existing order guide (8.4s)
+[WebServer] 2:24:47 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:47 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:47 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:47 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:47 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:47 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:47 AM [express] GET /api/stores/accessible 200 in 10ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:47 AM [express] GET /api/receipts 200 in 7ms :: []
+[WebServer] 2:24:47 AM [express] GET /api/storage-locations 200 in 11ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:24:47 AM [express] GET /api/purchase-orders 200 in 11ms :: []
+[WebServer] 2:24:47 AM [express] GET /api/transfer-orders 200 in 16ms :: []
+[WebServer] 2:24:47 AM [express] GET /api/recipes/missing-ingredients 200 in 14ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:24:48 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:48 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:49 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:49 AM [express] GET /api/stores/accessible 200 in 12ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:49 AM [express] GET /api/vendors 200 in 10ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95e…
+[WebServer] 2:24:49 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 13ms :…
+[WebServer] 2:24:49 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 7ms :: {"id":"ad…
+  ✘  71 [chromium] › tests/order-guide-scan.spec.ts:35:3 › Order Guide Scan — multi-page invoice scan flow › loads step 2 when ogId URL param points to an existing order guide (retry #1) (10.0s)
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:24:58 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:24:58 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:58 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:24:58 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:58 AM [express] GET /api/purchase-orders 200 in 15ms :: []
+[WebServer] 2:24:58 AM [express] GET /api/receipts 200 in 15ms :: []
+[WebServer] 2:24:58 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:58 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:59 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:24:59 AM [express] GET /api/vendors 200 in 9ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:24:59 AM [express] GET /api/stores/accessible 200 in 12ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:24:59 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 14ms :…
+[WebServer] 2:24:59 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✘  72 [chromium] › tests/order-guide-scan.spec.ts:35:3 › Order Guide Scan — multi-page invoice scan flow › loads step 2 when ogId URL param points to an existing order guide (retry #2) (8.6s)
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:08 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:08 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:08 AM [express] GET /api/storage-locations 200 in 8ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:25:08 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:08 AM [express] GET /api/purchase-orders 200 in 14ms :: []
+[WebServer] 2:25:08 AM [express] GET /api/receipts 200 in 10ms :: []
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:08 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:08 AM [express] GET /api/vendors 200 in 8ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:08 AM [express] GET /api/stores/accessible 200 in 10ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:08 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✘  73 [chromium] › tests/order-guide-scan.spec.ts:52:3 › Order Guide Scan — multi-page invoice scan flow › vendor selector and store checkboxes are visible on Step 1 (1.8s)
+[WebServer] 2:25:11 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:11 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:11 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:11 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:11 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:11 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:11 AM [express] GET /api/storage-locations 200 in 10ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:11 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:11 AM [express] GET /api/purchase-orders 200 in 13ms :: []
+[WebServer] 2:25:11 AM [express] GET /api/receipts 200 in 13ms :: []
+[WebServer] 2:25:11 AM [express] GET /api/transfer-orders 200 in 17ms :: []
+[WebServer] 2:25:11 AM [express] GET /api/recipes/missing-ingredients 200 in 14ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:25:11 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 5ms :: {"id":"ad…
+[WebServer] 2:25:12 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:12 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:13 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:13 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:25:13 AM [express] GET /api/vendors 200 in 7ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:13 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 7ms :: {"id":"ad…
+  ✘  74 [chromium] › tests/order-guide-scan.spec.ts:52:3 › Order Guide Scan — multi-page invoice scan flow › vendor selector and store checkboxes are visible on Step 1 (retry #1) (3.4s)
+[WebServer] 2:25:15 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:15 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:15 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:15 AM [express] POST /api/auth/login 200 in 72ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:15 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:15 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:15 AM [express] GET /api/storage-locations 200 in 10ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:15 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:15 AM [express] GET /api/purchase-orders 200 in 14ms :: []
+[WebServer] 2:25:15 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:25:15 AM [express] GET /api/transfer-orders 200 in 24ms :: []
+[WebServer] 2:25:16 AM [express] GET /api/auth/me 200 in 5ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:16 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:16 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:16 AM [express] GET /api/vendors 200 in 6ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:16 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:25:16 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✘  75 [chromium] › tests/order-guide-scan.spec.ts:52:3 › Order Guide Scan — multi-page invoice scan flow › vendor selector and store checkboxes are visible on Step 1 (retry #2) (1.7s)
+[WebServer] 2:25:18 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:18 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:18 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:18 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:18 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:18 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:18 AM [express] GET /api/storage-locations 200 in 9ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:25:18 AM [express] GET /api/purchase-orders 200 in 11ms :: []
+[WebServer] 2:25:18 AM [express] GET /api/receipts 200 in 11ms :: []
+[WebServer] 2:25:18 AM [express] GET /api/transfer-orders 200 in 20ms :: []
+[WebServer] 2:25:18 AM [express] GET /api/stores/accessible 200 in 24ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:19 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:19 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:19 AM [express] GET /api/vendors 200 in 6ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:19 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:19 AM [express] GET /api/stores/accessible 200 in 9ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:25:19 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 10ms :…
+[WebServer] 2:25:19 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✓  76 [chromium] › tests/order-guide-scan.spec.ts:67:3 › Order Guide Scan — multi-page invoice scan flow › "Add Another Page" button reveals upload panel, Cancel collapses it (3.5s)
+[WebServer] 2:25:21 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:21 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:21 AM [express] GET /api/background-images 200 in 9ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:22 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:22 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:22 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:22 AM [express] GET /api/stores/accessible 200 in 11ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:22 AM [express] GET /api/storage-locations 200 in 11ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:22 AM [express] GET /api/receipts 200 in 9ms :: []
+[WebServer] 2:25:22 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:25:22 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:22 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:22 AM [express] GET /api/auth/me 200 in 8ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:22 AM [express] GET /api/vendors 200 in 5ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:22 AM [express] GET /api/stores/accessible 200 in 11ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:22 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 9ms ::…
+[WebServer] 2:25:22 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✓  77 [chromium] › tests/order-guide-scan.spec.ts:85:3 › Order Guide Scan — multi-page invoice scan flow › "Review & Commit" button routes to the correct order guide review URL (4.4s)
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:26 AM [express] GET /api/background-images 200 in 5ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:26 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:26 AM [express] GET /api/storage-locations 200 in 9ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab355…
+[WebServer] 2:25:26 AM [express] GET /api/purchase-orders 200 in 11ms :: []
+[WebServer] 2:25:26 AM [express] GET /api/stores/accessible 200 in 14ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:26 AM [express] GET /api/receipts 200 in 11ms :: []
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:26 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:27 AM [express] GET /api/vendors 200 in 10ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95e…
+[WebServer] 2:25:27 AM [express] GET /api/auth/me 200 in 15ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:25:27 AM [express] GET /api/stores/accessible 200 in 17ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:27 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 19ms :…
+[WebServer] 2:25:27 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✘  78 [chromium] › tests/order-guide-scan.spec.ts:95:3 › Order Guide Scan — multi-page invoice scan flow › single-page scan shows no page-break rows; "Add Another Page" panel is available for appending (3.4s)
+[WebServer] 2:25:31 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:31 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:31 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:31 AM [express] POST /api/auth/login 200 in 73ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:31 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:31 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:31 AM [express] GET /api/storage-locations 200 in 10ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:31 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:25:31 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:25:31 AM [express] GET /api/stores/accessible 200 in 18ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:31 AM [express] GET /api/transfer-orders 200 in 18ms :: []
+[WebServer] 2:25:31 AM [express] GET /api/recipes/missing-ingredients 200 in 30ms :: [{"id":"ci-recipe-brians-00…
+[WebServer] 2:25:32 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 18ms :: {"id":"a…
+[WebServer] 2:25:33 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:33 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:33 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:33 AM [express] GET /api/stores/accessible 200 in 8ms :: [{"id":"ci-store-brians-001","companyI…
+[WebServer] 2:25:33 AM [express] GET /api/vendors 200 in 6ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:33 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 9ms ::…
+[WebServer] 2:25:33 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 10ms :: {"id":"a…
+  ✘  79 [chromium] › tests/order-guide-scan.spec.ts:95:3 › Order Guide Scan — multi-page invoice scan flow › single-page scan shows no page-break rows; "Add Another Page" panel is available for appending (retry #1) (5.1s)
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:37 AM [express] GET /api/background-images 200 in 4ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:37 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 200 in 13ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","e…
+[WebServer] 2:25:37 AM [express] GET /api/storage-locations 200 in 11ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:37 AM [express] GET /api/stores/accessible 200 in 16ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:37 AM [express] GET /api/purchase-orders 200 in 19ms :: []
+[WebServer] 2:25:37 AM [express] GET /api/receipts 200 in 18ms :: []
+[WebServer] 2:25:37 AM [express] GET /api/transfer-orders 200 in 20ms :: []
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 200 in 4ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:37 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:38 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:38 AM [express] GET /api/vendors 200 in 7ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:38 AM [express] GET /api/stores/accessible 200 in 12ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:38 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 13ms :…
+[WebServer] 2:25:38 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✘  80 [chromium] › tests/order-guide-scan.spec.ts:95:3 › Order Guide Scan — multi-page invoice scan flow › single-page scan shows no page-break rows; "Add Another Page" panel is available for appending (retry #2) (3.5s)
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:42 AM [express] GET /api/background-images 200 in 3ms :: {"images":[{"id":"014252e9-d984-4eab-b…
+[WebServer] 2:25:42 AM [express] POST /api/auth/login 200 in 71ms :: {"user":{"id":"dab49129-f8c6-4afd-9920-6e58…
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:42 AM [express] GET /api/storage-locations 200 in 10ms :: [{"id":"2902b7e0-2bef-463c-9491-8ab35…
+[WebServer] 2:25:42 AM [express] GET /api/purchase-orders 200 in 12ms :: []
+[WebServer] 2:25:42 AM [express] GET /api/receipts 200 in 12ms :: []
+[WebServer] 2:25:42 AM [express] GET /api/stores/accessible 200 in 20ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 200 in 3ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 200 in 2ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:42 AM [express] GET /api/auth/me 200 in 7ms :: {"id":"dab49129-f8c6-4afd-9920-6e58737e5ee6","em…
+[WebServer] 2:25:42 AM [express] GET /api/vendors 200 in 6ms :: [{"id":"ci-vendor-sysco-001","companyId":"ad95ec…
+[WebServer] 2:25:42 AM [express] GET /api/stores/accessible 200 in 18ms :: [{"id":"ci-store-brians-001","company…
+[WebServer] 2:25:42 AM [express] GET /api/order-guides/3d91e5f0-71c6-457a-88cb-17353ae49e00/review 200 in 19ms :…
+[WebServer] 2:25:42 AM [express] GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 4ms :: {"id":"ad…
+  ✓  81 [chromium] › tests/order-guide-scan.spec.ts:117:3 › Order Guide Scan — multi-page invoice scan flow › "Start Over" button resets page back to Step 1 and clears ogId from URL (4.1s)
+[WebServer] 2:25:46 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:46 AM [express] GET /api/units 200 in 3ms :: [{"id":"1c914ac9-4730-4798-ac60-34203e46ff79","nam…
+[WebServer] 2:25:46 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  82 [chromium] › tests/recipe-completion-quick-actions.spec.ts:234:3 › "Complete" button visibility on desktop recipe rows › Complete button is visible on a placeholder recipe row (desktop) (1.1s)
+[WebServer] 2:25:47 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:47 AM [express] GET /api/units 200 in 4ms :: [{"id":"1c914ac9-4730-4798-ac60-34203e46ff79","nam…
+[WebServer] 2:25:47 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  83 [chromium] › tests/recipe-completion-quick-actions.spec.ts:241:3 › "Complete" button visibility on desktop recipe rows › Complete button is NOT present on a regular (non-placeholder) recipe row (1.0s)
+[WebServer] 2:25:48 AM [express] GET /api/stores/accessible 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:48 AM [express] GET /api/units 200 in 3ms :: [{"id":"1c914ac9-4730-4798-ac60-34203e46ff79","nam…
+[WebServer] 2:25:48 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  84 [chromium] › tests/recipe-completion-quick-actions.spec.ts:253:3 › "Complete" button visibility on desktop recipe rows › "Needs completion" badge appears on placeholder rows but not on regular rows (1.0s)
+[WebServer] 2:25:49 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:49 AM [express] GET /api/units 200 in 11ms :: [{"id":"1c914ac9-4730-4798-ac60-34203e46ff79","na…
+[WebServer] 2:25:49 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  85 [chromium] › tests/recipe-completion-quick-actions.spec.ts:268:3 › "Complete Recipe" in mobile dropdown › Complete Recipe appears in the mobile action dropdown for a placeholder recipe (1.1s)
+[WebServer] 2:25:50 AM [express] GET /api/stores/accessible 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:50 AM [express] GET /api/units 200 in 7ms :: [{"id":"1c914ac9-4730-4798-ac60-34203e46ff79","nam…
+[WebServer] 2:25:50 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  86 [chromium] › tests/recipe-completion-quick-actions.spec.ts:298:3 › "Complete Recipe" in mobile dropdown › Complete Recipe does NOT appear in the mobile dropdown for a regular recipe (1.1s)
+[WebServer] 2:25:51 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:51 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+  ✓  87 [chromium] › tests/recipe-completion-quick-actions.spec.ts:324:3 › "Complete all" button launches the completion queue › clicking Complete all navigates to the first placeholder recipe and shows the queue banner (1.2s)
+[WebServer] 2:25:52 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  88 [chromium] › tests/recipe-completion-quick-actions.spec.ts:368:3 › "Complete all" button launches the completion queue › queue banner shows correct progress text on the first recipe (1 of N) (1.0s)
+[WebServer] 2:25:53 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:53 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  89 [chromium] › tests/recipe-completion-quick-actions.spec.ts:402:3 › Queue progress advances when Skip is clicked › clicking Skip from position 1 of 2 navigates to the second recipe showing 2 of 2 (1.1s)
+[WebServer] 2:25:54 AM [express] GET /api/companies/company-test-001 401 in 0ms :: {"error":"Not authenticated"}
+[WebServer] 2:25:55 AM [express] GET /api/companies/company-test-001 401 in 1ms :: {"error":"Not authenticated"}
+  ✓  90 [chromium] › tests/recipe-completion-quick-actions.spec.ts:448:3 › Queue progress advances when Skip is clicked › queue banner is NOT shown when queueTotal is absent from the URL (1.1s)
+
+
+  1) [chromium] › tests/onboarding-invoice-scan.spec.ts:104:3 › Onboarding invoice scan — wizard Step 3 › Step 3 upload card is visible when wizard state is at step 3 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      111 |
+      112 |     await expect(page.getByTestId('wizard-stepper')).toBeVisible({ timeout: 5000 });
+    > 113 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      114 |     await expect(page.getByTestId('button-upload-invoice')).toBeVisible();
+      115 |     await expect(page.getByText('Upload a vendor invoice')).toBeVisible();
+      116 |   });
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:113:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-92736-n-wizard-state-is-at-step-3-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      111 |
+      112 |     await expect(page.getByTestId('wizard-stepper')).toBeVisible({ timeout: 5000 });
+    > 113 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      114 |     await expect(page.getByTestId('button-upload-invoice')).toBeVisible();
+      115 |     await expect(page.getByText('Upload a vendor invoice')).toBeVisible();
+      116 |   });
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:113:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-92736-n-wizard-state-is-at-step-3-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-invoice-scan-On-92736-n-wizard-state-is-at-step-3-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-invoice-scan-On-92736-n-wizard-state-is-at-step-3-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      111 |
+      112 |     await expect(page.getByTestId('wizard-stepper')).toBeVisible({ timeout: 5000 });
+    > 113 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      114 |     await expect(page.getByTestId('button-upload-invoice')).toBeVisible();
+      115 |     await expect(page.getByText('Upload a vendor invoice')).toBeVisible();
+      116 |   });
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:113:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-92736-n-wizard-state-is-at-step-3-chromium-retry2/error-context.md
+
+  2) [chromium] › tests/onboarding-invoice-scan.spec.ts:118:3 › Onboarding invoice scan — wizard Step 3 › review table renders without crashing when API returns case-price fallback items 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      160 |     await page.waitForTimeout(2000);
+      161 |
+    > 162 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      163 |
+      164 |     // Intercept the file chooser so we can provide a dummy file without blocking
+      165 |     const [fileChooser] = await Promise.all([
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:162:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-f964c-s-case-price-fallback-items-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      160 |     await page.waitForTimeout(2000);
+      161 |
+    > 162 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      163 |
+      164 |     // Intercept the file chooser so we can provide a dummy file without blocking
+      165 |     const [fileChooser] = await Promise.all([
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:162:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-f964c-s-case-price-fallback-items-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-invoice-scan-On-f964c-s-case-price-fallback-items-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-invoice-scan-On-f964c-s-case-price-fallback-items-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      160 |     await page.waitForTimeout(2000);
+      161 |
+    > 162 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      163 |
+      164 |     // Intercept the file chooser so we can provide a dummy file without blocking
+      165 |     const [fileChooser] = await Promise.all([
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:162:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-f964c-s-case-price-fallback-items-chromium-retry2/error-context.md
+
+  3) [chromium] › tests/onboarding-invoice-scan.spec.ts:194:3 › Onboarding invoice scan — wizard Step 3 › review table — default actions: zero-price → skip, case-only → create 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      225 |     await page.waitForTimeout(2000);
+      226 |
+    > 227 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      228 |
+      229 |     const [fileChooser] = await Promise.all([
+      230 |       page.waitForEvent('filechooser'),
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:227:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-ed905-e-→-skip-case-only-→-create-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      225 |     await page.waitForTimeout(2000);
+      226 |
+    > 227 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      228 |
+      229 |     const [fileChooser] = await Promise.all([
+      230 |       page.waitForEvent('filechooser'),
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:227:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-ed905-e-→-skip-case-only-→-create-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-invoice-scan-On-ed905-e-→-skip-case-only-→-create-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-invoice-scan-On-ed905-e-→-skip-case-only-→-create-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      225 |     await page.waitForTimeout(2000);
+      226 |
+    > 227 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 5000 });
+          |                                                                ^
+      228 |
+      229 |     const [fileChooser] = await Promise.all([
+      230 |       page.waitForEvent('filechooser'),
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-invoice-scan.spec.ts:227:64
+
+    Error Context: test-results/onboarding-invoice-scan-On-ed905-e-→-skip-case-only-→-create-chromium-retry2/error-context.md
+
+  4) [chromium] › tests/onboarding-plan-step.spec.ts:150:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true triggers polling state then auto-advances to step 3 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+
+
+      194 |     await expect(
+      195 |       page.getByTestId('card-step-invoice-upload').or(page.getByTestId('card-step-plan-active'))
+    > 196 |     ).toBeVisible({ timeout: 12000 });
+          |       ^
+      197 |   });
+      198 |
+      199 |   test('?planActivated=true shows polling spinner while waiting for subscription webhook', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:196:7
+
+    Error Context: test-results/onboarding-plan-step-Onboa-57790-hen-auto-advances-to-step-3-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+
+
+      194 |     await expect(
+      195 |       page.getByTestId('card-step-invoice-upload').or(page.getByTestId('card-step-plan-active'))
+    > 196 |     ).toBeVisible({ timeout: 12000 });
+          |       ^
+      197 |   });
+      198 |
+      199 |   test('?planActivated=true shows polling spinner while waiting for subscription webhook', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:196:7
+
+    Error Context: test-results/onboarding-plan-step-Onboa-57790-hen-auto-advances-to-step-3-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-plan-step-Onboa-57790-hen-auto-advances-to-step-3-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-plan-step-Onboa-57790-hen-auto-advances-to-step-3-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+    Expected: visible
+    Timeout: 12000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 12000ms
+      - waiting for getByTestId('card-step-invoice-upload').or(getByTestId('card-step-plan-active'))
+
+
+      194 |     await expect(
+      195 |       page.getByTestId('card-step-invoice-upload').or(page.getByTestId('card-step-plan-active'))
+    > 196 |     ).toBeVisible({ timeout: 12000 });
+          |       ^
+      197 |   });
+      198 |
+      199 |   test('?planActivated=true shows polling spinner while waiting for subscription webhook', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:196:7
+
+    Error Context: test-results/onboarding-plan-step-Onboa-57790-hen-auto-advances-to-step-3-chromium-retry2/error-context.md
+
+  5) [chromium] › tests/onboarding-plan-step.spec.ts:199:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true shows polling spinner while waiting for subscription webhook 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 15000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      242 |
+      243 |     // After polling detects a paid tier, wizard should advance to step 3
+    > 244 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 15000 });
+          |                                                                ^
+      245 |   });
+      246 |
+      247 |   test('manual "I\'ve selected a plan" button advances to step 3 when API returns paid tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:244:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-1513c-ng-for-subscription-webhook-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 15000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      242 |
+      243 |     // After polling detects a paid tier, wizard should advance to step 3
+    > 244 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 15000 });
+          |                                                                ^
+      245 |   });
+      246 |
+      247 |   test('manual "I\'ve selected a plan" button advances to step 3 when API returns paid tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:244:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-1513c-ng-for-subscription-webhook-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-plan-step-Onboa-1513c-ng-for-subscription-webhook-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-plan-step-Onboa-1513c-ng-for-subscription-webhook-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 15000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      242 |
+      243 |     // After polling detects a paid tier, wizard should advance to step 3
+    > 244 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 15000 });
+          |                                                                ^
+      245 |   });
+      246 |
+      247 |   test('manual "I\'ve selected a plan" button advances to step 3 when API returns paid tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:244:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-1513c-ng-for-subscription-webhook-chromium-retry2/error-context.md
+
+  6) [chromium] › tests/onboarding-plan-step.spec.ts:247:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button advances to step 3 when API returns paid tier 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 8000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 8000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      277 |
+      278 |     // Should advance to step 3 — invoice upload card
+    > 279 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 8000 });
+          |                                                                ^
+      280 |   });
+      281 |
+      282 |   test('manual "I\'ve selected a plan" button shows error toast when API still returns free tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:279:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-422b0--when-API-returns-paid-tier-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 8000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 8000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      277 |
+      278 |     // Should advance to step 3 — invoice upload card
+    > 279 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 8000 });
+          |                                                                ^
+      280 |   });
+      281 |
+      282 |   test('manual "I\'ve selected a plan" button shows error toast when API still returns free tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:279:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-422b0--when-API-returns-paid-tier-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/onboarding-plan-step-Onboa-422b0--when-API-returns-paid-tier-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/onboarding-plan-step-Onboa-422b0--when-API-returns-paid-tier-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('card-step-invoice-upload')
+    Expected: visible
+    Timeout: 8000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 8000ms
+      - waiting for getByTestId('card-step-invoice-upload')
+
+
+      277 |
+      278 |     // Should advance to step 3 — invoice upload card
+    > 279 |     await expect(page.getByTestId('card-step-invoice-upload')).toBeVisible({ timeout: 8000 });
+          |                                                                ^
+      280 |   });
+      281 |
+      282 |   test('manual "I\'ve selected a plan" button shows error toast when API still returns free tier', async ({ page }) => {
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:279:64
+
+    Error Context: test-results/onboarding-plan-step-Onboa-422b0--when-API-returns-paid-tier-chromium-retry2/error-context.md
+
+  7) [chromium] › tests/order-guide-scan.spec.ts:35:3 › Order Guide Scan — multi-page invoice scan flow › loads step 2 when ogId URL param points to an existing order guide 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('row-line-0')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('row-line-0')
+
+
+      43 |
+      44 |     const firstRow = page.getByTestId('row-line-0');
+    > 45 |     await expect(firstRow).toBeVisible();
+         |                            ^
+      46 |     const secondRow = page.getByTestId('row-line-1');
+      47 |     await expect(secondRow).toBeVisible();
+      48 |
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:45:28
+
+    Error Context: test-results/order-guide-scan-Order-Gui-019e6--to-an-existing-order-guide-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('row-line-0')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('row-line-0')
+
+
+      43 |
+      44 |     const firstRow = page.getByTestId('row-line-0');
+    > 45 |     await expect(firstRow).toBeVisible();
+         |                            ^
+      46 |     const secondRow = page.getByTestId('row-line-1');
+      47 |     await expect(secondRow).toBeVisible();
+      48 |
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:45:28
+
+    Error Context: test-results/order-guide-scan-Order-Gui-019e6--to-an-existing-order-guide-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/order-guide-scan-Order-Gui-019e6--to-an-existing-order-guide-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/order-guide-scan-Order-Gui-019e6--to-an-existing-order-guide-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('row-line-0')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByTestId('row-line-0')
+
+
+      43 |
+      44 |     const firstRow = page.getByTestId('row-line-0');
+    > 45 |     await expect(firstRow).toBeVisible();
+         |                            ^
+      46 |     const secondRow = page.getByTestId('row-line-1');
+      47 |     await expect(secondRow).toBeVisible();
+      48 |
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:45:28
+
+    Error Context: test-results/order-guide-scan-Order-Gui-019e6--to-an-existing-order-guide-chromium-retry2/error-context.md
+
+  8) [chromium] › tests/order-guide-scan.spec.ts:52:3 › Order Guide Scan — multi-page invoice scan flow › vendor selector and store checkboxes are visible on Step 1 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('No vendor / Unknown')
+    Expected: visible
+    Error: strict mode violation: getByText('No vendor / Unknown') resolved to 2 elements:
+        1) <span>No vendor / Unknown</span> aka getByTestId('select-vendor')
+        2) <span id="radix-:rm:">No vendor / Unknown</span> aka getByLabel('No vendor / Unknown').getByText('No vendor / Unknown')
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('No vendor / Unknown')
+
+
+      57 |
+      58 |     await vendorSelector.click();
+    > 59 |     await expect(page.getByText('No vendor / Unknown')).toBeVisible();
+         |                                                         ^
+      60 |     await page.keyboard.press('Escape');
+      61 |
+      62 |     const storeCheckboxes = page.locator('[data-testid^="checkbox-store-"]');
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:59:57
+
+    Error Context: test-results/order-guide-scan-Order-Gui-460f0-boxes-are-visible-on-Step-1-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('No vendor / Unknown')
+    Expected: visible
+    Error: strict mode violation: getByText('No vendor / Unknown') resolved to 2 elements:
+        1) <span>No vendor / Unknown</span> aka getByTestId('select-vendor')
+        2) <span id="radix-:rm:">No vendor / Unknown</span> aka getByLabel('No vendor / Unknown').getByText('No vendor / Unknown')
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('No vendor / Unknown')
+
+
+      57 |
+      58 |     await vendorSelector.click();
+    > 59 |     await expect(page.getByText('No vendor / Unknown')).toBeVisible();
+         |                                                         ^
+      60 |     await page.keyboard.press('Escape');
+      61 |
+      62 |     const storeCheckboxes = page.locator('[data-testid^="checkbox-store-"]');
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:59:57
+
+    Error Context: test-results/order-guide-scan-Order-Gui-460f0-boxes-are-visible-on-Step-1-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/order-guide-scan-Order-Gui-460f0-boxes-are-visible-on-Step-1-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/order-guide-scan-Order-Gui-460f0-boxes-are-visible-on-Step-1-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('No vendor / Unknown')
+    Expected: visible
+    Error: strict mode violation: getByText('No vendor / Unknown') resolved to 2 elements:
+        1) <span>No vendor / Unknown</span> aka getByTestId('select-vendor')
+        2) <span id="radix-:rm:">No vendor / Unknown</span> aka getByLabel('No vendor / Unknown').getByText('No vendor / Unknown')
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('No vendor / Unknown')
+
+
+      57 |
+      58 |     await vendorSelector.click();
+    > 59 |     await expect(page.getByText('No vendor / Unknown')).toBeVisible();
+         |                                                         ^
+      60 |     await page.keyboard.press('Escape');
+      61 |
+      62 |     const storeCheckboxes = page.locator('[data-testid^="checkbox-store-"]');
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:59:57
+
+    Error Context: test-results/order-guide-scan-Order-Gui-460f0-boxes-are-visible-on-Step-1-chromium-retry2/error-context.md
+
+  9) [chromium] › tests/order-guide-scan.spec.ts:95:3 › Order Guide Scan — multi-page invoice scan flow › single-page scan shows no page-break rows; "Add Another Page" panel is available for appending 
+
+    Error: expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      104 |     const lineRows = page.locator('[data-testid^="row-line-"]');
+      105 |     const rowCount = await lineRows.count();
+    > 106 |     expect(rowCount).toBeGreaterThan(0);
+          |                      ^
+      107 |     await expect(page.getByTestId('row-line-0')).toBeVisible();
+      108 |
+      109 |     // The append flow must be reachable: clicking "Add Another Page" shows
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:106:22
+
+    Error Context: test-results/order-guide-scan-Order-Gui-bb0c0--is-available-for-appending-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      104 |     const lineRows = page.locator('[data-testid^="row-line-"]');
+      105 |     const rowCount = await lineRows.count();
+    > 106 |     expect(rowCount).toBeGreaterThan(0);
+          |                      ^
+      107 |     await expect(page.getByTestId('row-line-0')).toBeVisible();
+      108 |
+      109 |     // The append flow must be reachable: clicking "Add Another Page" shows
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:106:22
+
+    Error Context: test-results/order-guide-scan-Order-Gui-bb0c0--is-available-for-appending-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/order-guide-scan-Order-Gui-bb0c0--is-available-for-appending-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/order-guide-scan-Order-Gui-bb0c0--is-available-for-appending-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      104 |     const lineRows = page.locator('[data-testid^="row-line-"]');
+      105 |     const rowCount = await lineRows.count();
+    > 106 |     expect(rowCount).toBeGreaterThan(0);
+          |                      ^
+      107 |     await expect(page.getByTestId('row-line-0')).toBeVisible();
+      108 |
+      109 |     // The append flow must be reachable: clicking "Add Another Page" shows
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/order-guide-scan.spec.ts:106:22
+
+    Error Context: test-results/order-guide-scan-Order-Gui-bb0c0--is-available-for-appending-chromium-retry2/error-context.md
+
+  9 failed
+    [chromium] › tests/onboarding-invoice-scan.spec.ts:104:3 › Onboarding invoice scan — wizard Step 3 › Step 3 upload card is visible when wizard state is at step 3 
+    [chromium] › tests/onboarding-invoice-scan.spec.ts:118:3 › Onboarding invoice scan — wizard Step 3 › review table renders without crashing when API returns case-price fallback items 
+    [chromium] › tests/onboarding-invoice-scan.spec.ts:194:3 › Onboarding invoice scan — wizard Step 3 › review table — default actions: zero-price → skip, case-only → create 
+    [chromium] › tests/onboarding-plan-step.spec.ts:150:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true triggers polling state then auto-advances to step 3 
+    [chromium] › tests/onboarding-plan-step.spec.ts:199:3 › Onboarding plan step — wizard Step 2 › ?planActivated=true shows polling spinner while waiting for subscription webhook 
+    [chromium] › tests/onboarding-plan-step.spec.ts:247:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button advances to step 3 when API returns paid tier 
+    [chromium] › tests/order-guide-scan.spec.ts:35:3 › Order Guide Scan — multi-page invoice scan flow › loads step 2 when ogId URL param points to an existing order guide 
+    [chromium] › tests/order-guide-scan.spec.ts:52:3 › Order Guide Scan — multi-page invoice scan flow › vendor selector and store checkboxes are visible on Step 1 
+    [chromium] › tests/order-guide-scan.spec.ts:95:3 › Order Guide Scan — multi-page invoice scan flow › single-page scan shows no page-break rows; "Add Another Page" panel is available for appending 
+  4 skipped
+  59 passed (7.1m)
+Error: Process completed with exit code 1.
+1s
+1s
+0s
+1s
+0s
+0s

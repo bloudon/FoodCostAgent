@@ -1,0 +1,55 @@
+Yes. That search result still presents FnB Cost Pro as conventional inventory and recipe-costing software. It should reflect the new chef-first positioning.
+
+### Recommended page title
+
+**FnB Cost Pro | Culinary Operations Intelligence for Chefs**
+
+### Recommended meta description
+
+**Turn recipes, photos, invoices, inventory and vendor data into accurate food costs, purchasing intelligence and predictive orders—with less manual entry.**
+
+That keeps the important searchable terms while communicating the differentiation.
+
+### Slightly more operational alternative
+
+**FnB Cost Pro | Recipe Costing, Inventory & Predictive Ordering**
+
+**Built for the way chefs work. Capture recipes, inventory and vendor pricing from photos and existing files, then cost dishes, compare vendors and predict orders.**
+
+My preference is the first title with the second description adjusted slightly:
+
+> **FnB Cost Pro | Culinary Operations Intelligence for Chefs**
+> **Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders.**
+
+Replit should update all of the following, not only the visible homepage copy:
+
+```html
+<title>FnB Cost Pro | Culinary Operations Intelligence for Chefs</title>
+
+<meta
+  name="description"
+  content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders."
+/>
+
+<meta
+  property="og:title"
+  content="FnB Cost Pro | Culinary Operations Intelligence for Chefs"
+/>
+
+<meta
+  property="og:description"
+  content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders."
+/>
+
+<meta
+  name="twitter:title"
+  content="FnB Cost Pro | Culinary Operations Intelligence for Chefs"
+/>
+
+<meta
+  name="twitter:description"
+  content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders."
+/>
+```
+
+Also update any `SoftwareApplication`, `Organization`, or `WebSite` structured-data descriptions containing the old “F&B Inventory & Recipe Costing” language. Google may continue displaying the old snippet temporarily after deployment until it recrawls the page.

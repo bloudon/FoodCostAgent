@@ -1,0 +1,1294 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useParams, Link, useLocation } from "wouter";
+import { useState, useRef, useEffect } from "react";
+import { ArrowLeft, Save, PackageCheck, Search, RotateCcw, Package, Hash, FileCheck, AlertTriangle, CheckCircle2, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatUnitName, formatDateString } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { useTier } from "@/hooks/use-tier";
+
+type PurchaseOrderDetail = {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  status: string;
+  createdAt: string;
+  expectedDate: string | null;
+  lines: POLineDisplay[];
+};
+
+type POLineDisplay = {
+  id: string;
+  vendorItemId: string;
+  inventoryItemId?: string;
+  itemName: string;
+  vendorSku: string | null;
+  orderedQty: number;
+  caseQuantity: number | null;
+  unitId: string;
+  unitName: string;
+  pricePerUnit: number;
+  caseSize: number;
+  lineTotal: number;
+};
+
+type Category = {
+  id: string;
+  name: string;
+};
+
+type DraftReceipt = {
+  id: string;
+  purchaseOrderId: string;
+  status: string;
+  storageLocationId: string | null;
+  receivedAt: string;
+  receiveByUnit: number; // 1 = unit mode, 0 = case mode
+};
+
+type ReceiptLine = {
+  id: string;
+  receiptId: string;
+  vendorItemId: string;
+  receivedQty: number;
+  unitId: string;
+  priceEach: number;
+  unitName?: string | null;
+};
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  categoryId: string | null;
+  pluSku: string;
+  unitId: string;
+  barcode: string | null;
+  active: number;
+  pricePerUnit: number;
+  caseSize: number;
+  storageLocationId: string;
+  yieldPercent: number | null;
+  parLevel: number | null;
+  reorderLevel: number | null;
+};
+
+export default function ReceivingDetail() {
+  const { poId } = useParams<{ poId: string }>();
+  const [location, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { hasFeature } = useTier();
+  
+  // Get receiptId from query parameter if present
+  const searchParams = new URLSearchParams(location.split('?')[1]);
+  const receiptIdParam = searchParams.get('receiptId');
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [draftReceiptId, setDraftReceiptId] = useState<string | null>(null);
+  const [receiveByUnit, setReceiveByUnit] = useState<boolean>(false);
+  const [isCompletingReceiving, setIsCompletingReceiving] = useState(false);
+  
+  // Track received quantities for each PO line (in units, not cases)
+  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+  const [editedPrices, setEditedPrices] = useState<Record<string, number>>({});
+  const [savedLines, setSavedLines] = useState<Set<string>>(new Set());
+  const [editingLines, setEditingLines] = useState<Set<string>>(new Set());
+  const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // Item editing dialog state
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+    parLevel: "",
+    reorderLevel: "",
+  });
+
+  // Reconcile form state
+  const [reconcileForm, setReconcileForm] = useState({
+    invoiceNumber: "",
+    invoiceDate: "",
+    invoiceTotal: "",
+    taxAmount: "",
+    initials: "",
+    notes: "",
+  });
+
+  const { data: purchaseOrder, isLoading: loadingOrder} = useQuery<PurchaseOrderDetail>({
+    queryKey: [`/api/purchase-orders/${poId}`],
+  });
+
+
+  // Build consistent query key for receipt data (used for both fetch and invalidation)
+  const receiptQueryKey = receiptIdParam 
+    ? [`/api/receipts/draft/${poId}?receiptId=${receiptIdParam}`] 
+    : [`/api/receipts/draft/${poId}`];
+
+  const { data: draftReceiptData } = useQuery<{ receipt: DraftReceipt; lines: ReceiptLine[] }>({
+    queryKey: receiptQueryKey,
+    enabled: !!poId,
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  // QB connection status + existing reconciliation
+  const { data: qbStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/quickbooks/status"],
+    retry: false,
+  });
+
+  const { data: reconciliationData, refetch: refetchReconciliation } = useQuery<{ data: any; syncLog: any }>({
+    queryKey: [`/api/purchase-orders/${poId}/reconciliation`],
+    enabled: !!poId,
+  });
+
+  // Load draft receipt data when available
+  useEffect(() => {
+    if (draftReceiptData?.receipt && purchaseOrder?.lines) {
+      setDraftReceiptId(draftReceiptData.receipt.id);
+      // Initialize the receive-by-unit mode from the persisted receipt value
+      setReceiveByUnit(draftReceiptData.receipt.receiveByUnit === 1);
+
+      // Build complete received quantities and prices objects
+      const allQtys: Record<string, number> = {};
+      const allPrices: Record<string, number> = {};
+      const savedSet = new Set<string>();
+      
+      // First, load saved receipt lines
+      draftReceiptData.lines.forEach(line => {
+        // Match by vendorItemId to find the corresponding PO line
+        const poLine = purchaseOrder.lines.find(pl => pl.vendorItemId === line.vendorItemId);
+        if (poLine) {
+          allQtys[poLine.id] = line.receivedQty;
+          allPrices[poLine.id] = line.priceEach;
+          savedSet.add(poLine.id);
+        }
+      });
+
+      // Then, initialize unsaved lines with expected quantities and PO prices
+      purchaseOrder.lines.forEach(line => {
+        if (!savedSet.has(line.id)) {
+          // For case-based orders, use orderedQty (already in units)
+          // For unit-based orders (Misc Grocery), use orderedQty directly
+          allQtys[line.id] = line.orderedQty;
+          allPrices[line.id] = line.pricePerUnit;
+        }
+      });
+
+      setReceivedQuantities(allQtys);
+      setEditedPrices(allPrices);
+      setSavedLines(savedSet);
+    }
+  }, [draftReceiptData, purchaseOrder]);
+
+  const updateReceiveModeMutation = useMutation({
+    mutationFn: async ({ receiptId, receiveByUnit }: { receiptId: string; receiveByUnit: number }) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/receive-mode`, { receiveByUnit });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
+    },
+  });
+
+  const saveLineMutation = useMutation({
+    mutationFn: async (data: { receiptId: string; vendorItemId: string; receivedQty: number; unitId: string; pricePerUnit: number }) => {
+      return await apiRequest("POST", "/api/receipt-lines", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save line",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const completeReceivingMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/complete`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items/estimated-on-hand"] });
+      toast({
+        title: "Success",
+        description: "Items received successfully",
+      });
+      setLocation("/orders");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to complete receiving",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reopenReceiptMutation = useMutation({
+    mutationFn: async (receiptId: string) => {
+      return await apiRequest("PATCH", `/api/receipts/${receiptId}/reopen`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: receiptQueryKey });
+      toast({
+        title: "Success",
+        description: "Receipt reopened for editing",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reopen receipt",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: any }) => {
+      return await apiRequest("PATCH", `/api/inventory-items/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      toast({
+        title: "Success",
+        description: "Item updated successfully",
+      });
+      setEditingItem(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update item",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reconcileMutation = useMutation({
+    mutationFn: async (data: {
+      invoiceNumber: string;
+      invoiceDate: string;
+      invoiceTotal: number;
+      taxAmount: number;
+      receiptTotal: number;
+      initials: string;
+      notes: string;
+      receiptId: string;
+    }) => {
+      return await apiRequest("POST", `/api/purchase-orders/${poId}/reconcile`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}/reconciliation`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      refetchReconciliation();
+      toast({
+        title: "Reconciled",
+        description: "Invoice details saved. Ready to export to QuickBooks.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save reconciliation",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const exportToQbMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", {
+        purchaseOrderIds: [poId],
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/purchase-orders/${poId}/reconciliation`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
+      const result = data?.data?.results?.[0];
+      if (result?.success) {
+        toast({
+          title: "Exported to QuickBooks",
+          description: `Bill created successfully${result.billNumber ? ` (#${result.billNumber})` : ""}.`,
+        });
+      } else {
+        toast({
+          title: "Export Failed",
+          description: result?.error || "Failed to create bill in QuickBooks",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to export to QuickBooks",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleReceivedQuantityChange = (lineId: string, value: number) => {
+    setReceivedQuantities(prev => ({
+      ...prev,
+      [lineId]: value
+    }));
+    // Remove from saved set when quantity is modified
+    setSavedLines(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(lineId);
+      return newSet;
+    });
+  };
+
+  const handlePriceChange = (lineId: string, value: number) => {
+    setEditedPrices(prev => ({
+      ...prev,
+      [lineId]: value
+    }));
+    // Remove from saved set when price is modified
+    setSavedLines(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(lineId);
+      return newSet;
+    });
+  };
+
+  const handleSaveLine = (lineId: string) => {
+    const line = purchaseOrder?.lines.find(l => l.id === lineId);
+    if (!line || !draftReceiptId) return;
+
+    saveLineMutation.mutate({
+      receiptId: draftReceiptId,
+      vendorItemId: line.vendorItemId,
+      receivedQty: receivedQuantities[lineId] || 0,
+      unitId: line.unitId,
+      pricePerUnit: editedPrices[lineId] ?? line.pricePerUnit,
+    }, {
+      onSuccess: () => {
+        setSavedLines(prev => new Set(prev).add(lineId));
+        setEditingLines(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(lineId);
+          return newSet;
+        });
+        toast({
+          description: "Line saved",
+        });
+      }
+    });
+  };
+
+  const handleToggleEdit = (lineId: string) => {
+    setEditingLines(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lineId)) {
+        newSet.delete(lineId);
+      } else {
+        newSet.add(lineId);
+        // Focus the input after state updates
+        setTimeout(() => {
+          const input = inputRefs.current[lineId];
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 0);
+      }
+      return newSet;
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, currentLineId: string, filteredLines: POLineDisplay[]) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveLine(currentLineId);
+      
+      // Move to next input
+      const currentIndex = filteredLines.findIndex(line => line.id === currentLineId);
+      const nextIndex = currentIndex + 1;
+      
+      if (nextIndex < filteredLines.length) {
+        const nextLineId = filteredLines[nextIndex].id;
+        const nextRef = inputRefs.current[nextLineId];
+        
+        if (nextRef) {
+          nextRef.focus();
+          nextRef.select();
+        }
+      }
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      const currentIndex = filteredLines.findIndex(line => line.id === currentLineId);
+      const nextIndex = currentIndex + 1;
+      
+      if (nextIndex < filteredLines.length) {
+        const nextLineId = filteredLines[nextIndex].id;
+        const nextRef = inputRefs.current[nextLineId];
+        
+        if (nextRef) {
+          e.preventDefault();
+          nextRef.focus();
+          nextRef.select();
+        }
+      }
+    }
+  };
+
+  const handleCompleteReceiving = () => {
+    if (isCompletingReceiving || completeReceivingMutation.isPending) return;
+    if (!draftReceiptId) {
+      toast({
+        title: "Error",
+        description: "No receipt to complete",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCompletingReceiving(true);
+    completeReceivingMutation.mutate(draftReceiptId, {
+      onSettled: () => setIsCompletingReceiving(false),
+    });
+  };
+
+  const handleOpenItemEdit = (inventoryItemId: string) => {
+    fetch(`/api/inventory-items/${inventoryItemId}`)
+      .then(response => response.json())
+      .then((item: InventoryItem) => {
+        setEditingItem(item);
+        setItemEditForm({
+          name: item.name,
+          categoryId: item.categoryId || "",
+          pricePerUnit: item.pricePerUnit.toString(),
+          caseSize: item.caseSize.toString(),
+          parLevel: item.parLevel?.toString() || "",
+          reorderLevel: item.reorderLevel?.toString() || "",
+        });
+      })
+      .catch((error) => {
+        toast({
+          title: "Error",
+          description: "Failed to load item details",
+          variant: "destructive",
+        });
+      });
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+      parLevel: "",
+      reorderLevel: "",
+    });
+  };
+
+  const handleSaveItem = () => {
+    if (!editingItem) return;
+
+    const updates: any = {
+      name: itemEditForm.name,
+      categoryId: itemEditForm.categoryId === "" ? null : itemEditForm.categoryId,
+      pricePerUnit: parseFloat(itemEditForm.pricePerUnit),
+      caseSize: parseFloat(itemEditForm.caseSize),
+    };
+
+    if (itemEditForm.parLevel !== "") {
+      updates.parLevel = parseFloat(itemEditForm.parLevel);
+    }
+    if (itemEditForm.reorderLevel !== "") {
+      updates.reorderLevel = parseFloat(itemEditForm.reorderLevel);
+    }
+
+    updateItemMutation.mutate({ id: editingItem.id, updates });
+  };
+
+  if (loadingOrder) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-muted-foreground">Loading purchase order...</div>
+      </div>
+    );
+  }
+
+  if (!purchaseOrder) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <h2 className="text-2xl font-semibold mb-2">Purchase Order Not Found</h2>
+        <Link href="/orders">
+          <Button variant="ghost">Back to Orders</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const filteredLines = purchaseOrder.lines.filter(line => {
+    const matchesSearch = line.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      line.vendorSku?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Get category from the line if available
+    const lineCategory = categories?.find(c => 
+      purchaseOrder.lines.find(l => l.id === line.id)
+    );
+    const matchesCategory = selectedCategory === "all" || 
+      lineCategory?.id === selectedCategory;
+
+    return matchesSearch && matchesCategory;
+  });
+
+  const totalExpected = filteredLines.reduce((sum, line) => sum + (line.orderedQty * line.pricePerUnit), 0);
+  const totalItems = filteredLines.length;
+  const totalCases = filteredLines.reduce((sum, line) => {
+    return sum + (line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity : 0);
+  }, 0);
+  const totalActual = filteredLines.reduce((sum, line) => {
+    const receivedQty = receivedQuantities[line.id] || 0;
+    const unitPrice = editedPrices[line.id] ?? line.pricePerUnit;
+    return sum + (receivedQty * unitPrice);
+  }, 0);
+
+  // Check if all lines are saved
+  const allLinesSaved = purchaseOrder?.lines.length === savedLines.size;
+
+  // Determine if this is a completed receipt (read-only mode)
+  const isCompleted = draftReceiptData?.receipt?.status === "completed";
+  const isReadOnly = isCompleted;
+
+  return (
+    <div className="h-full overflow-auto">
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <Link href="/orders">
+            <Button variant="ghost" data-testid="button-back-to-orders">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Orders
+            </Button>
+          </Link>
+          <Link href={`/purchase-orders/${poId}`}>
+            <Button variant="outline" data-testid="button-view-purchase-order">
+              View Purchase Order
+            </Button>
+          </Link>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-receiving-title">
+              Receive Order
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              {purchaseOrder.vendorName} • PO #{purchaseOrder.id.slice(0, 8)}
+            </p>
+            {purchaseOrder.expectedDate && (
+              <p className="text-xl font-semibold mt-2" data-testid="text-expected-date">
+                Expected: {formatDateString(purchaseOrder.expectedDate)}
+              </p>
+            )}
+            {!isReadOnly && (
+              <div className="flex items-center gap-2 mt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={receiveByUnit ? "default" : "outline"}
+                  onClick={() => {
+                    setReceiveByUnit(true);
+                    if (draftReceiptId) {
+                      updateReceiveModeMutation.mutate({ receiptId: draftReceiptId, receiveByUnit: 1 });
+                    }
+                  }}
+                  data-testid="button-receive-by-unit"
+                >
+                  <Hash className="h-3 w-3 mr-1" />
+                  By Unit
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!receiveByUnit ? "default" : "outline"}
+                  onClick={() => {
+                    setReceiveByUnit(false);
+                    if (draftReceiptId) {
+                      updateReceiveModeMutation.mutate({ receiptId: draftReceiptId, receiveByUnit: 0 });
+                    }
+                  }}
+                  data-testid="button-receive-by-case"
+                >
+                  <Package className="h-3 w-3 mr-1" />
+                  By Case
+                </Button>
+                {receiveByUnit && (
+                  <span className="text-xs text-muted-foreground">Quantities are individual units; case math is skipped</span>
+                )}
+              </div>
+            )}
+            {isReadOnly && receiveByUnit && (
+              <Badge variant="secondary" className="mt-2" data-testid="badge-received-by-unit">
+                Received by Unit
+              </Badge>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <div 
+              className={`text-2xl font-bold uppercase px-4 py-2 rounded-md ${
+                purchaseOrder.status === "received" || isCompleted
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                  : purchaseOrder.status === "ordered" 
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                    : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+              }`}
+              data-testid="badge-po-status"
+            >
+              {isCompleted ? "received" : purchaseOrder.status}
+            </div>
+            {isCompleted && draftReceiptData?.receipt?.receivedAt && (
+              <p className="text-sm text-muted-foreground" data-testid="text-received-date">
+                {formatDateString(draftReceiptData.receipt.receivedAt)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <CardTitle>Items</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Enter actual units received (weights may vary)
+                </p>
+              </div>
+              <div className="flex gap-4">
+                {!receiveByUnit && (
+                  <div className="text-right">
+                    <div className="text-sm text-muted-foreground">Total Cases</div>
+                    <div className="text-2xl font-bold" data-testid="text-total-cases">{totalCases}</div>
+                  </div>
+                )}
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Total Items</div>
+                  <div className="text-2xl font-bold">{totalItems}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Expected Value</div>
+                  <div className="text-2xl font-bold">${totalExpected.toFixed(2)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm text-muted-foreground">Actual Value</div>
+                  <div className="text-2xl font-bold" data-testid="text-actual-value">${totalActual.toFixed(2)}</div>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-4 mb-4 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+                <Input
+                  placeholder="Search items..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
+                  data-testid="input-search-items"
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[200px]" data-testid="select-category-filter">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Table wrapperClassName="rounded-md border max-h-[calc(100vh-480px)]">
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>SKU</TableHead>
+                    {!receiveByUnit && <TableHead className="text-right">Cases Ordered</TableHead>}
+                    {!receiveByUnit && <TableHead className="text-right">Case Size</TableHead>}
+                    {!receiveByUnit && <TableHead className="text-right">Case Price</TableHead>}
+                    <TableHead className="text-right">{receiveByUnit ? "Units Ordered" : "Unit Total"}</TableHead>
+                    <TableHead className="text-right">{receiveByUnit ? "Units Received" : "Units Received"}</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredLines.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={receiveByUnit ? 8 : 11} className="text-center text-muted-foreground">
+                        No items found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredLines.map((line) => {
+                      const receivedQty = receivedQuantities[line.id] || 0;
+                      const isSaved = savedLines.has(line.id);
+                      const isEditing = editingLines.has(line.id);
+                      const unitPrice = editedPrices[line.id] ?? line.pricePerUnit;
+                      const lineTotal = receivedQty * unitPrice;
+                      const isShort = receivedQty < line.orderedQty;
+                      const casePrice = line.caseQuantity && line.caseQuantity > 0 ? unitPrice * line.caseSize : null;
+                      
+                      return (
+                        <TableRow 
+                          key={line.id} 
+                          data-testid={`row-receive-item-${line.id}`}
+                          className={isShort && isSaved ? "bg-red-50 dark:bg-red-950/20" : ""}
+                        >
+                          <TableCell className="font-medium">
+                            {line.inventoryItemId && !isReadOnly ? (
+                              <button
+                                onClick={() => handleOpenItemEdit(line.inventoryItemId!)}
+                                className="hover:underline text-left"
+                                data-testid={`button-item-name-${line.id}`}
+                              >
+                                {line.itemName}
+                              </button>
+                            ) : (
+                              line.itemName
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{line.vendorSku || '-'}</TableCell>
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-cases-ordered-${line.id}`}>
+                              {line.caseQuantity && line.caseQuantity > 0 ? line.caseQuantity.toFixed(0) : '-'}
+                            </TableCell>
+                          )}
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-size-${line.id}`}>
+                              {line.caseQuantity && line.caseQuantity > 0 ? line.caseSize.toFixed(0) : '-'}
+                            </TableCell>
+                          )}
+                          {!receiveByUnit && (
+                            <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-case-price-${line.id}`}>
+                              {casePrice !== null ? `$${casePrice.toFixed(2)}` : '-'}
+                            </TableCell>
+                          )}
+                          <TableCell className="text-right font-mono text-muted-foreground" data-testid={`text-unit-total-${line.id}`}>
+                            {line.orderedQty.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isReadOnly ? (
+                              <span className="font-mono" data-testid={`text-received-qty-${line.id}`}>
+                                {receivedQty.toFixed(2)}
+                              </span>
+                            ) : isSaved && !isEditing ? (
+                              <button
+                                onClick={() => handleToggleEdit(line.id)}
+                                className="font-mono text-primary hover:underline"
+                                data-testid={`link-edit-qty-${line.id}`}
+                              >
+                                {receivedQty.toFixed(2)}
+                              </button>
+                            ) : (
+                              <Input
+                                // @ts-ignore
+                                ref={(el) => inputRefs.current[line.id] = el}
+                                type="number"
+                                step="0.01"
+                                value={receivedQty}
+                                onChange={(e) => handleReceivedQuantityChange(line.id, parseFloat(e.target.value) || 0)}
+                                onKeyDown={(e) => handleKeyDown(e, line.id, filteredLines)}
+                                className="w-24 text-right font-mono"
+                                data-testid={`input-received-qty-${line.id}`}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>{formatUnitName(line.unitName)}</TableCell>
+                          <TableCell className="text-right">
+                            {isReadOnly ? (
+                              <span className="font-mono" data-testid={`text-unit-price-${line.id}`}>
+                                ${(editedPrices[line.id] ?? line.pricePerUnit).toFixed(4)}
+                              </span>
+                            ) : isSaved && !isEditing ? (
+                              <button
+                                onClick={() => handleToggleEdit(line.id)}
+                                className="font-mono text-primary hover:underline"
+                                data-testid={`link-edit-price-${line.id}`}
+                              >
+                                ${(editedPrices[line.id] ?? line.pricePerUnit).toFixed(4)}
+                              </button>
+                            ) : (
+                              <Input
+                                type="number"
+                                step="0.0001"
+                                value={editedPrices[line.id] ?? line.pricePerUnit}
+                                onChange={(e) => handlePriceChange(line.id, parseFloat(e.target.value) || 0)}
+                                className="w-28 text-right font-mono"
+                                data-testid={`input-unit-price-${line.id}`}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-semibold">
+                            ${lineTotal.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {!isReadOnly && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveLine(line.id)}
+                                disabled={isSaved || saveLineMutation.isPending}
+                                variant={isSaved ? "outline" : "default"}
+                                data-testid={`button-save-line-${line.id}`}
+                              >
+                                {isSaved ? "Saved" : "Save"}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+
+            <div className="flex justify-end mt-6 gap-2">
+              {isReadOnly ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/orders")}
+                    data-testid="button-back-to-receiving-footer"
+                  >
+                    Back to Orders
+                  </Button>
+                  <Button
+                    onClick={() => reopenReceiptMutation.mutate(draftReceiptId!)}
+                    disabled={!draftReceiptId || reopenReceiptMutation.isPending}
+                    data-testid="button-reopen-receipt"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    {reopenReceiptMutation.isPending ? "Reopening..." : "Reopen Receipt"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/orders")}
+                    data-testid="button-cancel-receiving"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCompleteReceiving}
+                    disabled={isCompletingReceiving || completeReceivingMutation.isPending || !draftReceiptId || !allLinesSaved}
+                    data-testid="button-complete-receiving"
+                  >
+                    <PackageCheck className="h-4 w-4 mr-2" />
+                    {isCompletingReceiving || completeReceivingMutation.isPending ? "Receiving..." : "Complete Receiving"}
+                  </Button>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* QuickBooks Reconcile & Export — shown when receipt is completed and QB is connected */}
+        {isCompleted && hasFeature("quickbooks_integration") && qbStatus?.connected && (
+          (() => {
+            const existing = reconciliationData?.data;
+            const syncLog = reconciliationData?.syncLog;
+            const isExported = purchaseOrder.status === "qb_exported";
+            const isPendingExport = purchaseOrder.status === "pending_qb_export";
+            const exportFailed = !isExported && syncLog && (syncLog.syncStatus === "failed" || syncLog.syncStatus === "retry_exhausted");
+            const receiptTotal = filteredLines.reduce((sum, line) => {
+              const rqty = receivedQuantities[line.id] || 0;
+              const price = editedPrices[line.id] ?? line.pricePerUnit;
+              return sum + rqty * price;
+            }, 0);
+
+            return (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <FileCheck className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <CardTitle>Invoice Reconciliation &amp; QuickBooks Export</CardTitle>
+                      <CardDescription>
+                        Match the vendor invoice to this receipt, then push a bill to QuickBooks.
+                      </CardDescription>
+                    </div>
+                    {isExported && (
+                      <Badge className="ml-auto bg-green-500/10 text-green-700 border-green-500/20" data-testid="badge-qb-exported">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Exported to QB
+                      </Badge>
+                    )}
+                    {exportFailed && (
+                      <Badge className="ml-auto bg-destructive/10 text-destructive border-destructive/20" data-testid="badge-export-failed">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Export Failed
+                      </Badge>
+                    )}
+                    {isPendingExport && !isExported && !exportFailed && (
+                      <Badge className="ml-auto bg-blue-500/10 text-blue-700 border-blue-500/20" data-testid="badge-pending-export">
+                        Reconciled — Ready to Export
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {isExported ? (
+                    <div className="space-y-3" data-testid="section-qb-export-success">
+                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <span className="font-medium">Bill successfully created in QuickBooks.</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                        {existing?.invoiceNumber && (
+                          <div>
+                            <p className="text-muted-foreground">Vendor Invoice #</p>
+                            <p className="font-medium" data-testid="text-qb-invoice-number">{existing.invoiceNumber}</p>
+                          </div>
+                        )}
+                        {syncLog?.quickbooksBillId && (
+                          <div>
+                            <p className="text-muted-foreground">QuickBooks Bill ID</p>
+                            <p className="font-medium font-mono" data-testid="text-qb-bill-id">{syncLog.quickbooksBillId}</p>
+                          </div>
+                        )}
+                        {syncLog?.createdAt && (
+                          <div>
+                            <p className="text-muted-foreground">Exported</p>
+                            <p className="font-medium" data-testid="text-qb-export-timestamp">
+                              {new Date(syncLog.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{" "}
+                              {new Date(syncLog.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {exportFailed && (
+                        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" data-testid="section-export-failed">
+                          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-medium">Export to QuickBooks failed.</p>
+                            {syncLog?.errorMessage && (
+                              <p className="text-muted-foreground mt-0.5">{syncLog.errorMessage}</p>
+                            )}
+                            <p className="text-muted-foreground mt-0.5">Go to the Orders page to retry the export.</p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-number">Vendor Invoice # <span className="text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            id="invoice-number"
+                            placeholder="e.g. INV-2025-001"
+                            value={reconcileForm.invoiceNumber}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceNumber: e.target.value }))}
+                            defaultValue={existing?.invoiceNumber || ""}
+                            data-testid="input-invoice-number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-date">Invoice Date <span className="text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            id="invoice-date"
+                            type="date"
+                            value={reconcileForm.invoiceDate}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceDate: e.target.value }))}
+                            defaultValue={existing?.invoiceDate ? existing.invoiceDate.split("T")[0] : ""}
+                            data-testid="input-invoice-date"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="invoice-total">Invoice Subtotal ($) <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="invoice-total"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconcileForm.invoiceTotal || (existing?.invoiceTotal ?? "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, invoiceTotal: e.target.value }))}
+                            data-testid="input-invoice-total"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="tax-amount">Tax / Other Charges ($)</Label>
+                          <Input
+                            id="tax-amount"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconcileForm.taxAmount || (existing?.taxAmount ? String(existing.taxAmount) : "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, taxAmount: e.target.value }))}
+                            data-testid="input-tax-amount"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Our Receipt Total</Label>
+                          <div className="h-9 flex items-center font-mono text-sm font-semibold" data-testid="text-receipt-total">
+                            ${receiptTotal.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reconcile-initials">Employee Initials <span className="text-destructive">*</span></Label>
+                          <Input
+                            id="reconcile-initials"
+                            placeholder="e.g. JD"
+                            maxLength={4}
+                            value={reconcileForm.initials || (existing?.initials ?? "")}
+                            onChange={(e) => setReconcileForm(p => ({ ...p, initials: e.target.value.toUpperCase() }))}
+                            data-testid="input-reconcile-initials"
+                            className="w-24"
+                          />
+                        </div>
+                      </div>
+
+                      {(reconcileForm.invoiceTotal || reconcileForm.taxAmount) && (
+                        (() => {
+                          const invoiceNum = parseFloat(reconcileForm.invoiceTotal || String(existing?.invoiceTotal || receiptTotal));
+                          const taxNum = parseFloat(reconcileForm.taxAmount || String(existing?.taxAmount || 0));
+                          const diff = invoiceNum + taxNum - receiptTotal;
+                          const absDiff = Math.abs(diff);
+                          if (absDiff < 0.01) return (
+                            <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Invoice total matches receipt total exactly.
+                            </div>
+                          );
+                          const color = absDiff <= 1 ? "text-yellow-700 dark:text-yellow-400" : "text-destructive";
+                          return (
+                            <div className={`flex items-center gap-2 text-sm ${color}`}>
+                              <AlertTriangle className="h-4 w-4" />
+                              Variance of ${absDiff.toFixed(2)} — {diff > 0 ? "invoice is higher" : "invoice is lower"} than receipt.
+                            </div>
+                          );
+                        })()
+                      )}
+
+                      <div className="space-y-2">
+                        <Label htmlFor="reconcile-notes">Notes <span className="text-muted-foreground">(optional)</span></Label>
+                        <Textarea
+                          id="reconcile-notes"
+                          placeholder="e.g. short-shipped 2 cases of tomatoes"
+                          value={reconcileForm.notes}
+                          onChange={(e) => setReconcileForm(p => ({ ...p, notes: e.target.value }))}
+                          defaultValue={existing?.notes || ""}
+                          rows={2}
+                          data-testid="textarea-reconcile-notes"
+                        />
+                      </div>
+
+                      <Separator />
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          onClick={() => {
+                            if (!draftReceiptId) return;
+                            const invoiceTotalNum = parseFloat(reconcileForm.invoiceTotal || String(existing?.invoiceTotal || receiptTotal));
+                            const taxNum = parseFloat(reconcileForm.taxAmount || String(existing?.taxAmount || 0));
+                            const initialsVal = (reconcileForm.initials || existing?.initials || "").trim();
+                            reconcileMutation.mutate({
+                              invoiceNumber: reconcileForm.invoiceNumber || existing?.invoiceNumber || "",
+                              invoiceDate: reconcileForm.invoiceDate || (existing?.invoiceDate ? existing.invoiceDate.split("T")[0] : ""),
+                              invoiceTotal: invoiceTotalNum,
+                              taxAmount: taxNum,
+                              receiptTotal,
+                              initials: initialsVal,
+                              notes: reconcileForm.notes || existing?.notes || "",
+                              receiptId: draftReceiptId,
+                            });
+                          }}
+                          disabled={reconcileMutation.isPending || !(reconcileForm.initials || existing?.initials)}
+                          variant="outline"
+                          data-testid="button-save-reconciliation"
+                        >
+                          {reconcileMutation.isPending ? "Saving..." : isPendingExport ? "Update Reconciliation" : "Save Reconciliation"}
+                        </Button>
+
+                        {(isPendingExport || existing) && (
+                          <Button
+                            onClick={() => exportToQbMutation.mutate()}
+                            disabled={exportToQbMutation.isPending}
+                            data-testid="button-export-to-qb"
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            {exportToQbMutation.isPending ? "Exporting..." : "Export Bill to QuickBooks"}
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()
+        )}
+      </div>
+
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+            <DialogDescription>
+              Update pricing and details for this item. Changes will apply system-wide.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                data-testid="input-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select
+                value={itemEditForm.categoryId || "none"}
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value === "none" ? "" : value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-item-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No category</SelectItem>
+                  {categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-price">Price Per Unit *</Label>
+                <Input
+                  id="item-price"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.pricePerUnit}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                  data-testid="input-item-price"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-case-size">Case Size *</Label>
+                <Input
+                  id="item-case-size"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.caseSize}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, caseSize: e.target.value })}
+                  data-testid="input-item-case-size"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-par-level">Par Level</Label>
+                <Input
+                  id="item-par-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.parLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, parLevel: e.target.value })}
+                  data-testid="input-item-par-level"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-reorder-level">Reorder Level</Label>
+                <Input
+                  id="item-reorder-level"
+                  type="number"
+                  step="0.01"
+                  value={itemEditForm.reorderLevel}
+                  onChange={(e) => setItemEditForm({ ...itemEditForm, reorderLevel: e.target.value })}
+                  data-testid="input-item-reorder-level"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseItemEdit}
+              data-testid="button-cancel-item"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveItem}
+              disabled={updateItemMutation.isPending}
+              data-testid="button-save-item"
+            >
+              {updateItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

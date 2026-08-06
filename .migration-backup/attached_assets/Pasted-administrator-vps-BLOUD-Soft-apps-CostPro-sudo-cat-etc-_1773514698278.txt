@@ -1,0 +1,105 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro$ sudo cat /etc/nginx/sites-available/permitflow
+server {
+
+        server_name pflow.permitsmanager.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSockets (safe to include)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    listen [::]:443 ssl ipv6only=on; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/pflow.permitsmanager.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = pflow.permitsmanager.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+        server_name pflow.permitsmanager.com;
+    return 404; # managed by Certbot
+
+
+}
+server {
+    if ($host = pflow.permitsmanager.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+    server_name app.fnbcostpro.com; # managed by Certbot
+    return 404; # managed by Certbot
+
+
+
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/app.fnbcostpro.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = app.fnbcostpro.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+
+
+    listen 80 ;
+    listen [::]:80 ;
+    server_name app.fnbcostpro.com;
+    return 404; # managed by Certbot
+
+
+}
+server {
+    if ($host = pflow.permitsmanager.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+    server_name fnbcostpro.com; # managed by Certbot
+    return 404; # managed by Certbot
+
+
+
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/fnbcostpro.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/fnbcostpro.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+server {
+    if ($host = fnbcostpro.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+
+
+    listen 80 ;
+    listen [::]:80 ;
+    server_name fnbcostpro.com;
+    return 404; # managed by Certbot
+

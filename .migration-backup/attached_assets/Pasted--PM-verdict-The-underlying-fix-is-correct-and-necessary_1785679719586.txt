@@ -1,0 +1,131 @@
+## PM verdict
+
+**The underlying fix is correct and necessary.** An approved import that creates inventory items but leaves them invisible in the selected store is a broken onboarding outcome.
+
+I would approve #862 with three important revisions.
+
+### 1. Do not silently skip multi-store linkage
+
+This is the biggest issue:
+
+> If multi-store and no `storeId`, skip the upsert, log a warning, and still approve.
+
+That recreates the original problem: approval succeeds, but the imported inventory remains invisible.
+
+For a company with multiple operating stores, approval should require an explicit target store unless the batch itself already has one assigned.
+
+Recommended behavior:
+
+* Single store: resolve automatically.
+* Multiple stores: require `storeId` before approval.
+* Invalid, inactive, or unauthorized store: return a clear `400/403`.
+* UI shows a required **Import into store** selector.
+
+The only exception would be a genuinely company-wide inventory catalog import, but then the UI and workflow should explicitly say it is catalog-only.
+
+### 2. Assign the store to the batch before approval
+
+Passing `storeId` only in the final approve request is fragile. Preview, validation, location matching, and approval should all operate within the same intended store context.
+
+Prefer:
+
+* Store selected at upload or preview.
+* `target_store_id` saved on the import batch.
+* Approval uses the stored value.
+* Changing the store after preview forces revalidation or a new preview.
+
+That creates an auditable answer to:
+
+> Which operation was this Orderly file imported into?
+
+The approve body can still accept a store ID initially, but it should be persisted and verified against the batch rather than treated as a transient UI value.
+
+### 3. Do not let the first storage-location row arbitrarily become primary
+
+An Orderly item can appear in several physical storage locations. With the proposed in-memory `Set`, whichever row is processed first may set `primaryLocationId`, and later rows are ignored.
+
+That is nondeterministic and potentially misleading.
+
+Recommended rule:
+
+* Continue creating all `inventory_item_locations` relationships.
+* Set `store_inventory_items.primaryLocationId` only when:
+
+  * the item resolves to exactly one storage location in the batch, or
+  * a location is explicitly identified as primary.
+* If the item appears in multiple locations, preserve the existing primary location or leave it null.
+* Never overwrite an existing primary location during reimport unless the user explicitly changes it.
+
+A product stored in the Main Walk-in and Bay Window should not become “primarily” assigned based on spreadsheet row order.
+
+## What is otherwise strong
+
+These choices are correct:
+
+* Create one `store_inventory_items` row per distinct resolved item.
+* Set new on-hand quantity to zero.
+* Do not treat the historical Orderly count as live on-hand inventory.
+* Preserve existing par, reorder level, and on-hand quantity.
+* Reactivate an existing store-item relationship when appropriate.
+* Perform the work within the batch-approval transaction.
+* Report the linkage result in the approval summary.
+
+## Clarify the upsert behavior
+
+On conflict, I would update only:
+
+* `active = true`
+* `updatedAt`
+* Possibly `primaryLocationId` only if the existing value is null and the imported item has one unambiguous location
+
+Do not overwrite:
+
+* `onHandQty`
+* `parLevel`
+* `reorderLevel`
+* Existing primary location
+* Any manually configured store-specific settings
+
+## Clarify what `storeItemsLinked` means
+
+The count should represent:
+
+> Number of distinct inventory items successfully linked to the target store during this approval.
+
+It should count both newly inserted and already-existing rows that were confirmed/reactivated, but the summary would be more useful if separated:
+
+* `storeItemsCreated`
+* `storeItemsReactivated`
+* `storeItemsAlreadyLinked`
+* `storeItemsSkipped`
+
+A single count is acceptable for v1, but these distinctions will help diagnose large onboarding batches.
+
+## Add required safety checks
+
+The approve endpoint should confirm that:
+
+* The store belongs to the same company as the import batch.
+* The user has access to that store.
+* The store is active.
+* The batch has not already been approved for a different store.
+* The resolved inventory item belongs to the same company.
+* Duplicate rows do not create duplicate store links.
+* A failed store-item upsert rolls back the approval transaction rather than leaving a partially approved batch.
+
+## One architectural observation
+
+This ticket also exposes that the Inventory Items page relies on an `INNER JOIN` to `store_inventory_items`.
+
+That may be correct for a store-filtered operational list, but you should preserve a separate company-catalog view somewhere. Otherwise company-level inventory items that have not yet been assigned to a store become effectively undiscoverable.
+
+That does not need to block #862, but the product should distinguish:
+
+* **Company item catalog**
+* **Items active at this store**
+
+## Recommended revised rule
+
+> Every Orderly batch must have a target operating store before approval. Approval links each distinct resolved inventory item to that store without overwriting existing store-level quantities or settings. Physical Orderly storage locations remain separate item-location assignments; a primary storage location is set only when the relationship is unambiguous.
+
+With those changes, #862 is a clean and appropriate fix. The only part I would reject outright is allowing a multi-store import to “succeed” while quietly skipping all store linkage.

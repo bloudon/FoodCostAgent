@@ -1,0 +1,337 @@
+This is a strong revision. Replit absorbed the important architectural corrections rather than just cosmetically adjusting the original ticket.
+
+My view: **the three-task structure is sound and ready to build**, with a few acceptance criteria I would tighten before #676 gets too far.
+
+## Overall PM assessment
+
+The plan now correctly recognizes three separate concerns:
+
+* **Ingestion:** accurately understand and preserve what Orderly exported.
+* **Migration:** resolve Orderly records into FnB Cost Pro’s item, vendor, and location model.
+* **Operational history:** turn past snapshots into usable inventory sessions and variance analysis.
+
+That separation matters. It prevents the parser from making destructive assumptions and prevents the onboarding workflow from becoming entangled with live inventory accounting.
+
+The core principle is exactly right:
+
+> **This is a migration bridge, not merely a bulk item creator.**
+
+That also creates a reusable onboarding advantage for other Orderly customers.
+
+# Task #676 — Parser and staging
+
+This task is well framed. I would make sure “done” includes the following specifics.
+
+## Source rows must be immutable
+
+The raw source record should never be modified after upload.
+
+Store:
+
+* Original cell values
+* Original row number
+* Workbook sheet name
+* Import batch
+* Parser version
+* Raw description
+* Cleaned description
+* Parsing results and warnings separately
+
+If the cleaning or pack parser improves later, you should be able to rerun parsing against the original data without requiring another upload.
+
+## Do not call this a 5,409-item file
+
+It is a **5,409-row location inventory export**, not necessarily 5,409 unique items.
+
+That language should be corrected in the ticket and UI. Otherwise developers or users may assume every row should become a separate inventory item.
+
+The preview should distinguish:
+
+* Source rows
+* Estimated unique inventory items
+* Item-location assignments
+* Vendor-item relationships
+* Unresolved rows
+
+## Placeholder detection should be generalized
+
+Do not hard-code only `54`.
+
+The system should identify suspicious identifiers using patterns such as:
+
+* One code reused across many unrelated descriptions
+* Same value appearing across unrelated columns
+* Very short numeric codes with extreme reuse
+* Codes associated with incompatible pack sizes or categories
+* Values that behave more like department or default codes than item IDs
+
+The preview could label them:
+
+> Non-authoritative source code
+
+That means the code is retained but not used for automatic matching.
+
+## Description cleaning should be confidence-based
+
+The parser should return something like:
+
+* `rawDescription`
+* `cleanedDescription`
+* `cleaningMethod`
+* `cleaningConfidence`
+* `removedSuffix`
+
+The supplier suffix should only be removed when it is clearly at the end of the string and leaves a valid product description.
+
+The embedded pack text may also need to be removed separately from the product name. These are two different transformations and should not be bundled into one opaque cleanup step.
+
+## Inventory-date detection needs user confirmation
+
+Even when a date is detected, the preview should show:
+
+> Inventory effective date: June 30, 2026
+> Detected from: workbook heading
+
+The user should be able to correct it before approval.
+
+May and June must be recognized as separate snapshots even if uploaded on the same day.
+
+## File-hash idempotency should allow legitimate reprocessing
+
+A duplicate file should not automatically be blocked forever.
+
+Useful options:
+
+* View existing import
+* Re-run preview with the current parser version
+* Cancel
+* Force a new batch with an administrative reason
+
+You want to prevent accidental duplication without preventing parser testing and recovery.
+
+# Task #678 — Entity resolution and approval
+
+This is the most consequential part of the project.
+
+## Separate the four kinds of resolution
+
+The approval process should not treat each source row as resolving into one entity. It may resolve four relationships independently:
+
+1. Inventory item
+2. Vendor
+3. Vendor item
+4. Item-location assignment
+
+For example, a row might show:
+
+* Inventory item: matched
+* Vendor: unresolved placeholder
+* Vendor item: not created
+* Location assignment: new
+
+That row may still be useful even though the vendor data is bad.
+
+## Match confidence must be visible
+
+The preview should distinguish:
+
+* Exact source-map match
+* Exact valid-code match
+* Exact normalized name and pack match
+* Strong candidate
+* Ambiguous
+* New
+* Ignored
+
+Do not allow fuzzy matches to silently become approved exact matches.
+
+For a premium product, users should be able to understand why FnB Cost Pro believes two records are the same item.
+
+## Location hierarchy may be needed later
+
+Creating `inventory_locations` is the correct immediate decision.
+
+I would leave room for:
+
+* Parent location
+* Outlet or cost-center association
+* Location type
+* Central storage flag
+* Replenishes other locations
+* Active/inactive status
+
+You do not have to expose all of that now, but avoid a schema that assumes every location is flat and equivalent.
+
+Bay Hill may eventually need relationships such as:
+
+> Main Walk-in supplies Bay Window and Member Lounge.
+
+That will matter for predictive ordering and transfers.
+
+## Source mapping needs to survive name changes
+
+Once an Orderly row is resolved to an FnB Cost Pro item, store an explicit external mapping.
+
+Do not repeat name-based matching every month.
+
+A source mapping should include:
+
+* Source system
+* Source account/company
+* External item code when trustworthy
+* Source fingerprint when no valid code exists
+* Internal inventory item ID
+* First-seen and last-seen dates
+* Resolution method
+* Manually confirmed status
+
+For rows without reliable codes, the fingerprint may include normalized description, pack geometry, supplier, and category—but it should be treated as a source identity, not necessarily the universal product identity.
+
+## Approval needs rollback or compensation
+
+A 5,000-row import will occasionally be approved incorrectly.
+
+At minimum, support:
+
+* Import audit
+* List of created entities
+* List of existing entities modified
+* Ability to deactivate or reverse entities created exclusively by the batch
+* Protection against deleting records later used elsewhere
+
+A simple “undo import” may be difficult, but batch-level traceability is mandatory.
+
+# Task #679 — Historical count-session conversion
+
+This is correctly separated, but I would tighten the accounting meaning.
+
+## Snapshot conversion should not claim usage by itself
+
+May and June snapshots provide:
+
+* Beginning inventory
+* Ending inventory
+
+They do not provide actual usage until purchases, transfers, waste, and adjustments are included.
+
+The UI should avoid language such as “inventory usage” based only on period-over-period count differences.
+
+Use:
+
+* Inventory movement
+* Snapshot variance
+* Value change
+* Count change
+
+Then use “actual usage” only when the full calculation is supported.
+
+## Historical conversion should remain reviewable
+
+Before a staged snapshot becomes a historical count session, show:
+
+* Inventory date
+* Included locations
+* Included items
+* Total valuation
+* Excluded or unresolved rows
+* Missing count geometry
+* Differences from the Orderly report total
+
+The converted total should reconcile to the source export within a defined tolerance.
+
+## Previous-count columns need careful handling
+
+The June export’s “previous” values may already represent May, but do not assume that automatically.
+
+For Bay Hill, you have the actual May file. That should generally be the authoritative May snapshot.
+
+The June embedded previous values are still useful for:
+
+* Cross-checking
+* Detecting whether the reports are consecutive
+* Finding records whose previous counts were adjusted
+* Confirming Orderly’s own rollover behavior
+
+But avoid importing the same May snapshot twice.
+
+# One missing task: reconciliation and migration report
+
+I would either add this to #679 or create a small follow-up ticket.
+
+After importing May and June, FnB Cost Pro should produce an onboarding reconciliation report:
+
+* Source rows
+* Unique items created
+* Existing items matched
+* Item-location assignments
+* Vendors created
+* Vendors unresolved
+* Pack geometries fully parsed
+* Lossy geometries
+* Placeholder codes
+* Snapshot source total
+* Imported snapshot total
+* Difference
+* Items added between May and June
+* Items missing in June
+* Price changes
+* Location changes
+
+This report will be extremely valuable during the Bay Hill review because it gives Reiner something concrete to validate.
+
+It also turns messy onboarding into a premium consultative experience:
+
+> “Here is what we imported, what we cleaned, and what still needs your judgment.”
+
+# How this supports the parallel pilot
+
+This plan fits your “run alongside and prove value” approach well.
+
+The importer can initially do three useful jobs without asking Bay Hill to abandon Orderly:
+
+1. Mirror the existing inventory master and location structure.
+2. Compare May and June snapshots.
+3. Provide a clean foundation for recipes, purchasing, and vendor portal pricing.
+
+Orderly can remain the current operational system while FnB Cost Pro builds the connected model across:
+
+* Orderly inventory
+* Jonas Encore sales
+* Recipes
+* Vendor portal pricing
+* Purchase history
+* Predictive ordering
+
+# Recommended build order
+
+The order is correct:
+
+**#676 → #678 → #679**
+
+However, I would give Replit one additional instruction:
+
+> Build and test #676 against both May and June before finalizing the matching assumptions in #678.
+
+The critical test is not whether June parses successfully. It is whether the same underlying products resolve consistently across two consecutive files.
+
+Before #678 begins, Replit should be able to answer:
+
+* How many source rows overlap?
+* How many unique item candidates exist in each month?
+* How many appear new or removed?
+* How stable are descriptions and pack sizes?
+* How often does supplier change?
+* How often are codes reused or missing?
+* Can location assignments be matched consistently?
+
+That comparison will reveal whether the proposed matching hierarchy works in actual Orderly data.
+
+## Final verdict
+
+I would authorize the work with these three additions emphasized:
+
+1. Treat 5,409 as source rows, not item count.
+2. Require May-to-June parser consistency before entity resolution is finalized.
+3. Add a reconciliation report and batch-level rollback/audit expectations.
+
+This has evolved from a narrow Bay Hill importer into the beginning of a genuine **competitive-system migration framework**. That is valuable well beyond this pilot.

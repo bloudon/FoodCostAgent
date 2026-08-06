@@ -1,0 +1,507 @@
+Seeing the actual pages changes the diagnosis. The current website is already moving toward photo-based onboarding, but the **entire commercial frame is still anchored to bargain hunting and a 14-day savings guarantee**.
+
+That makes FnB Cost Pro look like a food-cost audit service with software attached—not a premium culinary operations platform.
+
+## Marketing director verdict
+
+The present site says:
+
+> “Give us your data and we’ll find a savings opportunity.”
+
+The new market position should say:
+
+> **“Give your culinary team a faster, more natural way to create, cost, buy and operate—without sacrificing data quality.”**
+
+Cost savings remains part of the proof, but it should no longer be the identity.
+
+Your competitors already occupy the broad claims around controlling food cost, automating back-office work, mobile inventory, forecasting and vendor purchasing. Crunchtime emphasizes food-cost reduction and inventory accuracy; Restaurant365 connects purchasing, inventory, recipes and accounting; MarketMan promotes predictive ordering, vendor comparisons and live recipe costing; MarginEdge is strongly identified with phone-based invoice capture and reduced manual entry. ([Crunchtime][1])
+
+Therefore, **“photo-based setup” alone is not enough to own the category.** Your stronger story is broader:
+
+> **FnB Cost Pro lets chefs work naturally—from paper, photos, phones and existing files—while building the structured operational data needed by executive chefs, F&B directors and purchasing teams.**
+
+That is where the premium differentiation lives.
+
+# Homepage review
+
+## 1. The hero is fighting the new positioning
+
+Current headline:
+
+> **Find Your First Food Cost Savings Opportunity in 14 Days**
+
+Problems:
+
+* It leads with a tactical financial outcome rather than the product’s identity.
+* “First savings opportunity” sounds entry-level.
+* “14 days” makes the product feel like a promotional challenge.
+* The word **guarantee** appears repeatedly and gives the page a direct-response or lower-cost SaaS tone.
+* It attracts restaurants looking to trim expenses rather than culinary leaders looking to elevate operations.
+* It does not mention chefs, mobile use, recipe creation, predictive ordering, vendor comparison or multi-location operations.
+
+The kitchen image is appropriate, but the copy over it says “food-cost consultant,” not “premium culinary intelligence.”
+
+### Recommended hero replacement
+
+**Eyebrow**
+
+CULINARY OPERATIONS INTELLIGENCE
+
+**Headline**
+
+> **Built for the way chefs work.**
+
+**Supporting copy**
+
+> Turn handwritten recipes, photos, invoices and existing files into accurate recipe costs, inventory intelligence, vendor comparisons and predictive orders—without burying your culinary team in data entry.
+
+**Primary CTA**
+
+> **See the Chef Workflow**
+
+**Secondary CTA**
+
+> **Schedule a Culinary Review**
+
+**Reassurance line**
+
+> Phone-first. Reviewable. Structured for serious food and beverage operations.
+
+A more assertive headline option:
+
+> **Your chefs create. FnB Cost Pro handles the structure.**
+
+Or a buyer-balanced version:
+
+> **Natural for chefs. Powerful for F&B leadership.**
+
+My strongest recommendation remains:
+
+> **Built for the way chefs work. Structured for the way serious operations run.**
+
+## 2. The statistic strip should be replaced
+
+Current strip:
+
+* 8 hrs weekly back-office data entry eliminated
+* $5,000 value of a 1% food-cost improvement
+* 14 days to a savings opportunity
+* 1-day guided launch
+
+This is heavily savings-oriented and feels like a sales funnel.
+
+It also creates credibility issues unless every figure is well-supported and qualified. The dollar calculation may be mathematically reasonable for a $500,000 operation, but it does not demonstrate that FnB Cost Pro will produce that improvement.
+
+Replace it with product truths:
+
+| Current | Premium replacement            |
+| ------- | ------------------------------ |
+| 8 hrs   | **Photos to structured data**  |
+| $5,000  | **Current recipe costs**       |
+| 14 days | **Vendor pricing connected**   |
+| 1 day   | **Predictive orders prepared** |
+
+Or use a workflow strip:
+
+> **Capture → Review → Cost → Compare → Predict**
+
+This teaches the connected product story immediately.
+
+# Features section review
+
+Current heading:
+
+> **Food Cost Visibility Starts With a Photo**
+
+This is much closer to the right direction than the hero. However, it still frames photography as a route to “food-cost visibility” and the paragraph returns immediately to the 14-day savings program.
+
+The phrase **“starts with a photo”** is valuable. The problem is what follows it.
+
+## Recommended rewrite
+
+**Eyebrow**
+
+LESS ENTRY. MORE INTELLIGENCE.
+
+**Headline**
+
+> **From a chef’s photo to structured operational data.**
+
+**Copy**
+
+> Photograph a handwritten recipe, product label, invoice, menu or inventory sheet. FnB Cost Pro converts it into a reviewable draft with ingredients, units, pack sizes, vendors, locations and pricing relationships intact.
+
+> Your culinary team avoids repetitive typing. Your operation still gets the accurate data required for costing, purchasing, forecasting and control.
+
+**CTA**
+
+> **See What You Can Capture**
+
+The line that should anchor this entire section is:
+
+> **Less data entry doesn’t mean less data.**
+
+That directly addresses the concern that an easy input process must be lightweight or inaccurate.
+
+## Show more than menu scanning
+
+The current secondary CTA is:
+
+> See the Menu Scan
+
+That makes the feature appear narrower than it is.
+
+You should visually demonstrate four inputs:
+
+1. Handwritten recipe
+2. Invoice or order guide
+3. Inventory sheet
+4. Product or case label
+
+Then show the structured outputs:
+
+* Ingredient record
+* Recipe and yield
+* Vendor item and price
+* Storage-location assignment
+* Current plate cost
+* Suggested order quantity
+
+The premium promise is not “we can read a picture.” It is:
+
+> **We can take what the chef already has and turn it into a connected operating system.**
+
+# The guarantee section should be removed from the homepage
+
+Current section:
+
+> **The 14-Day Food Cost Opportunity Guarantee**
+
+This section occupies prime space and reinforces the wrong buyer psychology.
+
+Guarantees can work for lower-friction self-service software, but your current opportunity is consultative, operational and premium. A hotel, club, resort or chef-led group will not choose you because you guaranteed finding one questionable recipe or vendor increase.
+
+They will choose you because:
+
+* The culinary team may actually adopt it.
+* It can preserve complex data.
+* It supports multiple kitchens and storage locations.
+* It connects culinary decisions to purchasing and financial control.
+* It can run alongside incumbent systems and prove value.
+* You provide guided onboarding and operational expertise.
+
+Replace the guarantee section with:
+
+## A guided operational launch
+
+**Headline**
+
+> **Start with the operation you already have.**
+
+**Copy**
+
+> FnB Cost Pro can ingest existing recipes, inventory exports, vendor files and POS sales rather than requiring your team to rebuild everything manually. We map the current operation, identify exceptions for review and run alongside existing systems while the platform earns your trust.
+
+This is exactly the Bay Hill story and a much stronger premium sales motion.
+
+Potential sub-points:
+
+* Import existing inventory and locations
+* Connect sales items to recipes
+* Capture current vendor pricing
+* Review recommendations before action
+* Expand only after value is proven
+
+CTA:
+
+> **Discuss Your Current Workflow**
+
+# About page review
+
+Current headline:
+
+> **We Help Restaurants Find Food Cost Opportunities Faster**
+
+Again, it sounds like an audit service or savings consultant.
+
+Current story:
+
+> Restaurant operators were spending too much time typing menus, recipes, invoices and inventory counts into software before they could see anything useful.
+
+This underlying problem is strong. The site simply gives it the wrong conclusion.
+
+The conclusion should not be:
+
+> We get them to a savings opportunity sooner.
+
+It should be:
+
+> We created a culinary operations platform that adapts to the way chefs already work.
+
+## Recommended About-page opening
+
+**Eyebrow**
+
+OUR POINT OF VIEW
+
+**Headline**
+
+> **The kitchen should not have to adapt to the software.**
+
+**Copy**
+
+> Chefs create with experience, conversation, tasting, handwritten notes and constant adjustment. Yet most food-cost and inventory systems begin by asking them to sit at a computer and manually structure every detail.
+
+> FnB Cost Pro was built to reverse that relationship.
+
+> Culinary teams can start with photos, paper, voice, spreadsheets and the systems they already use. FnB Cost Pro turns those inputs into reviewable, structured data for recipe costing, inventory, vendor pricing, purchasing and predictive ordering.
+
+> The chef keeps working like a chef. The operation gains the control it needs.
+
+That is a much stronger founding story.
+
+## Mission rewrite
+
+Current mission begins with the financial importance of a 1–2% food-cost shift. That information is useful, but it should come later.
+
+Recommended mission:
+
+> **Our mission is to give culinary teams the intelligence of a sophisticated back-office platform without imposing back-office work on the kitchen.**
+
+Supporting copy:
+
+> We believe great operational data should begin with the way people actually work. That means making mobile capture, existing documents and practical kitchen workflows the starting point—while preserving the accuracy, review controls and connected relationships required by serious food and beverage operations.
+
+Then add the financial outcome:
+
+> When recipes, prices, inventory, sales and purchasing remain connected, operators can protect margin continuously rather than discovering problems after month-end.
+
+# What the current site gets right
+
+The site is not a lost cause. Several pieces should remain:
+
+* The orange/green branding is recognizable and relevant to food.
+* The kitchen photography places the product in an appropriate environment.
+* Photo-based setup is already prominent.
+* The copy recognizes manual entry as a major problem.
+* The guided-launch concept is appropriate for a premium product.
+* Bilingual navigation is valuable.
+* Pricing transparency may still be useful, depending on how premium you intend to go.
+
+The issue is not that the site says the wrong things everywhere. It is that all roads lead back to:
+
+> “Find a food-cost savings opportunity.”
+
+We need all roads to lead to:
+
+> **“Make sophisticated culinary operations natural to use.”**
+
+# The competitive whitespace
+
+You should not claim competitors lack mobile access. Crunchtime, MarginEdge, MarketMan and Restaurant365 all promote mobile or streamlined operational workflows in various forms. MarginEdge especially makes phone-based invoice capture central to its marketing, while Crunchtime has mobile inventory tools. ([MarginEdge][2])
+
+You also cannot differentiate solely on predictive ordering or vendor comparison, because MarketMan publicly offers predictive analytics, supplier price comparison and order management. ([MarketMan][3])
+
+Your defensible marketing combination is:
+
+1. **Chef-native capture across multiple input types**
+2. **Structured, reviewable data rather than simplified guesses**
+3. **Recipe creation and costing as a creative workflow**
+4. **Vendor pricing and predictive purchasing connected to the recipe**
+5. **Multi-outlet and physical storage-location awareness**
+6. **Migration alongside existing restaurant systems**
+7. **Premium guided implementation with culinary feedback**
+
+That full combination is much stronger than any single feature claim.
+
+# New homepage architecture
+
+## 1. Hero
+
+> Built for the way chefs work.
+
+Show chef + handwritten recipe + phone + structured result.
+
+## 2. The friction
+
+> Your chefs were hired to create—not retype the kitchen into software.
+
+Use Jerry’s insight as the creative inspiration, but do not publicly quote or name him without permission.
+
+## 3. Capture without compromise
+
+> Less data entry doesn’t mean less data.
+
+Show photos, documents and imports becoming controlled structured records.
+
+## 4. Recipe creation and profitability
+
+> Cost the dish while the idea is still fresh.
+
+Include recipes, sub-recipes, yields, specials and global ingredient replacement.
+
+## 5. Purchasing intelligence
+
+> Current pricing. Valid comparisons. Smarter orders.
+
+Include vendor portals, price history, matching, predictive ordering and human approval.
+
+## 6. Multi-location operations
+
+> Every kitchen, storeroom and outlet connected.
+
+Show central storage, outlets, locations and transfers.
+
+## 7. Existing-system onboarding
+
+> Start with the data you already have.
+
+Show POS sales, Orderly-style inventory exports, invoices and order guides.
+
+## 8. Roles
+
+* Executive Chef
+* F&B Director
+* Sous Chef
+* Purchasing
+* Ownership/Finance
+
+## 9. Proof
+
+Eventually:
+
+* Executive-chef testimonials
+* Pilot metrics
+* Import statistics
+* Time-to-cost a recipe
+* Vendor-price opportunities
+* Predictive order acceptance
+* Real workflow videos
+
+## 10. CTA
+
+> **Show us how your kitchen works.**
+
+Supporting line:
+
+> We’ll show you how FnB Cost Pro can run alongside it.
+
+Button:
+
+> **Schedule an Operational Review**
+
+# Navigation changes
+
+Current:
+
+* Features
+* Pricing
+* About
+* Contact
+
+Recommended:
+
+* Platform
+* For Chefs
+* For F&B Leaders
+* Industries
+* Pricing
+* About
+
+Under Platform:
+
+* Recipe Intelligence
+* Inventory & Locations
+* Vendor Intelligence
+* Predictive Ordering
+* Mobile Capture
+* Integrations
+
+Under Industries:
+
+* Chef-Led Restaurants
+* Restaurant Groups
+* Clubs & Resorts
+* Hotels
+* Catering & Events
+
+You do not need to build every page immediately. But the navigation itself helps establish a broader, premium category.
+
+# Pricing page concern
+
+I have not seen the pricing screenshot yet, but the homepage’s trial/guarantee language suggests a self-service SaaS model.
+
+Your pricing structure—base platform, additional locations and onboarding—can still work. However, for premium positioning I would rename and reframe it:
+
+* **Platform Subscription**
+* **Additional Operations or Locations**
+* **Guided Implementation**
+* **Enterprise and Multi-Outlet**
+* **Vendor Connectivity**
+
+Avoid leading with “cancel anytime” on the homepage. That is useful reassurance during checkout, but it weakens the enterprise and culinary-leadership tone in the hero.
+
+# Immediate changes before a complete redesign
+
+These are the fastest high-impact changes:
+
+1. Replace the hero headline and supporting copy.
+2. Remove the 14-day guarantee from the hero.
+3. Replace the statistics strip with the connected workflow.
+4. Rewrite “Food Cost Visibility Starts With a Photo” around structured capture.
+5. Replace the guarantee section with guided onboarding alongside existing systems.
+6. Rewrite the About headline and mission.
+7. Change the main CTA from “Start Your 14-Day Opportunity Review” to “Schedule a Culinary Review” or “See the Chef Workflow.”
+8. Add one section explaining recipe costing, vendor comparison and predictive ordering.
+9. Add one section addressing executive chefs, sous chefs and F&B leaders.
+10. Begin collecting chef-centered product proof.
+
+# Recommended core message set
+
+## Primary headline
+
+> **Built for the way chefs work.**
+
+## Brand explanation
+
+> FnB Cost Pro turns recipes, photos, invoices, inventory and sales into structured culinary and purchasing intelligence—without burying the kitchen in data entry.
+
+## Premium reassurance
+
+> **Natural for the chef. Structured for the operation.**
+
+## Recipe message
+
+> **Cost the dish while the idea is still fresh.**
+
+## Capture message
+
+> **Less data entry doesn’t mean less data.**
+
+## Purchasing message
+
+> **Know what to buy, where to buy it and how much you need.**
+
+## Multi-location message
+
+> **Every kitchen, storeroom and outlet connected.**
+
+## Implementation message
+
+> **Start with the systems and data you already have.**
+
+## CTA
+
+> **Show us how your kitchen works.**
+
+This is not just a copy adjustment. It changes who the website makes feel understood.
+
+The current site understands an owner worried about food cost.
+
+The next version should make an executive chef think:
+
+> **“Finally, this was designed for us.”**
+
+[1]: https://www.crunchtime.com/?utm_source=chatgpt.com "Restaurant Operations Management Suite | Crunchtime"
+[2]: https://www.marginedge.com/lp/mobile-toolkit?utm_source=chatgpt.com "Run Your Restaurant from Your Phone | MarginEdge"
+[3]: https://www.marketman.com/?utm_source=chatgpt.com "Restaurant Inventory Management Software | MarketMan"

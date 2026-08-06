@@ -1,0 +1,821 @@
+import { useTier } from "@/hooks/use-tier";
+import { TierGate } from "@/components/tier-gate";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus, Calendar as CalendarIcon, Trash2, Star, RotateCcw, ChevronRight, Lock, MapPin, Home } from "lucide-react";
+import { useEmbedded } from "@/hooks/use-embedded";
+import { useAccessibleStores } from "@/hooks/use-accessible-stores";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn, parseCountDate } from "@/lib/utils";
+import { SortableTableHead, useTableSort } from "@/components/sortable-table-head";
+import { format } from "date-fns";
+import { useState, useMemo } from "react";
+import type { Company, CompanyStore } from "@shared/schema";
+
+function SessionCard({ count }: any) {
+  const { toast } = useToast();
+  const isEmbedded = useEmbedded();
+  const { data: countLines } = useQuery<any[]>({
+    queryKey: ["/api/inventory-count-lines", count.id],
+  });
+  const storeName = count.storeName || 'Unknown Store';
+  const countDate = count.countDate ? parseCountDate(count.countDate) : new Date(count.countedAt);
+  const totalValue = countLines?.reduce((sum: number, line: any) => sum + (line.qty * (line.unitCost || 0)), 0) || 0;
+  const [, setLocation] = useLocation();
+
+  // Build location summary rows from count lines
+  const locationRows: { id: string; name: string; value: number; counted: number; total: number }[] = [];
+  if (countLines) {
+    const locMap = new Map<string, { id: string; name: string; value: number; counted: number; total: number }>();
+    for (const line of countLines) {
+      const locId = line.storageLocationId || line.inventoryItem?.storageLocationId || "unknown";
+      const locName = line.storageLocationName || line.inventoryItem?.storageLocationName || "Unknown Location";
+      if (!locMap.has(locId)) {
+        locMap.set(locId, { id: locId, name: locName, value: 0, counted: 0, total: 0 });
+      }
+      const entry = locMap.get(locId)!;
+      entry.value += (line.qty || 0) * (line.unitCost || 0);
+      entry.total += 1;
+      if ((line.qty || 0) > 0) entry.counted += 1;
+    }
+    locationRows.push(...Array.from(locMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  }
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/inventory-counts/${count.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({ title: "Session deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete session", variant: "destructive" });
+    },
+  });
+
+  const sessionUrl = (locationId?: string) => {
+    if (isEmbedded) {
+      // Mobile WebView: use the dedicated mobile count page
+      return `/count/${count.id}/mobile`;
+    }
+    const base = `/count/${count.id}`;
+    const qs = new URLSearchParams();
+    if (locationId) qs.set("location", locationId);
+    const q = qs.toString();
+    return q ? `${base}?${q}` : base;
+  };
+
+  return (
+    <div
+      className="border-b last:border-b-0"
+      data-testid={`card-session-${count.id}`}
+    >
+      {/* Session header row */}
+      <div
+        className="flex items-center gap-3 px-4 py-3 hover-elevate cursor-pointer"
+        onClick={() => setLocation(sessionUrl())}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            {count.isPowerSession === 1 && (
+              <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
+            )}
+            {count.applied === 1 && (
+              <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" data-testid={`icon-locked-mobile-${count.id}`} />
+            )}
+            <span className="font-semibold text-sm">{format(countDate, "PPP")}</span>
+          </div>
+          <div className="text-xs text-muted-foreground truncate">{storeName}</div>
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            <span>{countLines?.length ?? 0} items</span>
+            <span>·</span>
+            <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
+            {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
+            {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
+          </div>
+          {isEmbedded && (count.totalItems ?? 0) > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground" data-testid={`text-session-progress-${count.id}`}>
+                  {count.countedItems ?? 0} of {count.totalItems ?? 0} items counted
+                </span>
+                <span className="text-xs font-medium text-[#f2690d]">
+                  {Math.round(((count.countedItems ?? 0) / (count.totalItems ?? 1)) * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden" data-testid={`progress-bar-${count.id}`}>
+                <div
+                  className="h-full rounded-full bg-[#f2690d] transition-all"
+                  style={{ width: `${Math.round(((count.countedItems ?? 0) / (count.totalItems ?? 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
+            disabled={deleteSessionMutation.isPending || count.applied === 1}
+            title={count.applied === 1 ? "Unlock session before deleting" : undefined}
+            data-testid={`button-delete-session-mobile-${count.id}`}
+          >
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
+          </Button>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
+      </div>
+
+      {/* Location rows — each is a direct link to that location in the session */}
+      {locationRows.length > 0 && (
+        <div className="border-t bg-muted/30">
+          {locationRows.map((loc) => (
+            <div
+              key={loc.id}
+              className="flex items-center gap-2 px-6 py-2 hover-elevate cursor-pointer border-b last:border-b-0"
+              data-testid={`link-session-location-${count.id}-${loc.id}`}
+              onClick={() => setLocation(sessionUrl(loc.id))}
+            >
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="flex-1 text-sm truncate">{loc.name}</span>
+              <span className="text-xs text-muted-foreground font-mono">
+                {loc.counted} / {loc.total} counted
+              </span>
+              <span className="text-xs font-mono font-medium ml-2">${loc.value.toFixed(2)}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SessionRow({ count, inventoryItems, stores, index }: any) {
+  const { toast } = useToast();
+  
+  const { data: countLines } = useQuery<any[]>({
+    queryKey: ["/api/inventory-count-lines", count.id],
+  });
+  
+  // Use storeName from count data (includes store name even if user doesn't have access)
+  const storeName = count.storeName || 'Unknown Store';
+  // Fallback to countedAt for legacy records without countDate
+  const countDate = count.countDate ? parseCountDate(count.countDate) : new Date(count.countedAt);
+  const createdAt = new Date(count.countedAt);
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/inventory-counts/${count.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Deleted",
+        description: "Count session and all associated records have been deleted",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete count session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const totalValue = countLines?.reduce((sum, line) => {
+    return sum + (line.qty * (line.unitCost || 0));
+  }, 0) || 0;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (confirm("Are you sure you want to delete this count session? This will also delete all count records for this session.")) {
+      deleteSessionMutation.mutate();
+    }
+  };
+
+  const rowClass = index % 2 === 1 ? "bg-muted/30" : "";
+  
+  return (
+    <TableRow data-testid={`row-session-${count.id}`} className={rowClass}>
+      <TableCell>
+        <Link href={`/count/${count.id}`} className="hover:underline">
+          <div className="font-medium flex items-center gap-2">
+            {count.isPowerSession === 1 && (
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" data-testid={`icon-power-${count.id}`} />
+            )}
+            {count.applied === 1 && (
+              <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" data-testid={`icon-locked-${count.id}`} />
+            )}
+            {format(countDate, "PPP")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Created {format(createdAt, "p")}
+            {count.isPowerSession === 1 && " • Power Count"}
+            {count.applied === 1 && " • Locked"}
+          </div>
+        </Link>
+      </TableCell>
+      <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
+      <TableCell>{count.userName || "System"}</TableCell>
+      <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
+      <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
+        ${totalValue.toFixed(2)}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {count.note || '-'}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-2">
+          <Link href={`/count/${count.id}`}>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              data-testid={`button-view-session-${count.id}`}
+            >
+              View Details
+            </Button>
+          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleteSessionMutation.isPending || count.applied === 1}
+            title={count.applied === 1 ? "Unlock the session before deleting" : undefined}
+            data-testid={`button-delete-session-${count.id}`}
+          >
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+export default function InventorySessions() {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { hasFeature } = useTier();
+  const canUsePowerInventory = hasFeature("power_inventory");
+  const isEmbedded = useEmbedded();
+  // Pre-select store from URL ?store= param (set when navigating back from a count session)
+  const initialStoreId = new URLSearchParams(window.location.search).get("store") || "all";
+  const [selectedStoreId, setSelectedStoreId] = useState<string>(initialStoreId);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogStoreId, setDialogStoreId] = useState<string>("");
+  const [countDate, setCountDate] = useState<Date>(new Date());
+  const [note, setNote] = useState("");
+  const [isPowerSession, setIsPowerSession] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [baselineConfirmOpen, setBaselineConfirmOpen] = useState(false);
+  const [baselineStore, setBaselineStore] = useState<{ id: string; name: string } | null>(null);
+  const { sortField, sortDirection, handleSort } = useTableSort("countDate", "desc");
+
+  // Get authenticated user to determine company ID
+  const { data: user } = useQuery<any>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  // For global_admin: use selected company from localStorage
+  // For other roles: use user's assigned company
+  const selectedCompanyId = user?.role === "global_admin" 
+    ? localStorage.getItem("selectedCompanyId")
+    : user?.companyId;
+
+  const { data: company } = useQuery<Company>({
+    queryKey: selectedCompanyId ? [`/api/companies/${selectedCompanyId}`] : [],
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: stores = [] } = useAccessibleStores();
+
+  const { data: inventoryItems } = useQuery<any[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
+  const { data: inventoryCounts, isLoading: countsLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory-counts"],
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedCompanyId) {
+        throw new Error("No company selected");
+      }
+      if (!dialogStoreId) {
+        throw new Error("Please select a store location to create a count session");
+      }
+      // Format date as YYYY-MM-DD string to prevent timezone shift
+      const year = countDate.getFullYear();
+      const month = String(countDate.getMonth() + 1).padStart(2, '0');
+      const day = String(countDate.getDate()).padStart(2, '0');
+      const countDateStr = `${year}-${month}-${day}`;
+      
+      const response = await apiRequest("POST", "/api/inventory-counts", {
+        userId: "system",
+        companyId: selectedCompanyId,
+        storeId: dialogStoreId,
+        countDate: countDateStr,
+        note: note || undefined,
+        isPowerSession: isPowerSession ? 1 : 0,
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      toast({
+        title: "Session Created",
+        description: isPowerSession 
+          ? "New power inventory count session has been created" 
+          : "New inventory count session has been created",
+      });
+      setDialogOpen(false);
+      setDialogStoreId("");
+      setNote("");
+      setIsPowerSession(false);
+      setCountDate(new Date());
+      setLocation(`/count/${data.id}`);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create count session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStartNewCount = () => {
+    // Pre-select store if one is already selected in the filter
+    if (selectedStoreId !== "all") {
+      setDialogStoreId(selectedStoreId);
+    }
+    // Auto-select if only one store is available
+    else if (stores.length === 1) {
+      setDialogStoreId(stores[0].id);
+    }
+    setDialogOpen(true);
+  };
+
+  const handleCreateSession = () => {
+    if (!dialogStoreId) {
+      toast({
+        title: "Store Required",
+        description: "Please select a store location for this count session",
+        variant: "destructive",
+      });
+      return;
+    }
+    createSessionMutation.mutate();
+  };
+
+  // Initialize zero baseline mutation
+  const initializeBaselineMutation = useMutation({
+    mutationFn: async (storeId: string) => {
+      const response = await apiRequest("POST", "/api/inventory-counts/initialize-baseline", {
+        storeId,
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/store-inventory-items"] });
+      toast({
+        title: "Baseline Initialized",
+        description: data.message || `Zero baseline set for ${data.itemCount} inventory items`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to initialize baseline",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleInitializeBaseline = (storeId: string, storeName: string) => {
+    setBaselineStore({ id: storeId, name: storeName });
+    setBaselineConfirmOpen(true);
+  };
+
+  const confirmInitializeBaseline = () => {
+    if (baselineStore) {
+      initializeBaselineMutation.mutate(baselineStore.id);
+    }
+    setBaselineConfirmOpen(false);
+    setBaselineStore(null);
+  };
+
+  // Get accessible store IDs
+  const accessibleStoreIds = new Set(stores.map(s => s.id));
+  
+  // Filter counts to only show sessions from accessible stores
+  const accessibleCounts = inventoryCounts?.filter(count => 
+    accessibleStoreIds.has(count.storeId)
+  );
+  
+  // Filter by selected store if not "all"
+  const filteredCounts = selectedStoreId === "all" 
+    ? accessibleCounts 
+    : accessibleCounts?.filter(count => count.storeId === selectedStoreId);
+
+  // Sort counts — driven by sortable column header state
+  const sortedCounts = useMemo(() => {
+    if (!filteredCounts) return [];
+    return [...filteredCounts].sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (sortField) {
+        case "countDate":
+          av = new Date(a.countDate || a.countedAt).getTime();
+          bv = new Date(b.countDate || b.countedAt).getTime();
+          break;
+        // @ts-ignore
+        case "storeName":
+          av = (a.storeName || "").toLowerCase();
+          bv = (b.storeName || "").toLowerCase();
+          break;
+        // @ts-ignore
+        case "userName":
+          av = (a.userName || "").toLowerCase();
+          bv = (b.userName || "").toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+      // @ts-ignore
+      const cmp = typeof av === "number" ? av - bv : av.localeCompare(bv);
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [filteredCounts, sortField, sortDirection]);
+
+  // Check which stores need baseline initialization (no applied counts)
+  const storesNeedingBaseline = stores.filter(store => {
+    const storeCounts = inventoryCounts?.filter(c => c.storeId === store.id) || [];
+    const appliedCounts = storeCounts.filter((c: any) => c.applied === 1);
+    return appliedCounts.length === 0;
+  });
+
+  return (
+    <TierGate feature="power_inventory">
+    <div
+      className={isEmbedded ? "p-4" : "p-4 sm:p-8"}
+      style={isEmbedded ? { paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))' } : undefined}
+    >
+      <div className="mb-4 sm:mb-8">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            {!isEmbedded && (
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight truncate" data-testid="text-sessions-title">
+                Counts
+              </h1>
+            )}
+            {isEmbedded && (
+              <h1 className="text-xl font-semibold tracking-tight" data-testid="text-sessions-title">
+                Count Sessions
+              </h1>
+            )}
+          </div>
+          <div className="flex items-center gap-2 sm:gap-4">
+            {stores.length > 1 && (
+              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                <SelectTrigger className="w-[140px] sm:w-[200px]" data-testid="select-store-filter">
+                  <SelectValue placeholder="All Stores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-all-stores">All Stores</SelectItem>
+                  {stores.map((store) => (
+                    <SelectItem 
+                      key={store.id} 
+                      value={store.id}
+                      data-testid={`option-store-${store.id}`}
+                    >
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button 
+              onClick={handleStartNewCount}
+              disabled={createSessionMutation.isPending}
+              data-testid="button-start-new-session"
+              size={isEmbedded ? "sm" : "default"}
+            >
+              <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Start New Count</span>
+              <span className="sm:hidden">New Count</span>
+            </Button>
+            {isEmbedded && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setLocation("/dashboard/mobile")}
+                data-testid="button-sessions-home"
+                title="Home"
+              >
+                <Home className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
+        </div>
+        {!isEmbedded && stores.length === 1 && (
+          <div className="mt-2 text-sm text-muted-foreground">{stores[0].name}</div>
+        )}
+      </div>
+
+      {/* Zero Baseline Initialization Card - shows for stores without any completed counts */}
+      {storesNeedingBaseline.length > 0 && (
+        <Card className="mb-6 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-baseline-needed">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-amber-600" />
+              New Store Setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              The following stores have no completed inventory counts. Initialize a zero baseline to establish 
+              a starting point for inventory tracking. This is recommended for new stores that haven't performed 
+              a physical count yet.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {storesNeedingBaseline.map(store => (
+                <Button
+                  key={store.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleInitializeBaseline(store.id, store.name)}
+                  disabled={initializeBaselineMutation.isPending}
+                  data-testid={`button-init-baseline-${store.id}`}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Initialize {store.name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent data-testid="dialog-new-session">
+          <DialogHeader>
+            <DialogTitle>Start New Inventory Count</DialogTitle>
+            <DialogDescription>
+              Select the store location, inventory date, and add any notes for this count session
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="dialog-store">Store Location *</Label>
+              <Select value={dialogStoreId} onValueChange={setDialogStoreId}>
+                <SelectTrigger id="dialog-store" data-testid="select-dialog-store">
+                  <SelectValue placeholder="Select a store..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem 
+                      key={store.id} 
+                      value={store.id}
+                      data-testid={`option-dialog-store-${store.id}`}
+                    >
+                      {store.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="count-date">Inventory Date of Record</Label>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="count-date"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !countDate && "text-muted-foreground"
+                    )}
+                    data-testid="button-select-date"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {countDate ? format(countDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={countDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setCountDate(date);
+                        setDatePickerOpen(false); // Close popover after selection
+                      }
+                    }}
+                    initialFocus
+                    data-testid="calendar-count-date"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="note">Note (Optional)</Label>
+              <Input
+                id="note"
+                placeholder="e.g., Monthly count, End of quarter..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                data-testid="input-count-note"
+              />
+            </div>
+
+            {canUsePowerInventory && (
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Checkbox
+                  id="isPowerSession"
+                  checked={isPowerSession}
+                  onCheckedChange={(checked) => setIsPowerSession(checked === true)}
+                  data-testid="checkbox-power-session"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="isPowerSession" className="cursor-pointer font-medium flex items-center gap-2">
+                    <Star className="h-4 w-4 text-yellow-500" />
+                    Power Inventory Count
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Only count high-cost power items for faster, focused inventory tracking
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              data-testid="button-cancel-session"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateSession}
+              disabled={createSessionMutation.isPending}
+              data-testid="button-create-session"
+            >
+              {createSessionMutation.isPending ? "Creating..." : "Create Session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        {!isEmbedded && (
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+              <CardTitle>All Count Sessions</CardTitle>
+            </div>
+          </CardHeader>
+        )}
+        <CardContent className={isEmbedded ? "p-0" : undefined}>
+          {countsLoading ? (
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : sortedCounts && sortedCounts.length > 0 ? (
+            <>
+              {/* Mobile card list — visible on small screens */}
+              <div className="sm:hidden" data-testid="sessions-card-list">
+                {sortedCounts.map((count: any) => (
+                  <SessionCard key={count.id} count={count} />
+                ))}
+              </div>
+              {/* Desktop table — hidden on small screens */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <SortableTableHead field="countDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Inventory Date</SortableTableHead>
+                      <SortableTableHead field="storeName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Store</SortableTableHead>
+                      <SortableTableHead field="userName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>User</SortableTableHead>
+                      <TableHead className="text-right">Items</TableHead>
+                      <TableHead className="text-right">Total Value</TableHead>
+                      <TableHead>Note</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedCounts.map((count: any, index: number) => (
+                      <SessionRow 
+                        key={count.id} 
+                        count={count}
+                        inventoryItems={inventoryItems}
+                        stores={stores}
+                        index={index}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="mb-4">No inventory count sessions found</p>
+              <Button 
+                onClick={handleStartNewCount}
+                disabled={createSessionMutation.isPending}
+                data-testid="button-first-session"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Count Session
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Baseline Initialization Confirmation Dialog */}
+      <AlertDialog open={baselineConfirmOpen} onOpenChange={setBaselineConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-baseline-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Initialize Zero Baseline</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to initialize a zero baseline for <strong>{baselineStore?.name}</strong>?
+              <br /><br />
+              This will:
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Set all inventory item quantities to 0</li>
+                <li>Create a completed count session with today's date</li>
+                <li>Establish a starting point for inventory tracking</li>
+              </ul>
+              <br />
+              <strong>This action cannot be undone.</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-baseline-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmInitializeBaseline}
+              disabled={initializeBaselineMutation.isPending}
+              data-testid="button-baseline-confirm"
+            >
+              {initializeBaselineMutation.isPending ? "Initializing..." : "Initialize Baseline"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+    </TierGate>
+  );
+}

@@ -1,0 +1,88 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ # 1. Set port to 3004
+sed -i 's/^PORT=3003/PORT=3004/' ~/apps/CostPro/fnbcostpro/.env
+
+# 2. Update nginx configs to 3004
+sudo sed -i 's|proxy_pass http://localhost:3003|proxy_pass http://localhost:3004|g' /etc/nginx/sites-available/app.fnbcostpro.com
+sudo sed -i 's|proxy_pass http://localhost:3003|proxy_pass http://localhost:3004|g' /etc/nginx/sites-available/fnbcostpro.com
+sudo sed -i 's|proxy_pass http://127.0.0.1:3003|proxy_pass http://127.0.0.1:3004|g' /etc/nginx/sites-available/fnbcostpro
+
+# 3. Verify
+grep "proxy_pass" /etc/nginx/sites-available/app.fnbcostpro.com /etc/nginx/sites-available/fnbcostpro.com /etc/nginx/sites-available/fnbcostpro
+
+# 4. Reload and restart
+sudo nginx -t && sudo nginx -s reload
+pm2 restart fnbcostpro
+sleep 3 && pm2 logs fnbcostpro --lines 15 --nostream
+grep: /etc/nginx/sites-available/app.fnbcostpro.com: Permission denied
+grep: /etc/nginx/sites-available/fnbcostpro.com: Permission denied
+grep: /etc/nginx/sites-available/fnbcostpro: Permission denied
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/kayeflooring.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.permitsmanager.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/bldpermit.com/fullchain.pem"
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/www.erecording-fl.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, issuer certificate not found for certificate "/etc/nginx/ssl-certificates/fhd.com.crt"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/fnbcostpro.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/kayeflooring.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/app.permitsmanager.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/pflow.permitsmanager.com/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/letsencrypt/live/bldpermit.com/fullchain.pem"
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 6 ])
+[PM2] [fnbcostpro](6) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3451440  │ 14h    │ 2    │ online    │ 0%       │ 94.3mb   │ adm… │ disabled │
+│ 6  │ fnbcostpro     │ default     │ N/A     │ fork    │ 3647664  │ 0s     │ 685  │ online    │ 0%       │ 22.8mb   │ adm… │ disabled │
+│ 5  │ k5-api         │ default     │ 0.0.0   │ fork    │ 3582733  │ 90m    │ 495  │ online    │ 0%       │ 74.1mb   │ adm… │ disabled │
+│ 4  │ kaye-api       │ default     │ 0.0.0   │ cluster │ 3451459  │ 14h    │ 2    │ online    │ 0%       │ 67.3mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.0   │ fork    │ 3451423  │ 14h    │ 2    │ online    │ 0%       │ 136.0mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3451448  │ 14h    │ 2    │ online    │ 0%       │ 77.0mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[TAILING] Tailing last 15 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 15 lines:
+6|fnbcostp |     at listenInCluster (node:net:1965:12)
+6|fnbcostp |     at doListen (node:net:2139:7)
+6|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+6|fnbcostp | Emitted 'error' event on WebSocketServer instance at:
+6|fnbcostp |     at Server.emit (node:events:524:28)
+6|fnbcostp |     at emitErrorNT (node:net:1944:8)
+6|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+6|fnbcostp |   code: 'EADDRINUSE',
+6|fnbcostp |   errno: -98,
+6|fnbcostp |   syscall: 'listen',
+6|fnbcostp |   address: '0.0.0.0',
+6|fnbcostp |   port: 3002
+6|fnbcostp | }
+6|fnbcostp |
+6|fnbcostp | Node.js v20.20.2
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 15 lines:
+6|fnbcostp | 🔗 Migrating vendors to store assignments...
+6|fnbcostp |    All vendors already assigned to stores
+6|fnbcostp | 6:43:55 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+6|fnbcostp | 6:43:55 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+6|fnbcostp |
+6|fnbcostp | > rest-express@1.11.0 start
+6|fnbcostp | > NODE_ENV=production node dist/index.js
+6|fnbcostp |
+6|fnbcostp |
+6|fnbcostp | > rest-express@1.11.0 start
+6|fnbcostp | > NODE_ENV=production node dist/index.js
+6|fnbcostp |
+6|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+6|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+6|fnbcostp | ✅ Startup migrations applied

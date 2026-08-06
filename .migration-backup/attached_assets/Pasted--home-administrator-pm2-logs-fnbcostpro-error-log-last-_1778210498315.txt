@@ -1,0 +1,163 @@
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 80 lines:
+3|fnbcostp | }
+3|fnbcostp | /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45
+3|fnbcostp |     Error.captureStackTrace(err)
+3|fnbcostp |           ^
+3|fnbcostp |
+3|fnbcostp | error: column "description" does not exist
+3|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/drizzle-orm/node-postgres/session.js:83:22
+3|fnbcostp |     at async seedBriansPizza (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:24336:26)
+3|fnbcostp |     at async seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:24567:5)
+3|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25338:3 {
+3|fnbcostp |   length: 111,
+3|fnbcostp |   severity: 'ERROR',
+3|fnbcostp |   code: '42703',
+3|fnbcostp |   detail: undefined,
+3|fnbcostp |   hint: undefined,
+3|fnbcostp |   position: '44',
+3|fnbcostp |   internalPosition: undefined,
+3|fnbcostp |   internalQuery: undefined,
+3|fnbcostp |   where: undefined,
+3|fnbcostp |   schema: undefined,
+3|fnbcostp |   table: undefined,
+3|fnbcostp |   column: undefined,
+3|fnbcostp |   dataType: undefined,
+3|fnbcostp |   constraint: undefined,
+3|fnbcostp |   file: 'parse_relation.c',
+3|fnbcostp |   line: '3722',
+3|fnbcostp |   routine: 'errorMissingColumn'
+3|fnbcostp | }
+3|fnbcostp |
+3|fnbcostp | Node.js v20.20.0
+3|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: column "is_catch_weight_category" of relation "categories" already exists
+3|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25299:5)
+3|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25332:3 {
+3|fnbcostp |   length: 319,
+3|fnbcostp |   severity: 'ERROR',
+3|fnbcostp |   code: '42701',
+3|fnbcostp |   detail: undefined,
+3|fnbcostp |   hint: undefined,
+3|fnbcostp |   position: undefined,
+3|fnbcostp |   internalPosition: undefined,
+3|fnbcostp |   internalQuery: undefined,
+3|fnbcostp |   where: 'SQL statement "ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category"\n' +
+3|fnbcostp |     'PL/pgSQL function inline_code_block line 4 at SQL statement',
+3|fnbcostp |   schema: undefined,
+3|fnbcostp |   table: undefined,
+3|fnbcostp |   column: undefined,
+3|fnbcostp |   dataType: undefined,
+3|fnbcostp |   constraint: undefined,
+3|fnbcostp |   file: 'tablecmds.c',
+3|fnbcostp |   line: '7347',
+3|fnbcostp |   routine: 'check_for_column_name_collision'
+3|fnbcostp | }
+3|fnbcostp | ⚠️ Startup migrations error (non-fatal): error: column "is_catch_weight_category" of relation "categories" already exists
+3|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostp |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25299:5)
+3|fnbcostp |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25332:3 {
+3|fnbcostp |   length: 319,
+3|fnbcostp |   severity: 'ERROR',
+3|fnbcostp |   code: '42701',
+3|fnbcostp |   detail: undefined,
+3|fnbcostp |   hint: undefined,
+3|fnbcostp |   position: undefined,
+3|fnbcostp |   internalPosition: undefined,
+3|fnbcostp |   internalQuery: undefined,
+3|fnbcostp |   where: 'SQL statement "ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category"\n' +
+3|fnbcostp |     'PL/pgSQL function inline_code_block line 4 at SQL statement',
+3|fnbcostp |   schema: undefined,
+3|fnbcostp |   table: undefined,
+3|fnbcostp |   column: undefined,
+3|fnbcostp |   dataType: undefined,
+3|fnbcostp |   constraint: undefined,
+3|fnbcostp |   file: 'tablecmds.c',
+3|fnbcostp |   line: '7347',
+3|fnbcostp |   routine: 'check_for_column_name_collision'
+3|fnbcostp | }
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 80 lines:
+3|fnbcostp | ✅ Database already seeded
+3|fnbcostp | 🏢 Creating Brian's Pizza company and stores...
+3|fnbcostp | 🔗 Migrating vendors to store assignments...
+3|fnbcostp |    All vendors already assigned to stores
+3|fnbcostp | 2:58:00 AM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+3|fnbcostp | 2:58:00 AM [express] serving on port 3001
+3|fnbcostp | 2:58:00 AM [express] ✅ Session cleanup completed
+3|fnbcostp |
+3|fnbcostp | > rest-express@1.5.0 start
+3|fnbcostp | > NODE_ENV=production node dist/index.js
+3|fnbcostp |
+3|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+3|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+3|fnbcostp | [Storage] Environment detected: local (VPS)
+3|fnbcostp | [Storage] Using local filesystem storage with company isolation
+3|fnbcostp | ✅ WebSocket POS streaming enabled at /ws/pos
+3|fnbcostp | 🌱 Seeding database with pizza restaurant data...
+3|fnbcostp | 📏 Seeding comprehensive kitchen units...
+3|fnbcostp | [TierMigration] Already applied (tier_system_init)
+3|fnbcostp | [Migration] Already applied (receipt_receive_by_unit)
+3|fnbcostp | [Migration] Already applied (vendor_receive_by_unit)
+3|fnbcostp | [Migration] Already applied (mobile_dashboard_columns)
+3|fnbcostp | [Migration] Already applied (container_size_hierarchy)
+3|fnbcostp | [Migration] Already applied (preferred_language)
+3|fnbcostp | ✅ All 41 comprehensive kitchen units already seeded
+3|fnbcostp | ✅ Database already seeded
+3|fnbcostp | 🏢 Creating Brian's Pizza company and stores...
+3|fnbcostp | 🔗 Migrating vendors to store assignments...
+3|fnbcostp |    All vendors already assigned to stores
+3|fnbcostp | 2:58:17 AM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+3|fnbcostp | 2:58:17 AM [express] serving on port 3001
+3|fnbcostp | 2:58:17 AM [express] ✅ Session cleanup completed
+3|fnbcostp | 2:58:35 AM [express] GET /api/auth/me 200 in 17ms :: {"id":"91270bfd-afa9-46b5-a7aa-b1cd6be479ef","e…
+3|fnbcostp | 2:58:35 AM [express] GET /api/auth/me 200 in 10ms :: {"id":"91270bfd-afa9-46b5-a7aa-b1cd6be479ef","e…
+3|fnbcostp | 2:58:49 AM [express] GET /api/background-images 200 in 7ms :: {"images":[{"id":"9ef34d46-38c6-49d8-9…
+3|fnbcostp | 2:59:00 AM [express] POST /api/auth/login 200 in 105ms :: {"user":{"id":"91270bfd-afa9-46b5-a7aa-b1c…
+3|fnbcostp | 2:59:00 AM [express] GET /api/auth/me 200 in 9ms :: {"id":"91270bfd-afa9-46b5-a7aa-b1cd6be479ef","em…
+3|fnbcostp | 2:59:00 AM [express] GET /api/auth/me 200 in 11ms :: {"id":"91270bfd-afa9-46b5-a7aa-b1cd6be479ef","e…
+3|fnbcostp | 2:59:00 AM [express] GET /api/purchase-orders 200 in 28ms :: []
+3|fnbcostp | 2:59:00 AM [express] GET /api/transfer-orders 403 in 30ms :: {"error":"tier_required","currentTier":…
+3|fnbcostp | 2:59:00 AM [express] GET /api/stores/accessible 200 in 27ms :: []
+3|fnbcostp | 2:59:00 AM [express] GET /api/receipts 200 in 59ms :: []
+3|fnbcostp | 2:59:00 AM [express] GET /api/recipes/missing-ingredients 403 in 57ms :: {"error":"tier_required","c…
+3|fnbcostp | 2:59:00 AM [express] GET /api/storage-locations 200 in 56ms :: [{"id":"46860ffb-9d5e-47e8-aca7-5c03c…
+3|fnbcostp | 2:59:00 AM [express] GET /api/companies/584bd0c9-2050-4a26-bbf7-3a77c74a9d4b 200 in 9ms :: {"id":"58…
+3|fnbcostp | 2:59:00 AM [express] GET /api/onboarding/milestones 200 in 32ms :: {"milestones":[{"id":"menu_scan",…
+3|fnbcostp | 2:59:31 AM [express] POST /api/objects/upload 200 in 40ms :: {"uploadUrl":null,"objectPath":"/object…
+3|fnbcostp | 2:59:37 AM [express] POST /api/onboarding/menu-scan 200 in 5652ms :: {"sessionId":"3dda8350-ff39-4bd…
+3|fnbcostp | 2:59:47 AM [express] POST /api/objects/upload 200 in 14ms :: {"uploadUrl":null,"objectPath":"/object…
+3|fnbcostp | 2:59:53 AM [express] POST /api/onboarding/menu-scan 200 in 5056ms :: {"sessionId":"d3067ec0-0c03-44e…
+3|fnbcostp | 2:59:59 AM [express] POST /api/onboarding/menu-scan/3dda8350-ff39-4bd1-8d57-dee5ec3e6186/approve 400…
+3|fnbcostp | 3:00:14 AM [express] POST /api/onboarding/menu-scan/3dda8350-ff39-4bd1-8d57-dee5ec3e6186/approve 400…
+3|fnbcostp | 3:17:27 AM [express] GET /api/.env 200 in 4ms
+3|fnbcostp | 3:17:38 AM [express] GET /api/documentation.json 200 in 4ms
+3|fnbcostp | 3:17:39 AM [express] GET /api/docs.json 200 in 4ms
+3|fnbcostp | 3:17:39 AM [express] GET /api/docs/api.json 200 in 3ms
+3|fnbcostp | 3:17:40 AM [express] GET /api/v1/debug 200 in 3ms
+3|fnbcostp | 3:17:40 AM [express] GET /api/v1/status 200 in 8ms
+3|fnbcostp | 3:17:40 AM [express] GET /api/v2/debug 200 in 4ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/v2/status 200 in 5ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/debug 200 in 5ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/status 200 in 4ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/internal/debug 200 in 3ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/admin/debug 200 in 3ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/v1/health 200 in 4ms
+3|fnbcostp | 3:17:41 AM [express] GET /api/v2/health 200 in 3ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/templates 200 in 4ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/templates/default 200 in 3ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/templates/env 200 in 3ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/env 200 in 3ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/config/env 200 in 3ms
+3|fnbcostp | 3:17:43 AM [express] GET /api/v1/templates 200 in 4ms
+3|fnbcostp | 3:17:44 AM [express] GET /api/v1/env 200 in 3ms
+3|fnbcostp | 3:17:46 AM [express] GET /api/inngest 200 in 3ms
+3|fnbcostp | 3:17:46 AM [express] GET /api/edge/inngest 200 in 4ms
+3|fnbcostp | 3:17:46 AM [express] GET /api/fn 200 in 4ms
+3|fnbcostp | 3:17:46 AM [express] GET /api/handler 200 in 3ms
+3|fnbcostp | 3:17:46 AM [express] GET /api/functions 200 in 3ms
+3|fnbcostp | 3:17:47 AM [express] GET /api/events 200 in 3ms
+3|fnbcostp | 3:17:47 AM [express] GET /api/inngest/handler 200 in 4ms

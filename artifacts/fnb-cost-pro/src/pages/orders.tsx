@@ -1,0 +1,667 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Package, Search, Plus, Trash2, Upload, CheckCircle2, FileCheck } from "lucide-react";
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useStoreContext } from "@/hooks/use-store-context";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatDateString } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
+import { useTier } from "@/hooks/use-tier";
+
+type UnifiedOrder = {
+  id: string;
+  type: "purchase" | "transfer";
+  status: string;
+  createdAt: string;
+  expectedDate: string | null;
+  completedAt: string | null;
+  vendorName: string;
+  fromStore?: string;
+  toStore?: string;
+  storeId?: string; // For purchase orders
+  fromStoreId?: string; // For transfer orders
+  toStoreId?: string; // For transfer orders
+  lineCount: number;
+  totalAmount: number;
+};
+
+type Vendor = {
+  id: string;
+  name: string;
+  accountNumber: string | null;
+};
+
+type Store = {
+  id: string;
+  name: string;
+};
+
+const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
+  "pending": { 
+    variant: "secondary",
+    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20"
+  },
+  "ordered": { 
+    variant: "secondary",
+    className: "bg-blue-500/10 text-blue-700 border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20"
+  },
+  "in_transit": { 
+    variant: "secondary",
+    className: "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20"
+  },
+  "received": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+  "completed": { 
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+  "pending_qb_export": {
+    variant: "secondary",
+    className: "bg-orange-500/10 text-orange-700 border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20"
+  },
+  "qb_exported": {
+    variant: "secondary",
+    className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
+  },
+};
+
+export default function Orders() {
+  const [search, setSearch] = useState("");
+  const [selectedVendor, setSelectedVendor] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
+  const [selectedQbExportIds, setSelectedQbExportIds] = useState<Set<string>>(new Set());
+  const [exportResults, setExportResults] = useState<Record<string, { success: boolean; error?: string; quickbooksBillId?: string }>>({});
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { hasFeature } = useTier();
+  
+  // Use the global store context from the header filter
+  const { selectedStoreId } = useStoreContext();
+
+  const { data: orders, isLoading } = useQuery<UnifiedOrder[]>({
+    queryKey: ["/api/orders/unified"],
+  });
+
+  const { data: vendors } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  // QB status
+  const { data: qbStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/quickbooks/status"],
+    retry: false,
+  });
+
+  const isQbPro = hasFeature("quickbooks_integration") && qbStatus?.connected;
+
+  // Orders awaiting QB export (QB connected only)
+  const pendingQbOrders = isQbPro
+    ? (orders?.filter(o => o.type === "purchase" && o.status === "pending_qb_export") || [])
+    : [];
+
+  // Fetch reconciliation data for all pending export orders (for invoice total + initials columns)
+  const { data: allReconciliations } = useQuery<{ data: any }[]>({
+    queryKey: ["/api/qb-reconciliations-for-pending", pendingQbOrders.map(o => o.id).join(",")],
+    queryFn: async () => {
+      if (!pendingQbOrders.length) return [];
+      const results = await Promise.all(
+        pendingQbOrders.map(o =>
+          fetch(`/api/purchase-orders/${o.id}/reconciliation`, { credentials: "include" }).then(r => r.json())
+        )
+      );
+      return results;
+    },
+    enabled: isQbPro && pendingQbOrders.length > 0,
+    retry: false,
+  });
+  const reconcByPoId: Record<string, any> = {};
+  if (allReconciliations) {
+    pendingQbOrders.forEach((o, idx) => {
+      const rec = allReconciliations[idx]?.data;
+      if (rec) reconcByPoId[o.id] = rec;
+    });
+  }
+
+  const exportBillsMutation = useMutation({
+    mutationFn: async (purchaseOrderIds: string[]) => {
+      const res = await apiRequest("POST", "/api/quickbooks/export-bills", { purchaseOrderIds });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quickbooks/sync-logs"] });
+      const { results = [], successCount, failureCount } = data?.data || {};
+      // Store per-row results for inline feedback
+      const resultMap: Record<string, { success: boolean; error?: string; quickbooksBillId?: string }> = {};
+      for (const r of results) {
+        resultMap[r.poId] = { success: r.success, error: r.error, quickbooksBillId: r.quickbooksBillId };
+      }
+      setExportResults(resultMap);
+      // Keep failed selections checked for easy retry
+      const failedIds = results.filter((r: any) => !r.success).map((r: any) => r.poId);
+      setSelectedQbExportIds(new Set(failedIds));
+      if (failureCount > 0 && successCount === 0) {
+        toast({
+          title: "Export failed",
+          description: `${failureCount} order${failureCount !== 1 ? "s" : ""} could not be exported. See errors inline.`,
+          variant: "destructive",
+        });
+      } else if (failureCount > 0) {
+        toast({
+          title: `${successCount} exported, ${failureCount} failed`,
+          description: "Failed orders remain checked for retry.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Exported to QuickBooks",
+          description: `${successCount} bill${successCount !== 1 ? "s" : ""} created successfully.`,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Export failed",
+        description: error.message || "Failed to export bills to QuickBooks",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/purchase-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/unified"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      toast({
+        title: "Success",
+        description: "Order deleted successfully",
+      });
+      setOrderToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const filteredOrders = orders?.filter((order) => {
+    const createdDate = new Date(order.createdAt).toLocaleDateString();
+    const expectedDate = formatDateString(order.expectedDate);
+    
+    const matchesSearch = order.vendorName?.toLowerCase().includes(search.toLowerCase()) ||
+      order.id?.toLowerCase().includes(search.toLowerCase()) ||
+      createdDate.toLowerCase().includes(search.toLowerCase()) ||
+      expectedDate.toLowerCase().includes(search.toLowerCase());
+    const matchesType = selectedType === "all" || order.type === selectedType;
+    
+    // For vendor filter, use name-based matching since unified API returns vendorName (not vendorId)
+    const matchesVendor = selectedVendor === "all" || 
+      order.vendorName.trim().toLowerCase().includes(selectedVendor);
+    
+    const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
+    
+    // For store filter, compare by store ID from header context
+    const matchesStore = !selectedStoreId || 
+      (order.type === "purchase" && order.storeId === selectedStoreId) ||
+      (order.type === "transfer" && (order.fromStoreId === selectedStoreId || order.toStoreId === selectedStoreId));
+      
+    return matchesSearch && matchesType && matchesVendor && matchesStatus && matchesStore;
+  }) || [];
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-shrink-0 bg-background border-b px-6 pt-6 pb-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-orders-title">Orders</h1>
+            <p className="text-muted-foreground mt-1">
+              Create, manage, and receive purchase orders from vendors
+            </p>
+          </div>
+          <Button asChild data-testid="button-create-order">
+            <Link href="/purchase-orders/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Order
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto px-6 py-6 space-y-6">
+        {/* QuickBooks Export Queue — Pro + QB connected only */}
+        {isQbPro && pendingQbOrders.length > 0 && (
+          <Card data-testid="card-qb-export-queue">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <FileCheck className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle>QuickBooks Export Queue</CardTitle>
+                    <CardDescription>
+                      {pendingQbOrders.length} reconciled order{pendingQbOrders.length !== 1 ? "s" : ""} ready to export as bills
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => {
+                    const ids = selectedQbExportIds.size > 0
+                      ? Array.from(selectedQbExportIds)
+                      : pendingQbOrders.map(o => o.id);
+                    exportBillsMutation.mutate(ids);
+                  }}
+                  disabled={exportBillsMutation.isPending}
+                  data-testid="button-export-selected-bills"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {exportBillsMutation.isPending
+                    ? "Exporting..."
+                    : selectedQbExportIds.size > 0
+                      ? `Export ${selectedQbExportIds.size} Selected`
+                      : `Export All (${pendingQbOrders.length})`}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="w-[40px] pl-4">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={selectedQbExportIds.size === pendingQbOrders.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedQbExportIds(new Set(pendingQbOrders.map(o => o.id)));
+                          } else {
+                            setSelectedQbExportIds(new Set());
+                          }
+                        }}
+                        data-testid="checkbox-select-all-qb-export"
+                      />
+                    </TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Received</TableHead>
+                    <TableHead className="text-right">Invoice Total</TableHead>
+                    <TableHead className="text-center">Initials</TableHead>
+                    <TableHead className="text-center">Result</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pendingQbOrders.map(order => {
+                    const rec = reconcByPoId[order.id];
+                    const result = exportResults[order.id];
+                    return (
+                      <TableRow key={order.id} data-testid={`row-qb-export-${order.id}`} className={result ? (result.success ? "bg-green-500/5" : "bg-destructive/5") : ""}>
+                        <TableCell className="pl-4">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={selectedQbExportIds.has(order.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedQbExportIds);
+                              if (e.target.checked) next.add(order.id);
+                              else next.delete(order.id);
+                              setSelectedQbExportIds(next);
+                            }}
+                            data-testid={`checkbox-qb-export-${order.id}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">#{order.id.slice(0, 8)}</TableCell>
+                        <TableCell className="font-medium">{order.vendorName}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {order.completedAt ? new Date(order.completedAt).toLocaleDateString() : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold" data-testid={`text-invoice-total-${order.id}`}>
+                          {rec?.invoiceTotal != null ? `$${parseFloat(rec.invoiceTotal).toFixed(2)}` : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-initials-${order.id}`}>
+                          {rec?.initials ? (
+                            <span className="font-mono text-sm font-medium">{rec.initials.toUpperCase()}</span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center min-w-[110px]" data-testid={`text-export-result-${order.id}`}>
+                          {result ? (
+                            result.success ? (
+                              <span className="text-xs text-green-700 dark:text-green-400 font-medium">
+                                Exported
+                              </span>
+                            ) : (
+                              <span className="text-xs text-destructive font-medium truncate block max-w-[100px]" title={result.error}>
+                                {result.error || "Failed"}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right pr-4">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setLocation(`/receiving/${order.id}`)}
+                            data-testid={`button-view-qb-order-${order.id}`}
+                          >
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="flex gap-4 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+            <Input
+              placeholder="Search orders..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
+              data-testid="input-search-orders"
+            />
+          </div>
+          <Select value={selectedVendor} onValueChange={setSelectedVendor}>
+            <SelectTrigger className="w-[200px]" data-testid="select-vendor-filter">
+              <SelectValue placeholder="Filter by vendor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Vendors</SelectItem>
+              {vendors?.map((vendor) => (
+                <SelectItem key={vendor.id} value={vendor.name.toLowerCase()}>
+                  {vendor.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={selectedType} onValueChange={setSelectedType}>
+            <SelectTrigger className="w-[200px]" data-testid="select-type-filter">
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="purchase">Purchase Orders</SelectItem>
+              <SelectItem value="transfer">Transfer Orders</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+            <SelectTrigger className="w-[200px]" data-testid="select-status-filter">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="ordered">Ordered</SelectItem>
+              <SelectItem value="in_transit">In Transit</SelectItem>
+              <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-muted-foreground">Loading orders...</div>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Package className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-1">No orders found</h3>
+            <p className="text-muted-foreground text-sm">
+              {search || selectedVendor !== "all" || selectedStatus !== "all"
+                ? "Try adjusting your filters"
+                : "Create your first purchase order to get started"}
+            </p>
+          </div>
+        ) : (
+          <Table wrapperClassName="rounded-md border max-h-[calc(100vh-280px)]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow>
+                  <TableHead className="w-[100px]">Number</TableHead>
+                  <TableHead className="w-[80px]">Type</TableHead>
+                  <TableHead>Details</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Expected</TableHead>
+                  <TableHead className="text-right">Items</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredOrders.map((order, index) => {
+                  const createdDate = new Date(order.createdAt);
+                  const expectedDate = order.expectedDate ? new Date(order.expectedDate) : null;
+
+                  // Determine navigation URL based on order type and status
+                  let targetUrl = '';
+                  if (order.type === 'purchase') {
+                    targetUrl = order.status === "pending"
+                      ? `/purchase-orders/${order.id}`
+                      : `/receiving/${order.id}`;
+                  } else {
+                    // Transfer orders
+                    targetUrl = `/transfer-orders/${order.id}`;
+                  }
+
+                  return (
+                    <TableRow 
+                      key={order.id} 
+                      data-testid={`row-order-${order.id}`}
+                      className={`cursor-pointer hover-elevate ${index % 2 === 1 ? 'bg-muted/30' : ''}`}
+                      onClick={() => setLocation(targetUrl)}
+                    >
+                      <TableCell className="font-mono text-sm">
+                        #{order.id.slice(0, 8)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {order.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{order.vendorName}</div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {createdDate.toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {expectedDate ? expectedDate.toLocaleDateString() : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {order.lineCount}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold">
+                        ${order.totalAmount.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        {(order.status === "completed" || order.status === "received") && order.completedAt ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help inline-block">
+                                  <Badge 
+                                    variant={statusConfig[order.status]?.variant || "secondary"}
+                                    className={statusConfig[order.status]?.className || ""}
+                                    data-testid={`badge-status-${order.id}`}
+                                  >
+                                    {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                  </Badge>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Completed at: {new Date(order.completedAt).toLocaleString()}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <Badge 
+                            variant={statusConfig[order.status]?.variant || "secondary"}
+                            className={statusConfig[order.status]?.className || ""}
+                            data-testid={`badge-status-${order.id}`}
+                          >
+                            {order.status.replace('_', ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {order.type === "purchase" ? (
+                            <>
+                              {order.status === "pending" ? (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-edit-order-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/purchase-orders/${order.id}`);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : order.status === "ordered" ? (
+                                <Button 
+                                  variant="default" 
+                                  size="sm"
+                                  data-testid={`button-receive-order-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/receiving/${order.id}`);
+                                  }}
+                                >
+                                  Receive
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-view-receipt-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/receiving/${order.id}`);
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {order.status === "pending" ? (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-edit-transfer-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/transfer-orders/${order.id}`);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  data-testid={`button-view-transfer-${order.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLocation(`/transfer-orders/${order.id}`);
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+        )}
+      </div>
+
+      <AlertDialog open={!!orderToDelete} onOpenChange={(open) => !open && setOrderToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this purchase order? This action cannot be undone and will also delete all associated order lines.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => orderToDelete && deleteMutation.mutate(orderToDelete)}
+              data-testid="button-confirm-delete"
+              className="bg-destructive text-destructive-foreground hover-elevate"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

@@ -1,0 +1,513 @@
+The direction is strong, but I would make several corrections before Replit builds all three. Right now, the plan risks **changing the vocabulary faster than the website can substantiate it**.
+
+My overall view:
+
+* **#685 is the highest-value task and should go first.**
+* **#686 is mostly ready, but the pricing structure needs rethinking.**
+* **#687 is strategically premature in its current form.**
+
+# Recommended build order
+
+1. **#685 Homepage & Features Page Rebrand**
+2. **#686 About Page Rebrand**
+3. **Pricing page revision after deciding the actual commercial model**
+4. **#687 Navigation restructure only after the key destination pages have meaningful content**
+
+A premium navigation filled with thirteen placeholder pages can make the site feel larger initially, but weaker when visitors click through.
+
+---
+
+# #685 — Homepage & Features Page Rebrand
+
+This is the right first task. It changes the commercial story where it matters most.
+
+## What is strong
+
+Keep:
+
+* “Built for the way chefs work.”
+* “Culinary Operations Intelligence”
+* Removal of the guarantee language
+* “Less entry. More intelligence.”
+* Guided onboarding alongside existing operations
+* Purchasing intelligence
+* Multi-location operations
+* Use of real application screenshots
+* Moving savings from the primary identity to a downstream outcome
+
+## Change the statistic strip
+
+The four proposed replacements are not really statistics:
+
+* Photos to structured data
+* Current recipe costs
+* Vendor pricing connected
+* Predictive orders prepared
+
+That is fine, but the component should no longer be referred to internally or visually as a “statistics strip.”
+
+Call it a **connected workflow strip**:
+
+> Capture → Cost → Compare → Predict
+
+Then give each step one supporting phrase:
+
+**Capture**
+Photos and files become structured data.
+
+**Cost**
+Recipes update using current ingredient pricing.
+
+**Compare**
+Review valid vendor options and price history.
+
+**Predict**
+Prepare order quantities for human approval.
+
+That reads more clearly than four disconnected product truths.
+
+## The hero copy should not become too long
+
+Recommended hero:
+
+**Eyebrow**
+
+> CULINARY OPERATIONS INTELLIGENCE
+
+**Headline**
+
+> Built for the way chefs work.
+
+**Supporting copy**
+
+> Turn handwritten recipes, photos, invoices and existing files into accurate recipe costs, inventory intelligence and smarter purchasing—without burying your culinary team in data entry.
+
+I would not put every capability in the hero. Vendor comparisons, predictive ordering and multi-location control can appear immediately below.
+
+## Primary CTA concern
+
+“See the Chef Workflow” implies there is something concrete to watch or interact with.
+
+Use it only if the button leads to:
+
+* A video
+* A product animation
+* A meaningful workflow section
+* A guided interactive demonstration
+
+If it only jumps down the page, that can still work, but label the anchor clearly.
+
+For lead generation, I prefer:
+
+* Primary: **Schedule a Culinary Review**
+* Secondary: **See How It Works**
+
+## Four-input showcase needs a tighter definition
+
+The task currently says each card will show “the six structured outputs listed alongside each.”
+
+That could become visually dense: four cards multiplied by six outputs is twenty-four claims.
+
+Instead, give each input two or three relevant outputs.
+
+### Handwritten recipe
+
+* Structured ingredients and quantities
+* Yield and portions
+* Current recipe cost
+
+### Invoice or order guide
+
+* Vendor items
+* Pack sizes and pricing
+* Price history
+
+### Inventory sheet
+
+* Inventory items
+* Storage locations
+* Historical count data
+
+### Product or case label
+
+* Product identity
+* Units and pack geometry
+* Vendor-item matching
+
+Then show the broader connected output once beneath the cards:
+
+> Recipes, inventory, vendors, pricing and predicted purchasing remain connected throughout the operation.
+
+## Avoid claims the live product cannot yet prove
+
+The copy must distinguish:
+
+* Available now
+* In pilot
+* Supported through guided onboarding
+* Planned integration
+
+For example, avoid implying that every vendor portal is already connected automatically. Use:
+
+> Capture account-specific vendor pricing from supported portals and existing files.
+
+Similarly, predictive ordering can be presented as an existing feature, but do not imply that it produces reliable recommendations immediately without sales, recipe and inventory history.
+
+## Multi-location copy must match the current product
+
+The proposed section mentions transfers. Confirm whether transfers are fully operational today.
+
+If they are not complete, use:
+
+> Model central storage, outlet inventory and shared item locations.
+
+Do not advertise “transfers” prominently until the workflow is genuinely usable.
+
+---
+
+# #686 — About & Pricing Page Rebrand
+
+The **About page portion is ready**.
+
+The pricing portion is not fully resolved.
+
+## About page
+
+The proposed headline and mission are excellent:
+
+> The kitchen should not have to adapt to the software.
+
+And:
+
+> Our mission is to give culinary teams the intelligence of a sophisticated back-office platform without imposing back-office work on the kitchen.
+
+That is the heart of the new position.
+
+I would add one brief proof-oriented paragraph after the founding story:
+
+> FnB Cost Pro connects culinary creation with recipe costing, inventory, vendor pricing and predictive purchasing. The goal is not to simplify away operational detail—it is to capture that detail without forcing chefs to manually type it all in.
+
+That guards against the perception that “easy” means lightweight.
+
+## Pricing names are not really pricing tiers
+
+The proposed names are:
+
+* Platform Subscription
+* Additional Operations or Locations
+* Guided Implementation
+* Enterprise and Multi-Outlet
+* Vendor Connectivity
+
+These are **commercial components**, not five comparable plans.
+
+Presenting them as tier names may confuse users. A buyer will wonder whether they must choose between Guided Implementation and Vendor Connectivity.
+
+You need to decide whether the pricing page uses:
+
+### Option A: One platform with add-ons
+
+This appears closest to your existing model.
+
+**FnB Cost Pro Platform**
+Includes the primary operation.
+
+**Additional Locations**
+Per additional operating location.
+
+**Guided Implementation**
+Setup, migration and training.
+
+**Vendor Connectivity**
+Supported portal and purchasing connections.
+
+**Enterprise Operations**
+Custom scope for clubs, resorts, hotels and larger groups.
+
+This is probably the correct structure.
+
+### Option B: Actual packages
+
+For example:
+
+* Professional
+* Multi-Location
+* Enterprise
+
+Then show onboarding and connectivity separately.
+
+I would not let Replit merely rename existing cards until you determine which pricing architecture the page is actually communicating.
+
+## Do not hide the current price without reason
+
+Premium positioning does not automatically require “Contact Sales” everywhere.
+
+Your current transparent pricing can be an advantage for independents and smaller groups. You could maintain a clear starting price while introducing:
+
+> Clubs, resorts, hotels and complex multi-outlet operations: request a tailored operational review.
+
+That supports both scalable sales and the emerging premium segment.
+
+## “Guided Implementation” deserves explanation
+
+It should communicate value, not an arbitrary setup fee.
+
+Suggested description:
+
+> We import existing recipes, inventory files, vendor data and operating locations, identify exceptions for review and help your team begin with the systems and information it already uses.
+
+That makes implementation part of the premium product experience.
+
+---
+
+# #687 — Navigation Restructure & New Sub-pages
+
+This task is too large and too early as written.
+
+Creating thirteen stub pages is likely to produce:
+
+* Thin pages with little persuasive value
+* A navigation that promises more than the content delivers
+* Poor first impressions when visitors click
+* Search-engine pages with very little unique substance
+* Ongoing bilingual maintenance across empty routes
+* Duplicate or overlapping messaging
+
+A premium site does not need a huge navigation. It needs a confident, coherent one.
+
+## Recommended initial navigation
+
+For the next release:
+
+> Platform | For Chefs | For F&B Leaders | Industries | Pricing | About
+
+That top-level structure is good.
+
+However, the dropdowns should not link to thirteen stub pages yet.
+
+### Platform dropdown
+
+Initially link to sections on one substantial Platform page:
+
+* Recipe Intelligence
+* Inventory & Locations
+* Vendor Intelligence
+* Predictive Ordering
+* Mobile Capture
+* Integrations
+
+URL structure could use anchors:
+
+* `/platform#recipes`
+* `/platform#inventory`
+* `/platform#vendors`
+* `/platform#predictive-ordering`
+* `/platform#mobile-capture`
+* `/platform#integrations`
+
+Later, turn high-value sections into dedicated pages as content and proof become available.
+
+### Industries dropdown
+
+Start with only the markets you can genuinely speak to:
+
+* Chef-Led Restaurants
+* Restaurant Groups
+* Clubs & Resorts
+
+I would hold Hotels and Catering & Events until you have enough product-specific content to distinguish their workflows.
+
+The Bay Hill pilot gives you a credible reason to develop **Clubs & Resorts**, but you must avoid implying that Bay Hill endorses the software before permission and successful results.
+
+## For Chefs and For F&B Leaders should be real pages
+
+These are important enough to justify substantive pages immediately.
+
+### For Chefs
+
+Should cover:
+
+* Handwritten and photo-based recipe capture
+* Fast special creation
+* Sub-recipes and yields
+* Current recipe costing
+* Phone-first workflows
+* SKU and recipe replacement
+* Less administrative entry
+
+### For F&B Leaders
+
+Should cover:
+
+* Multi-operation visibility
+* Standardization
+* Vendor pricing
+* Predictive purchasing
+* Inventory by physical location
+* Approval and review
+* Financial and variance insight
+
+Two-sentence placeholders will not support the premium position.
+
+## Keep Contact discoverable
+
+Removing Contact from the primary navigation is acceptable, but it should remain easy to find in:
+
+* Header CTA
+* Footer
+* Pricing page
+* About page
+* Every role and industry page
+
+The CTA label should remain consistent. Avoid mixing:
+
+* Schedule a Culinary Review
+* Request an Operational Review
+* Discuss Your Current Workflow
+* Contact Us
+* Book a Demo
+
+Choose one primary conversion phrase.
+
+My recommendation:
+
+> **Schedule a Culinary Review**
+
+Use contextual secondary calls such as “Discuss Your Current Workflow” within sections, but send them into the same form.
+
+## Spanish routes
+
+The routing plan is correct, but avoid translating only headlines and leaving placeholder body text generic.
+
+Each Spanish page needs:
+
+* Spanish document title
+* Spanish meta description
+* Canonical URL
+* English/Spanish alternate links
+* Correct internal links
+* A language switch that keeps the user on the equivalent page
+
+Otherwise the bilingual structure may create duplicated or weak pages.
+
+---
+
+# Missing tasks
+
+The current plan needs several additional marketing requirements.
+
+## 1. SEO and metadata rewrite
+
+Every changed page needs:
+
+* New page title
+* Meta description
+* Social sharing title
+* Social sharing description
+* Canonical URL
+* Spanish alternate metadata
+* Updated structured data where applicable
+
+The old food-cost-savings messaging may remain in search results even after the visible page changes unless metadata is updated.
+
+## 2. CTA conversion path
+
+“All CTAs link to Contact” is acceptable temporarily, but the Contact page must match the premium position.
+
+The form should ask:
+
+* Type of operation
+* Number of locations or outlets
+* Role
+* Current inventory or food-cost system
+* Primary challenge
+* Preferred meeting time or contact method
+
+Do not send premium prospects to a generic name-email-message form.
+
+## 3. Evidence language
+
+Until you have formal testimonials or pilot data, introduce a section such as:
+
+> Designed with input from experienced executive chefs and complex food-and-beverage operators.
+
+Only use that after confirming the people involved are comfortable with the statement. Do not mention Disney, Bay Hill, Jerry, Laureen or Reiner publicly without explicit permission.
+
+## 4. Product screenshots and demonstrations
+
+“Use real app screenshots” needs an acceptance criterion for quality:
+
+* No developer data
+* No visible test accounts
+* No inconsistent terminology
+* Mobile screenshots where mobile use is claimed
+* Clear cropping and annotations
+* Screens corresponding to the exact claimed workflow
+* Spanish screenshots later if the Spanish product is actually localized
+
+## 5. Analytics events
+
+Track the new funnel:
+
+* Hero CTA click
+* Chef workflow click
+* Platform section viewed
+* For Chefs page viewed
+* For F&B Leaders page viewed
+* Industries page viewed
+* Pricing viewed
+* Contact form started
+* Contact form submitted
+* Language switched
+
+You are changing audience and positioning. Without measurement, you will not know whether the new message improves qualified engagement.
+
+---
+
+# Recommended revised ticket structure
+
+## #685A — Homepage positioning and hero
+
+* Hero
+* Workflow strip
+* Structured capture section
+* Guided onboarding section
+* Purchasing intelligence
+* Multi-location section
+* CTA standardization
+* English and Spanish copy
+* Updated metadata
+
+## #685B — Platform page
+
+Build one strong Platform page with six anchored capability sections rather than six stubs.
+
+## #686A — About page rebrand
+
+Build as planned.
+
+## #686B — Pricing architecture and copy
+
+Pause until the commercial structure is confirmed. Then present platform, locations, implementation, connectivity and enterprise correctly.
+
+## #687A — Navigation restructure
+
+Build the six top-level navigation labels, but route Platform and Industries to meaningful consolidated pages.
+
+## #687B — Audience pages
+
+Create substantive For Chefs and For F&B Leaders pages.
+
+## #687C — Vertical pages
+
+Create Clubs & Resorts first, then add other verticals when you have credible differentiated content.
+
+# Final PM decision
+
+**Approve #685 with minor revisions.**
+
+**Approve the About portion of #686. Hold the Pricing portion until the pricing-page architecture is clarified.**
+
+**Revise #687. Do not launch thirteen placeholder pages. Build a smaller premium navigation that points to four or five strong pages.**
+
+The site should feel like the product is deeper—not like the sitemap is larger.

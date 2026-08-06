@@ -1,0 +1,119 @@
+# Price Sync Direction
+
+Do not proceed with server-side Playwright and stored supplier credentials as the default MVP architecture.
+
+The presence of Playwright in the test stack and a `VendorCredentials` type does not remove the security, MFA, session-management, operational, and supplier-permission burden of production portal automation.
+
+## Selected MVP Direction
+
+Build a user-triggered browser-extension workflow.
+
+The restaurant user will:
+
+1. Click **Sync Prices** in FnB.
+2. Be directed to the connected supplier portal.
+3. Log in using their own supplier username and password.
+4. Complete the supplier's own 2FA process.
+5. Explicitly initiate or approve price capture.
+6. Return to FnB for matching, validation, and review.
+
+FnB must not receive or store:
+
+* Supplier passwords
+* Supplier 2FA codes
+* Recovery information
+* Supplier cookies or reusable browser sessions
+* Supplier authentication state intended for server-side impersonation
+
+## Correction to Option B
+
+The browser extension is not limited to passive browsing.
+
+It should support an on-demand sync initiated from FnB:
+
+```text
+FnB Sync Prices
+→ create short-lived sync job
+→ open supplier portal
+→ user authenticates
+→ extension captures catalog/prices
+→ POST connector ingestion batch
+→ existing review pipeline
+→ update vendor-item pricing
+```
+
+## Extension Responsibilities
+
+The extension should only:
+
+* Detect supported supplier pages
+* Confirm that the user appears authenticated
+* Capture approved catalog fields
+* Preserve raw source values
+* Submit data to the scoped FnB ingestion endpoint
+* Report progress or failure
+
+Normalization, product matching, price derivation, provenance, and inventory-cost separation remain server-side.
+
+## Security Model
+
+Use the existing pairing-code concept:
+
+* Short-lived, single-use pairing code
+* Scoped, revocable FnB extension token
+* Token restricted by company, connection, connector and permissions
+* Runtime supplier-site permissions where practical
+* Read-only connector behavior
+* No order submission or portal modification during the pilot
+
+## Transport Priority
+
+For each supplier capability, use:
+
+1. Official API, EDI or SFTP
+2. Supplier-provided CSV/Excel download
+3. Authorized email or file exchange
+4. User-authenticated browser extension
+5. Server-side browser automation only with explicit supplier authorization
+
+Continue supporting manual order-guide upload as a fallback.
+
+## First Pilot
+
+Choose one supplier or procurement platform where:
+
+* A development/test customer account is available
+* The user has authorized the pilot
+* The catalog and price pages are stable
+* The data fields are clearly identifiable
+* Supplier terms or permission have been reviewed
+* Price capture can remain read-only
+
+Do not start with multiple suppliers.
+
+## Scheduled Refresh
+
+On-demand pre-order refresh is required.
+
+Extension-based daily refresh may be added later as best effort when:
+
+* The browser is running
+* The extension is active
+* The supplier session is still authenticated
+* No renewed 2FA or CAPTCHA is required
+
+When authentication expires, FnB should display:
+
+> Sign-in required before supplier prices can be refreshed.
+
+## Explicitly Deferred
+
+* Server storage of supplier passwords
+* Automated MFA handling
+* CAPTCHA handling
+* Generic headless portal login
+* Guaranteed unattended daily scraping
+* Hidden direct order submission
+* Production Playwright scraping without supplier authorization
+
+Please return an architecture plan for the smallest read-only extension pilot, including pairing, host permissions, sync-job lifecycle, ingestion payload, failure states, reauthentication UX, and the existing services that can be reused.

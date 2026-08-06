@@ -1,0 +1,94 @@
+Feature concept: One-click recipe and SKU replacement
+
+Allow a user to replace any ingredient or prepared component throughout the system with one action:
+
+SKU → SKU
+SKU → recipe
+Recipe → SKU
+Recipe → recipe
+Example use cases
+
+A restaurant stops buying prepared pizza sauce and begins making it in-house:
+
+Replace the purchased sauce SKU with the house sauce recipe across every recipe that uses it.
+
+Or the reverse:
+
+Replace an in-house dressing recipe with a commercially purchased dressing SKU.
+
+Other common scenarios include:
+
+Switching vendors or package sizes
+Replacing a discontinued ingredient
+Changing from house-made to purchased
+Changing from purchased to house-made
+Updating a standard prep recipe
+Consolidating duplicate ingredients
+Testing an alternative product across the menu
+Why it is valuable
+
+This is more than a convenience feature. It supports a premium positioning because it lets sophisticated kitchens adapt their entire costing structure quickly.
+
+Without it, someone may need to open and modify dozens of recipes individually. With one-click replacement, FnB Cost Pro could immediately update:
+
+Every affected recipe
+Sub-recipes and nested recipe relationships
+Ingredient costs
+Plate costs
+Theoretical food costs
+Purchasing demand
+Predictive order quantities
+Vendor comparison opportunities
+
+That last group is important because the replacement should not be treated as a recipe-only edit. It could change the restaurant’s entire purchasing forecast.
+
+Important workflow controls
+
+I would not make the button immediately destructive. A professional workflow would be:
+
+Select the current SKU or recipe.
+Select the replacement SKU or recipe.
+Show how many recipes and locations will be affected.
+Preview cost and quantity changes.
+Confirm the replacement.
+Record the change in an audit history.
+Allow rollback if practical.
+
+The preview might say:
+
+Replacing “Sysco Alfredo Sauce, 4 × 1 gallon” with “House Alfredo Recipe” will update 14 recipes and reduce the calculated weekly ingredient cost by $186.
+
+Questions to put to Jerry
+
+Present the concept and ask:
+
+How often does this happen in a real culinary operation?
+Who should have authority to make a global replacement?
+Should it update all locations or allow location-specific replacement?
+Should historical recipe and cost records remain unchanged?
+What happens when the replacement has a different yield, unit, or pack structure?
+Would chefs expect a preview of every affected dish?
+Should users be able to schedule a replacement for a future menu date?
+Is rollback essential, or is an audit log enough?
+Key technical warning
+
+The hardest part is not replacing the reference. It is preserving the correct quantity.
+
+For example:
+
+One recipe uses 8 ounces of purchased sauce.
+The replacement house recipe may be measured by a 1-gallon batch yield.
+The system must convert the original 8-ounce requirement into the correct fraction of the replacement recipe.
+
+Similarly, replacing one SKU with another SKU requires validation of:
+
+Unit of measure
+Pack size
+Case quantity
+Yield
+Edible portion
+Conversion factors
+Location availability
+Vendor assignment
+
+A replacement should be blocked or flagged when the two items do not have compatible measurement geometry.

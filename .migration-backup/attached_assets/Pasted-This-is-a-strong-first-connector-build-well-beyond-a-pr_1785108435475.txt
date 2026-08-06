@@ -1,0 +1,301 @@
+This is **a strong first connector build**—well beyond a proof of concept. The architecture is pointed in the right direction: provider adapter, normalized types, explicit mappings, auditable sync jobs, and reuse of the existing CSV ingestion pipeline.
+
+I would **not add more Square features yet**. I would harden what exists and get a full Sandbox transaction through the system.
+
+## Must resolve before the first real pilot
+
+### 1. Change the token-refresh strategy
+
+The current description says tokens are refreshed only when they are within 24 hours of expiration. Square access tokens expire after 30 days, but Square recommends refreshing OAuth tokens automatically **every seven days or less**, rather than waiting until expiration is close. ([Square][1])
+
+Ask Replit to track something like:
+
+```text
+tokenRefreshedAt
+tokenExpiresAt
+```
+
+Then refresh when the token is more than seven days old, as well as immediately before a sync when necessary.
+
+The nightly sync means active accounts probably would survive under the current implementation, but it does not follow Square’s recommended renewal pattern.
+
+---
+
+### 2. Confirm tokens are encrypted at rest
+
+The recap says `pos_connections` stores access and refresh tokens, but it does not say whether they are encrypted.
+
+They should not be stored as plain database text.
+
+Minimum requirement:
+
+```text
+accessTokenEncrypted
+refreshTokenEncrypted
+tokenKeyVersion
+```
+
+Also verify that tokens are:
+
+* Never returned by API responses
+* Never written into request logs
+* Never included in sync-job error details
+* Redacted by error monitoring
+* Decrypted only inside the server-side Square adapter
+
+Square specifically requires access and refresh tokens to be protected and not exposed in client-side code or source control. ([Square][2])
+
+This is the biggest unanswered security question in the recap.
+
+---
+
+### 3. Fix the nightly sync time
+
+**4:00 AM UTC is midnight Eastern and 9:00 PM Pacific during daylight saving time.**
+
+That means many restaurants will still be operating when the sync runs. The prior-two-day overlap will catch much of it later, but the restaurant’s current day will appear incomplete until the next run.
+
+Square locations include an IANA timezone such as `America/Los_Angeles`, so FnB can schedule or interpret sales by the actual location timezone. ([Square][3])
+
+Recommended MVP behavior:
+
+```text
+Run after 4:00 AM in each mapped store’s local timezone
+```
+
+A simpler interim option:
+
+```text
+Run hourly and process locations whose local time is between 4:00–5:00 AM
+```
+
+Do not try to create separate operating-system cron jobs for every store.
+
+---
+
+### 4. Verify the sync filters by updated time
+
+Because the incremental sync rechecks the prior two days, it must safely detect:
+
+* Refunded orders
+* Returned items
+* Edited orders
+* Canceled or reopened checks
+* Late-closing orders
+
+Square’s Orders API includes sales, returns and exchanges, and itemized returns appear in the order’s return structures. ([Square][4])
+
+Ask Replit to confirm:
+
+```text
+Are we querying and processing orders based on updated_at,
+or only created_at / closed_at?
+```
+
+For incremental correction, `updated_at` matters. A refund today may modify an order originally created yesterday.
+
+Also confirm how these two cases are handled:
+
+* **Itemized refund:** reverse the mapped item quantity and usage.
+* **Custom-dollar refund:** record a financial adjustment, but do not invent an item quantity.
+
+---
+
+### 5. Prove ingestion is idempotent
+
+A two-day rolling import means the same orders will be retrieved repeatedly. The system must update or replace prior facts rather than append duplicate sales.
+
+Require a unique external identity similar to:
+
+```text
+provider
+merchantId
+squareLocationId
+orderId
+lineItemId
+returnLineItemId
+```
+
+A `salesUploadBatch` record provides traceability, but it does not itself prevent duplicates.
+
+The acceptance test should be:
+
+```text
+Run the same sync twice.
+Daily sales, theoretical usage and on-hand effects remain unchanged.
+```
+
+Then:
+
+```text
+Refund one item in Square.
+Run the sync again.
+Only the affected item and related theoretical usage change.
+```
+
+---
+
+### 6. Add a connection-level sync lock
+
+A manual **Sync Now** could overlap the nightly job or a backfill.
+
+Require:
+
+* Only one active sync per connection
+* A clear `already_running` response
+* Backfill and incremental jobs cannot overlap
+* Stale job-lock recovery after a controlled timeout
+
+Without this, duplicate or conflicting ingestion is possible even if the row-level ingestion is idempotent.
+
+---
+
+## Sales-data questions Replit should explicitly answer
+
+### Modifiers
+
+Square order line items can carry modifiers, each with its own catalog identity and quantity. ([Square][5])
+
+For a restaurant system, modifiers can materially affect theoretical food usage:
+
+```text
+Large Pizza
++ Pepperoni
++ Extra Cheese
+```
+
+For the first release, either:
+
+1. Map modifiers to FnB menu items or recipe add-ons, or
+2. Explicitly exclude them while counting and reporting ignored modifier sales.
+
+Do not silently ignore them.
+
+### Ad hoc items
+
+Square permits line items that do not reference a catalog variation. ([Square][5])
+
+These cannot use the current variation-to-menu-item mapping. They should appear in an exception list such as:
+
+```text
+Unmapped ad hoc sales
+```
+
+not disappear into the generic skipped count.
+
+### Fractional quantities
+
+Square order quantities are strings and may be fractional, including quantities from weighed products. ([Square][5])
+
+Confirm the parser uses decimal arithmetic and does not assume every quantity is an integer.
+
+### Deleted or renamed catalog items
+
+Sales history should retain the order-line snapshot name even when a catalog variation is later renamed or deleted. Mapping should use the stable catalog variation ID, while displaying the historical order name for troubleshooting.
+
+---
+
+## Reliability items to add
+
+Square recommends handling endpoint rate limits and `429` responses gracefully, including limiting queries and retrying rather than failing the entire sync. ([Square][6])
+
+Require:
+
+* Cursor pagination on orders and catalog
+* Retry with exponential backoff and jitter
+* Retry only transient errors
+* Maximum retry limit
+* Partial-job reporting
+* Pinned Square API version
+* Structured provider error codes instead of dumping raw responses into the UI
+
+Square’s APIs are versioned, so pinning the version avoids silently changing behavior when the integration is deployed. ([Square][7])
+
+## OAuth hardening
+
+The HMAC-signed state is good. Also confirm the state is:
+
+* Time-limited
+* Single-use
+* Bound to the initiating FnB user and company
+* Invalidated after successful callback
+* Not sufficient merely because the signature is valid
+
+The pending OAuth cancellation/error messaging and reauthorization button should be finished before pilot use.
+
+Every connection, mapping and sync endpoint must also verify the connection belongs to the authenticated company. Do not rely only on the UUID being difficult to guess.
+
+## Webhooks: defer them
+
+I would **not add Square webhooks yet**.
+
+The nightly sync plus rolling correction window is enough for food-cost and prep reporting. Webhooks create additional signature validation, duplicate-event handling and operations work. Square requires webhook signatures to be validated using the raw request body, notification URL and signature key. ([Square][8])
+
+Webhooks can be considered later for faster updates, but they are not needed to validate the POS integration.
+
+## Immediate test sequence
+
+Create a small Square Sandbox menu:
+
+```text
+Large Cheese Pizza
+Large Pepperoni Pizza
+Cheesesteak
+French Fries
+```
+
+Include:
+
+* One item with two variations
+* One modifier
+* One discounted order
+* One voided or canceled order
+* One itemized refund
+* One custom-dollar refund
+* One ad hoc item
+
+Then prove this complete path:
+
+```text
+Square Sandbox sale
+    ↓
+Square order retrieval
+    ↓
+Location mapping
+    ↓
+Catalog variation mapping
+    ↓
+dailyMenuItemSales
+    ↓
+TheoreticalUsageService
+    ↓
+Food-cost / variance reporting
+```
+
+Afterward, rerun the same sync and prove that no quantities double.
+
+## My product call
+
+Finish these before VPS deployment:
+
+1. Token encryption at rest
+2. Seven-day token renewal strategy
+3. Idempotency tests
+4. Refund/return tests
+5. Sync concurrency lock
+6. OAuth error and reauthorization work
+7. Local-time scheduling
+8. Full Sandbox end-to-end test
+
+Then deploy it to the VPS using **Sandbox credentials first** and test the production FnB URL against the Square test merchant.
+
+One small documentation issue: the recap says pending tasks **#534–#539**, which represents six task numbers, but only four tasks are listed. Have Replit enumerate all six so two unfinished items do not get lost.
+
+[1]: https://developer.squareup.com/docs/oauth-api/refresh-revoke-limit-scope?utm_source=chatgpt.com "Refresh, Revoke, and Limit Scope of OAuth Tokens"
+[2]: https://developer.squareup.com/docs/build-basics/access-tokens?utm_source=chatgpt.com "Access Tokens and Other Credentials"
+[3]: https://developer.squareup.com/docs/locations-api?utm_source=chatgpt.com "Locations API"
+[4]: https://developer.squareup.com/reference/square/orders-api/search-orders?utm_source=chatgpt.com "POST /v2/orders/search - Square API Reference"
+[5]: https://developer.squareup.com/docs/orders-api/create-orders?utm_source=chatgpt.com "Create Orders"
+[6]: https://developer.squareup.com/docs/build-basics/general-considerations/handling-errors?utm_source=chatgpt.com "Handling Errors"
+[7]: https://developer.squareup.com/docs/build-basics/api-lifecycle?utm_source=chatgpt.com "Square API Lifecycle"
+[8]: https://developer.squareup.com/docs/webhooks/step3validate?utm_source=chatgpt.com "Verify and Validate an Event Notification"

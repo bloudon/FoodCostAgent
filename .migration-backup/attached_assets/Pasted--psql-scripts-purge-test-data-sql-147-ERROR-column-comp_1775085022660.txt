@@ -1,0 +1,42 @@
+
+psql:scripts/purge_test_data.sql:147: ERROR:  column "company_id" does not exist
+LINE 1: DELETE FROM recipe_components        WHERE company_id != 'ad...
+                                                   ^
+psql:scripts/purge_test_data.sql:148: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:149: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:150: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:151: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:152: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:153: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:154: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:155: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:156: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:157: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:158: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:159: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:160: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:161: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:162: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:168: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:169: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:170: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:171: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:172: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:173: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:174: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:175: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:176: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:177: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:178: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:179: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:180: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:181: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:182: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:183: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:184: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:189: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:197: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:199: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:205: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:210: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+psql:scripts/purge_test_data.sql:211: ERROR:  current transaction is aborted, commands ignored until end of transaction block

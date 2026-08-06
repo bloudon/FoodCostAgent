@@ -1,0 +1,819 @@
+import { useState, useEffect, useRef, Fragment } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocation, useSearch } from 'wouter';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  CheckCheck,
+  FilePlus2,
+  Layers,
+  Loader2,
+  Plus,
+  Sparkles,
+  Store,
+  Trash2,
+  Wand2,
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useStoreContext } from '@/hooks/use-store-context';
+import { TierGate } from '@/components/tier-gate';
+import { ObjectUploader } from '@/components/ObjectUploader';
+
+interface ExtractedItem {
+  name: string;
+  description: string;
+  department: string;
+  category: string;
+  size: string;
+  price: number | null;
+  calorieCount?: number | null;
+  variantGroupKey?: string;
+}
+
+const EMPTY_ITEM: ExtractedItem = { name: '', description: '', department: '', category: '', size: '', price: null, calorieCount: null };
+
+export default function MenuImport() {
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const { toast } = useToast();
+  const { selectedStoreId } = useStoreContext();
+
+  // Parse sessionId from URL query params for refresh-safe rehydration
+  // useSearch() returns the raw query string (e.g. "sessionId=abc") in wouter v3
+  const searchParams = new URLSearchParams(search);
+  const urlSessionId = searchParams.get('sessionId') || '';
+
+  const [step, setStep] = useState<1 | 2 | 3 | 'done'>(urlSessionId ? 2 : 1);
+  const [sessionId, setSessionId] = useState<string>(urlSessionId);
+  const [items, setItems] = useState<ExtractedItem[]>([]);
+  const [selectedRowIndices, setSelectedRowIndices] = useState<Set<number>>(new Set());
+  // pageBreaks tracks indices where additional scanned pages begin (UI-only, not persisted)
+  const [pageBreaks, setPageBreaks] = useState<number[]>([]);
+  const [showAddPageUploader, setShowAddPageUploader] = useState(false);
+  // Tracks which variant group keys the user has opted OUT of auto-linking
+  const [disabledVariantGroupKeys, setDisabledVariantGroupKeys] = useState<Set<string>>(new Set());
+
+
+  // Rehydrate items from server if returning with a sessionId in URL
+  const { data: sessionData } = useQuery({
+    queryKey: ['/api/menu-import', urlSessionId],
+    enabled: !!urlSessionId,
+    queryFn: async () => {
+      const res = await fetch(`/api/menu-import/${urlSessionId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Session not found');
+      return res.json() as Promise<{ sessionId: string; status: string; items: ExtractedItem[]; disabledVariantGroupKeys: string[] }>;
+    },
+  });
+
+  useEffect(() => {
+    if (!sessionData) return;
+    if (sessionData.status === 'approved') {
+      setStep('done');
+      return;
+    }
+    if (items.length === 0 && sessionData.items.length > 0) {
+      setItems(sessionData.items);
+      setSelectedRowIndices(new Set(sessionData.items.map((_: ExtractedItem, i: number) => i)));
+      if (sessionData.disabledVariantGroupKeys?.length > 0) {
+        setDisabledVariantGroupKeys(new Set(sessionData.disabledVariantGroupKeys));
+      }
+      setStep(2);
+    }
+  }, [sessionData]);
+
+  // Update URL when sessionId changes (for refresh-safety)
+  useEffect(() => {
+    if (sessionId) {
+      const params = new URLSearchParams();
+      params.set('sessionId', sessionId);
+      navigate(`/menu-import?${params.toString()}`, { replace: true });
+    }
+  }, [sessionId]);
+
+
+  const stepNum = step === 'done' ? 4 : step;
+  const steps = [
+    { num: 1, label: 'Upload' },
+    { num: 2, label: 'Review' },
+    { num: 3, label: 'Confirm' },
+  ];
+
+  // Scan mutation: called once ObjectUploader returns the objectPath
+  const scanMutation = useMutation({
+    mutationFn: async (objectPath: string) => {
+      const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
+        imageObjectPath: objectPath,
+        storeId: selectedStoreId || undefined,
+      });
+      if (!scanRes.ok) {
+        const err = await scanRes.json() as { error?: string };
+        throw new Error(err.error || 'Scan failed');
+      }
+      return scanRes.json() as Promise<{ sessionId: string; items: ExtractedItem[]; count: number }>;
+    },
+    onSuccess: (data) => {
+      setSessionId(data.sessionId);
+      setItems(data.items);
+      setSelectedRowIndices(new Set(data.items.map((_: ExtractedItem, i: number) => i)));
+      setStep(2);
+      toast({
+        title: 'Scan Complete',
+        description: `Found ${data.count} menu item${data.count !== 1 ? 's' : ''} in your menu`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Scan Failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const approvedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
+      const selectedCount = approvedItems.length;
+
+      // Compute which variant group keys are approved for auto-linking
+      // (all structurally valid groups MINUS the ones the user disabled)
+      const groupKeyToSizes = new Map<string, string[]>();
+      for (const item of approvedItems) {
+        const key = `${item.name.trim().toLowerCase()}|${(item.department || '').toLowerCase()}|${(item.category || '').toLowerCase()}`;
+        if (!groupKeyToSizes.has(key)) groupKeyToSizes.set(key, []);
+        groupKeyToSizes.get(key)!.push((item.size || '').trim());
+      }
+      const structuralVariantGroupKeys = Array.from(groupKeyToSizes.entries())
+        .filter(([, sizes]) => {
+          const nonEmpty = sizes.filter(Boolean);
+          return sizes.length > 1 && nonEmpty.length === sizes.length && new Set(nonEmpty).size >= 2;
+        })
+        .map(([key]) => key);
+      const approvedVariantGroupKeys = structuralVariantGroupKeys.filter(k => !disabledVariantGroupKeys.has(k));
+
+      const res = await apiRequest('POST', `/api/menu-import/${sessionId}/approve`, {
+        items: approvedItems,
+        storeId: selectedStoreId || undefined,
+        approvedVariantGroupKeys,
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error || 'Import failed');
+      }
+      const result = await res.json() as { menuItemsCreated: number; skipped: number };
+      return { ...result, selectedCount };
+    },
+    onSuccess: (data) => {
+      // Report selected rows count (user's mental model) rather than total DB rows created
+      // (which may exceed selected count due to synthetic parent rows for multi-size groups)
+      const n = data.selectedCount;
+      toast({
+        title: 'Import Complete',
+        description: `${n} menu item${n !== 1 ? 's' : ''} imported`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/menu-items'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/menu-items/hierarchy'] });
+      setStep('done');
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Import Failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  // Refs that always reflect the latest committed state so closures stay fresh.
+  const lastItemsRef = useRef<ExtractedItem[]>(items);
+  useEffect(() => { lastItemsRef.current = items; }, [items]);
+
+  const lastDisabledKeysRef = useRef<Set<string>>(disabledVariantGroupKeys);
+  useEffect(() => { lastDisabledKeysRef.current = disabledVariantGroupKeys; }, [disabledVariantGroupKeys]);
+
+  // Autosave variant group preferences whenever they change (e.g. toggled on Step 3)
+  useEffect(() => {
+    if (!sessionId || step !== 3) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      autosaveMutation.mutate({
+        editedItems: lastItemsRef.current,
+        disabledKeys: Array.from(disabledVariantGroupKeys),
+      });
+    }, 800);
+  }, [disabledVariantGroupKeys]);
+
+  // Autosave: persist edited items AND variant group preferences to server so refresh doesn't lose progress
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveMutation = useMutation({
+    mutationFn: async ({ editedItems, disabledKeys }: { editedItems: ExtractedItem[]; disabledKeys: string[] }) => {
+      const res = await apiRequest('PATCH', `/api/menu-import/${sessionId}`, {
+        items: editedItems,
+        disabledVariantGroupKeys: disabledKeys,
+      });
+      if (!res.ok) throw new Error('Autosave failed');
+    },
+  });
+
+  // Append-page mutation: scans an additional image and merges its items into the current session
+  const appendPageMutation = useMutation({
+    mutationFn: async (objectPath: string) => {
+      const scanRes = await apiRequest('POST', '/api/menu-import/scan', {
+        imageObjectPath: objectPath,
+        sessionId,
+      });
+      if (!scanRes.ok) {
+        const err = await scanRes.json() as { error?: string };
+        throw new Error(err.error || 'Scan failed');
+      }
+      return scanRes.json() as Promise<{ sessionId: string; items: ExtractedItem[]; newCount: number; count: number }>;
+    },
+    onSuccess: (data) => {
+      // Derive newly scanned items from the server response tail.
+      const newPageItems = data.items.slice(-data.newCount);
+
+      // Derive insertion index from local committed state (lastItemsRef.current.length),
+      // not from server counts. This stays accurate even if the user added or deleted
+      // rows while the scan was in progress (local count can diverge from server count).
+      const insertionIndex = lastItemsRef.current.length;
+
+      // Functional update preserves edits made DURING the scan.
+      setItems(prev => [...prev, ...newPageItems]);
+      // Only mark a page break if at least one item was extracted.
+      if (newPageItems.length > 0) {
+        setPageBreaks(prev => [...prev, insertionIndex]);
+      }
+
+      // Schedule autosave from local state (lastItemsRef) + new items.
+      // Cancel any stale autosave timer first so it cannot send pre-append items.
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      scheduleAutosave([...lastItemsRef.current, ...newPageItems]);
+
+      // Auto-select only the newly added items using local-derived insertion index.
+      setSelectedRowIndices(prev => {
+        const next = new Set(prev);
+        for (let i = insertionIndex; i < insertionIndex + newPageItems.length; i++) next.add(i);
+        return next;
+      });
+      setShowAddPageUploader(false);
+      toast({
+        title: 'Page Added',
+        description: `Found ${data.newCount} more item${data.newCount !== 1 ? 's' : ''} — ${data.count} total`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Scan Failed', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const scheduleAutosave = (editedItems: ExtractedItem[], disabledKeys?: Set<string>) => {
+    if (!sessionId || (step !== 2 && step !== 3)) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      const keys = disabledKeys ?? lastDisabledKeysRef.current;
+      autosaveMutation.mutate({ editedItems, disabledKeys: Array.from(keys) });
+    }, 1500);
+  };
+
+  // Row editing helpers (each triggers debounced autosave to persist progress)
+  const updateItem = (index: number, field: keyof ExtractedItem, value: string | number | null) => {
+    setItems(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      scheduleAutosave(next);
+      return next;
+    });
+  };
+
+  const deleteItem = (index: number) => {
+    setItems(prev => {
+      const next = prev.filter((_: ExtractedItem, i: number) => i !== index);
+      scheduleAutosave(next);
+      return next;
+    });
+    setSelectedRowIndices(prev => {
+      const next = new Set<number>();
+      prev.forEach(i => { if (i < index) next.add(i); else if (i > index) next.add(i - 1); });
+      return next;
+    });
+    // Shift page-break indices: remove any break at the deleted row, shift later ones down by 1
+    setPageBreaks(prev =>
+      prev
+        .filter(brk => brk !== index)
+        .map(brk => (brk > index ? brk - 1 : brk))
+    );
+  };
+
+  const addRow = () => {
+    setItems(prev => {
+      const next = [...prev, { ...EMPTY_ITEM }];
+      scheduleAutosave(next);
+      return next;
+    });
+    setSelectedRowIndices(prev => new Set([...prev, items.length]));
+  };
+
+  const toggleRow = (index: number) => {
+    setSelectedRowIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedRowIndices(new Set(items.map((_: ExtractedItem, i: number) => i)));
+  const deselectAll = () => setSelectedRowIndices(new Set());
+
+  const cancelSession = async () => {
+    if (sessionId) {
+      try {
+        await apiRequest('DELETE', `/api/menu-import/${sessionId}`);
+      } catch {
+        // Non-fatal
+      }
+    }
+  };
+
+  const resetWizard = async () => {
+    // Cancel the current session on the server to avoid leaving pending sessions
+    await cancelSession();
+    setStep(1);
+    setItems([]);
+    setSessionId('');
+    setSelectedRowIndices(new Set());
+    setPageBreaks([]);
+    setShowAddPageUploader(false);
+    navigate('/menu-import', { replace: true });
+  };
+
+  const cancelAndGoBack = async () => {
+    // Cancel server session then navigate back to menu items (for header back button)
+    await cancelSession();
+    setSessionId('');
+    navigate('/menu-items');
+  };
+
+  const selectedCount = selectedRowIndices.size;
+
+  return (
+    <TierGate feature="recipe_costing">
+      <div className="h-full overflow-auto pb-4">
+        <div className="p-4 space-y-4 max-w-4xl mx-auto">
+
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={cancelAndGoBack} data-testid="button-back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold">Import Menu from Image</h1>
+              <p className="text-sm text-muted-foreground">
+                Upload a photo of your menu — AI will extract all items automatically
+              </p>
+            </div>
+          </div>
+
+          {/* Step indicator */}
+          <div className="flex items-center gap-2">
+            {steps.map((s, i) => (
+              <div key={s.num} className="flex items-center gap-2">
+                <div className={`flex items-center justify-center h-7 w-7 rounded-full text-sm font-medium border ${
+                  stepNum > s.num
+                    ? 'bg-green-600 text-white border-green-600'
+                    : stepNum === s.num
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-muted-foreground/40 text-muted-foreground'
+                }`}>
+                  {stepNum > s.num ? <Check className="h-3 w-3" /> : s.num}
+                </div>
+                <span className={`text-sm hidden sm:block ${stepNum === s.num ? 'font-medium' : 'text-muted-foreground'}`}>
+                  {s.label}
+                </span>
+                {i < steps.length - 1 && <div className="h-px w-6 bg-border" />}
+              </div>
+            ))}
+          </div>
+
+          {/* ── Step 1: Upload ── */}
+          {step === 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  Upload Menu Image
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Take a clear photo of your menu or upload an existing image.
+                  Works best with well-lit, straight-on shots. JPG, PNG, or WebP accepted.
+                  The AI scan will start automatically once your image is uploaded.
+                </p>
+
+                {scanMutation.isPending ? (
+                  <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+                    <Loader2 className="h-10 w-10 animate-spin" />
+                    <p className="font-medium">Scanning your menu with AI…</p>
+                    <p className="text-xs">This may take 10–20 seconds depending on menu size</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <ObjectUploader
+                      onUploadComplete={(objectPath) => scanMutation.mutate(objectPath)}
+                      buttonText="Select Menu Image"
+                      dataTestId="button-upload-menu"
+                      visibility="private"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Supports JPG, PNG, WebP up to 10 MB
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Step 2: Review ── */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="flex items-center gap-2">
+                      <Wand2 className="h-5 w-5" />
+                      Review Extracted Items
+                    </CardTitle>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary">
+                        {selectedCount} of {items.length} selected
+                      </Badge>
+                      <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all">
+                        <CheckCheck className="h-3 w-3 mr-1" />
+                        All
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={deselectAll} data-testid="button-deselect-all">
+                        None
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Review what AI found. Edit any field inline, uncheck rows to skip, or add missing items.
+                    Items with the same name and multiple sizes will be imported as size variants.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {items.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No items were extracted. Try uploading a clearer image.</p>
+                    </div>
+                  ) : (() => {
+                    const deptOrder: string[] = [];
+                    const deptGroups = new Map<string, number[]>();
+                    items.forEach((item, i) => {
+                      const dept = (item.department || '').trim() || 'Other';
+                      if (!deptGroups.has(dept)) { deptGroups.set(dept, []); deptOrder.push(dept); }
+                      deptGroups.get(dept)!.push(i);
+                    });
+                    return (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10"></TableHead>
+                            <TableHead>Item Name</TableHead>
+                            <TableHead className="hidden lg:table-cell">Description</TableHead>
+                            <TableHead className="hidden sm:table-cell">Department</TableHead>
+                            <TableHead className="hidden md:table-cell">Size</TableHead>
+                            <TableHead>Price</TableHead>
+                            <TableHead className="w-10"></TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {deptOrder.map((dept) => (
+                            <Fragment key={`dept-${dept}`}>
+                              <TableRow className="pointer-events-none select-none" data-testid={`header-department-${dept}`}>
+                                <TableCell colSpan={7} className="py-1.5 px-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide bg-muted/40">
+                                  {dept}
+                                </TableCell>
+                              </TableRow>
+                              {deptGroups.get(dept)!.map((i) => (
+                                <TableRow
+                                  key={i}
+                                  className={selectedRowIndices.has(i) ? '' : 'opacity-40'}
+                                  data-testid={`row-item-${i}`}
+                                >
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRowIndices.has(i)}
+                                      onCheckedChange={() => toggleRow(i)}
+                                      data-testid={`checkbox-item-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={items[i].name}
+                                      onChange={(e) => updateItem(i, 'name', e.target.value)}
+                                      className="h-8 min-w-[120px]"
+                                      placeholder="Item name"
+                                      data-testid={`input-name-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden lg:table-cell">
+                                    <Input
+                                      value={items[i].description}
+                                      onChange={(e) => updateItem(i, 'description', e.target.value)}
+                                      className="h-8 min-w-[160px]"
+                                      placeholder="Ingredients / description"
+                                      data-testid={`input-description-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden sm:table-cell">
+                                    <Input
+                                      value={items[i].department}
+                                      onChange={(e) => updateItem(i, 'department', e.target.value)}
+                                      className="h-8 min-w-[100px]"
+                                      placeholder="e.g. Pizza"
+                                      data-testid={`input-dept-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="hidden md:table-cell">
+                                    <Input
+                                      value={items[i].size}
+                                      onChange={(e) => updateItem(i, 'size', e.target.value)}
+                                      className="h-8 min-w-[80px]"
+                                      placeholder="e.g. Large"
+                                      data-testid={`input-size-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      value={items[i].price ?? ''}
+                                      onChange={(e) => updateItem(i, 'price', e.target.value ? parseFloat(e.target.value) : null)}
+                                      className="h-8 w-24"
+                                      placeholder="$0.00"
+                                      data-testid={`input-price-${i}`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => deleteItem(i)}
+                                      data-testid={`button-delete-${i}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </Fragment>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    );
+                  })()}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={addRow} data-testid="button-add-row">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Row
+                    </Button>
+                    {!showAddPageUploader && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAddPageUploader(true)}
+                        disabled={appendPageMutation.isPending}
+                        data-testid="button-add-page"
+                      >
+                        <FilePlus2 className="h-4 w-4 mr-2" />
+                        Add Another Page
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Inline "add another page" uploader */}
+                  {showAddPageUploader && (
+                    <div className="rounded-md border bg-muted/30 p-4 space-y-2">
+                      <p className="text-sm font-medium">Scan another page</p>
+                      <p className="text-xs text-muted-foreground">
+                        Upload the next page of your menu. Items will be appended to the list above.
+                      </p>
+                      {appendPageMutation.isPending ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Scanning page — this may take 10–20 seconds…
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <ObjectUploader
+                            onUploadComplete={(objectPath) => appendPageMutation.mutate(objectPath)}
+                            buttonText="Select Page Image"
+                            dataTestId="button-upload-next-page"
+                            visibility="private"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAddPageUploader(false)}
+                            data-testid="button-cancel-add-page"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={resetWizard} data-testid="button-back-step1">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+                <Button
+                  onClick={() => setStep(3)}
+                  disabled={selectedCount === 0}
+                  data-testid="button-next-step3"
+                >
+                  Continue with {selectedCount} item{selectedCount !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Confirm ── */}
+          {step === 3 && (() => {
+            const selectedItems = items.filter((_: ExtractedItem, i: number) => selectedRowIndices.has(i));
+
+            // Compute structural variant groups from the selected items
+            const step3GroupKeyToSizes = new Map<string, { sizes: string[]; names: string[] }>();
+            for (const item of selectedItems) {
+              const key = `${item.name.trim().toLowerCase()}|${(item.department || '').toLowerCase()}|${(item.category || '').toLowerCase()}`;
+              if (!step3GroupKeyToSizes.has(key)) step3GroupKeyToSizes.set(key, { sizes: [], names: [] });
+              step3GroupKeyToSizes.get(key)!.sizes.push((item.size || '').trim());
+              step3GroupKeyToSizes.get(key)!.names.push(item.name.trim() || '(unnamed)');
+            }
+            const step3VariantGroups = Array.from(step3GroupKeyToSizes.entries())
+              .filter(([, { sizes }]) => {
+                const nonEmpty = sizes.filter(Boolean);
+                return sizes.length > 1 && nonEmpty.length === sizes.length && new Set(nonEmpty).size >= 2;
+              })
+              .map(([key, { sizes, names }]) => ({ key, sizes, label: names[0] }));
+
+            return (
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Store className="h-5 w-5" />
+                      Confirm Import
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Summary */}
+                    <div className="text-center rounded-md bg-muted/50 p-6">
+                      <div className="text-4xl font-bold">{selectedCount}</div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        item{selectedCount !== 1 ? 's' : ''} ready to import
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-3">
+                        Items will be added to your current store.
+                        You can assign them to other stores after import.
+                      </div>
+                    </div>
+
+                    {/* Variant group confirmation */}
+                    {step3VariantGroups.length > 0 && (
+                      <div className="rounded-md border overflow-hidden" data-testid="section-variant-groups-confirm">
+                        <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b">
+                          <Layers className="h-4 w-4 text-primary flex-shrink-0" />
+                          <p className="text-sm font-semibold">
+                            {step3VariantGroups.length} size variant group{step3VariantGroups.length !== 1 ? 's' : ''} detected
+                          </p>
+                        </div>
+                        <div className="px-3 py-3 space-y-3">
+                          <p className="text-sm text-muted-foreground">
+                            Check each group you want linked as size variants on import. Unchecked groups will import as separate standalone items.
+                          </p>
+                          {step3VariantGroups.map((group) => {
+                            const enabled = !disabledVariantGroupKeys.has(group.key);
+                            return (
+                              <div key={group.key} className="flex items-start gap-3" data-testid={`variant-group-row-${group.key}`}>
+                                <Checkbox
+                                  checked={enabled}
+                                  onCheckedChange={(checked) => {
+                                    setDisabledVariantGroupKeys(prev => {
+                                      const next = new Set(prev);
+                                      if (checked) next.delete(group.key);
+                                      else next.add(group.key);
+                                      return next;
+                                    });
+                                  }}
+                                  data-testid={`checkbox-variant-group-${group.key}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium ${!enabled ? 'text-muted-foreground' : ''}`}>{group.label}</p>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {group.sizes.map((size, i) => (
+                                      <Badge key={i} variant="secondary" className={`text-xs ${!enabled ? 'opacity-50' : ''}`}>
+                                        {size}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Item preview */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Items to import:</p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {selectedItems
+                          .slice(0, 10)
+                          .map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                              <span>
+                                {item.name}
+                                {item.size && <span className="text-muted-foreground ml-1">({item.size})</span>}
+                              </span>
+                              {item.price != null && (
+                                <span className="text-muted-foreground">${item.price.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        {selectedCount > 10 && (
+                          <p className="text-xs text-muted-foreground pt-1">
+                            …and {selectedCount - 10} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setStep(2)} data-testid="button-back-step2">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+                  <Button
+                    onClick={() => approveMutation.mutate()}
+                    disabled={approveMutation.isPending || selectedCount === 0}
+                    data-testid="button-confirm-import"
+                  >
+                    {approveMutation.isPending ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>
+                    ) : (
+                      <><Sparkles className="h-4 w-4 mr-2" />Import {selectedCount} item{selectedCount !== 1 ? 's' : ''}</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Done ── */}
+          {step === 'done' && (
+            <Card>
+              <CardContent className="py-10 text-center space-y-4">
+                <div className="flex items-center justify-center h-14 w-14 rounded-full bg-green-100 dark:bg-green-900/20 mx-auto">
+                  <Check className="h-7 w-7 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold">Import Complete</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Your menu items have been added successfully.
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" onClick={resetWizard} data-testid="button-import-another">
+                    Import Another Menu
+                  </Button>
+                  <Button onClick={() => navigate('/menu-items')} data-testid="button-view-menu-items">
+                    View Menu Items
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+        </div>
+      </div>
+    </TierGate>
+  );
+}

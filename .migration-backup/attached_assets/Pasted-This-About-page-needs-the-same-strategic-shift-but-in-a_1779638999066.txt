@@ -1,0 +1,240 @@
+This About page needs the same strategic shift, but in a slightly different way. The current story is clear and memorable — “We Replaced the Keyboard with a Camera” — but it is still centered on the product mechanism instead of the operator outcome.
+
+Right now, the About page says:
+
+“FnB Cost Pro was born out of a simple frustration: restaurant back-office software required too much typing.”
+
+That is a good origin story. But the stronger brand story is:
+
+Restaurants deserve to know where food cost is leaking without spending hours typing data into software.
+
+That keeps the camera-first innovation, but ties it to the bigger mission.
+
+What to Change on the About Page
+Current lead
+
+Our Story
+We Replaced the Keyboard with a Camera
+
+Better lead
+
+Our Story
+We Help Restaurants Find Food Cost Opportunities Faster
+
+Then use the camera story underneath:
+
+FnB Cost Pro started with a simple frustration: restaurant operators were spending too much time typing menus, recipes, invoices, and inventory counts into software before they could see anything useful.
+
+We built FnB Cost Pro to change that. By replacing much of the keyboard work with photo-based setup, operators can get to food cost visibility faster — starting with a guided 14-day process designed to identify at least one savings opportunity.
+
+This gives the About page a better strategic opening.
+
+Mission Section Update
+
+Your current mission says:
+
+“Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss.”
+
+This is one of the strongest lines on the page. Keep it.
+
+But add the $500k math right after it:
+
+For a restaurant doing $500,000 per year, every 1% improvement in food cost represents $5,000 annually.
+
+That line should become a cornerstone across the site.
+
+Suggested revised mission:
+
+Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. For a restaurant doing $500,000 per year, every 1% improvement in food cost represents $5,000 annually.
+
+Yet most operators still lack a fast, practical way to turn menus, recipes, vendor invoices, and inventory counts into usable food cost insight.
+
+FnB Cost Pro exists to help operators find those opportunities faster.
+
+Reframe the Camera
+
+The About page currently says:
+
+“The operator points the camera. The software does the rest.”
+
+I would soften that.
+
+Better:
+
+The operator points the camera. FnB Cost Pro extracts the data, structures it, and helps the team review, confirm, and act.
+
+This is more accurate and better for beta expectations.
+
+A lot of competitors already emphasize mobile, invoice capture, recipe costing, and actual-vs-theoretical reporting. MarketMan publicly lists mobile inventory, invoice scanning, AI-powered invoice management, recipe costing, automatic COGS, and actual-vs-theoretical reporting. MarginEdge also positions around invoice data, price monitoring, inventory tools, recipe/menu analysis, and 1:1 training. So the differentiator is not simply “we scan things”; it is that you are using scanning to speed up the path to food cost insight.
+
+Values Section Rewrite
+
+The current values are:
+
+Built for Operators, by Operators
+Photo Scanning That Actually Saves Time
+No Keyboard Required
+
+These are okay, but they are too much about convenience. I would adjust them toward business outcomes.
+
+Recommended Values
+Built for Operators, by Operators
+
+Keep this, but tweak:
+
+Every feature in FnB Cost Pro is designed around real restaurant workflows: late-night inventory counts, vendor price changes, handwritten recipes, and the pressure to protect margin without adding admin work.
+
+Food Cost Visibility Before Busywork
+
+Replace “Photo Scanning That Actually Saves Time.”
+
+Operators should not have to spend weeks typing data before they can see where food cost may be leaking. FnB Cost Pro uses photo-based setup to get restaurants to insight faster.
+
+Guided to the First Opportunity
+
+Add this as a new value.
+
+Software alone does not fix food cost. FnB Cost Pro pairs fast setup with a guided 14-day process designed to identify at least one food cost savings opportunity.
+
+Practical, Not Perfect
+
+This would be a good beta-era value.
+
+Restaurant data is messy. Menus change, invoices vary, recipes live on cards and clipboards. FnB Cost Pro is built to help operators turn imperfect data into useful decisions.
+
+Who We’re Built For
+
+Current heading:
+
+Any F&B Operator Who’s Done Enough Data Entry
+
+This is memorable, but it is too broad.
+
+Better:
+
+Built for Operators Who Need Food Cost Visibility Without More Admin Work
+
+Then segment the audience by pain/outcome, not just business type.
+
+Independent Restaurants
+
+Current:
+
+“One location, owner-operated. You need food cost control without a full-time admin.”
+
+Good. Update CTA-style copy:
+
+FnB Cost Pro Starter helps single-location operators scan menus, cost recipes, review invoices, and start identifying food cost opportunities without hiring an admin person.
+
+Multi-Unit Groups
+
+Current copy says:
+
+“billed per location so costs scale with your operation.”
+
+That is good and matches your pricing direction. Keep it.
+
+Add:
+
+Use location-level reporting to compare where food cost, waste, vendor pricing, or recipe variance may be drifting.
+
+Bars & Beverage Operations
+
+Good segment. Just be careful with overpromising “pour cost by recipe” unless the workflow is fully built.
+
+Better:
+
+Track beverage recipes, vendor costs, and variance using the same photo-first workflow.
+
+Catering & Event F&B
+
+Good segment. Add “per-head costing” as you already have.
+
+Ghost Kitchens & Dark Kitchens
+
+Good segment. This is a strong use case for multi-concept recipe libraries.
+
+Hotel & Resort F&B
+
+Good for Enterprise, but maybe move it lower or make it less prominent until Enterprise is ready. MarginEdge and MarketMan both show how mature platforms address larger/multi-unit operators, but they also back it with established support infrastructure and integrations.
+
+CTA Update
+
+Current CTA:
+
+Ready to Replace Your Clipboard?
+Start your 14-day free trial. Point your phone at your menu. See your food costs in minutes.
+
+Recommended:
+
+Ready to Find Your First Food Cost Opportunity?
+
+Start your 14-day Food Cost Opportunity Review. Scan your menu, review your invoices, and let FnB Cost Pro help identify at least one area where food cost may be leaking.
+
+CTA button:
+
+Start Your 14-Day Opportunity Review
+
+Secondary:
+
+Scan Your Menu
+
+Claims to Soften
+
+I’d revise these before launch:
+
+Current copy	Suggested safer version
+“The software does the rest.”	“FnB Cost Pro extracts and structures the data so your team can review and act.”
+“work entirely from a phone camera”	“start from your phone camera and work across mobile, tablet, or desktop.”
+“See your food costs in minutes.”	“Start seeing food cost clues in minutes.”
+“No Keyboard Required”	“Less Keyboard Work. More Food Cost Insight.”
+“Any F&B Operator…”	“Restaurants and F&B teams ready to control food cost without adding admin work.”
+Suggested About Page Rewrite Skeleton
+Our Story
+We Help Restaurants Find Food Cost Opportunities Faster
+
+FnB Cost Pro was born out of a simple frustration: restaurant back-office software required too much typing before operators could see anything useful.
+
+Menus, recipes, vendor invoices, and inventory counts already contain the clues. The problem is that most systems force operators to re-enter that information by hand.
+
+FnB Cost Pro changes that by using photo-based setup to turn everyday restaurant materials into structured food cost insight.
+
+Our Mission
+
+Food & Beverage is one of the most margin-sensitive industries in the world. A 1–2% shift in food cost can be the difference between a profitable month and a loss. For a restaurant doing $500,000 per year, every 1% improvement in food cost represents $5,000 annually.
+
+Our mission is to help operators find those opportunities faster — without spending weeks typing data into software.
+
+What Drives Us
+Built for Operators, by Operators
+
+We know what it feels like to count inventory late at night, chase vendor price changes, and wonder whether recipe costs are still accurate.
+
+Food Cost Visibility Before Busywork
+
+Your team should not have to build a perfect database before seeing value. FnB Cost Pro starts with what you already have: menus, recipes, invoices, and inventory.
+
+Guided to the First Opportunity
+
+Our 14-day Food Cost Opportunity Review is designed to help identify at least one area where food cost may be leaking.
+
+Practical, Not Perfect
+
+Restaurant data is messy. FnB Cost Pro is built to help operators turn imperfect information into better decisions.
+
+Who We’re Built For
+
+Keep your existing segments, but adjust the heading and some wording.
+
+Final CTA
+Ready to Find Your First Food Cost Opportunity?
+
+Start your 14-day Food Cost Opportunity Review. Scan your menu, review your invoices, and see where food cost may be leaking.
+
+Bottom Line
+
+The About page should not abandon the camera story. It should graduate the camera story into a mission:
+
+We replaced the keyboard with a camera so restaurants could get to food cost insight faster.
+
+That is the cleaner brand message.

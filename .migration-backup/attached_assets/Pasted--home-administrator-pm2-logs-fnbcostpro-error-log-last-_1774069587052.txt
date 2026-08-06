@@ -1,0 +1,33 @@
+
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 30 lines:
+3|fnbcostp | Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'vite' imported from /home/administrator/apps/CostPro/fnbcostpro/dist/index.js
+3|fnbcostp |     at packageResolve (node:internal/modules/esm/resolve:873:9)
+3|fnbcostp |     at moduleResolve (node:internal/modules/esm/resolve:946:18)
+3|fnbcostp |     at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+3|fnbcostp |     at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:708:12)
+3|fnbcostp |     at #cachedDefaultResolve (node:internal/modules/esm/loader:657:25)
+3|fnbcostp |     at ModuleLoader.resolve (node:internal/modules/esm/loader:640:38)
+3|fnbcostp |     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:264:38)
+3|fnbcostp |     at ModuleJob._link (node:internal/modules/esm/module_job:168:49) {
+3|fnbcostp |   code: 'ERR_MODULE_NOT_FOUND'
+3|fnbcostp | }
+3|fnbcostp |
+3|fnbcostp | Node.js v20.20.0
+3|fnbcostp | node:internal/modules/esm/resolve:873
+3|fnbcostp |   throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+3|fnbcostp |         ^
+3|fnbcostp |
+3|fnbcostp | Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'vite' imported from /home/administrator/apps/CostPro/fnbcostpro/dist/index.js
+3|fnbcostp |     at packageResolve (node:internal/modules/esm/resolve:873:9)
+3|fnbcostp |     at moduleResolve (node:internal/modules/esm/resolve:946:18)
+3|fnbcostp |     at defaultResolve (node:internal/modules/esm/resolve:1188:11)
+3|fnbcostp |     at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:708:12)
+3|fnbcostp |     at #cachedDefaultResolve (node:internal/modules/esm/loader:657:25)
+3|fnbcostp |     at ModuleLoader.resolve (node:internal/modules/esm/loader:640:38)
+3|fnbcostp |     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:264:38)
+3|fnbcostp |     at ModuleJob._link (node:internal/modules/esm/module_job:168:49) {
+3|fnbcostp |   code: 'ERR_MODULE_NOT_FOUND'
+3|fnbcostp | }
+3|fnbcostp |
+3|fnbcostp | Node.js v20.20.0
+

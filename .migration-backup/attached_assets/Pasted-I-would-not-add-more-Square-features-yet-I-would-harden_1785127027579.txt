@@ -1,0 +1,335 @@
+I would not add more Square features yet. I would harden what exists and get a full Sandbox transaction through the system.
+
+Must resolve before the first real pilot
+1. Change the token-refresh strategy
+
+The current description says tokens are refreshed only when they are within 24 hours of expiration. Square access tokens expire after 30 days, but Square recommends refreshing OAuth tokens automatically every seven days or less, rather than waiting until expiration is close.
+
+Ask Replit to track something like:
+
+tokenRefreshedAt
+tokenExpiresAt
+
+Then refresh when the token is more than seven days old, as well as immediately before a sync when necessary.
+
+The nightly sync means active accounts probably would survive under the current implementation, but it does not follow Square’s recommended renewal pattern.
+
+2. Confirm tokens are encrypted at rest
+
+The recap says pos_connections stores access and refresh tokens, but it does not say whether they are encrypted.
+
+They should not be stored as plain database text.
+
+Minimum requirement:
+
+accessTokenEncrypted
+refreshTokenEncrypted
+tokenKeyVersion
+
+Also verify that tokens are:
+
+Never returned by API responses
+Never written into request logs
+Never included in sync-job error details
+Redacted by error monitoring
+Decrypted only inside the server-side Square adapter
+
+Square specifically requires access and refresh tokens to be protected and not exposed in client-side code or source control.
+
+This is the biggest unanswered security question in the recap.
+
+3. Fix the nightly sync time
+
+4:00 AM UTC is midnight Eastern and 9:00 PM Pacific during daylight saving time.
+
+That means many restaurants will still be operating when the sync runs. The prior-two-day overlap will catch much of it later, but the restaurant’s current day will appear incomplete until the next run.
+
+Square locations include an IANA timezone such as America/Los_Angeles, so FnB can schedule or interpret sales by the actual location timezone.
+
+Recommended MVP behavior:
+
+Run after 4:00 AM in each mapped store’s local timezone
+
+A simpler interim option:
+
+Run hourly and process locations whose local time is between 4:00–5:00 AM
+
+Do not try to create separate operating-system cron jobs for every store.
+
+4. Verify the sync filters by updated time
+
+Because the incremental sync rechecks the prior two days, it must safely detect:
+
+Refunded orders
+Returned items
+Edited orders
+Canceled or reopened checks
+Late-closing orders
+
+Square’s Orders API includes sales, returns and exchanges, and itemized returns appear in the order’s return structures.
+
+Ask Replit to confirm:
+
+Are we querying and processing orders based on updated_at,
+or only created_at / closed_at?
+
+For incremental correction, updated_at matters. A refund today may modify an order originally created yesterday.
+
+Also confirm how these two cases are handled:
+
+Itemized refund: reverse the mapped item quantity and usage.
+Custom-dollar refund: record a financial adjustment, but do not invent an item quantity.
+5. Prove ingestion is idempotent
+
+A two-day rolling import means the same orders will be retrieved repeatedly. The system must update or replace prior facts rather than append duplicate sales.
+
+Require a unique external identity similar to:
+
+provider
+merchantId
+squareLocationId
+orderId
+lineItemId
+returnLineItemId
+
+A salesUploadBatch record provides traceability, but it does not itself prevent duplicates.
+
+The acceptance test should be:
+
+Run the same sync twice.
+Daily sales, theoretical usage and on-hand effects remain unchanged.
+
+Then:
+
+Refund one item in Square.
+Run the sync again.
+Only the affected item and related theoretical usage change.
+6. Add a connection-level sync lock
+
+A manual Sync Now could overlap the nightly job or a backfill.
+
+Require:
+
+Only one active sync per connection
+A clear already_running response
+Backfill and incremental jobs cannot overlap
+Stale job-lock recovery after a controlled timeout
+
+Without this, duplicate or conflicting ingestion is possible even if the row-level ingestion is idempotent.
+
+Sales-data questions Replit should explicitly answer
+Modifiers
+
+Square order line items can carry modifiers, each with its own catalog identity and quantity.
+
+For a restaurant system, modifiers can materially affect theoretical food usage:
+
+Large Pizza
++ Pepperoni
++ Extra Cheese
+
+For the first release, either:
+
+Map modifiers to FnB menu items or recipe add-ons, or
+Explicitly exclude them while counting and reporting ignored modifier sales.
+
+Do not silently ignore them.
+
+Ad hoc items
+
+Square permits line items that do not reference a catalog variation.
+
+These cannot use the current variation-to-menu-item mapping. They should appear in an exception list such as:
+
+Unmapped ad hoc sales
+
+not disappear into the generic skipped count.
+
+Fractional quantities
+
+Square order quantities are strings and may be fractional, including quantities from weighed products.
+
+Confirm the parser uses decimal arithmetic and does not assume every quantity is an integer.
+
+Deleted or renamed catalog items
+
+Sales history should retain the order-line snapshot name even when a catalog variation is later renamed or deleted. Mapping should use the stable catalog variation ID, while displaying the historical order name for troubleshooting.
+
+Reliability items to add
+
+Square recommends handling endpoint rate limits and 429 responses gracefully, including limiting queries and retrying rather than failing the entire sync.
+
+Require:
+
+Cursor pagination on orders and catalog
+Retry with exponential backoff and jitter
+Retry only transient errors
+Maximum retry limit
+Partial-job reporting
+Pinned Square API version
+Structured provider error codes instead of dumping raw responses into the UI
+
+Square’s APIs are versioned, so pinning the version avoids silently changing behavior when the integration is deployed.
+
+OAuth hardening
+
+The HMAC-signed state is good. Also confirm the state is:
+
+Time-limited
+Single-use
+Bound to the initiating FnB user and company
+Invalidated after successful callback
+Not sufficient merely because the signature is valid
+
+The pending OAuth cancellation/error messaging and reauthorization button should be finished before pilot use.
+
+Every connection, mapping and sync endpoint must also verify the connection belongs to the authenticated company. Do not rely only on the UUID being difficult to guess.
+
+Webhooks: defer them
+
+I would not add Square webhooks yet.
+
+The nightly sync plus rolling correction window is enough for food-cost and prep reporting. Webhooks create additional signature validation, duplicate-event handling and operations work. Square requires webhook signatures to be validated using the raw request body, notification URL and signature key.
+
+Webhooks can be considered later for faster updates, but they are not needed to validate the POS integration.
+
+Immediate test sequence
+
+Create a small Square Sandbox menu:
+
+Large Cheese Pizza
+Large Pepperoni Pizza
+Cheesesteak
+French Fries
+
+Include:
+
+One item with two variations
+One modifier
+One discounted order
+One voided or canceled order
+One itemized refund
+One custom-dollar refund
+One ad hoc item
+
+Then prove this complete path:
+
+Square Sandbox sale
+    ↓
+Square order retrieval
+    ↓
+Location mapping
+    ↓
+Catalog variation mapping
+    ↓
+dailyMenuItemSales
+    ↓
+TheoreticalUsageService
+    ↓
+Food-cost / variance reporting
+
+Afterward, rerun the same sync and prove that no quantities double.
+
+My product call
+
+Finish these before VPS deployment:
+
+Token encryption at rest
+Seven-day token renewal strategy
+Idempotency tests
+Refund/return tests
+Sync concurrency lock
+OAuth error and reauthorization work
+Local-time scheduling
+Full Sandbox end-to-end test
+
+Then deploy it to the VPS using Sandbox credentials first and test the production FnB URL against the Square test merchant.
+
+One small documentation issue: the recap says pending tasks #534–#539, which represents six task numbers, but only four tasks are listed. Have Replit enumerate all six so two unfinished items do not get lost.
+
+ On the PM's #534–#539 question
+The PM noticed 6 task numbers but only 4 listed. Here's the full accounting:
+
+#	Title	Status
+#534	Show a clear error when Square OAuth is denied or fails mid-connection	Still a draft — covers the OAuth error messaging half
+#535	Keep the Square redirect URI working after the app is deployed to production	Still a draft
+#536	Make sure skipped-item warnings don't silently disappear when Square mappings are added	Still a draft
+#537	Let managers jump directly from a sync warning to the item mapping screen	Still a draft
+#538	Test that a revoked Square token is caught before nightly sync runs	Archived — superseded when task #533 (which already implements the revocation guard) merged
+#539	Let users re-authorize Square directly from the disconnected connection banner	Archived — user cancelled this
+One gap to flag: The PM explicitly said the re-authorization button (#539's scope) must be done before pilot use. Since that task was cancelled, it isn't covered by any of the new drafts. I can add a new draft for it if you want it back in the queue — or it can be folded into #534 (the OAuth error flow task) since both are about what happens when the connection breaks.
+
+Add a new task for reauthorization rather than folding it into #534.
+
+They are related, but they cover different states:
+
+#534: Initial connection fails or merchant cancels OAuth.
+New task: An established connection later becomes disconnected and must be restored.
+
+Keeping them separate gives each flow clear acceptance criteria and prevents the recovery path from being treated as a minor extension of error messaging.
+
+Also, #538 should not remain archived unless #533 included automated tests. Implementing the revocation guard and testing it are separate deliverables. The earlier recap specifically said token-revocation tests were still pending.
+
+Send Replit this:
+
+Please add a separate draft task for Square connection recovery rather than folding it into #534.
+
+## New task — Re-authorize a disconnected Square connection
+
+When Square revokes or invalidates a connection token, managers must be able to reconnect the existing POS connection directly from the disconnected banner.
+
+### Requirements
+
+- Show a clear disconnected state on the existing Square connection.
+- Include a `Reconnect Square` action in the banner.
+- Start a fresh Square OAuth flow using the existing company and connection context.
+- Use signed, expiring, single-use OAuth state.
+- On successful authorization:
+  - Replace the revoked credentials securely.
+  - Restore the existing connection to active status.
+  - Preserve existing location mappings.
+  - Preserve existing item mappings.
+  - Preserve sync history.
+  - Do not create a duplicate `pos_connections` record.
+- Confirm the merchant identity matches the prior Square merchant.
+- If a different Square merchant authorizes:
+  - Do not silently replace the existing merchant.
+  - Show a clear mismatch error and leave the existing connection disconnected.
+- After reconnection, allow an immediate incremental sync.
+- Never expose Square tokens through the browser or API response.
+
+### Testing
+
+Cover:
+
+- Successful reconnection
+- Merchant cancels reauthorization
+- OAuth callback error
+- OAuth state expiration or reuse
+- Different merchant authorizes
+- Existing mappings remain intact
+- No duplicate connection is created
+
+Then ask this about #538:
+
+Please confirm whether task #533 included automated tests for the token-revocation guard.
+
+If #533 implemented only the guard, restore #538 or create a replacement test task covering:
+
+- Expired/revoked token detected before a scheduled sync
+- Refresh failure marks the connection disconnected
+- Sync does not continue using invalid credentials
+- Tokens and raw Square responses are not written to logs
+- User-visible disconnected warning appears
+- Reauthorization restores the same connection
+Pilot priority
+
+Before the Square Sandbox pilot, I would require:
+
+#534 — OAuth failure/cancellation messaging
+New reauthorization task
+Revoked-token automated tests
+#535 — deployed redirect URI
+Full repeat-sync/idempotency test
+
+#536 is useful data-integrity polish and should follow closely. #537 is convenience and does not need to block the first controlled pilot.

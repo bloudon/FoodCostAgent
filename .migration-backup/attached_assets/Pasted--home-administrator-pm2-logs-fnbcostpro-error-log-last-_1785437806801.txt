@@ -1,0 +1,103 @@
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 100 lines:
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+7|fnbcostp | node:internal/modules/cjs/loader:1210
+7|fnbcostp |   throw err;
+7|fnbcostp |   ^
+7|fnbcostp |
+7|fnbcostp | Error: Cannot find module '/home/administrator/apps/CostPro/fnbcostpro/dist/index.js'
+7|fnbcostp |     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7|fnbcostp |     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7|fnbcostp |     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7|fnbcostp |     at node:internal/main/run_main_module:28:49 {
+7|fnbcostp |   code: 'MODULE_NOT_FOUND',
+7|fnbcostp |   requireStack: []
+7|fnbcostp | }
+7|fnbcostp |
+7|fnbcostp | Node.js v20.20.2
+
+/home/administrator/.pm2/logs/pe

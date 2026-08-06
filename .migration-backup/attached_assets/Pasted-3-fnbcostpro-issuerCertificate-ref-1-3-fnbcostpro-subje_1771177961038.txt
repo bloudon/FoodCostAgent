@@ -1,0 +1,55 @@
+3|fnbcostpro  |         issuerCertificate: <ref *1> {
+3|fnbcostpro  |           subject: [Object: null prototype] {
+3|fnbcostpro  |             C: 'US',
+3|fnbcostpro  |             O: 'Internet Security Research Group',
+3|fnbcostpro  |             CN: 'ISRG Root X1'
+3|fnbcostpro  |           },
+3|fnbcostpro  |           issuer: [Object: null prototype] {
+3|fnbcostpro  |             C: 'US',
+3|fnbcostpro  |             O: 'Internet Security Research Group',
+3|fnbcostpro  |             CN: 'ISRG Root X1'
+3|fnbcostpro  |           },
+3|fnbcostpro  |           ca: true,
+3|fnbcostpro  |           modulus: 'ADE82473F41437F39B9E2B57281C87BEDCB7DF38908C6E3CE657A078F775C2A2FEF56A6EF6004F28DBDE68866C4493B6B163FD14126BBF1FD2EA319B217ED1333CBA48F5DD79DFB3B8FF12F1219A4BC18A8671694A66666C8F7E3C70BFAD292206F3E4C0E680AEE24B8FB7997E94039FD347977C99482353E838AE4F0A6F832ED149578C8074B6DA2FD0388D7B0370211B75F2303CFA8FAEDDDA63ABEB164FC28E114B7ECF0BE8FFB5772EF4B27B4AE04C12250C708D0329A0E15324EC13D9EE19BF10B34A8C3F89A36151DEAC870794F46371EC2EE26F5B9881E1895C34796C76EF3B906279E6DBA49A2F26C5D010E10EDED9108E16FBB7F7A8F7C7E50207988F360895E7E237960D36759EFB0E72B11D9BBC03F94905D881DD05B42AD641E9AC0176950A0FD8DFD5BD121F352F28176CD298C1A80964776E4737BACEAC595E689D7F72D689C50641293E593EDD26F524C911A75AA34C401F46A199B5A73A516E863B9E7D72A712057859ED3E5178150B038F8DD02F05B23E7B4A1C4B730512FCC6EAE050137C439374B3CA74E78E1F0108D030D45B7136B407BAC130305C48B7823B98A67D608AA2A32982CCBABD83041BA2830341A1D605F11BC2B6F0A87C863B46A8482A88DC769A76BF1F6AA53D198FEB38F364DEC82B0D0A28FFF7DBE21542D422D0275DE179FE18E77088AD4EE6D98B3AC6DD27516EFFBC64F533434F',
+3|fnbcostpro  |           bits: 4096,
+3|fnbcostpro  |           exponent: '0x10001',
+3|fnbcostpro  |           pubkey: Buffer(550) [Uint8Array] [
+3|fnbcostpro  |              48, 130,   2,  34,  48,  13,   6,   9,  42, 134,  72, 134,
+3|fnbcostpro  |             247,  13,   1,   1,   1,   5,   0,   3, 130,   2,  15,   0,
+3|fnbcostpro  |              48, 130,   2,  10,   2, 130,   2,   1,   0, 173, 232,  36,
+3|fnbcostpro  |             115, 244,  20,  55, 243, 155, 158,  43,  87,  40,  28, 135,
+3|fnbcostpro  |             190, 220, 183, 223,  56, 144, 140, 110,  60, 230,  87, 160,
+3|fnbcostpro  |             120, 247, 117, 194, 162, 254, 245, 106, 110, 246,   0,  79,
+3|fnbcostpro  |              40, 219, 222, 104, 134, 108,  68, 147, 182, 177,  99, 253,
+3|fnbcostpro  |              20,  18, 107, 191,  31, 210, 234,  49, 155,  33, 126, 209,
+3|fnbcostpro  |              51,  60, 186,  72,
+3|fnbcostpro  |             ... 450 more items
+3|fnbcostpro  |           ],
+3|fnbcostpro  |           valid_from: 'Jun  4 11:04:38 2015 GMT',
+3|fnbcostpro  |           valid_to: 'Jun  4 11:04:38 2035 GMT',
+3|fnbcostpro  |           fingerprint: 'CA:BD:2A:79:A1:07:6A:31:F2:1D:25:36:35:CB:03:9D:43:29:A5:E8',
+3|fnbcostpro  |           fingerprint256: '96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6',
+3|fnbcostpro  |           fingerprint512: '3B:40:F2:7E:82:83:23:F5:B9:1F:89:09:88:3A:78:A2:1C:86:55:17:61:F2:7B:38:02:9F:AA:EC:14:AF:5B:7A:A9:6F:B9:F9:CC:93:EE:20:1B:5E:B1:D0:FE:F1:7B:29:07:47:E8:B8:39:D2:E4:9A:8F:36:C5:EB:F3:C7:C9:10',
+3|fnbcostpro  |           serialNumber: '8210CFB0D240E3594463E0BB63828B00',
+3|fnbcostpro  |           raw: Buffer(1391) [Uint8Array] [
+3|fnbcostpro  |              48, 130,   5, 107,  48, 130,   3,  83, 160,   3,   2,   1,
+3|fnbcostpro  |               2,   2,  17,   0, 130,  16, 207, 176, 210,  64, 227,  89,
+3|fnbcostpro  |              68,  99, 224, 187,  99, 130, 139,   0,  48,  13,   6,   9,
+3|fnbcostpro  |              42, 134,  72, 134, 247,  13,   1,   1,  11,   5,   0,  48,
+3|fnbcostpro  |              79,  49,  11,  48,   9,   6,   3,  85,   4,   6,  19,   2,
+3|fnbcostpro  |              85,  83,  49,  41,  48,  39,   6,   3,  85,   4,  10,  19,
+3|fnbcostpro  |              32,  73, 110, 116, 101, 114, 110, 101, 116,  32,  83, 101,
+3|fnbcostpro  |              99, 117, 114, 105, 116, 121,  32,  82, 101, 115, 101,  97,
+3|fnbcostpro  |             114,  99, 104,  32,
+3|fnbcostpro  |             ... 1291 more items
+3|fnbcostpro  |           ],
+3|fnbcostpro  |           issuerCertificate: [Circular *1]
+3|fnbcostpro  |         }
+3|fnbcostpro  |       }
+3|fnbcostpro  |     }
+3|fnbcostpro  |   },
+3|fnbcostpro  |   [Symbol(kMessage)]: "Hostname/IP does not match certificate's altnames: IP: 127.0.0.1 is not in the cert's list: "
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0
+3|fnbcostpro  | > rest-express@1.0.0 start
+3|fnbcostpro  | > NODE_ENV=production node dist/index.js

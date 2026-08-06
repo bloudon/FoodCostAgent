@@ -1,0 +1,50 @@
+3|fnbcostp |   dataType: undefined,
+3|fnbcostp |   constraint: undefined,
+3|fnbcostp |   file: 'namespace.c',
+3|fnbcostp |   line: '434',
+3|fnbcostp |   routine: 'RangeVarGetRelidExtended'
+3|fnbcostp | }
+3|fnbcostp | [Migration] mobile_dashboard_columns error: error: relation "shelf_scan_sessions" does not exist
+3|fnbcostp |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostp |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostp |     at async migrateMobileDashboardColumns (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:10204:9) {
+3|fnbcostp |   length: 117,
+3|fnbcostp |   severity: 'ERROR',
+3|fnbcostp |   code: '42P01',
+3|fnbcostp |   detail: undefined,
+3|fnbcostp |   hint: undefined,
+3|fnbcostp |   position: undefined,
+3|fnbcostp |   internalPosition: undefined,
+3|fnbcostp |   internalQuery: undefined,
+3|fnbcostp |   where: undefined,
+3|fnbcostp |   schema: undefined,
+3|fnbcostp |   table: undefined,
+3|fnbcostp |   column: undefined,
+3|fnbcostp |   dataType: undefined,
+3|fnbcostp |   constraint: undefined,
+3|fnbcostp |   file: 'namespace.c',
+3|fnbcostp |   line: '434',
+3|fnbcostp |   routine: 'RangeVarGetRelidExtended'
+3|fnbcostp | }
+3|fnbcostp | MulterError: Unexpected field
+3|fnbcostp |     at wrappedFileFilter (/home/administrator/apps/CostPro/fnbcostpro/node_modules/multer/index.js:40:19)
+3|fnbcostp |     at Multipart.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/multer/lib/make-middleware.js:132:7)
+3|fnbcostp |     at Multipart.emit (node:events:524:28)
+3|fnbcostp |     at HeaderParser.cb (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:358:14)
+3|fnbcostp |     at HeaderParser.push (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:162:20)
+3|fnbcostp |     at SBMH.ssCb [as _cb] (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:394:37)
+3|fnbcostp |     at feed (/home/administrator/apps/CostPro/fnbcostpro/node_modules/streamsearch/lib/sbmh.js:248:10)
+3|fnbcostp |     at SBMH.push (/home/administrator/apps/CostPro/fnbcostpro/node_modules/streamsearch/lib/sbmh.js:104:16)
+3|fnbcostp |     at Multipart._write (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:567:19)
+3|fnbcostp |     at writeOrBuffer (node:internal/streams/writable:572:12)
+3|fnbcostp | MulterError: Unexpected field
+3|fnbcostp |     at wrappedFileFilter (/home/administrator/apps/CostPro/fnbcostpro/node_modules/multer/index.js:40:19)
+3|fnbcostp |     at Multipart.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/multer/lib/make-middleware.js:132:7)
+3|fnbcostp |     at Multipart.emit (node:events:524:28)
+3|fnbcostp |     at HeaderParser.cb (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:358:14)
+3|fnbcostp |     at HeaderParser.push (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:162:20)
+3|fnbcostp |     at SBMH.ssCb [as _cb] (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:394:37)
+3|fnbcostp |     at feed (/home/administrator/apps/CostPro/fnbcostpro/node_modules/streamsearch/lib/sbmh.js:248:10)
+3|fnbcostp |     at SBMH.push (/home/administrator/apps/CostPro/fnbcostpro/node_modules/streamsearch/lib/sbmh.js:104:16)
+3|fnbcostp |     at Multipart._write (/home/administrator/apps/CostPro/fnbcostpro/node_modules/busboy/lib/types/multipart.js:567:19)
+3|fnbcostp |     at writeOrBuffer (node:internal/streams/writable:572:12)

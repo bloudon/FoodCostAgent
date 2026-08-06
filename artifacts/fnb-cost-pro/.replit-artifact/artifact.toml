@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "FnB Cost Pro"
+description = "FnB Cost Pro is a culinary operations intelligence platform for chefs and restaurant operators. It provides recipe costing, inventory management, vendor pricing, AI invoice scanning, waste tracking, menu insights, and theoretical food cost variance analysis. Built for multi-location restaurant groups and independent operators who need accurate food cost control."
+version = "1.0.0"
+id = "artifacts/fnb-cost-pro"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25097
+
+[services.development]
+run = "pnpm --filter @workspace/fnb-cost-pro run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fnb-cost-pro", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/fnb-cost-pro/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25097"
+BASE_PATH = "/"

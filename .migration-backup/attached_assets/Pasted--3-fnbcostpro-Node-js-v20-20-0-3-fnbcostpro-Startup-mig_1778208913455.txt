@@ -1,0 +1,56 @@
+}
+3|fnbcostpro  | Node.js v20.20.0
+3|fnbcostpro  | ⚠️ Startup migrations error (non-fatal): error: column "is_catch_weight_category" of relation "categories" already exists
+3|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25299:5)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25332:3 {
+3|fnbcostpro  |   length: 319,
+3|fnbcostpro  |   severity: 'ERROR',
+3|fnbcostpro  |   code: '42701',
+3|fnbcostpro  |   detail: undefined,
+3|fnbcostpro  |   hint: undefined,
+3|fnbcostpro  |   position: undefined,
+3|fnbcostpro  |   internalPosition: undefined,
+3|fnbcostpro  |   internalQuery: undefined,
+3|fnbcostpro  |   where: 'SQL statement "ALTER TABLE categories RENAME COLUMN is_tare_weight_category TO is_catch_weight_category"\n' +
+3|fnbcostpro  |     'PL/pgSQL function inline_code_block line 4 at SQL statement',
+3|fnbcostpro  |   schema: undefined,
+3|fnbcostpro  |   table: undefined,
+3|fnbcostpro  |   column: undefined,
+3|fnbcostpro  |   dataType: undefined,
+3|fnbcostpro  |   constraint: undefined,
+3|fnbcostpro  |   file: 'tablecmds.c',
+3|fnbcostpro  |   line: '7347',
+3|fnbcostpro  |   routine: 'check_for_column_name_collision'
+3|fnbcostpro  | }
+3|fnbcostpro  | /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45
+3|fnbcostpro  |     Error.captureStackTrace(err)
+3|fnbcostpro  |           ^
+3|fnbcostpro  | error: column "description" does not exist
+3|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/drizzle-orm/node-postgres/session.js:83:22
+3|fnbcostpro  |     at async seedBriansPizza (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:24336:26)
+3|fnbcostpro  |     at async seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:24567:5)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:25338:3 {
+3|fnbcostpro  |   length: 111,
+3|fnbcostpro  |   severity: 'ERROR',
+3|fnbcostpro  |   code: '42703',
+3|fnbcostpro  |   detail: undefined,
+3|fnbcostpro  |   hint: undefined,
+3|fnbcostpro  |   position: '44',
+3|fnbcostpro  |   internalPosition: undefined,
+3|fnbcostpro  |   internalQuery: undefined,
+3|fnbcostpro  |   where: undefined,
+3|fnbcostpro  |   schema: undefined,
+3|fnbcostpro  |   table: undefined,
+3|fnbcostpro  |   column: undefined,
+3|fnbcostpro  |   dataType: undefined,
+3|fnbcostpro  |   constraint: undefined,
+3|fnbcostpro  |   file: 'parse_relation.c',
+3|fnbcostpro  |   line: '3722',
+3|fnbcostpro  |   routine: 'errorMissingColumn'
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0
+

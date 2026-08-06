@@ -1,0 +1,23 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 logs fnbcostpro --lines 50 | grep -i "login\|mobile\|401\|500"
+3|fnbcostp | 7:50:58 PM [express] GET /api/mobile/sessions/active 401 in 37ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/background-images 200 in 7ms :: {"images":[{"id":"274c6f1e-5aa3…
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/background-images 200 in 6ms :: {"images":[{"id":"274c6f1e-5aa3…
+3|fnbcostp | 7:51:21 PM [express] GET /api/mobile/sessions/active 401 in 14ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:51:23 PM [express] GET /api/mobile/sessions/active 401 in 5ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:51:24 PM [express] GET /api/mobile/sessions/active 401 in 6ms :: {"error":"Not authenticated"}
+3|fnbcostp | 7:59:36 PM [express] GET /api/mobile/sessions/active 401 in 27ms :: {"error":"Not authenticated"}
+3|fnbcostp | [Migration] Already applied (mobile_dashboard_columns)
+3|fnbcostp | 8:15:56 PM [express] GET /api/mobile/background-images 200 in 76ms :: {"images":[{"id":"274c6f1e-5aa…
+3|fnbcostp | 8:15:56 PM [express] GET /api/mobile/sessions/active 401 in 77ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:15:56 PM [express] GET /api/mobile/background-images 200 in 93ms :: {"images":[{"id":"274c6f1e-5aa…
+3|fnbcostp | 8:15:59 PM [express] GET /api/mobile/sessions/active 401 in 13ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:16:00 PM [express] GET /api/mobile/sessions/active 401 in 5ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:18:37 PM [express] GET /api/mobile/sessions/active 401 in 30ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:20:11 PM [express] GET /api/mobile/background-images 200 in 18ms :: {"images":[{"id":"274c6f1e-5aa…
+3|fnbcostp | 8:23:29 PM [express] GET /api/mobile/background-images 200 in 27ms :: {"images":[{"id":"274c6f1e-5aa…
+3|fnbcostp | 8:23:42 PM [express] POST /api/mobile/login 200 in 103ms :: {"token":"Wgr-w6RdMfztP0HbwnwxyElDlS5lNu…
+3|fnbcostp | 8:23:43 PM [express] GET /api/auth/me 401 in 5ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:23:43 PM [express] GET /api/mobile/sessions/active 401 in 7ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:23:45 PM [express] GET /api/mobile/sessions/active 401 in 6ms :: {"error":"Not authenticated"}
+3|fnbcostp | 8:23:46 PM [express] GET /api/mobile/sessions/active 401 in 5ms :: {"error":"Not authenticated"}

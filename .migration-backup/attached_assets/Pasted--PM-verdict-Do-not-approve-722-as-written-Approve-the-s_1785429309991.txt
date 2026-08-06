@@ -1,0 +1,565 @@
+## PM verdict
+
+**Do not approve #722 as written. Approve the simplified UI direction in #723 only after the underlying model is corrected.**
+
+The proposed change solves a real usability problem, but it does so by moving a **vendor-specific purchasing concept onto the shared inventory item**. That creates serious problems for vendor comparison, multiple pack sizes, price history, ordering, and future imports.
+
+The main issue is simple:
+
+> A “case” is not a stable unit for an inventory item. It is a packaging configuration offered by a vendor.
+
+A single ingredient may be purchased as:
+
+* Vendor A: 1 case = 20 lb
+* Vendor B: 1 case = 24 lb
+* Vendor C: 4 × 5 lb
+* Local vendor: sold by the pound
+
+FnB Cost Pro already supports vendor comparison. Therefore, the inventory item cannot safely define one universal “case” as its costing anchor.
+
+# The correct separation
+
+## Inventory item
+
+Represents the actual product or ingredient in a stable canonical unit:
+
+* LB
+* OZ
+* GAL
+* FL OZ
+* EA
+* L
+* KG
+
+Examples:
+
+> Boneless chicken breast — canonical inventory unit: LB
+> Eggs — canonical inventory unit: EA
+> Olive oil — canonical inventory unit: FL OZ or L
+
+This unit remains consistent regardless of vendor.
+
+## Vendor item
+
+Represents how a specific vendor sells it:
+
+* Purchase unit: CS
+* Pack: 4 × 5 LB
+* Total canonical quantity: 20 LB
+* Case price: $62.00
+* Normalized cost: $3.10/LB
+
+Another vendor item for the same ingredient can then be:
+
+* Purchase unit: CS
+* Pack: 2 × 12 LB
+* Total canonical quantity: 24 LB
+* Case price: $69.60
+* Normalized cost: $2.90/LB
+
+That is what makes valid vendor comparison possible.
+
+## Recipe and issue conversions
+
+Represent how the kitchen uses or counts the canonical inventory quantity:
+
+* 1 LB = 16 OZ
+* 1 bottle = 25.36 FL OZ
+* 1 pan = 12 portions
+* 1 bunch = 8 OZ usable product
+* 1 recipe batch = 2.5 GAL
+
+These relationships should not change because the primary vendor changes.
+
+# Why #722 is dangerous
+
+## 1. It makes the primary vendor define the inventory item
+
+The migration says:
+
+> Look up the primary vendor’s purchase unit and make it the inventory item’s unit.
+
+That means changing the primary vendor could change the fundamental measurement anchor of the ingredient.
+
+That is backwards. A vendor relationship should adapt to the inventory item—not redefine it.
+
+Consider:
+
+> Chicken breast is currently purchased from Sysco in a 20-pound case.
+
+After migration:
+
+* Inventory unit becomes `CS`
+* One case is assumed to mean 20 pounds
+* Recipe units become 320 ounces per case
+
+Then the operator routes the order to a vendor selling a 40-pound case.
+
+What does `CS` mean now?
+
+* 20 pounds?
+* 40 pounds?
+* Whatever the primary vendor currently sells?
+* Different things depending on which vendor price was last synced?
+
+That ambiguity will eventually create cost drift or incorrect order quantities.
+
+## 2. It conflicts directly with vendor price comparison
+
+FnB Cost Pro needs to compare normalized prices across vendor-specific pack geometry.
+
+The comparison should be:
+
+> Vendor case price ÷ canonical quantity in that vendor’s case
+
+It should not be:
+
+> Inventory item’s current case cost versus another vendor’s case cost
+
+Two cases are not necessarily comparable.
+
+This proposal weakens one of the product’s existing premium capabilities.
+
+## 3. `price_per_unit` becomes ambiguous
+
+The ticket says:
+
+> `price_per_unit` and `avg_cost_per_unit` represent cost per case.
+
+Which case?
+
+* Primary vendor case?
+* Last received case?
+* Cheapest vendor case?
+* Weighted-average case?
+* A manually configured standard case?
+
+If the product has multiple vendor items, one item-level case price cannot accurately represent all of them.
+
+A more reliable meaning is:
+
+> `inventory_items.avg_cost_per_unit` = normalized cost per canonical inventory unit.
+
+Vendor-item fields then store:
+
+* Purchase price
+* Purchase unit
+* Pack geometry
+* Canonical quantity per purchase unit
+* Normalized price per canonical unit
+
+## 4. It makes vendor synchronization destructive
+
+The proposed sync updates the weight conversion row whenever vendor data changes.
+
+That means a vendor catalog sync could alter the ingredient’s fundamental recipe-conversion geometry.
+
+A price or pack change from a vendor should update that **vendor item**, not globally redefine the ingredient for all recipes, vendors, locations, and historical records.
+
+## 5. Historical costing becomes unstable
+
+Suppose an ingredient changed from a 20-pound case to a 24-pound case in July.
+
+If the global inventory-item conversion changes from:
+
+> 1 case = 20 lb
+
+to:
+
+> 1 case = 24 lb
+
+historical recipes or purchase records referencing “case” may be reinterpreted using the new geometry unless every transaction stores a frozen conversion snapshot.
+
+Canonical stock units avoid this problem.
+
+## 6. “Case,” “Each,” and purchase unit are being conflated
+
+The ticket describes the new anchor as:
+
+> Purchase/case unit, e.g. CS, Case, Each
+
+But these are not equivalent concepts.
+
+* `CS` is a container.
+* `EA` may be both the purchase and canonical unit for some items.
+* A keg, bag, bottle, tub, tray, sleeve, or pail may be the purchase unit.
+* A vendor may permit ordering by case and each.
+* Some products are purchased by variable weight.
+
+The architecture needs a general purchase-pack model, not a hard conceptual flip to “case.”
+
+# Recommended model
+
+Keep the stable inventory anchor and improve the user experience around it.
+
+## Inventory item
+
+```text
+inventory_items
+- canonical_unit_id
+- average_cost_per_canonical_unit
+- default_issue_unit_id, optional
+```
+
+You may retain `unit_id`, but its documented meaning should be:
+
+> Canonical inventory or stock unit
+
+Not purchase unit.
+
+## Vendor item
+
+```text
+vendor_items
+- vendor_id
+- inventory_item_id
+- purchase_unit_id
+- purchase_pack_description
+- purchase_price
+- canonical_qty_per_purchase_unit
+- normalized_price_per_canonical_unit
+- inner_pack_count
+- qty_per_inner_pack
+- source_pack_text
+```
+
+Example:
+
+```text
+Purchase unit: CS
+Pack: 4 × 5 LB
+Canonical quantity per purchase unit: 20 LB
+Purchase price: $62.00
+Normalized price: $3.10/LB
+```
+
+## Inventory-item conversions
+
+```text
+inventory_item_units
+- inventory_item_id
+- unit_id
+- canonical_qty_per_unit
+- usage_type
+- source
+- active
+```
+
+Examples:
+
+| Unit    | Canonical relationship | Usage     |
+| ------- | ---------------------: | --------- |
+| LB      |                   1 LB | Canonical |
+| OZ      |              0.0625 LB | Recipe    |
+| Portion |               0.375 LB | Issue     |
+| Pan     |                   5 LB | Issue     |
+
+Be explicit about direction. A field such as `canonical_qty_per_unit` is much less confusing than `qty_per_inventory_unit`.
+
+For example:
+
+> `canonical_qty_per_unit = 0.0625 LB per OZ`
+
+or the inverse:
+
+> `units_per_canonical_unit = 16 OZ per LB`
+
+Either is valid, but the name must make the direction unmistakable.
+
+# The existing field name is a liability
+
+The ticket says:
+
+> `qty_per_inventory_unit` means how many recipe units fit in one case.
+
+Then later says:
+
+> denominator changes from “lb per recipe unit” to “case per recipe unit.”
+
+Those two descriptions conflict.
+
+If the formula is:
+
+```text
+recipe-unit cost =
+inventory-unit cost ÷ recipe units per inventory unit
+```
+
+then the field means:
+
+> Recipe units per inventory unit
+
+For example:
+
+* $60 per case
+* 320 ounces per case
+* $60 ÷ 320 = $0.1875 per ounce
+
+It does **not** mean “case per recipe unit.”
+
+This semantic confusion alone is enough reason not to perform a major migration until the model is renamed or very clearly documented.
+
+# Better direction for #723
+
+The flat conversion table is a good usability improvement. The kitchen should not need to understand three tabs or database semantics.
+
+But I would anchor the table to the canonical inventory unit—not automatically to a case.
+
+## Suggested UI
+
+### Purchasing section
+
+Show vendor-specific purchasing packs separately:
+
+| Vendor   | Purchase pack | Case price | Normalized cost |
+| -------- | ------------- | ---------: | --------------: |
+| Sysco    | 4 × 5 LB      |     $62.00 |        $3.10/LB |
+| US Foods | 2 × 12 LB     |     $69.60 |        $2.90/LB |
+
+This answers how the product is bought.
+
+### Units & Measurements
+
+Show one flat **Usage Conversions** table:
+
+**Canonical inventory unit: LB**
+
+| Kitchen unit | Relationship         | Purpose |
+| ------------ | -------------------- | ------- |
+| OZ           | 1 LB = 16 OZ         | Recipe  |
+| 6 oz portion | 1 portion = 0.375 LB | Issue   |
+| Pan          | 1 pan = 5 LB         | Issue   |
+
+This answers how the product is measured and used.
+
+The user does not need Pack Breakdown, Recipe Units, and Issue Units tabs. But purchasing packs and kitchen conversions should remain conceptually distinct.
+
+# Do not hard-code one issue unit and five recipe units
+
+The proposed limits are arbitrary:
+
+* 1 issue unit
+* 5 recipe units
+
+A real kitchen may use the same ingredient as:
+
+* Case
+* Inner pack
+* Pound
+* Ounce
+* Each
+* Portion
+* Pan
+* Bag
+* Bottle
+
+Five may be sufficient for most items, but there is no clear domain reason to enforce that in the API.
+
+A better KISS approach:
+
+* Allow a modest total number of active conversions, perhaps 10.
+* Let each conversion have one or more usage flags:
+
+  * Recipe
+  * Counting
+  * Issuing
+  * Purchasing display
+* Show only relevant conversions in each workflow.
+
+One conversion can serve both recipe and issue use. There is no need to duplicate “OZ” because it appears in two contexts.
+
+If you retain the limits, they should be configurable or justified by an actual operational requirement—not by the current layout.
+
+# Migration concerns
+
+Even with a corrected design, migration must be much more conservative.
+
+## Do not invent a case unit when no vendor exists
+
+The proposal says:
+
+> Fall back to “Case” or the existing container label.
+
+That creates fictional packaging geometry.
+
+If an item has no reliable vendor pack:
+
+* Keep its current canonical unit.
+* Flag purchase configuration as incomplete.
+* Do not manufacture `1 case = ?`.
+* Require vendor pack setup before purchase pricing is used.
+
+## Do not select a primary vendor without deterministic rules
+
+If multiple vendors exist, “primary vendor” needs an explicit definition:
+
+* Marked preferred vendor
+* Most recently purchased
+* Highest purchase volume
+* Current order-guide default
+* Manually selected
+
+Even then, its pack should only become the **default display pack**, not the inventory item’s identity.
+
+## Migration must preserve history
+
+If any values or semantics are changed, retain:
+
+* Original unit
+* Original price
+* Original case size
+* Migration calculation
+* Selected vendor item
+* Resulting normalized quantity
+* Migration version
+
+A parity test alone will not make the migration auditable.
+
+## Test more than cost parity
+
+Required tests should include:
+
+1. Single vendor, simple case
+2. Multiple vendors with different case sizes
+3. Vendor change after migration
+4. Each-purchased item
+5. Variable-weight item
+6. Inner-pack item
+7. Item without a vendor
+8. Item with missing case size
+9. Recipe using ounces
+10. Recipe using eaches
+11. Purchase order quantity conversion
+12. Predictive order conversion from canonical need to vendor cases
+13. Historical receipt retains original pack geometry
+14. Vendor price comparison remains accurate
+15. No division by zero or null conversion
+
+The current ticket explicitly excludes purchase orders and transfer orders, yet changing the unit anchor can affect both. That is a warning sign.
+
+# Likely downstream impact omitted from #722
+
+Changing `inventory_items.unit_id` semantics can affect:
+
+* Inventory counts
+* Inventory valuation
+* Recipe costing
+* Prep recipes
+* Theoretical usage
+* Waste entry
+* Transfers
+* Purchase orders
+* Receiving
+* Order guides
+* Vendor routing
+* Predictive ordering
+* Reorder quantities
+* Par levels
+* Invoice matching
+* CSV imports
+* Orderly imports
+* Menu margin calculations
+* API integrations
+* Existing reports
+* Mobile count displays
+* Barcode and QR workflows
+
+The task says purchase orders, transfers, and order guides are out of scope. They cannot safely be out of scope if they read `inventory_items.unit_id` or `price_per_unit`.
+
+Before migration, Replit should produce a code-impact inventory of every read and write of:
+
+* `inventory_items.unit_id`
+* `price_per_unit`
+* `avg_cost_per_unit`
+* `case_size`
+* `qty_per_inventory_unit`
+* `vendor_items.purchase_unit_id`
+
+# Recommended revised ticket split
+
+## #722A — Formalize unit semantics
+
+No data migration yet.
+
+Define:
+
+* Canonical inventory unit
+* Purchase unit
+* Purchase pack
+* Recipe/usage conversion
+* Issue/count unit
+* Direction of every conversion field
+* Item-level versus vendor-item-level ownership
+
+Document examples for weight, volume, each, inner-pack, and variable-weight products.
+
+## #722B — Normalize vendor pack geometry
+
+Ensure every vendor item can express:
+
+* Purchase unit
+* Purchase price
+* Canonical quantity per purchase unit
+* Inner pack structure
+* Normalized canonical-unit price
+
+Update vendor comparison and sync accordingly.
+
+## #723 — Simplified Units & Measurements UI
+
+Replace the tabs with:
+
+* Canonical inventory unit
+* Flat kitchen usage conversions
+* Separate vendor purchase-pack reference table
+
+Do not expose the database complexity, but preserve the correct separation.
+
+## #724 — Costing and ordering parity
+
+Add comprehensive tests across:
+
+* Recipe costing
+* Vendor comparison
+* Predictive ordering
+* PO creation
+* Receiving
+* Inventory valuation
+* Transfers
+
+## #725 — Safe migration
+
+Only after the model and tests are established:
+
+* Normalize legacy units
+* Create missing canonical conversions
+* Preserve migration audit data
+* Flag unresolved items
+* Reconcile financial totals before and after
+
+# Recommended product principle
+
+The expert’s KISS instinct is correct for the user interface:
+
+> A chef should see one understandable relationship instead of three technical tabs.
+
+But KISS in the UI does not require collapsing distinct domain concepts in the database.
+
+The safest principle is:
+
+> **Store inventory in a stable product unit. Buy it through vendor-specific packs. Let the kitchen use whichever practical units it needs.**
+
+For a chef, the experience can still be simple:
+
+> “I buy this as a case of four five-pound bags, keep it in pounds, and use it in ounces.”
+
+FnB Cost Pro should model that sentence directly.
+
+## Final decision
+
+* **Reject the backend flip in #722 as currently designed.**
+* **Approve the flat-table usability objective in #723, but anchor it to the canonical inventory unit and show vendor purchase packs separately.**
+* Require a full downstream impact audit before changing any unit-field semantics.
+* Do not let a “primary vendor case” become the identity or costing anchor of a multi-vendor inventory item.
+
+The proposed flip may make one screen easier today, but it would undermine vendor comparison and introduce ambiguity throughout the platform.

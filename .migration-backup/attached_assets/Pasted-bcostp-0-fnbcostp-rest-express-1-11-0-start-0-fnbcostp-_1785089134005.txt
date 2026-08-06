@@ -1,0 +1,216 @@
+bcostp |
+0|fnbcostp | > rest-express@1.11.0 start
+0|fnbcostp | > NODE_ENV=production node dist/index.js
+0|fnbcostp |
+
+0|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+0|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+0|fnbcostpro  | ⚠️ Startup migrations error (non-fatal): error: check constraint "pvr_ordering_mode_mvp_check" of relation "platform_vendor_registry" is violated by some row
+0|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostpro  |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32273:5)
+0|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32734:3 {
+0|fnbcostpro  |   length: 493,
+0|fnbcostpro  |   severity: 'ERROR',
+0|fnbcostpro  |   code: '23514',
+0|fnbcostpro  |   detail: undefined,
+0|fnbcostpro  |   hint: undefined,
+0|fnbcostpro  |   position: undefined,
+0|fnbcostpro  |   internalPosition: undefined,
+0|fnbcostpro  |   internalQuery: undefined,
+0|fnbcostpro  |   where: 'SQL statement "ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check\n' +
+0|fnbcostpro  |     `            CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'))"\n` +
+0|fnbcostpro  |     'PL/pgSQL function inline_code_block line 8 at SQL statement',
+0|fnbcostpro  |   schema: 'public',
+0|fnbcostpro  |   table: 'platform_vendor_registry',
+0|fnbcostpro  |   column: undefined,
+0|fnbcostpro  |   dataType: undefined,
+0|fnbcostpro  |   constraint: 'pvr_ordering_mode_mvp_check',
+0|fnbcostpro  |   file: 'tablecmds.c',
+0|fnbcostpro  |   line: '6128',
+0|fnbcostpro  |   routine: 'ATRewriteTable'
+0|fnbcostpro  | }
+0|fnbcostpro  | [Storage] Environment detected: local (VPS)
+0|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+0|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+0|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+0|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+0|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+0|fnbcostpro  | [TierMigration] Already applied (tier_system_init)
+0|fnbcostpro  | [Migration] Already applied (preferred_language)
+0|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+0|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+0|fnbcostpro  | [Migration] Already applied (menu_descriptions)
+0|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+0|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+0|fnbcostpro  | [Migration] qb_reconciliations table ready
+0|fnbcostpro  | [Migration] Already applied (menu_item_recipes)
+0|fnbcostpro  | ✅ Database already seeded
+0|fnbcostpro  | ✅ All unit conversions already present
+0|fnbcostpro  | 🏢 Creating Brian's Pizza company and stores...
+0|fnbcostpro  | 🔗 Migrating vendors to store assignments...
+0|fnbcostpro  |    All vendors already assigned to stores
+0|fnbcostpro  | 6:04:31 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+0|fnbcostpro  | 6:04:31 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+0|fnbcostpro  | node:events:502
+0|fnbcostpro  |       throw er; // Unhandled 'error' event
+0|fnbcostpro  |       ^
+0|fnbcostpro  | Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+0|fnbcostpro  |     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+0|fnbcostpro  |     at listenInCluster (node:net:1965:12)
+0|fnbcostpro  |     at doListen (node:net:2139:7)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+0|fnbcostpro  | Emitted 'error' event on WebSocketServer instance at:
+0|fnbcostpro  |     at Server.emit (node:events:524:28)
+0|fnbcostpro  |     at emitErrorNT (node:net:1944:8)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+0|fnbcostpro  |   code: 'EADDRINUSE',
+0|fnbcostpro  |   errno: -98,
+0|fnbcostpro  |   syscall: 'listen',
+0|fnbcostpro  |   address: '0.0.0.0',
+0|fnbcostpro  |   port: 3001
+0|fnbcostpro  | }
+0|fnbcostpro  | Node.js v20.20.2
+0|fnbcostpro  | > rest-express@1.11.0 start
+0|fnbcostpro  | > NODE_ENV=production node dist/index.js
+0|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+0|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+0|fnbcostpro  | ⚠️ Startup migrations error (non-fatal): error: check constraint "pvr_ordering_mode_mvp_check" of relation "platform_vendor_registry" is violated by some row
+0|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostpro  |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32273:5)
+0|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32734:3 {
+0|fnbcostpro  |   length: 493,
+0|fnbcostpro  |   severity: 'ERROR',
+0|fnbcostpro  |   code: '23514',
+0|fnbcostpro  |   detail: undefined,
+0|fnbcostpro  |   hint: undefined,
+0|fnbcostpro  |   position: undefined,
+0|fnbcostpro  |   internalPosition: undefined,
+0|fnbcostpro  |   internalQuery: undefined,
+0|fnbcostpro  |   where: 'SQL statement "ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check\n' +
+0|fnbcostpro  |     `            CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'))"\n` +
+0|fnbcostpro  |     'PL/pgSQL function inline_code_block line 8 at SQL statement',
+0|fnbcostpro  |   schema: 'public',
+0|fnbcostpro  |   table: 'platform_vendor_registry',
+0|fnbcostpro  |   column: undefined,
+0|fnbcostpro  |   dataType: undefined,
+0|fnbcostpro  |   constraint: 'pvr_ordering_mode_mvp_check',
+0|fnbcostpro  |   file: 'tablecmds.c',
+0|fnbcostpro  |   line: '6128',
+0|fnbcostpro  |   routine: 'ATRewriteTable'
+0|fnbcostpro  | }
+0|fnbcostpro  | [Storage] Environment detected: local (VPS)
+0|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+0|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+0|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+0|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+0|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+0|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+0|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+0|fnbcostpro  | [Migration] Already applied (preferred_language)
+0|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+0|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+0|fnbcostpro  | [TierMigration] Already applied (tier_system_init)
+0|fnbcostpro  | [Migration] Already applied (menu_descriptions)
+0|fnbcostpro  | [Migration] qb_reconciliations table ready
+0|fnbcostpro  | [Migration] Already applied (menu_item_recipes)
+0|fnbcostpro  | ✅ Database already seeded
+0|fnbcostpro  | ✅ All unit conversions already present
+0|fnbcostpro  | 🏢 Creating Brian's Pizza company and stores...
+0|fnbcostpro  | 🔗 Migrating vendors to store assignments...
+0|fnbcostpro  |    All vendors already assigned to stores
+0|fnbcostpro  | 6:04:34 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+0|fnbcostpro  | 6:04:34 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+0|fnbcostpro  | node:events:502
+0|fnbcostpro  |       throw er; // Unhandled 'error' event
+0|fnbcostpro  |       ^
+0|fnbcostpro  | Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+0|fnbcostpro  |     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+0|fnbcostpro  |     at listenInCluster (node:net:1965:12)
+0|fnbcostpro  |     at doListen (node:net:2139:7)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+0|fnbcostpro  | Emitted 'error' event on WebSocketServer instance at:
+0|fnbcostpro  |     at Server.emit (node:events:524:28)
+0|fnbcostpro  |     at emitErrorNT (node:net:1944:8)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+0|fnbcostpro  |   code: 'EADDRINUSE',
+0|fnbcostpro  |   errno: -98,
+0|fnbcostpro  |   syscall: 'listen',
+0|fnbcostpro  |   address: '0.0.0.0',
+0|fnbcostpro  |   port: 3001
+0|fnbcostpro  | }
+0|fnbcostpro  | Node.js v20.20.2
+0|fnbcostpro  | > rest-express@1.11.0 start
+0|fnbcostpro  | > NODE_ENV=production node dist/index.js
+0|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+0|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+0|fnbcostpro  | ⚠️ Startup migrations error (non-fatal): error: check constraint "pvr_ordering_mode_mvp_check" of relation "platform_vendor_registry" is violated by some row
+0|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+0|fnbcostpro  |     at async runStartupMigrations (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32273:5)
+0|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:32734:3 {
+0|fnbcostpro  |   length: 493,
+0|fnbcostpro  |   severity: 'ERROR',
+0|fnbcostpro  |   code: '23514',
+0|fnbcostpro  |   detail: undefined,
+0|fnbcostpro  |   hint: undefined,
+0|fnbcostpro  |   position: undefined,
+0|fnbcostpro  |   internalPosition: undefined,
+0|fnbcostpro  |   internalQuery: undefined,
+0|fnbcostpro  |   where: 'SQL statement "ALTER TABLE platform_vendor_registry ADD CONSTRAINT pvr_ordering_mode_mvp_check\n' +
+0|fnbcostpro  |     `            CHECK (ordering_mode IN ('connector','portal_link','public_ecommerce','contact_vendor'))"\n` +
+0|fnbcostpro  |     'PL/pgSQL function inline_code_block line 8 at SQL statement',
+0|fnbcostpro  |   schema: 'public',
+0|fnbcostpro  |   table: 'platform_vendor_registry',
+0|fnbcostpro  |   column: undefined,
+0|fnbcostpro  |   dataType: undefined,
+0|fnbcostpro  |   constraint: 'pvr_ordering_mode_mvp_check',
+0|fnbcostpro  |   file: 'tablecmds.c',
+0|fnbcostpro  |   line: '6128',
+0|fnbcostpro  |   routine: 'ATRewriteTable'
+0|fnbcostpro  | }
+0|fnbcostpro  | [Storage] Environment detected: local (VPS)
+0|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+0|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+0|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+0|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+0|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+0|fnbcostpro  | [TierMigration] Already applied (tier_system_init)
+0|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+0|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+0|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+0|fnbcostpro  | [Migration] Already applied (preferred_language)
+0|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+0|fnbcostpro  | [Migration] Already applied (menu_descriptions)
+0|fnbcostpro  | [Migration] qb_reconciliations table ready
+0|fnbcostpro  | [Migration] Already applied (menu_item_recipes)
+0|fnbcostpro  | ✅ Database already seeded
+0|fnbcostpro  | ✅ All unit conversions already present
+0|fnbcostpro  | 🏢 Creating Brian's Pizza company and stores...
+0|fnbcostpro  | 🔗 Migrating vendors to store assignments...
+0|fnbcostpro  |    All vendors already assigned to stores
+0|fnbcostpro  | 6:04:38 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+0|fnbcostpro  | 6:04:38 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+0|fnbcostpro  | node:events:502
+0|fnbcostpro  |       throw er; // Unhandled 'error' event
+0|fnbcostpro  |       ^
+0|fnbcostpro  | Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+0|fnbcostpro  |     at Server.setupListenHandle [as _listen2] (node:net:1908:16)
+0|fnbcostpro  |     at listenInCluster (node:net:1965:12)
+0|fnbcostpro  |     at doListen (node:net:2139:7)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:83:21)
+0|fnbcostpro  | Emitted 'error' event on WebSocketServer instance at:
+0|fnbcostpro  |     at Server.emit (node:events:524:28)
+0|fnbcostpro  |     at emitErrorNT (node:net:1944:8)
+0|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:82:21) {
+0|fnbcostpro  |   code: 'EADDRINUSE',
+0|fnbcostpro  |   errno: -98,
+0|fnbcostpro  |   syscall: 'listen',
+0|fnbcostpro  |   address: '0.0.0.0',
+0|fnbcostpro  |   port: 3001
+0|fnbcostpro  | }
+0|fnbcostpro  | Node.js v20.20.2
+0|fnbcostpro  | > rest-express@1.11.0 start
+0|fnbcostpro  | > NODE_ENV=production node dist/index.js
+^C

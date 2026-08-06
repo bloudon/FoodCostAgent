@@ -1,0 +1,38 @@
+3|fnbcostpro  | > rest-express@1.0.0 start
+3|fnbcostpro  | > NODE_ENV=production node dist/index.js
+3|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+3|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+3|fnbcostpro  | [Storage] Environment detected: local (VPS)
+3|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+3|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+3|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+3|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+3|fnbcostpro  | /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45
+3|fnbcostpro  |     Error.captureStackTrace(err)
+3|fnbcostpro  |           ^
+3|fnbcostpro  | error: relation "units" does not exist
+3|fnbcostpro  |     at /home/administrator/apps/CostPro/fnbcostpro/node_modules/pg-pool/index.js:45:11
+3|fnbcostpro  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/drizzle-orm/node-postgres/session.js:83:22
+3|fnbcostpro  |     at async seedKitchenUnits (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:15059:25)
+3|fnbcostpro  |     at async seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:15548:3)
+3|fnbcostpro  |     at async file:///home/administrator/apps/CostPro/fnbcostpro/dist/index.js:16243:3 {
+3|fnbcostpro  |   length: 104,
+3|fnbcostpro  |   severity: 'ERROR',
+3|fnbcostpro  |   code: '42P01',
+3|fnbcostpro  |   detail: undefined,
+3|fnbcostpro  |   hint: undefined,
+3|fnbcostpro  |   position: '77',
+3|fnbcostpro  |   internalPosition: undefined,
+3|fnbcostpro  |   internalQuery: undefined,
+3|fnbcostpro  |   where: undefined,
+3|fnbcostpro  |   schema: undefined,
+3|fnbcostpro  |   table: undefined,
+3|fnbcostpro  |   column: undefined,
+3|fnbcostpro  |   dataType: undefined,
+3|fnbcostpro  |   constraint: undefined,
+3|fnbcostpro  |   file: 'parse_relation.c',
+3|fnbcostpro  |   line: '1449',
+3|fnbcostpro  |   routine: 'parserOpenTable'
+3|fnbcostpro  | }
+3|fnbcostpro  | Node.js v20.20.0

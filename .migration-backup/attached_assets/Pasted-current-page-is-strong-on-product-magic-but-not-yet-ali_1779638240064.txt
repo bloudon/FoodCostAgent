@@ -1,0 +1,345 @@
+current page is strong on product magic but not yet aligned with the new 14-Day Food Cost Opportunity Guarantee positioning.
+
+Right now, the page is mostly saying:
+
+“Picture this: your phone does the data entry.”
+
+The new message should say:
+
+“Give us 14 days and we’ll help find your first food cost savings opportunity.”
+
+The phone/camera/AI setup story is still valuable, but it should become the proof mechanism, not the main promise.
+
+Current copy reviewed from your pasted front-page content:
+
+What’s Working Now
+
+Your current homepage has strong visual/product hooks:
+
+“Operational in an afternoon.”
+“Intelligent within weeks.”
+“No keyboard, no spreadsheets, no re-entry.”
+“Traditional software takes weeks to set up. FnB Cost Pro takes a day.”
+menu scan, invoice scan, recipe scan, mobile inventory
+“Point. Shoot. Done.”
+“Your phone does the data entry.”
+
+That is good. Keep that energy.
+
+Competitively, the “setup speed + mobile capture” angle matters because other restaurant inventory/costing platforms also talk heavily about inventory, recipe costing, invoice capture, and onboarding. MarketMan, for example, publicly positions around inventory, ordering, receiving, price tracking, live inventory, recipe costing, COGS, AI-powered recipe creation, and paid onboarding/success add-ons. MarginEdge positions around invoice data, sales data, restaurant performance insights, inventory tools, recipe/menu analysis, product price monitoring, and 1:1 software training.
+
+So your differentiator should not just be:
+
+“We also do inventory and costing.”
+
+It should be:
+
+“We get you to a food cost opportunity faster.”
+
+Biggest Messaging Problem
+
+Your current homepage leads with labor savings and data entry elimination, not food cost opportunity discovery.
+
+Current lines like:
+
+“Typical weekly data entry eliminated”
+“Monthly labor savings for most operators”
+“Stop Paying Someone to Type. Start Using Your Phone.”
+“Most operators recover the cost of Starter in the first week.”
+
+are useful, but they pull the buyer’s attention toward admin efficiency.
+
+That may attract the wrong mental frame:
+
+“This saves my manager some time.”
+
+The stronger frame is:
+
+“This helps me find where food cost is leaking.”
+
+Labor savings is a supporting benefit. Food cost opportunity is the headline.
+
+The Hero Needs Rebuilt
+Current hero
+
+Picture This.
+Operational in an afternoon.
+Intelligent within weeks.
+
+This is catchy, but it does not say enough about the business outcome.
+
+Recommended hero
+
+Find Your First Food Cost Savings Opportunity in 14 Days
+
+Subhead:
+
+FnB Cost Pro helps restaurants turn menus, recipes, invoices, vendor pricing, and inventory data into clear food cost insight — starting with a guided launch designed to uncover at least one savings opportunity in your first 14 days.
+
+CTA:
+
+Start Your 14-Day Opportunity Review
+
+Secondary CTA:
+
+Scan Your Menu
+
+Keep “Operational in an afternoon” as a supporting proof line:
+
+Start with a menu scan. Get operational in an afternoon. Begin finding food cost insight within 14 days.
+
+Change “14-Day Free Trial”
+
+Current copy says:
+
+“14-day free trial. Cancel anytime.”
+“Upload Your Menu Now”
+“Talk to Us”
+“14-day free trial”
+
+This should be replaced almost everywhere with:
+
+14-Day Food Cost Opportunity Guarantee
+
+Suggested replacement:
+
+In your first 14 days, we’ll help identify at least one food cost savings opportunity using your menu, recipes, invoices, vendor pricing, or inventory process.
+
+Important guardrail:
+
+We identify the opportunity. Actual savings depend on the restaurant taking action.
+
+This keeps the offer strong without promising guaranteed realized savings.
+
+Add the $500k ROI Math Near the Top
+
+Right now, the page uses:
+
+“3–5% Typical food cost reduction”
+
+That is a potentially strong claim, but I would be careful with it unless you can support it directly with your own beta/customer data. Competitors do make food-cost-reduction claims — Toast’s xtraCHEF page promotes cost-control outcomes and MarketMan’s public site says its platform supports lowering COGS — but your site should avoid sounding like it is guaranteeing a specific reduction before you have your own proof.
+
+I would replace the “3–5%” stat with your cleaner math:
+
+At $500k/year in sales, every 1% of food cost improvement is worth $5,000.
+
+Then show:
+
+Annual Sales	0.5% Opportunity	1% Opportunity	2% Opportunity
+$500,000	$2,500	$5,000	$10,000
+$750,000	$3,750	$7,500	$15,000
+$1,000,000	$5,000	$10,000	$20,000
+
+This is more defensible because it is math, not a performance claim.
+
+Reorder the Value Props
+
+Current order seems to be:
+
+Photo setup
+Mobile workflows
+How it works
+Labor savings
+Recipe costing
+New routine
+
+Recommended order:
+
+14-Day Food Cost Opportunity Guarantee
+ROI math: 1% = real dollars
+Menu scan WOW moment
+Guided Launch Session
+Mobile workflows: menu, invoices, recipes, inventory
+Recipe costing / invoice pricing / variance
+Labor savings as secondary payoff
+Pricing / CTA
+
+The homepage should tell a tighter story:
+
+Start with your menu → structure your data fast → review costs and invoices → identify one savings opportunity → continue using the system to control food cost.
+
+Menu Scan Should Be Elevated
+
+Current copy says:
+
+“Photograph your printed menu and every dish name, section, and price is extracted automatically.”
+
+Good, but it is buried inside “Set Up by Photo.”
+
+This should become a major front-page section:
+
+Start With Your Menu. See Food Cost Clues in Minutes.
+
+Copy:
+
+Upload a photo of your menu and FnB Cost Pro begins organizing your items, departments, prices, and ingredient clues. Instead of starting from a blank spreadsheet, your menu becomes the starting map for recipe costing, invoice review, and food cost opportunity discovery.
+
+Add callouts:
+
+menu item count
+categories/departments
+average item price
+ingredient clues
+recipe build-out starting point
+margin review starting point
+
+This supports the “wow” moment we discussed.
+
+Rename “Full Setup” to “Guided Launch”
+
+Current copy says:
+
+“Full setup in under a day.”
+
+That is good, but we now need to connect it to the $250 Guided Launch.
+
+Use:
+
+Guided Launch Session
+
+Copy:
+
+Your Guided Launch Session helps set up your first location, scan your menu, review invoices or vendor pricing, and begin identifying your first food cost opportunity.
+
+Avoid:
+
+onboarding fee
+setup charge
+implementation fee
+
+Use:
+
+Guided Launch
+Opportunity Review
+Food Cost Launch Session
+
+Replace This Section
+
+Current:
+
+It Pays for Itself
+Stop Paying Someone to Type. Start Using Your Phone.
+
+Recommended:
+
+It Pays for Itself When You Find the Leak
+Most restaurants don’t need a massive improvement to justify better food cost visibility. At $500k in annual sales, finding just 0.5% in food cost opportunity represents $2,500 per year.
+
+Then supporting copy:
+
+Labor savings matter too. FnB Cost Pro also reduces manual invoice entry, recipe setup, and inventory re-entry by turning photos into structured data.
+
+This keeps your existing labor-savings section, but puts it under the larger financial story.
+
+Be Careful With These Current Claims
+
+I would revise or soften these:
+
+“Traditional software takes weeks to set up. FnB Cost Pro takes a day.”
+
+Better:
+
+Traditional systems can take weeks to fully configure. FnB Cost Pro is designed to get your first location operational in an afternoon with a guided launch.
+
+“No data entry.”
+
+Better:
+
+Less manual data entry.
+
+Because there will still be review, confirmation, correction, mapping, and approval.
+
+“Food cost per serving instantly.”
+
+Better:
+
+Food cost estimates begin immediately once ingredients are matched to inventory and vendor pricing.
+
+“Typical food cost reduction 3–5%.”
+
+Better:
+
+Even a 1% food cost opportunity can be worth thousands per year.
+
+Unless you have your own validated beta data, I would avoid claiming a “typical” reduction.
+
+Specific Copy Swaps
+Current Copy	Recommended Update
+“Picture This.”	“Find Your First Food Cost Savings Opportunity in 14 Days.”
+“14-day free trial.”	“14-Day Food Cost Opportunity Guarantee.”
+“Upload Your Menu Now”	“Start Your 14-Day Opportunity Review” or “Scan Your Menu”
+“Stop Paying Someone to Type.”	“Stop Guessing Where Food Cost Is Leaking.”
+“Point. Shoot. Done.”	“Scan. Structure. Find the Opportunity.”
+“Full setup in under a day.”	“Guided Launch in an afternoon.”
+“Typical food cost reduction 3–5%.”	“At $500k/year, every 1% improvement is worth $5,000.”
+“Most operators recover the cost of Starter in the first week.”	“For many restaurants, finding less than 1% in food cost opportunity can cover the first year.”
+Suggested New Front Page Flow
+1. Hero
+
+Find Your First Food Cost Savings Opportunity in 14 Days
+
+FnB Cost Pro helps restaurants turn menus, recipes, invoices, vendor pricing, and inventory data into clear food cost insight — starting with a guided launch designed to uncover at least one savings opportunity.
+
+CTA: Start Your 14-Day Opportunity Review
+Secondary CTA: Scan Your Menu
+
+2. ROI Math
+
+Small percentage changes create big dollars.
+
+If your restaurant does $500k/year, every 1% improvement in food cost is worth $5,000.
+
+3. Menu Scan WOW
+
+Start with your menu. See insights in minutes.
+
+Upload your menu and FnB Cost Pro begins organizing items, departments, pricing, and ingredient clues — giving you a starting map for recipe costing and food cost review.
+
+4. Guided Launch
+
+Operational in an afternoon. Focused within 14 days.
+
+Your Guided Launch Session helps set up your first location, review your menu and invoices, and identify your first food cost savings opportunity.
+
+5. Mobile Workflows
+
+Keep your existing mobile screenshots and sections, but tie each back to food cost opportunity:
+
+Menu scan → structure
+Invoice scan → vendor price changes
+Recipe scan → true plate cost
+Inventory count → actual vs theoretical variance
+6. Labor Savings
+
+Keep this, but make it secondary:
+
+Reduce manual entry while improving food cost visibility.
+
+7. Final CTA
+
+Ready to find your first food cost opportunity?
+
+Give us 14 days. We’ll help identify at least one area where food cost may be leaking.
+
+CTA: Start Your 14-Day Opportunity Review
+
+Bottom Line
+
+Your current homepage is close from a product-demonstration standpoint. It just needs to be repositioned.
+
+The new hierarchy should be:
+
+Outcome: Find a food cost opportunity in 14 days
+Math: 1% at $500k = $5,000
+Proof: menu scan creates instant structure
+Method: Guided Launch Session
+Product: mobile scans, recipe costing, invoice capture, inventory
+Secondary value: labor savings and reduced data entry
+
+Right now the site says:
+
+“Your phone replaces data entry.”
+
+The updated site should say:
+
+“Your phone helps us find where food cost is leaking.”

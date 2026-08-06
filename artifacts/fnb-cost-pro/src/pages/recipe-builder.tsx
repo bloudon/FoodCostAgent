@@ -1,0 +1,3514 @@
+import { TierGate } from "@/components/tier-gate";
+import { RecipePhotoLightbox } from "@/components/recipe-photo-lightbox";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useLocation, useParams, Link } from "wouter";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  useDroppable,
+  useDraggable,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SetupProgressBanner } from "@/components/setup-progress-banner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUndoableDelete } from "@/hooks/use-undoable-delete";
+import { formatUnitName, formatRecipeName } from "@/lib/utils";
+import { getSuggestedConversionFactor, getWaterDensityConversionFactor } from "@/lib/unitConversions";
+import {
+  ArrowLeft,
+  Save,
+  Search,
+  GripVertical,
+  Trash2,
+  ChefHat,
+  Package,
+  Plus,
+  Copy,
+  Link as LinkIcon,
+  AlertTriangle,
+  ScanText,
+  X,
+  Check,
+  ImageIcon,
+  Loader2,
+  Lock,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  CheckCircle2,
+  SkipForward,
+  ArrowLeftRight,
+} from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
+import type { Recipe, RecipeComponent, Category, InventoryItem as BaseInventoryItem, Unit as BaseUnit, InventoryItemUnit } from "@shared/schema";
+
+// Extended types for API responses with joined fields
+type InventoryItem = BaseInventoryItem & {
+  unitName?: string;
+  categoryName?: string | null;
+};
+
+type Unit = BaseUnit;
+
+type DraggableItem = {
+  id: string;
+  name: string;
+  type: "inventory_item" | "recipe";
+  unitId?: string;
+  unitName?: string;
+  pricePerUnit?: number;
+};
+
+type ComponentWithDetails = RecipeComponent & {
+  name: string;
+  unitName: string;
+  cost: number;
+  yieldOverride?: number | null;
+  itemYieldPercent?: number | null;
+  missingItem?: boolean;
+};
+
+// Utility: convert qty between two units, returning the new qty or null when no
+// conversion path exists. Tries per-item Recipe Unit rows first (unitsPerCanonical),
+// then falls back to same-kind toBaseRatio math.
+function convertQtyBetweenUnits(
+  qty: number,
+  fromUnitId: string,
+  toUnitId: string,
+  units: Unit[],
+  itemId: string | null,
+  itemBaseUnitId: string | null,
+  companyRecipeUnits: InventoryItemUnit[] | undefined,
+): number | null {
+  if (fromUnitId === toUnitId || qty <= 0) return null;
+
+  if (itemId && itemBaseUnitId && companyRecipeUnits) {
+    const fromCustom = companyRecipeUnits.find(
+      r => r.inventoryItemId === itemId && r.unitId === fromUnitId &&
+           r.isIssueUnit === 0 && r.unitsPerCanonical > 0,
+    );
+    const toCustom = companyRecipeUnits.find(
+      r => r.inventoryItemId === itemId && r.unitId === toUnitId &&
+           r.isIssueUnit === 0 && r.unitsPerCanonical > 0,
+    );
+    if (fromCustom && toUnitId === itemBaseUnitId) {
+      return Math.round(qty / fromCustom.unitsPerCanonical * 10000) / 10000;
+    }
+    if (toCustom && fromUnitId === itemBaseUnitId) {
+      return Math.round(qty * toCustom.unitsPerCanonical * 10000) / 10000;
+    }
+    if (fromCustom && toCustom) {
+      return Math.round(qty / fromCustom.unitsPerCanonical * toCustom.unitsPerCanonical * 10000) / 10000;
+    }
+  }
+
+  const fromUnit = units.find(u => u.id === fromUnitId);
+  const toUnit   = units.find(u => u.id === toUnitId);
+  if (
+    fromUnit && toUnit &&
+    fromUnit.kind === toUnit.kind &&
+    (fromUnit.toBaseRatio ?? 0) > 0 &&
+    (toUnit.toBaseRatio   ?? 0) > 0
+  ) {
+    return Math.round(qty * fromUnit.toBaseRatio! / toUnit.toBaseRatio! * 10000) / 10000;
+  }
+  return null;
+}
+
+// Inline ingredient row component with stacked form fields
+function InlineIngredientRow({
+  component,
+  units,
+  compatibleUnits,
+  inventoryItems,
+  recipes,
+  companyRecipeUnits,
+  onUpdate,
+  onDelete,
+  onAddToInventory,
+  onLinkToExisting,
+  isUncostable = false,
+  isWaterDensity = false,
+}: {
+  component: ComponentWithDetails;
+  units: Unit[] | undefined;
+  compatibleUnits: Unit[] | undefined;
+  inventoryItems: InventoryItem[] | undefined;
+  recipes: Recipe[] | undefined;
+  companyRecipeUnits: InventoryItemUnit[] | undefined;
+  onUpdate: (updated: ComponentWithDetails) => void;
+  onDelete: () => void;
+  onAddToInventory?: (component: ComponentWithDetails) => void;
+  onLinkToExisting?: (component: ComponentWithDetails) => void;
+  isUncostable?: boolean;
+  isWaterDensity?: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: component.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Use local string state for inputs to allow proper decimal entry
+  const [localQty, setLocalQty] = useState(component.qty.toString());
+  const [localYieldOverride, setLocalYieldOverride] = useState(
+    component.yieldOverride != null ? component.yieldOverride.toString() : ""
+  );
+  // Track if inputs are focused to avoid overwriting while user is typing
+  const [qtyFocused, setQtyFocused] = useState(false);
+  const [yieldFocused, setYieldFocused] = useState(false);
+
+  // Inline unit conversion popover state
+  const [convPopoverOpen, setConvPopoverOpen] = useState(false);
+  const [convFactor, setConvFactor] = useState("");
+  const [convFactorIsSuggested, setConvFactorIsSuggested] = useState(false);
+
+  // Hint shown below the qty field after an auto-conversion ("was 2 oz")
+  const [convertedFromHint, setConvertedFromHint] = useState<string | null>(null);
+
+  // Derive per-item base unit for conversion utility
+  const itemForRow = component.componentType === "inventory_item"
+    ? inventoryItems?.find(i => i.id === component.componentId)
+    : null;
+  const itemBaseUnitIdForRow = itemForRow?.unitId ?? null;
+
+  // Sync local state when component changes from outside (e.g., reorder, reload, save)
+  // Only sync when the input is not focused to avoid overwriting user input
+  useEffect(() => {
+    if (!qtyFocused) {
+      setLocalQty(component.qty.toString());
+    }
+  }, [component.qty, qtyFocused]);
+
+  useEffect(() => {
+    if (!yieldFocused) {
+      setLocalYieldOverride(
+        component.yieldOverride != null ? component.yieldOverride.toString() : ""
+      );
+    }
+  }, [component.yieldOverride, yieldFocused]);
+
+  const { toast } = useToast();
+
+  // Fetch existing recipe-unit rows for this item when the conversion popover opens
+  const inventoryItemForConv =
+    component.componentType === "inventory_item" ? component.componentId : null;
+  const { data: existingRecipeUnits } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-items", inventoryItemForConv, "recipe-units"],
+    queryFn: () =>
+      apiRequest("GET", `/api/inventory-items/${inventoryItemForConv}/recipe-units`).then(
+        (r) => r.json()
+      ),
+    enabled: convPopoverOpen && !!inventoryItemForConv,
+  });
+
+  // Find if a row already exists for the recipe unit being used on this component
+  const existingConvRow = existingRecipeUnits?.find(
+    (r) => r.unitId === component.unitId && r.isIssueUnit === 0
+  );
+
+
+  const saveConversionMutation = useMutation({
+    mutationFn: async (qty: number) => {
+      if (!inventoryItemForConv) throw new Error("No item");
+      if (existingConvRow) {
+        const r = await apiRequest(
+          "PATCH",
+          `/api/inventory-items/${inventoryItemForConv}/recipe-units/${existingConvRow.id}`,
+          { unitsPerCanonical: qty }
+        );
+        if (!r.ok) throw new Error("Failed to update conversion");
+        return r.json();
+      } else {
+        const r = await apiRequest(
+          "POST",
+          `/api/inventory-items/${inventoryItemForConv}/recipe-units`,
+          { unitId: component.unitId, unitsPerCanonical: qty, isIssueUnit: 0 }
+        );
+        if (!r.ok) throw new Error("Failed to save conversion");
+        return r.json();
+      }
+    },
+    onSuccess: () => {
+      setConvPopoverOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: ["/api/inventory-items", inventoryItemForConv, "recipe-units"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      toast({ title: "Conversion saved", description: "Recipe cost will recalculate shortly." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not save conversion factor.", variant: "destructive" });
+    },
+  });
+
+  const handleSaveConversion = () => {
+    const val = parseFloat(convFactor);
+    if (isNaN(val) || val <= 0) {
+      toast({ title: "Invalid value", description: "Please enter a positive number.", variant: "destructive" });
+      return;
+    }
+    saveConversionMutation.mutate(val);
+  };
+
+  // Get the default yield for inventory items
+  const getDefaultYield = () => {
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      return item?.yieldPercent ?? 100;
+    }
+    return 100;
+  };
+
+  // Handle quantity change - update local state immediately, parse on blur
+  const handleQtyChange = (value: string) => {
+    setLocalQty(value);
+  };
+
+  // Track quantity focus — also clears the conversion hint
+  const handleQtyFocus = () => { setQtyFocused(true); setConvertedFromHint(null); };
+
+  // Commit quantity change on blur
+  const handleQtyBlur = () => {
+    setQtyFocused(false);
+    const qty = parseFloat(localQty);
+    if (!isNaN(qty) && qty > 0) {
+      const updated = { ...component, qty };
+      onUpdate(updated);
+    } else {
+      // Reset to component value if invalid
+      setLocalQty(component.qty.toString());
+    }
+  };
+
+  // Handle unit change — auto-convert qty using per-item Recipe Unit rows or
+  // same-kind toBaseRatio math; show a "was X oz" hint after conversion.
+  const handleUnitChange = (unitId: string) => {
+    const newUnit = units?.find(u => u.id === unitId);
+    const oldUnit = units?.find(u => u.id === component.unitId);
+    const unitName = newUnit?.name ?? "";
+
+    let newQty = component.qty;
+    if (newUnit && oldUnit && newUnit.id !== oldUnit.id && component.qty > 0 && units) {
+      const converted = convertQtyBetweenUnits(
+        component.qty,
+        component.unitId,
+        unitId,
+        units,
+        component.componentType === "inventory_item" ? component.componentId : null,
+        itemBaseUnitIdForRow,
+        companyRecipeUnits,
+      );
+      if (converted !== null && converted !== component.qty) {
+        setConvertedFromHint(`was ${component.qty} ${formatUnitName(oldUnit.name)}`);
+        newQty = converted;
+      }
+    }
+
+    const updated = { ...component, unitId, unitName, qty: newQty };
+    onUpdate(updated);
+  };
+
+  // Handle yield override change - update local state immediately
+  const handleYieldOverrideChange = (value: string) => {
+    setLocalYieldOverride(value);
+  };
+
+  // Track yield focus
+  const handleYieldFocus = () => setYieldFocused(true);
+
+  // Commit yield override change on blur
+  const handleYieldOverrideBlur = () => {
+    setYieldFocused(false);
+    if (localYieldOverride === "") {
+      const updated = { ...component, yieldOverride: null };
+      onUpdate(updated);
+    } else {
+      const yieldOverride = parseFloat(localYieldOverride);
+      if (!isNaN(yieldOverride) && yieldOverride >= 0 && yieldOverride <= 100) {
+        const updated = { ...component, yieldOverride };
+        onUpdate(updated);
+      } else {
+        // Reset to component value if invalid
+        setLocalYieldOverride(
+          component.yieldOverride != null ? component.yieldOverride.toString() : ""
+        );
+      }
+    }
+  };
+
+  // "Show all" escape hatch: when toggled on, lets advanced users pick a unit
+  // outside the convertible whitelist (e.g. so they can intentionally add a
+  // per-item Recipe Unit conversion later). Mirrors the dialog behavior.
+  const [showAllUnitsInline, setShowAllUnitsInline] = useState(false);
+
+  // Get the unit list shown in the row's Select. Defaults to the convertible
+  // whitelist, falls back to all units when "Show all" is on or when there's
+  // no whitelist available (e.g. while units are still loading).
+  const getCompatibleUnitList = () => {
+    if (showAllUnitsInline) return units || [];
+    if (compatibleUnits?.length) return compatibleUnits;
+    return units || [];
+  };
+
+  // If the component's currently saved unit isn't in the convertible list
+  // (legacy bad data), surface it in the dropdown anyway so the Select can
+  // render its current value rather than appearing empty.
+  const unitListForSelect = (() => {
+    const list = getCompatibleUnitList();
+    if (!component.unitId) return list;
+    if (list.some((u) => u.id === component.unitId)) return list;
+    const current = units?.find((u) => u.id === component.unitId);
+    return current ? [...list, current] : list;
+  })();
+
+  // Resolve inventory item and its unit name here — BEFORE the missingItem early
+  // return — so the useEffect below (and the ref it reads) are always called on
+  // every render regardless of the early-return path (Rules of Hooks).
+  const inventoryItemForRow =
+    component.componentType === "inventory_item"
+      ? inventoryItems?.find((i) => i.id === component.componentId)
+      : undefined;
+
+  // Keep as raw string so falsy fallbacks ("inventory unit", "unit") work correctly —
+  // formatUnitName("") returns "-" which is truthy and would suppress the fallbacks.
+  const inventoryUnitRaw: string | undefined = inventoryItemForRow
+    ? units?.find((u) => u.id === inventoryItemForRow.unitId)?.name
+    : undefined;
+
+  // Sync the conversion input when the popover opens or an existing saved row loads.
+  // For same-kind unit pairs, pre-fill with the standard factor. For cross-kind
+  // volume↔weight pairs (water-density rows), pre-fill with the water-density factor
+  // as a starting point the chef can refine for their specific ingredient.
+  // inventoryUnitRaw is declared above (before the early-return), so it is safe to
+  // include in the dependency array — no Temporal Dead Zone risk.
+  useEffect(() => {
+    if (convPopoverOpen) {
+      if (existingConvRow?.unitsPerCanonical != null) {
+        setConvFactor(String(existingConvRow.unitsPerCanonical));
+        setConvFactorIsSuggested(false);
+      } else {
+        const suggested = inventoryUnitRaw
+          ? getSuggestedConversionFactor(component.unitName, inventoryUnitRaw)
+          : null;
+        if (suggested !== null) {
+          setConvFactor(String(suggested));
+          setConvFactorIsSuggested(true);
+        } else {
+          // Try water-density cross-kind factor as a starting point
+          const waterFactor = inventoryUnitRaw
+            ? getWaterDensityConversionFactor(component.unitName, inventoryUnitRaw)
+            : null;
+          if (waterFactor !== null) {
+            setConvFactor(String(waterFactor));
+            setConvFactorIsSuggested(true);
+          } else {
+            setConvFactor("");
+            setConvFactorIsSuggested(false);
+          }
+        }
+      }
+    }
+  }, [convPopoverOpen, existingConvRow?.unitsPerCanonical, component.unitName, inventoryUnitRaw]);
+
+  if (component.missingItem) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="border rounded-lg px-3 py-2 bg-yellow-50/60 dark:bg-yellow-950/20 border-yellow-300 dark:border-yellow-800"
+        data-testid={`row-ingredient-${component.id}`}
+      >
+        <div className="flex items-center gap-2">
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing shrink-0">
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-sm text-yellow-800 dark:text-yellow-300 truncate" data-testid={`text-ingredient-name-${component.id}`}>
+              {component.name || "Unknown item"}
+            </span>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Item not found in inventory — cost not included
+            </p>
+          </div>
+          {component.componentType === "inventory_item" && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onLinkToExisting && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onLinkToExisting(component)}
+                  className="text-xs"
+                  data-testid={`button-link-to-existing-${component.id}`}
+                >
+                  <LinkIcon className="h-3 w-3 mr-1" />
+                  Link to Existing
+                </Button>
+              )}
+              {onAddToInventory && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAddToInventory(component)}
+                  className="text-xs"
+                  data-testid={`button-add-to-inventory-${component.id}`}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add to Inventory
+                </Button>
+              )}
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            className="shrink-0"
+            data-testid={`button-delete-ingredient-${component.id}`}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={
+        isUncostable
+          ? "border rounded-lg px-3 py-2 bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800"
+          : "border rounded-lg px-3 py-2 bg-card"
+      }
+      data-testid={`row-ingredient-${component.id}`}
+    >
+
+      {/* Responsive grid: compact on mobile, full columns on desktop */}
+      <div className="grid grid-cols-[1fr_64px_76px_48px_32px] md:grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center">
+        {/* Drag handle - desktop only */}
+        <div 
+          {...attributes} 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing hidden md:flex"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+
+        {/* Type icon - desktop only */}
+        <div className="hidden md:block">
+          {component.componentType === "recipe" ? (
+            <ChefHat className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          ) : (
+            <Package className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+
+        {/* Ingredient name - truncate */}
+        <span 
+          className="font-medium text-sm truncate" 
+          title={component.name}
+          data-testid={`text-ingredient-name-${component.id}`}
+        >
+          {component.name}
+        </span>
+
+        {/* Quantity input + optional auto-conversion hint */}
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={localQty}
+            onChange={(e) => handleQtyChange(e.target.value)}
+            onFocus={handleQtyFocus}
+            onBlur={handleQtyBlur}
+            className="h-8 text-sm"
+            data-testid={`input-qty-${component.id}`}
+          />
+          {convertedFromHint && (
+            <span
+              className="text-[10px] leading-none text-muted-foreground px-0.5"
+              data-testid={`text-converted-hint-${component.id}`}
+            >
+              {convertedFromHint}
+            </span>
+          )}
+        </div>
+
+        {/* Unit selector + uncostable/water-density badge */}
+        <div className="flex items-center gap-1 min-w-0">
+          <Select value={component.unitId} onValueChange={handleUnitChange}>
+            <SelectTrigger
+              className={
+                isUncostable
+                  ? "h-8 text-sm border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+                  : "h-8 text-sm"
+              }
+              data-testid={`select-unit-${component.id}`}
+            >
+              <SelectValue placeholder="Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {unitListForSelect.map((unit) => (
+                <SelectItem key={unit.id} value={unit.id}>
+                  {formatUnitName(unit.name)}
+                </SelectItem>
+              ))}
+              {/* Inline "Show all" escape hatch — matches the add/edit dialog
+                  pattern (showAllUnitsAdd / showAllUnitsEdit) so power users
+                  can intentionally pick a unit outside the convertible list
+                  (e.g. before adding a per-item Recipe Unit conversion). */}
+              <div className="border-t mt-1 pt-1 px-2 pb-1">
+                <button
+                  type="button"
+                  className="w-full text-left text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onMouseDown={(e) => {
+                    // Prevent the Select from closing/selecting before we
+                    // toggle the list contents (pointer path).
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowAllUnitsInline((v) => !v);
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard path — Radix Select swallows clicks here, so
+                    // explicitly handle Enter/Space to keep the toggle
+                    // accessible to keyboard-only users.
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowAllUnitsInline((v) => !v);
+                    }
+                  }}
+                  data-testid={`button-toggle-show-all-units-${component.id}`}
+                >
+                  {showAllUnitsInline ? "Show compatible only" : "Show all units"}
+                </button>
+              </div>
+            </SelectContent>
+          </Select>
+          {/* Shared conversion popover: amber triangle for truly uncostable,
+              muted ~ badge for water-density estimates (volume↔weight) */}
+          {(isUncostable || isWaterDensity) && inventoryItemForRow && (
+            <Popover open={convPopoverOpen} onOpenChange={setConvPopoverOpen}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md hover-elevate active-elevate-2"
+                      data-testid={isUncostable ? `badge-uncostable-${component.id}` : `badge-water-density-${component.id}`}
+                    >
+                      {isUncostable ? (
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      ) : (
+                        <span className="text-xs font-bold text-blue-500 dark:text-blue-400 leading-none">~</span>
+                      )}
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {isUncostable ? (
+                    <>
+                      Can't convert{" "}
+                      <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
+                      <span className="font-medium">
+                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
+                      </span>
+                      . Click to set a conversion factor.
+                    </>
+                  ) : (
+                    <>
+                      Using water-density estimate (1 mL ≈ 1 g) to convert{" "}
+                      <span className="font-medium">{formatUnitName(component.unitName)}</span> to{" "}
+                      <span className="font-medium">
+                        {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "the item's inventory unit"}
+                      </span>
+                      . Click to set the actual density for this ingredient.
+                    </>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+              <PopoverContent side="top" align="end" className="w-72 p-4">
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">
+                      {isWaterDensity ? "Override density conversion" : "Set unit conversion"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {isWaterDensity ? (
+                        <>
+                          Currently using water density (1 mL ≈ 1 g). Enter the actual number of{" "}
+                          <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
+                          per 1{" "}
+                          <span className="font-medium">
+                            {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
+                          </span>{" "}
+                          of <span className="font-medium">{component.name}</span> to improve accuracy.
+                        </>
+                      ) : (
+                        <>
+                          How many{" "}
+                          <span className="font-medium">{formatUnitName(component.unitName)}</span>{" "}
+                          equal 1{" "}
+                          <span className="font-medium">
+                            {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "inventory unit"}
+                          </span>{" "}
+                          of <span className="font-medium">{component.name}</span>?
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.001"
+                      placeholder="e.g. 4"
+                      value={convFactor}
+                      onChange={(e) => {
+                        setConvFactor(e.target.value);
+                        setConvFactorIsSuggested(false);
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveConversion()}
+                      className="h-8 text-sm"
+                      data-testid={`input-conv-factor-${component.id}`}
+                      autoFocus
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatUnitName(component.unitName)} / {inventoryUnitRaw ? formatUnitName(inventoryUnitRaw) : "unit"}
+                    </span>
+                  </div>
+                  {convFactorIsSuggested && (
+                    <p className="text-xs text-muted-foreground" data-testid={`text-conv-suggested-${component.id}`}>
+                      {isWaterDensity
+                        ? "(water-density estimate — update for this ingredient)"
+                        : "(suggested — verify for your ingredient)"}
+                    </p>
+                  )}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConvPopoverOpen(false)}
+                      data-testid={`button-conv-cancel-${component.id}`}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveConversion}
+                      disabled={saveConversionMutation.isPending}
+                      data-testid={`button-conv-save-${component.id}`}
+                    >
+                      {saveConversionMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          {isUncostable && !inventoryItemForRow && (
+            <span
+              className="shrink-0 inline-flex items-center justify-center h-6 w-6"
+              data-testid={`badge-uncostable-${component.id}`}
+            >
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </span>
+          )}
+        </div>
+
+        {/* Yield override - desktop only */}
+        {component.componentType === "inventory_item" ? (
+          <div className="hidden md:flex items-center gap-1">
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              max="100"
+              placeholder={`${getDefaultYield()}`}
+              value={localYieldOverride}
+              onChange={(e) => handleYieldOverrideChange(e.target.value)}
+              onFocus={handleYieldFocus}
+              onBlur={handleYieldOverrideBlur}
+              className="h-8 text-sm w-12"
+              title={`Yield % (default: ${getDefaultYield()}%)`}
+              data-testid={`input-yield-${component.id}`}
+            />
+            <span className="text-xs text-muted-foreground">%</span>
+          </div>
+        ) : (
+          <div className="hidden md:block" />
+        )}
+
+        {/* Cost - right aligned */}
+        <span 
+          className="font-mono text-sm font-medium text-right" 
+          data-testid={`text-ingredient-cost-${component.id}`}
+        >
+          ${component.cost.toFixed(2)}
+        </span>
+
+        {/* Delete button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDelete}
+          className="h-8 w-8"
+          data-testid={`button-delete-ingredient-${component.id}`}
+        >
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Draggable inventory/recipe item from left panel
+function DraggableSourceItem({ 
+  item, 
+  onAdd,
+  onEdit
+}: { 
+  item: DraggableItem;
+  onAdd: (item: DraggableItem) => void;
+  onEdit?: (item: DraggableItem) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `source-${item.id}`,
+    data: { item }, // Pass item data so handleDragEnd can access it
+  });
+
+  return (
+    <Card
+      ref={setNodeRef}
+      className={`hover-elevate cursor-pointer ${isDragging ? "opacity-50" : ""}`}
+      onClick={() => onAdd(item)}
+      data-testid={`draggable-item-${item.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-1">
+          <div 
+            {...attributes}
+            {...listeners}
+            className="flex-1 min-w-0 flex items-center gap-2 md:cursor-grab md:active:cursor-grabbing"
+          >
+            {item.type === "recipe" ? (
+              <ChefHat className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm truncate">{item.name}</div>
+              {item.type === "inventory_item" && (
+                <div className="text-xs text-muted-foreground">
+                  ${item.pricePerUnit?.toFixed(2)} / {formatUnitName(item.unitName || "")}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1 flex-shrink-0">
+            {item.type === "inventory_item" && onEdit && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(item);
+                }}
+                data-testid={`button-edit-inventory-${item.id}`}
+                className="h-8 w-8"
+                title="Edit inventory item"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </Button>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdd(item);
+              }}
+              data-testid={`button-add-item-${item.id}`}
+              className="h-8 w-8"
+              title="Add to recipe"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RecipeBuilderContent() {
+  const { id } = useParams<{ id?: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const scheduleDelete = useUndoableDelete();
+  // isNew is true when id is undefined (from /recipes/new route) or equals "new"
+  const isNew = !id || id === "new";
+
+  // Get pre-populated name and menuItemId from URL query params
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialName = urlParams.get("name") || "";
+  const menuItemIdToLink = urlParams.get("menuItemId") || null;
+
+  // Completion queue params (set when coming from "Complete all" flow)
+  const queueParam = urlParams.get("queue") || "";
+  const queueTotal = parseInt(urlParams.get("queueTotal") || "0", 10);
+  const queueRemaining = queueParam ? queueParam.split(",").filter(Boolean) : [];
+  const currentQueuePosition = queueTotal > 0 ? queueTotal - queueRemaining.length : 0;
+
+  const navigateToNextInQueue = () => {
+    if (queueRemaining.length > 0) {
+      const [nextId, ...rest] = queueRemaining;
+      setLocation(`/recipes/${nextId}/edit?queue=${rest.join(",")}&queueTotal=${queueTotal}`);
+    } else {
+      setLocation("/recipes");
+    }
+  };
+
+  // Recipe metadata state
+  const [recipeName, setRecipeName] = useState(initialName);
+  const [yieldQty, setYieldQty] = useState("1");
+  const [yieldUnitId, setYieldUnitId] = useState("");
+  const [canBeIngredient, setCanBeIngredient] = useState(false);
+  const [sizeName, setSizeName] = useState("");
+  const [selectedStores, setSelectedStores] = useState<string[]>([]);
+
+  // Instructions & photo state
+  const [instructions, setInstructions] = useState("");
+  const [recipeImagePath, setRecipeImagePath] = useState<string | null>(null);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [photoExpanded, setPhotoExpanded] = useState(false);
+  const [isScanningInstructions, setIsScanningInstructions] = useState(false);
+
+  // Component management state
+  const [components, setComponents] = useState<ComponentWithDetails[]>([]);
+  const [draggedItem, setDraggedItem] = useState<DraggableItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [pendingItem, setPendingItem] = useState<DraggableItem | null>(null);
+  const [dialogQty, setDialogQty] = useState("");
+  const [dialogUnitId, setDialogUnitId] = useState("");
+  const [baseUnitIdForAdd, setBaseUnitIdForAdd] = useState<string | null>(null);
+
+  // Edit component dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingComponent, setEditingComponent] = useState<ComponentWithDetails | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editUnitId, setEditUnitId] = useState("");
+  const [editYieldOverride, setEditYieldOverride] = useState("");
+  const [baseUnitIdForEdit, setBaseUnitIdForEdit] = useState<string | null>(null);
+  const [editConvertedHint, setEditConvertedHint] = useState<string | null>(null);
+  const [dialogConvertedHint, setDialogConvertedHint] = useState<string | null>(null);
+
+  // Edit inventory item dialog state
+  const [editingInventoryItem, setEditingInventoryItem] = useState<any | null>(null);
+  const [itemEditForm, setItemEditForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    caseSize: "",
+  });
+
+  // Bulk replace dialog state
+  const [bulkReplaceOpen, setBulkReplaceOpen] = useState(false);
+
+  // Clone as Size Variant dialog state
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const [mobileIngredientsOpen, setMobileIngredientsOpen] = useState(true);
+  const [desktopIngredientPanelOpen, setDesktopIngredientPanelOpen] = useState<boolean>(() => {
+    if (isNew) return true;
+    try {
+      const stored = localStorage.getItem(`recipe-ingredient-panel-${id}`);
+      return stored === null ? true : stored === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const toggleDesktopPanel = () => {
+    setDesktopIngredientPanelOpen(prev => {
+      const next = !prev;
+      if (!isNew && id) {
+        try { localStorage.setItem(`recipe-ingredient-panel-${id}`, String(next)); } catch {}
+      }
+      return next;
+    });
+  };
+  const [cloneSizeName, setCloneSizeName] = useState("");
+  const [cloneScaleFactor, setCloneScaleFactor] = useState("1.0");
+  const [cloneCreateMenuItem, setCloneCreateMenuItem] = useState(false);
+
+  // Add to Inventory dialog state (for missing ingredients)
+  const [addToInventoryDialogOpen, setAddToInventoryDialogOpen] = useState(false);
+  const [missingComponentForInventory, setMissingComponentForInventory] = useState<ComponentWithDetails | null>(null);
+  const [newInventoryForm, setNewInventoryForm] = useState({
+    name: "",
+    categoryId: "",
+    pricePerUnit: "",
+    unitId: "",
+  });
+  const [showAddCategoryInDialog, setShowAddCategoryInDialog] = useState(false);
+  const [newCategoryNameInDialog, setNewCategoryNameInDialog] = useState("");
+
+  // Link to Existing dialog state
+  const [linkToExistingDialogOpen, setLinkToExistingDialogOpen] = useState(false);
+  const [missingComponentForLink, setMissingComponentForLink] = useState<ComponentWithDetails | null>(null);
+  const [linkSearchQuery, setLinkSearchQuery] = useState("");
+
+  // Queries
+  const { data: recipe, isLoading: recipeLoading } = useQuery<Recipe>({
+    queryKey: ["/api/recipes", id],
+    enabled: !isNew && !!id,
+  });
+
+  const { data: recipeComponents } = useQuery<RecipeComponent[]>({
+    queryKey: ["/api/recipe-components", id],
+    enabled: !isNew && !!id,
+  });
+
+  const { data: inventoryItems } = useQuery<InventoryItem[]>({
+    queryKey: ["/api/inventory-items"],
+  });
+
+  const { data: recipes } = useQuery<Recipe[]>({
+    queryKey: ["/api/recipes"],
+  });
+
+  const { data: units } = useQuery<Unit[]>({
+    queryKey: ["/api/units"],
+  });
+
+  const { data: categories } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+  });
+
+  const { data: menuItems } = useQuery<any[]>({
+    queryKey: ["/api/menu-items"],
+  });
+
+  const { data: stores } = useQuery<any[]>({
+    queryKey: ["/api/stores/accessible"],
+  });
+
+  useEffect(() => {
+    if (isNew && stores && stores.length === 1 && selectedStores.length === 0) {
+      setSelectedStores([stores[0].id]);
+    }
+  }, [stores, isNew]);
+
+  const { data: recipeStores } = useQuery<any[]>({
+    queryKey: ["/api/store-recipes", id],
+    enabled: !isNew && !!id,
+  });
+
+  // Per-item Recipe Unit whitelist for the whole company (one query, used by
+  // the inline rows and the dialogs to filter the unit dropdown).
+  const { data: companyRecipeUnits } = useQuery<InventoryItemUnit[]>({
+    queryKey: ["/api/inventory-item-units"],
+  });
+
+  // Fetch compatible units for add dialog (same-kind ∪ per-item whitelist when
+  // pendingItem is an inventory item)
+  const pendingInvItemId = pendingItem?.type === "inventory_item" ? pendingItem.id : null;
+  const { data: compatibleUnitsForAdd } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", baseUnitIdForAdd, pendingInvItemId],
+    queryFn: async () => {
+      if (!baseUnitIdForAdd) return [];
+      const params = new URLSearchParams({ unitId: baseUnitIdForAdd });
+      if (pendingInvItemId) params.set("inventoryItemId", pendingInvItemId);
+      const response = await fetch(`/api/units/compatible?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch compatible units');
+      return response.json();
+    },
+    enabled: !!baseUnitIdForAdd && showAddDialog,
+  });
+
+  // Fetch compatible units for edit dialog
+  const editInvItemId = editingComponent?.componentType === "inventory_item"
+    ? editingComponent.componentId
+    : null;
+  const { data: compatibleUnitsForEdit } = useQuery<Unit[]>({
+    queryKey: ["/api/units/compatible", baseUnitIdForEdit, editInvItemId],
+    queryFn: async () => {
+      if (!baseUnitIdForEdit) return [];
+      const params = new URLSearchParams({ unitId: baseUnitIdForEdit });
+      if (editInvItemId) params.set("inventoryItemId", editInvItemId);
+      const response = await fetch(`/api/units/compatible?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch compatible units');
+      return response.json();
+    },
+    enabled: !!baseUnitIdForEdit && editDialogOpen,
+  });
+
+  // "Show all" escape hatches — flip to true to bypass the per-item / same-kind
+  // filter and let the user pick from the entire units catalog.
+  const [showAllUnitsAdd, setShowAllUnitsAdd] = useState(false);
+  const [showAllUnitsEdit, setShowAllUnitsEdit] = useState(false);
+  useEffect(() => {
+    if (!showAddDialog) setShowAllUnitsAdd(false);
+  }, [showAddDialog]);
+  useEffect(() => {
+    if (!editDialogOpen) setShowAllUnitsEdit(false);
+  }, [editDialogOpen]);
+
+  // Mirror server's `convertToInventoryUnits` so we can detect components
+  // whose unit can no longer be converted into the inventory item's unit
+  // (e.g. a "each" recipe call against a per-LB item with no Recipe Unit row).
+  // Returns the qty expressed in the item's inventory unit, or null when
+  // there's no path. Returning null tells the cost engine to skip the line
+  // rather than silently miscost it.
+  const convertCompQtyToInventoryUnits = (
+    comp: ComponentWithDetails,
+    item: InventoryItem
+  ): number | null => {
+    const fromUnit = units?.find((u) => u.id === comp.unitId);
+    if (!fromUnit) return null;
+    if (fromUnit.id === item.unitId) return comp.qty;
+    const override = companyRecipeUnits?.find(
+      (u) =>
+        u.inventoryItemId === item.id &&
+        u.unitId === fromUnit.id &&
+        u.isIssueUnit === 0
+    );
+    if (override && override.unitsPerCanonical > 0) {
+      return comp.qty / override.unitsPerCanonical;
+    }
+    const itemUnit = units?.find((u) => u.id === item.unitId);
+    if (
+      itemUnit &&
+      fromUnit.kind === itemUnit.kind &&
+      itemUnit.toBaseRatio > 0 &&
+      fromUnit.toBaseRatio > 0
+    ) {
+      return (comp.qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
+    }
+    // Water-density cross-kind fallback (volume ↔ weight, 1 mL ≈ 1 g).
+    // Mirrors server/lib/recipeUnits.ts — a saved per-item factor (above) wins.
+    if (
+      itemUnit &&
+      ((fromUnit.kind === "volume" && itemUnit.kind === "weight") ||
+        (fromUnit.kind === "weight" && itemUnit.kind === "volume")) &&
+      itemUnit.toBaseRatio > 0 &&
+      fromUnit.toBaseRatio > 0
+    ) {
+      return (comp.qty * fromUnit.toBaseRatio) / itemUnit.toBaseRatio;
+    }
+    return null;
+  };
+
+  // True when an inventory component can't be converted into its item's
+  // inventory unit. Drives the row warning badge + recipe summary banner.
+  // Missing items use their own warning UI and aren't flagged here.
+  const isComponentUncostable = (comp: ComponentWithDetails): boolean => {
+    if (comp.missingItem) return false;
+    if (comp.componentType !== "inventory_item") return false;
+    const item = inventoryItems?.find((i) => i.id === comp.componentId);
+    if (!item) return false;
+    return convertCompQtyToInventoryUnits(comp, item) === null;
+  };
+
+  // True when a component's cost is based on water-density (1 mL ≈ 1 g) rather
+  // than a saved per-item conversion factor or same-kind math. Used to show the
+  // muted "~" badge instead of the amber warning triangle.
+  const isComponentWaterDensity = (comp: ComponentWithDetails): boolean => {
+    if (comp.missingItem) return false;
+    if (comp.componentType !== "inventory_item") return false;
+    const item = inventoryItems?.find((i) => i.id === comp.componentId);
+    if (!item) return false;
+    const fromUnit = units?.find((u) => u.id === comp.unitId);
+    const itemUnit = units?.find((u) => u.id === item.unitId);
+    if (!fromUnit || !itemUnit) return false;
+    if (fromUnit.id === itemUnit.id) return false;
+    // Has an explicit per-item override → not a water-density estimate
+    const override = companyRecipeUnits?.find(
+      (u) => u.inventoryItemId === item.id && u.unitId === fromUnit.id && u.isIssueUnit === 0
+    );
+    if (override && override.unitsPerCanonical > 0) return false;
+    // Same-kind → not water-density
+    if (fromUnit.kind === itemUnit.kind) return false;
+    // Cross-kind volume↔weight with valid ratios → water-density estimate
+    return (
+      ((fromUnit.kind === "volume" && itemUnit.kind === "weight") ||
+        (fromUnit.kind === "weight" && itemUnit.kind === "volume")) &&
+      fromUnit.toBaseRatio > 0 &&
+      itemUnit.toBaseRatio > 0
+    );
+  };
+
+  // Calculate component cost
+  const calculateComponentCost = (comp: ComponentWithDetails): number => {
+    const unit = units?.find((u) => u.id === comp.unitId);
+    const qtyInBaseUnits = unit ? comp.qty * unit.toBaseRatio : comp.qty;
+
+    if (comp.componentType === "inventory_item") {
+      const item = inventoryItems?.find((i) => i.id === comp.componentId);
+      if (item) {
+        // Bail out if there's no conversion path — the server will skip this
+        // line, so the displayed cost should reflect $0 here too instead of
+        // a misleading non-zero number.
+        const qtyInInvUnit = convertCompQtyToInventoryUnits(comp, item);
+        if (qtyInInvUnit === null) return 0;
+        // Use the item's per-inventory-unit price (no kind-conversion math
+        // needed once qty is already expressed in the inventory unit).
+        // Adjust for yield percentage to get effective cost (e.g., $3/lb at 70% yield = $4.29/lb effective)
+        // Use component's yieldOverride if set, otherwise item's default yieldPercent
+        const yieldPercent = comp.yieldOverride != null ? comp.yieldOverride : item.yieldPercent;
+        const yieldFactor = yieldPercent / 100;
+        const effectiveCost = yieldFactor > 0 ? item.pricePerUnit / yieldFactor : item.pricePerUnit;
+        return qtyInInvUnit * effectiveCost;
+      }
+    } else if (comp.componentType === "recipe") {
+      const subRecipe = recipes?.find((r) => r.id === comp.componentId);
+      if (subRecipe) {
+        const subRecipeUnit = units?.find((u) => u.id === subRecipe.yieldUnitId);
+        const subRecipeYieldQty = subRecipeUnit
+          ? subRecipe.yieldQty * subRecipeUnit.toBaseRatio
+          : subRecipe.yieldQty;
+        const costPerUnit = subRecipeYieldQty > 0 ? subRecipe.computedCost / subRecipeYieldQty : 0;
+        return qtyInBaseUnits * costPerUnit;
+      }
+    }
+    return 0;
+  };
+
+  // Calculate total recipe cost
+  const totalCost = components.reduce((sum, comp) => sum + comp.cost, 0);
+
+  // Components whose unit can't be converted to the item's inventory unit.
+  // Surfaced via a banner above the ingredients list and a per-row badge.
+  const uncostableComponents = components.filter(isComponentUncostable);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  // Setup droppable zone for recipe canvas
+  const { setNodeRef: setCanvasRef } = useDroppable({
+    id: "recipe-canvas",
+  });
+
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const sourceId = active.id.toString();
+
+    if (sourceId.startsWith("source-")) {
+      const itemId = sourceId.replace("source-", "");
+      const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
+      const recipeItem = recipes?.find((r) => r.id === itemId);
+
+      if (inventoryItem) {
+        setDraggedItem({
+          id: inventoryItem.id,
+          name: inventoryItem.name,
+          type: "inventory_item",
+          unitId: inventoryItem.unitId,
+          unitName: inventoryItem.unitName,
+          pricePerUnit: inventoryItem.pricePerUnit,
+        });
+      } else if (recipeItem) {
+        setDraggedItem({
+          id: recipeItem.id,
+          name: recipeItem.name,
+          type: "recipe",
+        });
+      }
+    }
+  };
+
+  // Directly add ingredient (for drag-drop and click-to-add)
+  const addIngredientDirectly = (item: DraggableItem) => {
+    // Check if already added
+    const existingIndex = components.findIndex(c => c.componentId === item.id);
+    if (existingIndex !== -1) {
+      toast({
+        title: "Already added",
+        description: `${item.name} is already in this recipe. Update the quantity instead.`,
+      });
+      return;
+    }
+
+    // Get default unit for the item
+    let unitId = item.unitId;
+    let unitName = item.unitName || "";
+    
+    if (item.type === "recipe") {
+      const recipeItem = recipes?.find(r => r.id === item.id);
+      if (recipeItem) {
+        unitId = recipeItem.yieldUnitId;
+        unitName = units?.find(u => u.id === recipeItem.yieldUnitId)?.name || "";
+      }
+    }
+
+    if (!unitId) {
+      toast({
+        title: "Missing unit",
+        description: "Could not determine unit for this item",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // @ts-ignore
+    const newComponent: ComponentWithDetails = {
+      id: `temp-${Date.now()}`,
+      recipeId: id || "",
+      componentType: item.type,
+      componentId: item.id,
+      qty: 1, // Default quantity of 1
+      unitId: unitId,
+      sortOrder: 0, // New items go to top
+      name: item.name,
+      unitName: unitName || units?.find(u => u.id === unitId)?.name || "",
+      cost: 0,
+      yieldOverride: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    newComponent.cost = calculateComponentCost(newComponent);
+    setComponents([newComponent, ...components]); // Prepend to top
+    
+    toast({
+      title: "Ingredient added",
+      description: `${item.name} added to recipe. Adjust quantity below.`,
+    });
+  };
+
+  // Handle drag end
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over) {
+      setDraggedItem(null);
+      return;
+    }
+
+    const activeId = active.id.toString();
+    const overId = over.id.toString();
+
+    // Handle dropping from source list to canvas
+    // Accept drops on the canvas OR on any existing ingredient (user doesn't need to aim for empty space)
+    if (activeId.startsWith("source-") && (overId === "recipe-canvas" || !overId.startsWith("source-"))) {
+      // Try to get item from drag data first, fall back to lookup
+      const dragData = active.data?.current as { item?: DraggableItem } | undefined;
+      let itemToAdd: DraggableItem | null = dragData?.item || null;
+      
+      if (!itemToAdd) {
+        // Fall back to lookup by ID
+        const itemId = activeId.replace("source-", "");
+        const inventoryItem = inventoryItems?.find((i) => i.id === itemId);
+        const recipeItem = recipes?.find((r) => r.id === itemId);
+
+        if (inventoryItem) {
+          itemToAdd = {
+            id: inventoryItem.id,
+            name: inventoryItem.name,
+            type: "inventory_item",
+            unitId: inventoryItem.unitId,
+            unitName: inventoryItem.unitName,
+            pricePerUnit: inventoryItem.pricePerUnit,
+          };
+        } else if (recipeItem) {
+          itemToAdd = {
+            id: recipeItem.id,
+            name: recipeItem.name,
+            type: "recipe",
+          };
+        }
+      }
+      
+      if (itemToAdd) {
+        addIngredientDirectly(itemToAdd);
+      }
+    }
+    // Handle reordering within canvas (only if both source and target are existing components)
+    else if (!activeId.startsWith("source-") && !overId.startsWith("source-") && overId !== "recipe-canvas") {
+      const oldIndex = components.findIndex((c) => c.id === activeId);
+      const newIndex = components.findIndex((c) => c.id === overId);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        setComponents(arrayMove(components, oldIndex, newIndex));
+      }
+    }
+
+    setDraggedItem(null);
+  };
+
+  // Click to add item (keyboard/accessibility alternative to drag-and-drop)
+  const handleClickToAdd = (item: DraggableItem) => {
+    addIngredientDirectly(item);
+  };
+
+  // Add ingredient from dialog
+  const handleAddIngredient = () => {
+    if (!pendingItem || !dialogQty || !dialogUnitId) {
+      toast({
+        title: "Missing information",
+        description: "Please enter quantity and unit",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // @ts-ignore
+    const newComponent: ComponentWithDetails = {
+      id: `temp-${Date.now()}`,
+      recipeId: id || "",
+      componentType: pendingItem.type,
+      componentId: pendingItem.id,
+      qty: parseFloat(dialogQty),
+      unitId: dialogUnitId,
+      sortOrder: 0, // New items go to top
+      name: pendingItem.name,
+      unitName: units?.find((u) => u.id === dialogUnitId)?.name || "",
+      cost: 0,
+      yieldOverride: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    newComponent.cost = calculateComponentCost(newComponent);
+    setComponents([newComponent, ...components]); // Prepend to top
+    setShowAddDialog(false);
+    setPendingItem(null);
+    setDialogQty("");
+    setDialogUnitId("");
+    setDialogConvertedHint(null);
+  };
+
+  // Edit ingredient
+  const handleEditIngredient = (component: ComponentWithDetails) => {
+    setEditingComponent(component);
+    setEditQty(component.qty.toString());
+    setEditUnitId(component.unitId);
+    setEditConvertedHint(null);
+    
+    // Set yield override and base unit ID based on component type
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      if (item) {
+        setBaseUnitIdForEdit(item.unitId);
+        // Set yield override to component's value or empty string
+        setEditYieldOverride(component.yieldOverride != null ? component.yieldOverride.toString() : "");
+      }
+    } else if (component.componentType === "recipe") {
+      const recipe = recipes?.find(r => r.id === component.componentId);
+      if (recipe) {
+        setBaseUnitIdForEdit(recipe.yieldUnitId);
+      }
+      setEditYieldOverride(""); // Sub-recipes don't have yield override
+    }
+    
+    setEditDialogOpen(true);
+  };
+
+  // Handle Edit dialog unit change — tries per-item Recipe Unit conversion first,
+  // then same-kind toBaseRatio math; shows a "was X oz" hint.
+  const handleEditUnitChange = (newUnitId: string) => {
+    const oldUnit = units?.find(u => u.id === editUnitId);
+    const currentQty = parseFloat(editQty) || 0;
+    if (oldUnit && newUnitId !== editUnitId && currentQty > 0 && units) {
+      const editItemId = editingComponent?.componentType === "inventory_item"
+        ? editingComponent.componentId : null;
+      const editItemBaseUnitId = editItemId
+        ? inventoryItems?.find(i => i.id === editItemId)?.unitId ?? null
+        : null;
+      const converted = convertQtyBetweenUnits(
+        currentQty, editUnitId, newUnitId, units,
+        editItemId, editItemBaseUnitId, companyRecipeUnits,
+      );
+      if (converted !== null && converted !== currentQty) {
+        setEditConvertedHint(`was ${currentQty} ${formatUnitName(oldUnit.name)}`);
+        setEditQty(converted.toString());
+      }
+    }
+    setEditUnitId(newUnitId);
+  };
+
+  // Handle Add dialog unit change — tries per-item Recipe Unit conversion first,
+  // then same-kind toBaseRatio math; shows a "was X oz" hint.
+  const handleDialogUnitChange = (newUnitId: string) => {
+    const oldUnit = units?.find(u => u.id === dialogUnitId);
+    const currentQty = parseFloat(dialogQty) || 0;
+    if (oldUnit && newUnitId !== dialogUnitId && currentQty > 0 && units) {
+      const addItemId = pendingItem?.type === "inventory_item" ? pendingItem.id : null;
+      const addItemBaseUnitId = addItemId
+        ? inventoryItems?.find(i => i.id === addItemId)?.unitId ?? null
+        : null;
+      const converted = convertQtyBetweenUnits(
+        currentQty, dialogUnitId, newUnitId, units,
+        addItemId, addItemBaseUnitId, companyRecipeUnits,
+      );
+      if (converted !== null && converted !== currentQty) {
+        setDialogConvertedHint(`was ${currentQty} ${formatUnitName(oldUnit.name)}`);
+        setDialogQty(converted.toString());
+      }
+    }
+    setDialogUnitId(newUnitId);
+  };
+
+  // Save edited ingredient
+  const handleSaveEdit = () => {
+    if (!editingComponent || !editQty || !editUnitId) return;
+
+    const updatedComponents = components.map((comp) => {
+      if (comp.id === editingComponent.id) {
+        // Only apply yield override for inventory items, not sub-recipes
+        const yieldOverrideValue = editingComponent.componentType === "inventory_item" && editYieldOverride 
+          ? parseFloat(editYieldOverride) 
+          : null;
+        
+        const updated = {
+          ...comp,
+          qty: parseFloat(editQty),
+          unitId: editUnitId,
+          unitName: units?.find((u) => u.id === editUnitId)?.name || "",
+          yieldOverride: yieldOverrideValue,
+        };
+        updated.cost = calculateComponentCost(updated);
+        return updated;
+      }
+      return comp;
+    });
+
+    setComponents(updatedComponents);
+    setEditDialogOpen(false);
+    setEditingComponent(null);
+    setEditYieldOverride("");
+  };
+
+  // Delete ingredient
+  const handleDeleteIngredient = (componentId: string) => {
+    const component = components.find((c) => c.id === componentId);
+    if (!component) return;
+    const idx = components.findIndex((c) => c.id === componentId);
+    scheduleDelete({
+      label: `"${component.name}" removed from recipe`,
+      onOptimisticRemove: () =>
+        setComponents((prev) => prev.filter((c) => c.id !== componentId)),
+      onCommit: async () => {
+        // Delete the persisted component; ignore 404 if it was never saved yet
+        try {
+          await apiRequest("DELETE", `/api/recipe-components/${componentId}`);
+        } catch (e: any) {
+          const msg = String(e?.message ?? "");
+          if (!msg.startsWith("404") && !msg.includes("Not Found")) throw e;
+        }
+      },
+      onRestore: () =>
+        setComponents((prev) => {
+          const next = [...prev];
+          next.splice(idx, 0, component);
+          return next;
+        }),
+    });
+  };
+
+  // Handle inline component update
+  const handleInlineComponentUpdate = (updated: ComponentWithDetails) => {
+    const updatedComponents = components.map((comp) => {
+      if (comp.id === updated.id) {
+        // Recalculate cost with updated values
+        const withCost = { ...updated };
+        withCost.cost = calculateComponentCost(withCost);
+        return withCost;
+      }
+      return comp;
+    });
+    setComponents(updatedComponents);
+  };
+
+  // Get compatible units for a specific component (for inline editing).
+  // Mirrors `convertToInventoryUnits` so the dropdown only surfaces units the
+  // cost engine can actually convert: the inventory unit itself, per-item
+  // Recipe Unit overrides (unitsPerCanonical > 0, isIssueUnit = 0),
+  // same-kind units (via toBaseRatio), and cross-kind volume↔weight pairs
+  // (via water-density fallback: 1 mL ≈ 1 g).
+  // Sub-recipes only use same-kind because they don't have a per-item
+  // override mechanism today.
+  const getCompatibleUnitsForComponent = (component: ComponentWithDetails): Unit[] => {
+    let baseUnitId: string | undefined;
+    let inventoryItemId: string | undefined;
+
+    if (component.componentType === "inventory_item") {
+      const item = inventoryItems?.find(i => i.id === component.componentId);
+      baseUnitId = item?.unitId;
+      inventoryItemId = component.componentId;
+    } else if (component.componentType === "recipe") {
+      const recipe = recipes?.find(r => r.id === component.componentId);
+      baseUnitId = recipe?.yieldUnitId;
+    }
+
+    if (!baseUnitId || !units) return units || [];
+
+    const baseUnit = units.find(u => u.id === baseUnitId);
+    if (!baseUnit) return units;
+
+    const result = new Map<string, Unit>();
+
+    // The inventory/yield unit itself is always included.
+    result.set(baseUnit.id, baseUnit);
+
+    // Whitelisted per-item Recipe Units — only rows with a positive
+    // unitsPerCanonical can actually be converted.
+    let hasWhitelist = false;
+    if (inventoryItemId && companyRecipeUnits) {
+      const orderedWhitelist = companyRecipeUnits
+        .filter(
+          (row) =>
+            row.inventoryItemId === inventoryItemId &&
+            row.isIssueUnit === 0 &&
+            row.unitsPerCanonical > 0
+        )
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      for (const row of orderedWhitelist) {
+        const u = units.find((x) => x.id === row.unitId);
+        if (u) result.set(u.id, u);
+      }
+      hasWhitelist = orderedWhitelist.length > 0;
+    }
+
+    // When the item has explicit recipe units, stop here — don't auto-fill
+    // same-kind or cross-kind units. The "Show all" toggle is the escape hatch.
+    if (hasWhitelist) {
+      return Array.from(result.values());
+    }
+
+    // No recipe units configured — fill in remaining same-kind units so the
+    // dropdown is never empty for items that haven't been set up yet.
+    if (baseUnit.toBaseRatio > 0) {
+      for (const u of units) {
+        if (
+          u.kind === baseUnit.kind &&
+          u.toBaseRatio > 0 &&
+          !result.has(u.id)
+        ) {
+          result.set(u.id, u);
+        }
+      }
+    }
+
+    // Cross-kind volume↔weight: water-density fallback (1 mL ≈ 1 g) means
+    // these are now costable for inventory items, so surface them in the
+    // dropdown. Only applies when the base unit is weight or volume (not count).
+    if (
+      inventoryItemId &&
+      (baseUnit.kind === "weight" || baseUnit.kind === "volume") &&
+      baseUnit.toBaseRatio > 0
+    ) {
+      const crossKind = baseUnit.kind === "weight" ? "volume" : "weight";
+      for (const u of units) {
+        if (u.kind === crossKind && u.toBaseRatio > 0 && !result.has(u.id)) {
+          result.set(u.id, u);
+        }
+      }
+    }
+
+    return Array.from(result.values());
+  };
+
+  // Edit inventory item handlers
+  const handleOpenItemEdit = (item: DraggableItem) => {
+    // Fetch full inventory item details
+    const fullItem = inventoryItems?.find(i => i.id === item.id);
+    if (fullItem) {
+      setEditingInventoryItem(fullItem);
+      setItemEditForm({
+        name: fullItem.name || "",
+        categoryId: fullItem.categoryId || "",
+        pricePerUnit: fullItem.pricePerUnit?.toString() || "",
+        caseSize: "1", // We don't have caseSize in the type, but keep for compatibility
+      });
+    }
+  };
+
+  const handleCloseItemEdit = () => {
+    setEditingInventoryItem(null);
+    setItemEditForm({
+      name: "",
+      categoryId: "",
+      pricePerUnit: "",
+      caseSize: "",
+    });
+  };
+
+  const updateInventoryItemMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: any }) => {
+      await apiRequest("PATCH", `/api/inventory-items/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      toast({ title: "Inventory item updated successfully" });
+      handleCloseItemEdit();
+    },
+    onError: () => {
+      toast({ title: "Failed to update inventory item", variant: "destructive" });
+    },
+  });
+
+  const handleSaveItemEdit = async () => {
+    if (!editingInventoryItem) return;
+
+    const updates: any = {};
+    
+    if (itemEditForm.name && itemEditForm.name !== editingInventoryItem.name) {
+      updates.name = itemEditForm.name;
+    }
+    
+    if (itemEditForm.categoryId && itemEditForm.categoryId !== editingInventoryItem.categoryId) {
+      updates.categoryId = itemEditForm.categoryId;
+    }
+    
+    if (itemEditForm.pricePerUnit) {
+      const price = parseFloat(itemEditForm.pricePerUnit);
+      if (!isNaN(price) && price !== editingInventoryItem.pricePerUnit) {
+        updates.pricePerUnit = price;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updateInventoryItemMutation.mutate({
+        id: editingInventoryItem.id,
+        updates,
+      });
+    } else {
+      handleCloseItemEdit();
+    }
+  };
+
+  // Handle opening "Add to inventory" dialog for missing ingredients
+  const handleOpenAddToInventory = (component: ComponentWithDetails) => {
+    setMissingComponentForInventory(component);
+    setNewInventoryForm({
+      name: component.name !== "Unknown item" && component.name !== "Unknown" ? component.name : "",
+      categoryId: "",
+      pricePerUnit: "",
+      unitId: component.unitId || "",
+    });
+    setAddToInventoryDialogOpen(true);
+  };
+
+  // Handle opening "Link to Existing" dialog for missing ingredients
+  const handleOpenLinkToExisting = (component: ComponentWithDetails) => {
+    setMissingComponentForLink(component);
+    setLinkSearchQuery(component.name !== "Unknown item" && component.name !== "Unknown" ? component.name : "");
+    setLinkToExistingDialogOpen(true);
+  };
+
+  // Mutation to link a missing component to an existing inventory item
+  const linkToExistingMutation = useMutation({
+    mutationFn: async ({ componentRowId, inventoryItem }: { componentRowId: string; inventoryItem: InventoryItem }) => {
+      await apiRequest("PATCH", `/api/recipe-components/${componentRowId}`, {
+        componentId: inventoryItem.id,
+        missingItemName: null,
+      });
+      return { inventoryItem, componentRowId };
+    },
+    onSuccess: ({ inventoryItem, componentRowId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      setComponents(prev => prev.map(comp => {
+        if (comp.id === componentRowId) {
+          const updated = { ...comp, componentId: inventoryItem.id, name: inventoryItem.name, missingItem: false };
+          updated.cost = calculateComponentCost(updated);
+          return updated;
+        }
+        return comp;
+      }));
+      toast({ title: "Ingredient linked", description: `${inventoryItem.name} has been linked to this recipe component.` });
+      setLinkToExistingDialogOpen(false);
+      setMissingComponentForLink(null);
+      setLinkSearchQuery("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to link item", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createInventoryItemMutation = useMutation({
+    mutationFn: async (data: { name: string; categoryId?: string; pricePerUnit: number; unitId: string; componentId: string; storeIds: string[] }) => {
+      const response = await apiRequest("POST", "/api/inventory-items", {
+        name: data.name,
+        categoryId: data.categoryId || null,
+        pricePerUnit: data.pricePerUnit,
+        unitId: data.unitId,
+        caseSize: 1,
+        active: 1,
+        storeIds: data.storeIds,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to create inventory item");
+      }
+      const newItem = await response.json();
+      return { newItem, componentId: data.componentId };
+    },
+    onSuccess: async ({ newItem, componentId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+      // Immediately persist the link in the DB (PATCH the recipe component)
+      try {
+        await apiRequest("PATCH", `/api/recipe-components/${componentId}`, {
+          componentId: newItem.id,
+          missingItemName: null,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+      } catch {
+        // Non-fatal — local state still updated; user can save recipe to persist
+      }
+      // Update the component in local state to link to the new inventory item
+      setComponents(prev => prev.map(comp => {
+        if (comp.id === componentId) {
+          return {
+            ...comp,
+            componentId: newItem.id,
+            name: newItem.name,
+            missingItem: false,
+          };
+        }
+        return comp;
+      }));
+      toast({ title: "Inventory item created", description: `${newItem.name} added to inventory and linked to this recipe.` });
+      setAddToInventoryDialogOpen(false);
+      setMissingComponentForInventory(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create inventory item", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSaveNewInventoryItem = () => {
+    if (!missingComponentForInventory || !newInventoryForm.name || !newInventoryForm.unitId) {
+      toast({ title: "Name and unit are required", variant: "destructive" });
+      return;
+    }
+    // Use the recipe's assigned stores, or fall back to all accessible stores
+    const storeIds = selectedStores.length > 0
+      ? selectedStores
+      : (stores?.map((s: any) => s.id) ?? []);
+    if (storeIds.length === 0) {
+      toast({ title: "No store assigned", description: "Assign this recipe to a store first, then try again.", variant: "destructive" });
+      return;
+    }
+    createInventoryItemMutation.mutate({
+      name: newInventoryForm.name,
+      categoryId: newInventoryForm.categoryId || undefined,
+      pricePerUnit: parseFloat(newInventoryForm.pricePerUnit) || 0,
+      unitId: newInventoryForm.unitId,
+      componentId: missingComponentForInventory.id,
+      storeIds,
+    });
+  };
+
+  const createCategoryInDialogMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/categories", { name });
+      return res.json();
+    },
+    onSuccess: (newCategory: { id: string; name: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+      setNewInventoryForm(prev => ({ ...prev, categoryId: newCategory.id }));
+      setShowAddCategoryInDialog(false);
+      setNewCategoryNameInDialog("");
+      toast({ title: "Category created", description: `"${newCategory.name}" has been added.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create category", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Immediately PATCH a specific field on the recipe (used for image upload/remove)
+  const patchRecipeFieldsMutation = useMutation({
+    mutationFn: async (fields: Record<string, unknown>) => {
+      if (!id || isNew) return;
+      await apiRequest("PATCH", `/api/recipes/${id}`, fields);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes", id] });
+    },
+    onError: () => {
+      toast({ title: "Failed to save change", variant: "destructive" });
+    },
+  });
+
+  // Scan a recipe image to extract step-by-step instructions via GPT-4o Vision
+  const handleScanInstructions = async (objectPath: string) => {
+    setIsScanningInstructions(true);
+    try {
+      const response = await apiRequest("POST", "/api/recipes/extract-instructions", { objectPath });
+      const data = await response.json();
+      if (data.instructions) {
+        setInstructions(data.instructions);
+        toast({ title: "Instructions extracted", description: "Review and edit the text below." });
+      } else {
+        toast({ title: "No instructions found", description: "The image didn't contain readable instructions.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Scan failed", description: "Could not extract instructions from image.", variant: "destructive" });
+    } finally {
+      setIsScanningInstructions(false);
+    }
+  };
+
+  const saveRecipeMutation = useMutation({
+    mutationFn: async () => {
+      const recipeData = {
+        name: recipeName,
+        yieldQty: parseFloat(yieldQty),
+        yieldUnitId,
+        computedCost: totalCost,
+        canBeIngredient: canBeIngredient ? 1 : 0,
+        sizeName: sizeName.trim() || null,
+        isPlaceholder: 0, // Convert placeholder to complete recipe when saved
+        instructions: instructions || null,
+        imagePath: recipeImagePath,
+      };
+
+      let recipeId = id;
+
+      if (isNew) {
+        const response = await apiRequest("POST", "/api/recipes", recipeData);
+        const createdRecipe = await response.json();
+        recipeId = createdRecipe.id;
+      } else {
+        await apiRequest("PATCH", `/api/recipes/${id}`, recipeData);
+      }
+
+      // Delete all existing components first to avoid duplicates.
+      // Ignore 404s — a component may have already been deleted via the undo timer.
+      if (!isNew && recipeComponents) {
+        await Promise.all(
+          recipeComponents.map((comp) =>
+            apiRequest("DELETE", `/api/recipe-components/${comp.id}`, undefined).catch(
+              (e: any) => {
+                const msg = String(e?.message ?? "");
+                if (!msg.startsWith("404") && !msg.includes("Not Found")) throw e;
+              }
+            )
+          )
+        );
+      }
+
+      // Create all components fresh
+      const componentPromises = components.map((comp, index) => {
+        const compData: Record<string, any> = {
+          recipeId,
+          componentType: comp.componentType,
+          componentId: comp.componentId,
+          qty: comp.qty,
+          unitId: comp.unitId,
+          sortOrder: index,
+        };
+        
+        // Only include yieldOverride for inventory items when it has a value
+        if (comp.componentType === "inventory_item" && comp.yieldOverride != null) {
+          compData.yieldOverride = comp.yieldOverride;
+        }
+
+        // Preserve the original ingredient name for unlinked missing items so it
+        // survives save/re-save cycles instead of being silently wiped to null
+        if (comp.missingItem && comp.name && comp.name !== "Unknown" && comp.name !== "Unknown item") {
+          compData.missingItemName = comp.name;
+        }
+
+        return apiRequest("POST", "/api/recipe-components", compData);
+      });
+
+      await Promise.all(componentPromises);
+
+      // Handle store assignments
+      if (!isNew && recipeStores) {
+        const currentStoreIds = recipeStores.map((rs: any) => rs.storeId);
+        const storesToAdd = selectedStores.filter(sid => !currentStoreIds.includes(sid));
+        const storesToRemove = currentStoreIds.filter((sid: string) => !selectedStores.includes(sid));
+        
+        // Create new assignments
+        await Promise.all(
+          storesToAdd.map(storeId =>
+            apiRequest("POST", `/api/store-recipes/${recipeId}/${storeId}`, {})
+          )
+        );
+        
+        // Remove old assignments
+        await Promise.all(
+          storesToRemove.map(storeId =>
+            apiRequest("DELETE", `/api/store-recipes/${recipeId}/${storeId}`, undefined)
+          )
+        );
+      } else if (isNew) {
+        // For new recipes, create all assignments
+        await Promise.all(
+          selectedStores.map(storeId =>
+            apiRequest("POST", `/api/store-recipes/${recipeId}/${storeId}`, {})
+          )
+        );
+      }
+
+      // If we have a menuItemId to link, auto-link the recipe to the menu item
+      if (isNew && menuItemIdToLink) {
+        await apiRequest("POST", `/api/menu-items/${menuItemIdToLink}/link-recipe`, {
+          recipeId,
+        });
+      }
+
+      return recipeId;
+    },
+    onSuccess: (recipeId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recipe-components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items/hierarchy"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/store-recipes"] });
+      
+      if (menuItemIdToLink) {
+        toast({ title: "Recipe saved and linked to menu item" });
+        // Clean up the edit draft since we're linking successfully
+        sessionStorage.removeItem('menu-item-edit-draft');
+        setLocation(`/menu-items`);
+      } else if (queueTotal > 0) {
+        if (queueRemaining.length > 0) {
+          toast({ title: "Recipe saved — moving to next" });
+          const [nextId, ...rest] = queueRemaining;
+          setLocation(`/recipes/${nextId}/edit?queue=${rest.join(",")}&queueTotal=${queueTotal}`);
+        } else {
+          toast({ title: "All placeholder recipes completed!" });
+          setLocation("/recipes");
+        }
+      } else {
+        toast({ title: "Recipe saved successfully" });
+        setLocation(`/recipes`);
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to save recipe", variant: "destructive" });
+    },
+  });
+
+  // Clone recipe as size variant mutation
+  const cloneRecipeMutation = useMutation({
+    mutationFn: async () => {
+      const scaleFactor = parseFloat(cloneScaleFactor);
+      if (isNaN(scaleFactor) || scaleFactor <= 0) {
+        throw new Error("Invalid scale factor");
+      }
+
+      const response = await apiRequest("POST", `/api/recipes/${id}/clone`, {
+        sizeName: cloneSizeName.trim(),
+        scaleFactor,
+        createMenuItem: cloneCreateMenuItem,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({ 
+        title: "Size variant created",
+        description: `Created "${data.recipe.name}" with scaled ingredients`,
+      });
+      setCloneDialogOpen(false);
+      setCloneSizeName("");
+      setCloneScaleFactor("1.0");
+      setCloneCreateMenuItem(false);
+      // Navigate to the new recipe
+      setLocation(`/recipes/${data.recipe.id}`);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to create size variant", 
+        description: error.message || "An error occurred",
+        variant: "destructive" 
+      });
+    },
+  });
+
+  // Filter source items
+  const filteredInventoryItems = inventoryItems?.filter((item) => {
+    // Search filter - match by name, manufacturer, OR pluSku
+    const searchLower = searchTerm.toLowerCase();
+    const nameMatch = item.name.toLowerCase().includes(searchLower);
+    const manufacturerMatch = item.manufacturer?.toLowerCase().includes(searchLower);
+    const skuMatch = item.pluSku?.toLowerCase().includes(searchLower);
+    if (!nameMatch && !manufacturerMatch && !skuMatch) {
+      return false;
+    }
+    
+    // Category filter
+    if (selectedCategoryId !== "all" && item.categoryId !== selectedCategoryId) {
+      return false;
+    }
+    
+    // showAsIngredient filter - exclude items from categories marked as hidden
+    if (item.categoryId) {
+      const category = categories?.find((c) => c.id === item.categoryId);
+      if (category && category.showAsIngredient === 0) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+
+  const filteredBaseRecipes = recipes?.filter(
+    (recipe) =>
+      recipe.id !== id && 
+      recipe.canBeIngredient === 1 &&
+      recipe.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const inventoryItemsSource: DraggableItem[] = filteredInventoryItems?.map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: "inventory_item" as const,
+    unitId: item.unitId,
+    unitName: item.unitName,
+    pricePerUnit: item.pricePerUnit,
+  })) || [];
+
+  const baseRecipesSource: DraggableItem[] = filteredBaseRecipes?.map((recipe) => ({
+    id: recipe.id,
+    name: formatRecipeName(recipe.name),
+    type: "recipe" as const,
+  })) || [];
+
+  // Set default unit to "each" for new recipes
+  useEffect(() => {
+    if (isNew && units && !yieldUnitId) {
+      const eachUnit = units.find((u) => u.name.toLowerCase() === "each");
+      if (eachUnit) {
+        setYieldUnitId(eachUnit.id);
+      }
+    }
+  }, [isNew, units, yieldUnitId]);
+
+  // Load recipe data when editing
+  useEffect(() => {
+    if (!isNew && recipe && recipeComponents && components.length === 0 && inventoryItems && recipes && units) {
+      setRecipeName(recipe.name);
+      setYieldQty(recipe.yieldQty.toString());
+      setYieldUnitId(recipe.yieldUnitId);
+      setCanBeIngredient(recipe.canBeIngredient === 1);
+      setSizeName(recipe.sizeName || "");
+      setInstructions(recipe.instructions || "");
+      setRecipeImagePath(recipe.imagePath || null);
+
+      const componentsWithDetails: ComponentWithDetails[] = recipeComponents.map((comp: any) => {
+        const missingItem = comp.missingItem === true;
+        let name = "";
+        if (comp.componentType === "inventory_item") {
+          name = inventoryItems?.find((i) => i.id === comp.componentId)?.name || comp.inventoryItemName || "Unknown";
+        } else {
+          name = recipes?.find((r) => r.id === comp.componentId)?.name || comp.subRecipeName || "Unknown";
+        }
+
+        const unitName = units?.find((u) => u.id === comp.unitId)?.name || "";
+        const compWithDetails: ComponentWithDetails = {
+          ...comp,
+          name,
+          unitName,
+          cost: 0,
+          missingItem,
+        };
+        compWithDetails.cost = calculateComponentCost(compWithDetails);
+        return compWithDetails;
+      });
+
+      setComponents(componentsWithDetails);
+    }
+  }, [isNew, recipe, recipeComponents, inventoryItems, recipes, units, companyRecipeUnits]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Update component costs when inventory items, recipes, units, or per-item recipe units change
+  useEffect(() => {
+    if (components.length > 0 && inventoryItems && recipes) {
+      const updatedComponents = components.map((comp) => {
+        const updated = { ...comp };
+        updated.cost = calculateComponentCost(updated);
+        return updated;
+      });
+      
+      // Only update if costs actually changed
+      const costsChanged = updatedComponents.some((updated, idx) => 
+        updated.cost !== components[idx].cost
+      );
+      
+      if (costsChanged) {
+        setComponents(updatedComponents);
+      }
+    }
+  }, [inventoryItems, recipes, units, companyRecipeUnits]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load selected stores when editing
+  useEffect(() => {
+    if (!isNew && recipeStores) {
+      const storeIds = recipeStores.map((rs: any) => rs.storeId);
+      // Only update if different to avoid infinite loop
+      const currentIds = selectedStores.slice().sort().join(',');
+      const newIds = storeIds.slice().sort().join(',');
+      if (currentIds !== newIds) {
+        setSelectedStores(storeIds);
+      }
+    }
+  }, [isNew, recipeStores]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (recipeLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Loading recipe...</div>
+      </div>
+    );
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="h-full flex flex-col pb-16">
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-background border-b">
+          <div className="px-4 py-3 sm:px-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (window.history.length > 1) {
+                      window.history.back();
+                    } else {
+                      setLocation("/recipes");
+                    }
+                  }}
+                  data-testid="button-back"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg sm:text-2xl font-bold">
+                      {isNew ? "New Recipe" : "Edit Recipe"}
+                    </h1>
+                    {recipeName && (
+                      <span className="text-lg sm:text-2xl font-bold text-muted-foreground hidden sm:inline">—</span>
+                    )}
+                    {recipeName && (
+                      <span className="text-lg sm:text-2xl font-bold hidden sm:inline" data-testid="text-header-recipe-name">
+                        {formatRecipeName(recipeName)}
+                      </span>
+                    )}
+                    {isNew && menuItemIdToLink && menuItems && (() => {
+                      const menuItem = menuItems.find((mi: any) => mi.id === menuItemIdToLink);
+                      if (menuItem) {
+                        return (
+                          <Badge variant="default" className="bg-green-600">
+                            <LinkIcon className="h-3 w-3 mr-1" />
+                            Will link to: {menuItem.name}
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {!isNew && id && menuItems && (() => {
+                      const menuItem = menuItems.find((mi: any) => mi.recipeId === id);
+                      if (menuItem) {
+                        return (
+                          <Link href="/menu-items" data-testid="link-menu-item">
+                            <Badge variant="outline" className="hover-elevate cursor-pointer">
+                              Used in: {menuItem.name}
+                            </Badge>
+                          </Link>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 text-sm">
+                    {menuItemIdToLink 
+                      ? "Build your recipe, then save to automatically link it to your menu item"
+                      : (
+                        <>
+                          <span className="hidden md:inline">Drag ingredients from the right to build your recipe</span>
+                          <span className="md:hidden">Tap an ingredient below to add it to your recipe</span>
+                        </>
+                      )
+                    }
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {/* Clone as Size Variant button - only show for existing recipes */}
+                {!isNew && id && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setCloneDialogOpen(true)}
+                    disabled={cloneRecipeMutation.isPending}
+                    data-testid="button-clone-recipe"
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-2">Clone as Size</span>
+                  </Button>
+                )}
+                {/* Replace across all recipes — only show for existing saved recipes */}
+                {!isNew && id && recipe?.canBeIngredient === 1 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setBulkReplaceOpen(true)}
+                    data-testid="button-bulk-replace-recipe"
+                    title="Replace this recipe as an ingredient across all recipes that use it"
+                  >
+                    <ArrowLeftRight className="h-4 w-4" />
+                    <span className="hidden sm:inline ml-2">Replace</span>
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    if (selectedStores.length === 0) {
+                      toast({
+                        title: "Store Required",
+                        description: "Please select at least one store location",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    saveRecipeMutation.mutate();
+                  }}
+                  disabled={
+                    saveRecipeMutation.isPending ||
+                    !recipeName ||
+                    !yieldQty ||
+                    !yieldUnitId ||
+                    components.length === 0 ||
+                    selectedStores.length === 0
+                  }
+                  data-testid="button-save-recipe"
+                >
+                  <Save className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-2">{saveRecipeMutation.isPending ? "Saving..." : "Save Recipe"}</span>
+                  <span className="sm:hidden ml-1">{saveRecipeMutation.isPending ? "..." : "Save"}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 md:overflow-hidden overflow-y-auto">
+          {/* Completion queue progress banner */}
+          {queueTotal > 0 && !isNew && (
+            <div className="mx-4 mt-4 md:mx-6 md:mt-6 flex items-center justify-between gap-3 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 px-4 py-3" data-testid="banner-completion-queue">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                <span className="text-sm text-green-800 dark:text-green-300">
+                  Completing placeholder recipes: <strong>{currentQueuePosition} of {queueTotal}</strong>
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={navigateToNextInQueue}
+                data-testid="button-skip-recipe-in-queue"
+              >
+                <SkipForward className="h-3 w-3 mr-1" />
+                Skip
+              </Button>
+            </div>
+          )}
+          {/* Auto-generated placeholder banner */}
+          {!isNew && recipe?.isPlaceholder === 1 && (
+            <div className="mx-4 mt-4 md:mx-6 md:mt-6 flex items-start gap-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3" data-testid="banner-placeholder-recipe">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-800 dark:text-blue-300">
+                This recipe was auto-generated from your menu — add quantities and costs to complete it
+              </p>
+            </div>
+          )}
+          <div className="flex flex-col gap-4 p-4 md:h-full md:grid md:grid-cols-12 md:gap-6 md:p-6">
+            {/* Right panel - Source items (shows below recipe form on mobile) */}
+            <div className={`order-2 md:order-2 ${desktopIngredientPanelOpen ? "md:col-span-4" : "md:hidden"} flex flex-col gap-2 md:overflow-hidden`}>
+              {/* Mobile collapsible toggle */}
+              <button
+                className="md:hidden flex items-center justify-between w-full py-2.5 px-3 border rounded-lg bg-muted/30 text-left"
+                onClick={() => setMobileIngredientsOpen(!mobileIngredientsOpen)}
+                data-testid="button-toggle-ingredients-panel"
+              >
+                <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Add Ingredients
+                </span>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${mobileIngredientsOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {/* Desktop header with collapse toggle */}
+              <div className="hidden md:flex items-center justify-between py-0.5">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Ingredients</h2>
+                <button
+                  onClick={toggleDesktopPanel}
+                  className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Hide ingredient panel"
+                  data-testid="button-collapse-ingredient-panel"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className={`${mobileIngredientsOpen ? "flex flex-col gap-2" : "hidden"} md:flex md:flex-col md:gap-2 md:flex-1 md:overflow-hidden`}>
+              <div className="space-y-2 md:space-y-2">
+                
+                {/* Category filter */}
+                <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                  <SelectTrigger data-testid="select-category-filter" className="h-8 text-sm">
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
+                  <Input
+                    placeholder="Search items and recipes..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 h-8 text-sm border-orange-500/40 focus-visible:ring-orange-500/50"
+                    data-testid="input-search-ingredients"
+                  />
+                </div>
+              </div>
+
+              <div className="md:flex-1 md:overflow-auto space-y-4">
+                {/* Base Recipes Section - Warm amber tones */}
+                {baseRecipesSource.length > 0 && (
+                  <div className="bg-amber-50/50 dark:bg-amber-950/20 rounded-lg p-3 border border-amber-200/50 dark:border-amber-800/30">
+                    <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-2">
+                      <ChefHat className="h-4 w-4" />
+                      Base Recipes
+                    </h3>
+                    <div className="space-y-2">
+                      {baseRecipesSource.map((item) => (
+                        <DraggableSourceItem 
+                          key={item.id} 
+                          item={item} 
+                          onAdd={handleClickToAdd}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inventory Items Section - Cool blue/slate tones */}
+                {inventoryItemsSource.length > 0 && (
+                  <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-lg p-3 border border-slate-200/50 dark:border-slate-700/30">
+                    <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Inventory Items
+                    </h3>
+                    <div className="space-y-2">
+                      {inventoryItemsSource.map((item) => (
+                        <DraggableSourceItem 
+                          key={item.id} 
+                          item={item} 
+                          onAdd={handleClickToAdd}
+                          onEdit={handleOpenItemEdit}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {baseRecipesSource.length === 0 && inventoryItemsSource.length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    No ingredients found
+                  </div>
+                )}
+              </div>
+              </div>{/* closes collapsible wrapper */}
+            </div>
+
+            {/* Left panel - Recipe canvas (shows first on mobile) */}
+            <div className={`order-1 md:order-1 ${desktopIngredientPanelOpen ? "md:col-span-8" : "md:col-span-12"} flex flex-col gap-4 md:overflow-y-auto`}>
+              {/* Recipe metadata - compact */}
+              <Card className="flex-shrink-0">
+                <CardContent className="pt-4 pb-3 space-y-3">
+                  {/* Top row: photo thumbnail on left, name + cost + yield summary on right */}
+                  <div className="flex items-start gap-3">
+                    {/* Photo thumbnail — click to toggle between compact (80px) and expanded (240px); full-size opens the lightbox */}
+                    <div className="flex-shrink-0">
+                      {recipeImagePath ? (
+                        <div className={`relative group ${photoExpanded ? "w-60" : "w-20 h-20"}`}>
+                          <img
+                            src={recipeImagePath}
+                            alt="Recipe"
+                            className={`rounded-md object-contain border cursor-pointer hover:opacity-90 transition-all duration-200 ${photoExpanded ? "w-60 max-h-60" : "w-20 h-20"}`}
+                            onClick={() => setPhotoExpanded((prev) => !prev)}
+                            title={photoExpanded ? "Click to collapse" : "Click to expand"}
+                            data-testid="img-recipe-photo"
+                          />
+                          {/* Remove button — always visible on compact; always visible when expanded */}
+                          <button
+                            className={`absolute -top-1.5 -right-1.5 h-5 w-5 flex items-center justify-center bg-black/60 rounded-full hover:bg-black/80 transition-opacity ${photoExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                            onClick={() => {
+                              setRecipeImagePath(null);
+                              setPhotoExpanded(false);
+                              if (!isNew && id) {
+                                patchRecipeFieldsMutation.mutate({ imagePath: null });
+                              }
+                            }}
+                            data-testid="button-remove-recipe-photo"
+                            title="Remove photo"
+                          >
+                            <X className="h-3 w-3 text-white" />
+                          </button>
+                          {/* Full-size lightbox button — always visible when expanded so touch users can reach it */}
+                          {photoExpanded && (
+                            <button
+                              className="absolute bottom-1 right-1 flex items-center gap-1 px-1.5 py-0.5 bg-black/60 rounded text-white text-xs hover:bg-black/80"
+                              onClick={() => setPhotoLightboxOpen(true)}
+                              data-testid="button-fullsize-recipe-photo"
+                              title="View full size"
+                            >
+                              <ImageIcon className="h-3 w-3" />
+                              Full size
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-md border-2 border-dashed border-muted-foreground/25 hover:border-primary/40 transition-colors overflow-hidden [&>div]:h-full [&>div]:w-full [&_button]:h-full [&_button]:w-full [&_button]:p-0 [&_button]:rounded-md">
+                          <ObjectUploader
+                            onUploadComplete={(path) => {
+                              setRecipeImagePath(path);
+                              if (!isNew && id) {
+                                patchRecipeFieldsMutation.mutate({ imagePath: path });
+                              }
+                            }}
+                            buttonText=""
+                            buttonVariant="ghost"
+                            visibility="private"
+                            dataTestId="button-upload-recipe-photo"
+                            capture="environment"
+                            icon={<ImageIcon className="h-5 w-5 text-muted-foreground/40" />}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Recipe name, cost and yield summary */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-sm font-medium">Recipe Name</label>
+                          <Input
+                            value={recipeName}
+                            onChange={(e) => setRecipeName(e.target.value)}
+                            placeholder="e.g., Margherita Pizza"
+                            data-testid="input-recipe-name"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between sm:block sm:w-40 sm:text-right">
+                          <label className="text-sm font-medium text-muted-foreground">Total Cost:</label>
+                          <div className="flex items-baseline gap-2 sm:justify-end flex-wrap">
+                            <div
+                              className="text-xl sm:text-2xl font-bold text-primary"
+                              data-testid="text-total-cost"
+                            >
+                              ${totalCost.toFixed(2)}
+                            </div>
+                            <CostingMethodBadge />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Compact yield summary — always visible even when accordion is closed */}
+                      {(yieldQty || selectedStores.length > 0) && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                          {yieldQty && (
+                            <span>
+                              Yield: {yieldQty}
+                              {(() => {
+                                const u = units?.find(u => u.id === yieldUnitId);
+                                return u ? ` ${formatUnitName(u.name)}` : '';
+                              })()}
+                            </span>
+                          )}
+                          {yieldQty && selectedStores.length > 0 && <span>·</span>}
+                          {selectedStores.length > 0 && (
+                            <span>{selectedStores.length} store{selectedStores.length !== 1 ? 's' : ''}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Yield and canBeIngredient - collapsed by default to save vertical space */}
+                  <Accordion type="single" collapsible className="-mb-2">
+                    <AccordionItem value="yield-details" className="border-0">
+                      <AccordionTrigger className="text-sm font-medium py-2">
+                        Recipe Yield & Options
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Yield Quantity</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={yieldQty}
+                              onChange={(e) => setYieldQty(e.target.value)}
+                              placeholder="1"
+                              data-testid="input-yield-qty"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Yield Unit</label>
+                            <Select value={yieldUnitId} onValueChange={setYieldUnitId}>
+                              <SelectTrigger data-testid="select-yield-unit">
+                                <SelectValue placeholder="Select unit" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {units?.map((unit) => (
+                                  <SelectItem key={unit.id} value={unit.id}>
+                                    {formatUnitName(unit.name)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Preparation Style Label <span className="text-muted-foreground font-normal">(optional)</span></label>
+                          <Input
+                            type="text"
+                            value={sizeName}
+                            onChange={(e) => setSizeName(e.target.value)}
+                            placeholder="e.g. Bone-In, Boneless, Half Rack…"
+                            data-testid="input-size-name"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Used when this recipe is linked as a prep style on a menu item. Helps differentiate multiple recipes costed under the same dish.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="can-be-ingredient"
+                            checked={canBeIngredient}
+                            onCheckedChange={(checked) => setCanBeIngredient(checked === true)}
+                            data-testid="checkbox-can-be-ingredient"
+                          />
+                          <label
+                            htmlFor="can-be-ingredient"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            Can be used as ingredient in other recipes
+                          </label>
+                        </div>
+
+                        {/* Store Assignments */}
+                        <div className="space-y-3 pt-4 border-t">
+                          <label className="text-sm font-medium">
+                            Store Locations *
+                          </label>
+                          <div className="space-y-2">
+                            {stores?.map((store) => (
+                              <div key={store.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`store-${store.id}`}
+                                  checked={selectedStores.includes(store.id)}
+                                  onCheckedChange={() => {
+                                    setSelectedStores(prev =>
+                                      prev.includes(store.id)
+                                        ? prev.filter(id => id !== store.id)
+                                        : [...prev, store.id]
+                                    );
+                                  }}
+                                  data-testid={`checkbox-store-${store.id}`}
+                                />
+                                <label
+                                  htmlFor={`store-${store.id}`}
+                                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                  {store.name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                          {selectedStores.length === 0 && (
+                            <p className="text-sm text-destructive">
+                              At least one store location is required
+                            </p>
+                          )}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </CardContent>
+              </Card>
+
+              {/* Ingredients list with inline editing */}
+              <Card
+                ref={setCanvasRef}
+                id="recipe-canvas"
+                className="flex-shrink-0 min-h-[300px] overflow-hidden flex flex-col"
+              >
+                <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Ingredients ({components.length})</h3>
+                  <div className="flex items-center gap-2">
+                    {/* Expand ingredient panel — shown on desktop only when right panel is hidden */}
+                    {!desktopIngredientPanelOpen && (
+                      <button
+                        className="hidden md:flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground border rounded px-2 py-1 hover:bg-muted/50 transition-colors"
+                        onClick={toggleDesktopPanel}
+                        title="Show ingredient panel"
+                        data-testid="button-expand-ingredient-panel"
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                        Add ingredients
+                      </button>
+                    )}
+                    {components.length > 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        Drag to reorder
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-auto">
+                  {/* Banner: components whose unit can't be costed. Each
+                      affected name links to its inventory item's Recipe
+                      Units tab so the user can add a conversion factor. */}
+                  {uncostableComponents.length > 0 && (
+                    <div
+                      className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2"
+                      data-testid="banner-uncostable-components"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0 text-xs">
+                          <p className="font-medium text-amber-800 dark:text-amber-300">
+                            {uncostableComponents.length === 1
+                              ? "1 ingredient is excluded from this recipe's cost"
+                              : `${uncostableComponents.length} ingredients are excluded from this recipe's cost`}
+                          </p>
+                          <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+                            Their unit can't be converted into the inventory unit. Click the{" "}
+                            <AlertTriangle className="inline h-3 w-3 text-amber-600 dark:text-amber-400" />{" "}
+                            icon on each row below to set a conversion factor.
+                          </p>
+                          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {uncostableComponents.map((c) => (
+                              <li key={c.id}>
+                                <span
+                                  className="text-amber-800 dark:text-amber-300"
+                                  data-testid={`text-uncostable-${c.id}`}
+                                >
+                                  {c.name} ({formatUnitName(c.unitName)})
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {components.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg bg-muted/20">
+                      <ChefHat className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-1">No ingredients yet</h3>
+                      <p className="text-muted-foreground mb-2">
+                        Drag items from the right panel or click the + button to add
+                      </p>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Drop items here to get started
+                      </p>
+                      <div className="flex flex-col items-center gap-1">
+                        <TierGate
+                          feature="ai_assistant"
+                          fallback={
+                            <Button
+                              variant="outline"
+                              disabled
+                              data-testid="button-scan-recipe-card-locked"
+                            >
+                              <ScanText className="h-4 w-4 mr-2" />
+                              Scan Recipe Card
+                              <Badge variant="secondary" className="ml-2 text-xs">Basic Plan</Badge>
+                            </Button>
+                          }
+                        >
+                          <Button
+                            variant="outline"
+                            asChild
+                            data-testid="button-scan-recipe-card"
+                          >
+                            <Link href="/recipe-import">
+                              <ScanText className="h-4 w-4 mr-2" />
+                              Scan Recipe Card
+                            </Link>
+                          </Button>
+                        </TierGate>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Scanning creates a new recipe with matched ingredients and instructions
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <SortableContext
+                      items={components.map((c) => c.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {/* Column headers - mobile */}
+                      <div className="grid grid-cols-[1fr_64px_76px_48px_32px] md:hidden gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit</div>
+                        <div className="text-right">Cost</div>
+                        <div></div>
+                      </div>
+                      {/* Column headers - desktop */}
+                      <div className="hidden md:grid grid-cols-[24px_20px_1fr_80px_100px_70px_70px_32px] gap-2 items-center px-3 py-1 mb-2 text-xs text-muted-foreground font-medium">
+                        <div></div>
+                        <div></div>
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit</div>
+                        <div>Yield</div>
+                        <div className="text-right">Cost</div>
+                        <div></div>
+                      </div>
+                      <div className="space-y-2">
+                        {components.map((component) => (
+                          <InlineIngredientRow
+                            key={component.id}
+                            component={component}
+                            units={units}
+                            compatibleUnits={getCompatibleUnitsForComponent(component)}
+                            inventoryItems={inventoryItems}
+                            recipes={recipes}
+                            companyRecipeUnits={companyRecipeUnits}
+                            onUpdate={handleInlineComponentUpdate}
+                            onDelete={() => handleDeleteIngredient(component.id)}
+                            onAddToInventory={handleOpenAddToInventory}
+                            onLinkToExisting={handleOpenLinkToExisting}
+                            isUncostable={isComponentUncostable(component)}
+                            isWaterDensity={isComponentWaterDensity(component)}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Instructions card */}
+              <Card className="flex-shrink-0">
+                <Accordion type="single" collapsible>
+                  <AccordionItem value="instructions" className="border-0">
+                    <AccordionTrigger className="px-6 py-3 text-sm font-medium hover:no-underline">
+                      <span className="flex items-center gap-2">
+                        <ScanText className="h-4 w-4 text-muted-foreground" />
+                        Preparation Instructions
+                        {instructions && (
+                          <Badge variant="secondary" className="text-xs">Has content</Badge>
+                        )}
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-6 pb-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <TierGate
+                          feature="ai_assistant"
+                          fallback={
+                            <Button
+                              variant="outline"
+                              disabled
+                              data-testid="button-scan-instructions-locked"
+                            >
+                              <Lock className="h-4 w-4 mr-2" />
+                              Scan from Photo
+                              <Badge variant="secondary" className="ml-2 text-xs">Basic Plan</Badge>
+                            </Button>
+                          }
+                        >
+                          <ObjectUploader
+                            onUploadComplete={handleScanInstructions}
+                            buttonText={isScanningInstructions ? "Scanning..." : "Scan from Photo"}
+                            buttonVariant="outline"
+                            visibility="private"
+                            dataTestId="button-scan-instructions"
+                            capture="environment"
+                            icon={isScanningInstructions ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                          />
+                        </TierGate>
+                        <p className="text-xs text-muted-foreground">
+                          Upload a photo of a recipe card to auto-extract the steps.
+                        </p>
+                      </div>
+                      <Textarea
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                        placeholder="Enter step-by-step preparation instructions..."
+                        className="min-h-[160px] resize-y text-sm"
+                        data-testid="textarea-instructions"
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </Card>
+
+              {/* Recipe photo is now embedded in the metadata card above for above-the-fold visibility */}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {photoLightboxOpen && recipeImagePath && (
+        <RecipePhotoLightbox
+          src={recipeImagePath}
+          alt="Recipe"
+          onClose={() => setPhotoLightboxOpen(false)}
+        />
+      )}
+
+      {/* Add ingredient dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent data-testid="dialog-add-ingredient">
+          <DialogHeader>
+            <DialogTitle>Add Ingredient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Ingredient</label>
+              <p className="text-sm text-muted-foreground mt-1">{pendingItem?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={dialogQty}
+                onChange={(e) => { setDialogQty(e.target.value); setDialogConvertedHint(null); }}
+                placeholder="Enter quantity"
+                data-testid="input-dialog-qty"
+              />
+              {dialogConvertedHint && (
+                <p className="text-xs text-muted-foreground" data-testid="text-dialog-converted-hint">
+                  {dialogConvertedHint}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium">Unit</label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onClick={() => setShowAllUnitsAdd((v) => !v)}
+                  data-testid="button-toggle-show-all-units-add"
+                >
+                  {showAllUnitsAdd ? "Show whitelisted" : "Show all"}
+                </button>
+              </div>
+              <Select value={dialogUnitId} onValueChange={handleDialogUnitChange}>
+                <SelectTrigger data-testid="select-dialog-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(showAllUnitsAdd
+                    ? units
+                    : compatibleUnitsForAdd?.length
+                      ? compatibleUnitsForAdd
+                      : units
+                  )?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddIngredient} data-testid="button-confirm-add">
+              Add Ingredient
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit ingredient dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent data-testid="dialog-edit-ingredient">
+          <DialogHeader>
+            <DialogTitle>Edit Ingredient</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Ingredient</label>
+              <p className="text-sm text-muted-foreground mt-1">{editingComponent?.name}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Quantity</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={editQty}
+                onChange={(e) => { setEditQty(e.target.value); setEditConvertedHint(null); }}
+                data-testid="input-edit-qty"
+              />
+              {editConvertedHint && (
+                <p className="text-xs text-muted-foreground" data-testid="text-edit-converted-hint">
+                  {editConvertedHint}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-sm font-medium">Unit</label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover-elevate active-elevate-2 px-2 py-1 rounded-md"
+                  onClick={() => setShowAllUnitsEdit((v) => !v)}
+                  data-testid="button-toggle-show-all-units-edit"
+                >
+                  {showAllUnitsEdit ? "Show whitelisted" : "Show all"}
+                </button>
+              </div>
+              <Select value={editUnitId} onValueChange={handleEditUnitChange}>
+                <SelectTrigger data-testid="select-edit-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(showAllUnitsEdit
+                    ? units
+                    : compatibleUnitsForEdit?.length
+                      ? compatibleUnitsForEdit
+                      : units
+                  )?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Yield override - only for inventory items */}
+            {editingComponent?.componentType === "inventory_item" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Yield Override (%)</label>
+                <div className="text-xs text-muted-foreground mb-1">
+                  {(() => {
+                    const item = inventoryItems?.find(i => i.id === editingComponent?.componentId);
+                    return item?.yieldPercent != null 
+                      ? `Default yield: ${item.yieldPercent}%` 
+                      : "No default yield set";
+                  })()}
+                </div>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  placeholder="Leave empty to use default"
+                  value={editYieldOverride}
+                  onChange={(e) => setEditYieldOverride(e.target.value)}
+                  data-testid="input-edit-yield-override"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Override the yield percentage for this ingredient in this recipe only.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} data-testid="button-confirm-edit">
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit inventory item dialog */}
+      <Dialog open={!!editingInventoryItem} onOpenChange={(open) => !open && handleCloseItemEdit()}>
+        <DialogContent className="max-w-2xl" data-testid="dialog-edit-inventory-item">
+          <DialogHeader>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="item-name">Item Name *</Label>
+              <Input
+                id="item-name"
+                value={itemEditForm.name}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, name: e.target.value })}
+                placeholder="Enter item name"
+                data-testid="input-edit-item-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-category">Category</Label>
+              <Select 
+                value={itemEditForm.categoryId || undefined} 
+                onValueChange={(value) => setItemEditForm({ ...itemEditForm, categoryId: value })}
+              >
+                <SelectTrigger id="item-category" data-testid="select-edit-item-category">
+                  <SelectValue placeholder="No category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="item-price">Price per Unit *</Label>
+              <Input
+                id="item-price"
+                type="number"
+                step="0.01"
+                value={itemEditForm.pricePerUnit}
+                onChange={(e) => setItemEditForm({ ...itemEditForm, pricePerUnit: e.target.value })}
+                placeholder="0.00"
+                data-testid="input-edit-item-price"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseItemEdit}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveItemEdit}
+              disabled={updateInventoryItemMutation.isPending}
+              data-testid="button-save-inventory-item"
+            >
+              {updateInventoryItemMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add to Inventory dialog — for missing ingredient rows */}
+      <Dialog open={addToInventoryDialogOpen} onOpenChange={(open) => {
+        setAddToInventoryDialogOpen(open);
+        if (!open) { setShowAddCategoryInDialog(false); setNewCategoryNameInDialog(""); }
+      }}>
+        <DialogContent data-testid="dialog-add-to-inventory">
+          <DialogHeader>
+            <DialogTitle>Add to Inventory</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Create a new inventory item to resolve the missing ingredient. It will be automatically linked to this recipe component.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-item-name">Item Name *</Label>
+              <Input
+                id="new-item-name"
+                value={newInventoryForm.name}
+                onChange={(e) => setNewInventoryForm({ ...newInventoryForm, name: e.target.value })}
+                placeholder="Enter item name"
+                data-testid="input-new-inventory-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-item-unit">Unit *</Label>
+              <Select
+                value={newInventoryForm.unitId || undefined}
+                onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, unitId: value })}
+              >
+                <SelectTrigger id="new-item-unit" data-testid="select-new-inventory-unit">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {units?.map((unit) => (
+                    <SelectItem key={unit.id} value={unit.id}>
+                      {formatUnitName(unit.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="new-item-category">Category</Label>
+                {!showAddCategoryInDialog && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCategoryInDialog(true)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
+                    data-testid="button-add-category-inline-dialog"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add new
+                  </button>
+                )}
+              </div>
+
+              {showAddCategoryInDialog ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="New category name"
+                    value={newCategoryNameInDialog}
+                    onChange={(e) => setNewCategoryNameInDialog(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newCategoryNameInDialog.trim()) {
+                        createCategoryInDialogMutation.mutate(newCategoryNameInDialog.trim());
+                      } else if (e.key === "Escape") {
+                        setShowAddCategoryInDialog(false);
+                        setNewCategoryNameInDialog("");
+                      }
+                    }}
+                    disabled={createCategoryInDialogMutation.isPending}
+                    data-testid="input-new-category-name-dialog"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    disabled={!newCategoryNameInDialog.trim() || createCategoryInDialogMutation.isPending}
+                    onClick={() => createCategoryInDialogMutation.mutate(newCategoryNameInDialog.trim())}
+                    data-testid="button-create-category-confirm-dialog"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => { setShowAddCategoryInDialog(false); setNewCategoryNameInDialog(""); }}
+                    data-testid="button-create-category-cancel-dialog"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={newInventoryForm.categoryId || undefined}
+                  onValueChange={(value) => setNewInventoryForm({ ...newInventoryForm, categoryId: value })}
+                >
+                  <SelectTrigger id="new-item-category" data-testid="select-new-inventory-category">
+                    <SelectValue placeholder="No category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories?.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-item-price">Price per Unit</Label>
+              <Input
+                id="new-item-price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newInventoryForm.pricePerUnit}
+                onChange={(e) => setNewInventoryForm({ ...newInventoryForm, pricePerUnit: e.target.value })}
+                placeholder="0.00"
+                data-testid="input-new-inventory-price"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddToInventoryDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveNewInventoryItem}
+              disabled={createInventoryItemMutation.isPending || !newInventoryForm.name || !newInventoryForm.unitId}
+              data-testid="button-confirm-add-to-inventory"
+            >
+              {createInventoryItemMutation.isPending ? "Creating..." : "Create & Link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link to Existing Inventory Item dialog */}
+      <Dialog
+        open={linkToExistingDialogOpen}
+        onOpenChange={(open) => {
+          setLinkToExistingDialogOpen(open);
+          if (!open) { setMissingComponentForLink(null); setLinkSearchQuery(""); }
+        }}
+      >
+        <DialogContent data-testid="dialog-link-to-existing">
+          <DialogHeader>
+            <DialogTitle>Link to Existing Inventory Item</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {missingComponentForLink && (
+              <>Select an inventory item to link to <span className="font-medium">{missingComponentForLink.name}</span>.</>
+            )}
+          </p>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500 pointer-events-none" />
+              <Input
+                className="pl-9 border-orange-500/40 focus-visible:ring-orange-500/50"
+                placeholder="Search inventory..."
+                value={linkSearchQuery}
+                onChange={(e) => setLinkSearchQuery(e.target.value)}
+                data-testid="input-link-search"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
+              {(() => {
+                const q = linkSearchQuery.toLowerCase();
+                const filtered = (inventoryItems ?? []).filter(item =>
+                  !q || item.name.toLowerCase().includes(q)
+                );
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground text-center py-6">
+                      No items match your search.
+                    </p>
+                  );
+                }
+                return filtered.map(item => (
+                  <button
+                    key={item.id}
+                    className="w-full text-left px-3 py-2 text-sm hover-elevate flex items-center justify-between gap-2"
+                    onClick={() => {
+                      if (!missingComponentForLink) return;
+                      linkToExistingMutation.mutate({
+                        componentRowId: missingComponentForLink.id,
+                        inventoryItem: item,
+                      });
+                    }}
+                    disabled={linkToExistingMutation.isPending}
+                    data-testid={`button-select-link-item-${item.id}`}
+                  >
+                    <span className="font-medium">{item.name}</span>
+                    <span className="text-muted-foreground text-xs shrink-0">{item.unitName || ""}</span>
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkToExistingDialogOpen(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone as Size Variant dialog */}
+      <Dialog open={cloneDialogOpen} onOpenChange={setCloneDialogOpen}>
+        <DialogContent data-testid="dialog-clone-recipe">
+          <DialogHeader>
+            <DialogTitle>Clone as Size Variant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Create a new size variant of this recipe. All ingredients will be copied and scaled by the factor you specify.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="clone-size-name">Size Name *</Label>
+              <Input
+                id="clone-size-name"
+                value={cloneSizeName}
+                onChange={(e) => setCloneSizeName(e.target.value)}
+                placeholder="e.g., Small, Large, Family"
+                data-testid="input-clone-size-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clone-scale-factor">Scale Factor *</Label>
+              <Input
+                id="clone-scale-factor"
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={cloneScaleFactor}
+                onChange={(e) => setCloneScaleFactor(e.target.value)}
+                placeholder="e.g., 0.75 for smaller, 1.5 for larger"
+                data-testid="input-clone-scale-factor"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use 0.75 for 75% smaller, 1.5 for 50% larger, etc.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="clone-create-menu-item"
+                checked={cloneCreateMenuItem}
+                onCheckedChange={(checked) => setCloneCreateMenuItem(checked === true)}
+                data-testid="checkbox-clone-menu-item"
+              />
+              <Label htmlFor="clone-create-menu-item" className="text-sm font-normal">
+                Also create a menu item for this size
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloneDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => cloneRecipeMutation.mutate()}
+              disabled={cloneRecipeMutation.isPending || !cloneSizeName.trim() || !cloneScaleFactor}
+              data-testid="button-confirm-clone"
+            >
+              {cloneRecipeMutation.isPending ? "Creating..." : "Create Size Variant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Drag overlay */}
+      <DragOverlay>
+        {draggedItem ? (
+          <Card className="w-64 opacity-90">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                {draggedItem.type === "recipe" ? (
+                  <ChefHat className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div className="font-medium text-sm">{draggedItem.name}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+      </DragOverlay>
+      <SetupProgressBanner currentMilestoneId="recipes" hasEntries={(recipes?.length ?? 0) > 0} />
+
+      {/* Bulk replace dialog — for recipes that can be used as ingredients */}
+      {!isNew && id && recipe && (
+        <BulkReplaceDialog
+          open={bulkReplaceOpen}
+          onOpenChange={setBulkReplaceOpen}
+          fromType="recipe"
+          fromId={id}
+          fromName={recipe.name}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/recipe-components", id] });
+          }}
+        />
+      )}
+    </DndContext>
+  );
+}
+
+export default function RecipeBuilder() {
+  return (
+    <TierGate feature="recipe_costing">
+      <RecipeBuilderContent />
+    </TierGate>
+  );
+}

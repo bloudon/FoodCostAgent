@@ -1,0 +1,38 @@
+
+118 packages are looking for funding
+  run `npm fund` for details
+
+37 vulnerabilities (4 low, 11 moderate, 21 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+▶ Restarting PM2 process (fnbcostpro)
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 7 ])
+[PM2] [fnbcostpro](7) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 146795   │ 2D     │ 3    │ online    │ 0%       │ 95.3mb   │ adm… │ disabled │
+│ 7  │ fnbcostpro     │ default     │ N/A     │ fork    │ 836890   │ 0s     │ 3180 │ online    │ 0%       │ 19.0mb   │ adm… │ disabled │
+│ 4  │ kaye-api       │ default     │ 0.0.0   │ cluster │ 146810   │ 2D     │ 3    │ online    │ 0%       │ 66.9mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.0   │ fork    │ 146794   │ 2D     │ 3    │ online    │ 0%       │ 240.8mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 146811   │ 2D     │ 3    │ online    │ 0%       │ 117.7mb  │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+═══════════════════════════════════════════════
+  ✔  Deploy complete!
+  2026-07-31 23:53:51 UTC
+═══════════════════════════════════════════════
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ npm audit fix
+npm error Cannot read properties of null (reading 'edgesOut')
+npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-07-31T23_57_43_712Z-debug-0.log

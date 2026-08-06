@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.014/cXML.dtd">
+<cXML version="1.2.014" xml:lang="en-US" payloadID="9876543210.654321@usfoods.com" timestamp="2025-10-10T06:00:00-08:00">
+  <Message>
+    <PunchOutOrderMessage>
+      <BuyerCookie>ORDER-SESSION-67890</BuyerCookie>
+      <PunchOutOrderMessageHeader operationAllowed="create">
+        <Total>
+          <Money currency="USD">245.50</Money>
+        </Total>
+      </PunchOutOrderMessageHeader>
+      <ItemIn quantity="2">
+        <ItemID>
+          <SupplierPartID>SYSCO-123456</SupplierPartID>
+        </ItemID>
+        <ItemDetail>
+          <UnitPrice>
+            <Money currency="USD">45.25</Money>
+          </UnitPrice>
+          <Description>Premium Mozzarella Cheese - 5lb Block</Description>
+          <UnitOfMeasure>CS</UnitOfMeasure>
+          <Classification domain="UNSPSC">50202203</Classification>
+        </ItemDetail>
+      </ItemIn>
+      <ItemIn quantity="5">
+        <ItemID>
+          <SupplierPartID>SYSCO-789012</SupplierPartID>
+        </ItemID>
+        <ItemDetail>
+          <UnitPrice>
+            <Money currency="USD">22.00</Money>
+          </UnitPrice>
+          <Description>All-Purpose Flour - 50lb Bag</Description>
+          <UnitOfMeasure>BG</UnitOfMeasure>
+          <Classification domain="UNSPSC">50192501</Classification>
+        </ItemDetail>
+      </ItemIn>
+      <ItemIn quantity="1">
+        <ItemID>
+          <SupplierPartID>SYSCO-345678</SupplierPartID>
+        </ItemID>
+        <ItemDetail>
+          <UnitPrice>
+            <Money currency="USD">35.50</Money>
+          </UnitPrice>
+          <Description>San Marzano Tomatoes - #10 Can</Description>
+          <UnitOfMeasure>CN</UnitOfMeasure>
+          <Classification domain="UNSPSC">50301706</Classification>
+        </ItemDetail>
+      </ItemIn>
+    </PunchOutOrderMessage>
+  </Message>
+</cXML>

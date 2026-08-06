@@ -1,0 +1,392 @@
+import type { VendorProduct } from '../integrations/types';
+import type { IStorage } from '../storage';
+
+export type MatchConfidence = 'high' | 'medium' | 'low' | 'none';
+
+export interface MatchResult {
+  inventoryItemId: string | null;
+  inventoryItemName: string | null;
+  confidence: MatchConfidence;
+  score: number;
+  matchReason: string;
+}
+
+/**
+ * Per-import-session canonical name cache.
+ * Keyed by raw vendor product name → AI-normalized canonical name.
+ * Lives only for the duration of a single import preview session (in-memory, not persisted).
+ * Populated by callers (e.g. aiInventoryImporter.normalizeProductNames) and passed into
+ * findBestMatch() via the optional canonicalName argument so the matcher can score both
+ * the raw name and the AI-normalized form, taking whichever yields a better match.
+ *
+ * This is a transparent Map alias — the import route owns the lifecycle; the matcher just
+ * consumes entries from it when available.
+ */
+export type CanonicalNameCache = Map<string, string>;
+
+/**
+ * Smart Item Matching Engine
+ *
+ * Matches vendor products to existing inventory items using:
+ * - Fuzzy name matching (string similarity)
+ * - Category matching
+ * - SKU detection
+ * - Multi-factor confidence scoring
+ *
+ * When a per-session CanonicalNameCache is provided, matching also considers AI-normalized
+ * product names and takes the highest score between the raw and canonical forms.
+ */
+export class ItemMatcher {
+  constructor(private storage: IStorage) {}
+
+  /**
+   * Find best matching inventory item for a vendor product.
+   *
+   * @param canonicalName - Optional AI-normalized product name from the per-session cache
+   *   (see CanonicalNameCache). When provided, matching runs against both the raw vendor name
+   *   and the canonical form, taking the higher confidence score.  Falls back gracefully when
+   *   omitted (no AI normalization step, raw name only).
+   */
+  async findBestMatch(
+    vendorProduct: VendorProduct,
+    companyId: string,
+    storeId: string,
+    canonicalName?: string
+  ): Promise<MatchResult> {
+    // Get all inventory items and categories for this company
+    // Note: getInventoryItems(locationId?, storeId?, companyId?) — pass companyId as 3rd arg
+    const [inventoryItems, categories] = await Promise.all([
+      this.storage.getInventoryItems(undefined, undefined, companyId),
+      this.storage.getCategories(companyId)
+    ]);
+    
+    if (inventoryItems.length === 0) {
+      return {
+        inventoryItemId: null,
+        inventoryItemName: null,
+        confidence: 'none',
+        score: 0,
+        matchReason: 'No inventory items in system',
+      };
+    }
+
+    // Build category lookup map
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+    let bestMatch: MatchResult = {
+      inventoryItemId: null,
+      inventoryItemName: null,
+      confidence: 'none',
+      score: 0,
+      matchReason: 'No match found',
+    };
+
+    // Try each matching strategy
+    for (const item of inventoryItems) {
+      const itemCategoryName = item.categoryId ? categoryMap.get(item.categoryId) : null;
+      
+      // Calculate name similarity using both raw and canonical name (take the best)
+      const rawNameScore = this.calculateNameSimilarity(vendorProduct.vendorProductName, item.name);
+      const canonicalScore = canonicalName
+        ? this.calculateNameSimilarity(canonicalName, item.name)
+        : 0;
+      
+      const scores = {
+        name: Math.max(rawNameScore, canonicalScore),
+        sku: this.checkSkuMatch(vendorProduct.vendorSku, item.pluSku),
+        category: this.calculateCategoryMatch(vendorProduct.categoryCode, itemCategoryName),
+      };
+
+      // Calculate weighted score
+      const totalScore = (
+        scores.name * 0.6 +     // Name is most important
+        scores.sku * 0.25 +     // SKU is secondary
+        scores.category * 0.15  // Category provides additional signal
+      );
+
+      if (totalScore > bestMatch.score) {
+        const confidence = this.determineConfidence(totalScore, scores);
+        const matchReason = this.buildMatchReason(scores);
+
+        bestMatch = {
+          inventoryItemId: item.id,
+          inventoryItemName: item.name,
+          confidence,
+          score: totalScore,
+          matchReason,
+        };
+      }
+    }
+
+    return bestMatch;
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance
+   */
+  private calculateNameSimilarity(str1: string, str2: string): number {
+    const s1 = str1.toLowerCase().trim();
+    const s2 = str2.toLowerCase().trim();
+
+    // Exact match
+    if (s1 === s2) return 1.0;
+
+    // Substring match
+    if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+
+    // Levenshtein distance
+    const distance = this.levenshteinDistance(s1, s2);
+    const maxLength = Math.max(s1.length, s2.length);
+    const similarity = 1 - (distance / maxLength);
+
+    return Math.max(0, similarity);
+  }
+
+  /**
+   * Levenshtein distance algorithm
+   */
+  private levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  }
+
+  /**
+   * Check if SKUs match
+   */
+  private checkSkuMatch(vendorSku: string, inventorySku?: string | null): number {
+    if (!vendorSku || !inventorySku) return 0;
+
+    const v = vendorSku.toLowerCase().trim();
+    const i = inventorySku.toLowerCase().trim();
+
+    if (v === i) return 1.0;
+    if (v.includes(i) || i.includes(v)) return 0.5;
+
+    return 0;
+  }
+
+  /**
+   * Calculate category match score
+   * Maps vendor category codes (e.g., "DAIRY", "PRODUCE") to inventory category names
+   * Supports case-insensitive matching with comprehensive synonym coverage
+   */
+  private calculateCategoryMatch(vendorCategory?: string | null, inventoryCategory?: string | null): number {
+    if (!vendorCategory || !inventoryCategory) return 0;
+
+    const v = vendorCategory.toLowerCase().trim();
+    const i = inventoryCategory.toLowerCase().trim();
+
+    // Exact match
+    if (v === i) return 1.0;
+
+    // Substring match (e.g., "frozen" matches "frozen foods")
+    if (v.includes(i) || i.includes(v)) return 0.8;
+
+    // Comprehensive category mappings (vendor codes to common names)
+    // Each key represents a category family with multiple synonyms/variants
+    const categoryMappings: Record<string, string[]> = {
+      // Dairy & Refrigerated
+      'dairy': ['dairy', 'milk', 'cheese', 'yogurt', 'butter', 'cream', 'refrigerated', 'cooler', 'walk-in'],
+      
+      // Frozen
+      'frozen': ['frozen', 'freezer', 'ice cream'],
+      
+      // Produce & Fresh
+      'produce': ['produce', 'fruits', 'vegetables', 'fresh', 'salad', 'greens', 'veggie', 'veg'],
+      
+      // Proteins & Meat
+      'protein': ['protein', 'proteins', 'meat', 'meats', 'poultry', 'chicken', 'beef', 'pork', 'butcher', 'walk-in'],
+      'seafood': ['seafood', 'fish', 'shellfish', 'salmon', 'shrimp', 'lobster'],
+      
+      // Dry & Pantry
+      'dry': ['dry', 'pantry', 'grocery', 'shelf-stable', 'canned', 'cans'],
+      'grains': ['grains', 'pasta', 'rice', 'flour', 'cereal'],
+      
+      // Beverages
+      'beverage': ['beverage', 'beverages', 'drinks', 'soda', 'juice', 'water', 'coffee', 'tea'],
+      
+      // Bakery
+      'bakery': ['bakery', 'bread', 'baked goods', 'pastry', 'pastries', 'rolls'],
+      
+      // Supplies & Non-Food
+      'supplies': ['supplies', 'disposable', 'disposables', 'paper', 'plastic', 'to-go', 'packaging'],
+      'cleaning': ['cleaning', 'janitorial', 'chemicals', 'sanitizer'],
+      
+      // Spices & Condiments
+      'spices': ['spice', 'spices', 'seasoning', 'seasonings', 'herbs'],
+      'condiments': ['condiment', 'condiments', 'sauce', 'sauces', 'dressing', 'dressings', 'ketchup', 'mustard'],
+      
+      // Oils & Fats
+      'oils': ['oil', 'oils', 'fat', 'fats', 'shortening', 'lard'],
+    };
+
+    // Check if vendor category maps to inventory category
+    for (const [key, variants] of Object.entries(categoryMappings)) {
+      // Check if vendor category contains any variant
+      const vendorMatches = v.includes(key) || variants.some(variant => v.includes(variant));
+      
+      // Check if inventory category contains any variant
+      const inventoryMatches = variants.some(variant => i.includes(variant));
+      
+      if (vendorMatches && inventoryMatches) {
+        return 0.7; // Good semantic match
+      }
+    }
+
+    // Fuzzy similarity for unmapped categories
+    const similarity = this.calculateNameSimilarity(v, i);
+    return similarity > 0.5 ? similarity * 0.6 : 0; // Scale down fuzzy category matches
+  }
+
+  /**
+   * Determine confidence level based on scores
+   */
+  private determineConfidence(
+    totalScore: number,
+    scores: { name: number; sku: number; category: number }
+  ): MatchConfidence {
+    // High confidence: strong name match OR exact SKU match
+    if (totalScore >= 0.85 || scores.sku === 1.0) {
+      return 'high';
+    }
+
+    // Medium confidence: decent name match
+    if (totalScore >= 0.65) {
+      return 'medium';
+    }
+
+    // Low confidence: some similarity
+    if (totalScore >= 0.45) {
+      return 'low';
+    }
+
+    return 'none';
+  }
+
+  /**
+   * Build human-readable match reason
+   */
+  private buildMatchReason(scores: { name: number; sku: number; category: number }): string {
+    const reasons: string[] = [];
+
+    if (scores.name >= 0.9) {
+      reasons.push('Strong name match');
+    } else if (scores.name >= 0.7) {
+      reasons.push('Good name match');
+    } else if (scores.name >= 0.5) {
+      reasons.push('Partial name match');
+    }
+
+    if (scores.sku === 1.0) {
+      reasons.push('Exact SKU match');
+    } else if (scores.sku > 0) {
+      reasons.push('Partial SKU match');
+    }
+
+    return reasons.length > 0 ? reasons.join(', ') : 'Low similarity';
+  }
+
+  /**
+   * Batch match multiple vendor products
+   */
+  async batchMatch(
+    vendorProducts: VendorProduct[],
+    companyId: string,
+    storeId: string
+  ): Promise<Map<string, MatchResult>> {
+    const results = new Map<string, MatchResult>();
+
+    for (const product of vendorProducts) {
+      const match = await this.findBestMatch(product, companyId, storeId);
+      results.set(product.vendorSku, match);
+    }
+
+    return results;
+  }
+
+  /**
+   * Batch-match vendor products against pre-loaded inventory + categories.
+   * Performs exactly ONE fetch (caller's responsibility) and runs all
+   * comparisons in-process — O(P×I) CPU, O(1) DB round-trips.
+   *
+   * Use this instead of batchMatch() when the caller can preload data,
+   * e.g. the recipe-import scan route which processes many ingredients at once.
+   */
+  matchWithPreloadedData(
+    vendorProducts: VendorProduct[],
+    inventoryItems: Array<{ id: string; name: string; categoryId?: string | null; pluSku?: string | null }>,
+    categories: Array<{ id: string; name: string }>
+  ): Map<string, MatchResult> {
+    const results = new Map<string, MatchResult>();
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+    const noMatch: MatchResult = {
+      inventoryItemId: null,
+      inventoryItemName: null,
+      confidence: 'none',
+      score: 0,
+      matchReason: 'No inventory items in system',
+    };
+
+    for (const product of vendorProducts) {
+      if (inventoryItems.length === 0) {
+        results.set(product.vendorSku, noMatch);
+        continue;
+      }
+
+      let bestMatch: MatchResult = {
+        inventoryItemId: null,
+        inventoryItemName: null,
+        confidence: 'none',
+        score: 0,
+        matchReason: 'No match found',
+      };
+
+      for (const item of inventoryItems) {
+        const itemCategoryName = item.categoryId ? categoryMap.get(item.categoryId) : null;
+        const scores = {
+          name: this.calculateNameSimilarity(product.vendorProductName, item.name),
+          sku: this.checkSkuMatch(product.vendorSku, item.pluSku),
+          category: this.calculateCategoryMatch(undefined, itemCategoryName ?? undefined),
+        };
+        const totalScore = scores.name * 0.6 + scores.sku * 0.25 + scores.category * 0.15;
+        if (totalScore > bestMatch.score) {
+          bestMatch = {
+            inventoryItemId: item.id,
+            inventoryItemName: item.name,
+            confidence: this.determineConfidence(totalScore, scores),
+            score: totalScore,
+            matchReason: this.buildMatchReason(scores),
+          };
+        }
+      }
+
+      results.set(product.vendorSku, bestMatch);
+    }
+
+    return results;
+  }
+}

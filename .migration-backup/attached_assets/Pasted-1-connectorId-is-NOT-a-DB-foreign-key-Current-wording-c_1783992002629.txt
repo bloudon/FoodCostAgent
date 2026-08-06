@@ -1,0 +1,329 @@
+1. connectorId is NOT a DB foreign key
+
+Current wording
+
+connectorId (FK to connector registry)
+
+But there is no connector table.
+
+There is only
+
+connectorRegistry.ts
+
+That isn't a database.
+
+I'd change it to
+
+connectorId TEXT
+
+Validated against the Procurement Connector Registry
+during server-side validation.
+
+Otherwise people will start looking for a nonexistent FK.
+
+2. Alias Match Type
+
+This one is the biggest.
+
+Right now
+
+contains(alias)
+
+for everything.
+
+That scares me.
+
+Example
+
+Southern Foods
+
+matches
+
+ABC Southern Foods Distribution
+
+or
+
+Florida Southern Foods
+
+Maybe OK.
+
+Maybe terrible.
+
+Instead every alias should carry
+
+Exact
+
+Contains
+
+Domain
+
+Example
+
+Sysco
+
+Contains
+GFS
+
+Exact
+PFG
+
+Exact
+sysco.com
+
+Domain
+
+Huge improvement.
+
+3. Domain Matching
+
+Current wording
+
+hostname endsWith(domain)
+
+Needs clarification.
+
+Otherwise
+
+fake-sysco.com
+
+matches
+
+sysco.com
+
+Proper rule
+
+hostname == domain
+
+OR
+
+hostname.endsWith("." + domain)
+
+Very important.
+
+4. Manual Override Lock
+
+Current proposal says
+
+Manual override.
+
+Great.
+
+But...
+
+What happens?
+
+User
+
+Selects
+
+None
+
+then edits the name.
+
+Auto detect runs again.
+
+Oops.
+
+Need
+
+connectorSelectionSource
+
+auto
+
+manual
+
+Once manual
+
+Auto detect stops.
+
+Until
+
+User clicks
+
+Detect Again
+
+or clears selection.
+
+5. Platform Connector Example
+
+This one is subtle.
+
+The proposal still reads like
+
+Vendor
+
+↓
+
+Connector
+
+I'd add one example.
+
+Ferraro Foods
+
+↓
+
+Pepper Connector
+
+Not
+
+Ferraro Connector
+
+That keeps the architecture aligned with where we're headed.
+
+6. Rejected Behavior
+
+Missing.
+
+Need answer.
+
+If admin rejects
+
+ABC Foods
+
+then another customer submits
+
+ABC Foods
+
+tomorrow.
+
+What happens?
+
+I'd recommend
+
+Submission count++
+
+Keep rejected
+
+Admin may reopen
+
+Rather than endlessly recreating rows.
+
+Strong Suggestions
+
+Not blockers.
+
+Submission Count
+
+Today
+
+submittedByCompanyId
+
+Only remembers one company.
+
+I'd rather eventually know
+
+Submitted
+
+11 companies
+
+Much stronger evidence.
+
+Registry Validation
+
+At startup.
+
+Check
+
+duplicate aliases
+duplicate domains
+invalid connector IDs
+empty aliases
+invalid match modes
+
+Fail fast.
+
+Audit Trail
+
+Approvals should log
+
+Approved By
+
+Approved At
+
+Old
+
+New
+
+Reason
+
+Global registries always need audit.
+
+I'd Add One More Requirement
+
+This wasn't in my previous review.
+
+Registry Confidence
+
+Every detection should return
+
+connectorId
+
+confidence
+
+reason
+
+Example
+
+{
+  "connectorId":"sysco",
+
+  "confidence":"high",
+
+  "reason":"matched domain sysco.com"
+}
+
+or
+
+{
+  "connectorId":"gfs",
+
+  "confidence":"medium",
+
+  "reason":"matched alias Gordon Food Service"
+}
+
+Why?
+
+Because eventually AI can consume this.
+
+The UI could even show
+
+Detected
+
+Sysco
+
+★★★★★
+
+Matched website
+
+instead of silently selecting.
+
+Overall
+
+I'd score the current proposal:
+
+Area	Score
+Architecture	10/10
+Extensibility	10/10
+MVP Scope	10/10
+Security	9/10
+Data Model	9/10
+Matching Logic	7/10
+Future Scalability	9/10
+
+The only thing I think is genuinely risky is the matching logic. A global registry can quickly become noisy if substring matching is too permissive.
+
+My recommendation
+
+I would approve the milestone after asking for six small amendments, not redesign it.
+
+Those amendments are:
+
+Remove the database foreign key wording for connectorId.
+Add alias match modes (exact, contains, domain).
+Clarify safe hostname matching.
+Lock auto-detection after manual connector selection.
+Explicitly support platform connectors like Pepper that service multiple distributors.
+Define the lifecycle for rejected submissions.
+
+If those are incorporated, I think this becomes a very solid foundation that can scale as FnB Cost Pro grows. It's the kind of architectural investment that will pay dividends when you're adding your 20th or 50th procurement connector rather than your second.

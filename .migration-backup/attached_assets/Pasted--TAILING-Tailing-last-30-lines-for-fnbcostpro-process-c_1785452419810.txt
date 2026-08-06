@@ -1,0 +1,89 @@
+
+[TAILING] Tailing last 30 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 30 lines:
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 30 lines:
+7|fnbcostp | [DB] ESM keepalive query started
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] ESM keepalive query started
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] ESM keepalive query started
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] ESM keepalive query started
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostp |
+7|fnbcostp | > rest-express@1.12.0 start
+7|fnbcostp | > NODE_ENV=production node dist/index.js
+7|fnbcostp |
+7|fnbcostp | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostp | [DB] ESM keepalive query started
+7|fnbcostp | ℹ️ Redis cache not configured (REDIS_URL not set)
+
+7|fnbcostpro  | > rest-express@1.12.0 start
+7|fnbcostpro  | > NODE_ENV=production node dist/index.js
+7|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+7|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+7|fnbcostpro  | [Startup] 1 — runStartupMigrations
+7|fnbcostpro  | ✅ Startup migrations applied
+7|fnbcostpro  | [Startup] 2 — setupSsoAuth
+7|fnbcostpro  | [Startup] 3 — registerRoutes
+7|fnbcostpro  | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+7|fnbcostpro  | [Storage] Environment detected: local (VPS)
+7|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+7|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+7|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+7|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+7|fnbcostpro  | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+7|fnbcostpro  | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+7|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+7|fnbcostpro  | [Migration] Already applied (menu_item_recipes)
+7|fnbcostpro  | [Migration] Already applied (orderly_count_session_metadata)
+7|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+7|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+7|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+7|fnbcostpro  | [TierMigration] Already applied (tier_system_init)
+7|fnbcostpro  | [Migration] Already applied (preferred_language)
+7|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+7|fnbcostpro  | [Migration] inventory_import_batches / inventory_import_rows tables ready
+7|fnbcostpro  | [Migration] Already applied (menu_descriptions)
+7|fnbcostpro  | [Migration] qb_reconciliations table ready
+7|fnbcostpro  | ✅ Database already seeded
+7|fnbcostpro  | ✅ All unit conversions already present
+7|fnbcostpro  | 🏢 Creating Brian's Pizza company and stores...
+7|fnbcostpro  | 🔗 Migrating vendors to store assignments...
+7|fnbcostpro  |    All vendors already assigned to stores
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 Session cleanup job scheduled (every 60 minutes)
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 QuickBooks token refresh job scheduled (every 60 minutes ±10min)
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 POS token refresh job scheduled (every 24h ±30min, first run in 5min)
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 POS hourly sync pass scheduled (first run at 2026-07-30T23:00:00.000Z)
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 Menu scheduler job scheduled (every 5 minutes, first run in 2min)
+7|fnbcostpro  | 10:59:32 PM [express] 🔄 POS stuck-job cleanup scheduled (every 15 minutes, first run in 2min)
+7|fnbcostpro  | 10:59:32 PM [express] serving on port 3004
+7|fnbcostpro  | 10:59:32 PM [express] ✅ Session cleanup completed
+7|fnbcostpro  | 🔄 Starting scheduled QuickBooks token refresh for 0 connection(s)
+7|fnbcostpro  | ✅ QuickBooks token refresh completed: 0 success, 0 failed
+7|fnbcostpro  | [PackGeometry Backfill] 2026-07-30T22:59:31.191Z
+7|fnbcostpro  |   Total rows:           2667
+7|fnbcostpro  |   Successfully normalzd: 2533
+7|fnbcostpro  |   Already valid:        0
+7|fnbcostpro  |   Missing price:        134
+7|fnbcostpro  |   Missing geometry:     0
+7|fnbcostpro  |   Ambiguous geometry:   0
+7|fnbcostpro  |   Dimension mismatches: 0
+7|fnbcostpro  |   Variable weight:      0
+7|fnbcostpro  |   Invalid (zero/neg):   0
+7|fnbcostpro  |   Errors:               0

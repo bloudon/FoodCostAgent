@@ -1,0 +1,424 @@
+Four corrections still required
+1. The import counts are mathematically wrong
+
+Replit identified:
+
+20 matched approved records
+2 matched reference-only records
+1 matched review record
+
+Therefore, the v2-only counts must be:
+
+Bucket	Calculation	Correct count
+V2-only approved	102 − 20	82
+V2-only review	65 − 1	64
+V2-only reference	19 − 2	17
+Total v2-only	82 + 64 + 17	163
+
+Its proposed 82 + 65 + 18 = 165 would import two records already matched to v1. The report even says there are 17 unmatched reference-only records while labeling the bucket as 18.
+
+2. “No state codes” must not mean “national”
+
+This proposed ranking rule is unsafe:
+
+National vendor (no state codes = national scope)
+
+Missing state codes can mean:
+
+Geography was not researched
+Territory is unknown
+Coverage is metro-only
+The vendor is regional but unverified
+
+Add an explicit field:
+
+serviceScope:
+  national
+  online_nationwide
+  multi_region
+  regional
+  local
+  unknown
+
+Only national and online_nationwide should receive the nationwide ranking boost.
+
+3. parent_vendor_id must match the UUID type
+
+The existing registry ID is UUID, so this is incorrect:
+
+parent_vendor_id varchar
+
+Use:
+
+parent_vendor_id uuid
+  REFERENCES platform_vendor_registry(id)
+  ON DELETE SET NULL
+4. Do not build a permanent diff UI for a one-time migration
+
+Ticket 2 proposes a read-only admin screen to approve the import diff.
+
+That violates the simplification goal. Generate a one-time:
+
+CSV
+JSON
+Markdown report
+SQL dry-run output
+
+Have the global admin approve that report, then run the migration. Do not create and maintain a permanent application screen solely for this import.
+
+One more critical migration issue
+
+Because runStartupMigrations() seeds this data on every deployment, the old seed logic must be addressed before importing v2.
+
+Otherwise, future deployments could:
+
+Reinsert obsolete records
+Restore conflicting aliases
+Recreate FreshPoint under Sysco
+Overwrite connector assignments
+Undo visibility decisions
+Produce duplicate records
+
+The legacy seed block should be converted into a versioned, one-time migration or changed to insert missing records only without updating reviewed fields.
+
+Connector interpretation
+
+The taxonomy is improved, but these should initially be treated as shared portal families, not proven API integrations:
+
+Connector	Initial safe capabilities
+cut_and_dry	File export, portal link
+powernet_pnet	Portal link until import behavior is verified
+food_order_entry	Portal link until shared upload behavior is verified
+public_ecommerce	Link-out only
+
+Do not set integrated merely because two vendors use the same portal platform.
+
+Paste this back to Replit
+Final Corrections Before Vendor Registry Implementation
+
+The revised direction is approved:
+
+Simplify v1 in place, preserve existing IDs, separate status from visibility and verification, add shared connector definitions conservatively, and import v2 through a reviewed migration.
+
+Do not begin implementation until the following corrections are incorporated.
+
+1. Correct the v2-only import counts
+
+The established matched records are:
+
+20 matched Approved seed
+2 matched Reference only
+1 matched Review before seed
+
+The workbook totals are:
+
+102 Approved seed
+65 Review before seed
+19 Reference only
+
+Therefore, the correct unmatched import buckets are:
+
+V2_ONLY_APPROVED = 102 - 20 = 82
+V2_ONLY_REVIEW = 65 - 1 = 64
+V2_ONLY_REFERENCE = 19 - 2 = 17
+
+Correct Ticket 6 to:
+
+82 approved/public imports
+64 pending/hidden imports
+17 approved/reference-only imports
+
+These total 163 v2-only records.
+
+The 23 matched records plus 163 v2-only records equal the complete 186-row v2 dataset.
+
+Do not import 65 review and 18 reference records; that would duplicate AMCON and one of the two matched reference-only vendors.
+
+2. Verify the intended v1 row count from code
+
+The latest report says:
+
+7 connector-enabled rows
+141 additional null-connector seed rows
+approximately 148 production rows
+
+An earlier evaluation described the 141 records as including the seven connector-enabled records.
+
+Before migration, parse server/index.ts and return:
+
+connector seed row count
+null-connector seed row count
+total literal seed rows
+unique normalized-name count
+duplicate normalized names
+duplicate website domains
+
+Do not use an approximate production count as the migration baseline.
+
+Production must still be queried before changing any record that may affect current connector behavior.
+
+3. Remove continuous legacy reseeding risk
+
+The current 141-vendor seed block runs through runStartupMigrations() on deployment.
+
+Before importing v2:
+
+Convert the legacy seed to a versioned one-time migration, or
+Gate it with a completed migration version, or
+Restrict it to INSERT ... ON CONFLICT DO NOTHING
+
+The startup seed must not overwrite:
+
+canonical_name
+aliases
+visibility
+verification_status
+parent_vendor_id
+connector_id
+ordering_mode
+country or region coverage
+admin-reviewed status
+
+After the v2 migration, the old hardcoded seed block must not recreate obsolete records or conflicting aliases.
+
+4. Correct the parent relationship field type
+
+platform_vendor_registry.id is UUID.
+
+Use:
+
+parent_vendor_id uuid NULL
+  REFERENCES platform_vendor_registry(id)
+  ON DELETE SET NULL
+
+Do not define it as varchar.
+
+5. Clarify geographic fields
+
+Use:
+
+service_country_codes text[]
+service_region_codes text[]
+service_scope text
+
+Allowed service_scope values:
+
+national
+online_nationwide
+multi_region
+regional
+local
+unknown
+
+Do not infer national availability from an empty region array.
+
+Incorrect:
+
+no state codes = national
+
+Correct:
+
+service_scope = national
+
+or:
+
+service_scope = online_nationwide
+
+Empty state or province codes combined with service_scope = unknown must receive no geographic boost.
+
+Recommended ranking:
+
+1. Exact canonical-name match
+2. Exact alias match
+3. Exact website-domain match
+4. Vendor already used by the company
+5. Matching service country and region
+6. Matching service country
+7. Explicit national or online-nationwide scope
+8. Other approved public vendors
+9. Unknown-scope vendors
+6. Do not build a permanent migration-diff page
+
+Replace the proposed read-only admin diff UI with a one-time migration command that generates:
+
+vendor-registry-v2-diff.json
+vendor-registry-v2-diff.csv
+vendor-registry-v2-diff.md
+
+The report must include:
+
+MATCHED_EXISTING
+V2_ONLY_APPROVED
+V2_ONLY_REVIEW
+V2_ONLY_REFERENCE
+DATABASE_ONLY
+POSSIBLE_DUPLICATE
+PARENT_OPERATING_BRAND_CONFLICT
+
+For each record include:
+
+current ID
+current normalized name
+v2 vendor key
+canonical name
+website domain
+current connector
+proposed connector
+current status
+proposed status
+current visibility
+proposed visibility
+reason
+
+No permanent application UI is needed for this one-time migration review.
+
+7. Treat shared platforms conservatively
+
+Add these connector definitions:
+
+cut_and_dry
+powernet_pnet
+food_order_entry
+
+Initial capabilities:
+
+cut_and_dry
+portal_link = true
+file_export = true
+api_catalog_sync = false
+api_order_submit = false
+powernet_pnet
+portal_link = true
+file_export = false until verified
+api_catalog_sync = false
+api_order_submit = false
+food_order_entry
+portal_link = true
+file_export = false until verified
+api_catalog_sync = false
+api_order_submit = false
+
+Do not label a shared portal as an API integration without verified API or supported import behavior.
+
+Represent:
+
+public_ecommerce
+
+as:
+
+ordering_mode = public_ecommerce
+connector_id = null
+
+Represent:
+
+unknown_branded_portal
+
+as:
+
+ordering_mode = portal_link
+connector_id = null
+verification_status = needs_review
+8. Picker treatment by vendor role
+
+Do not permanently hide all manufacturers.
+
+Recommended behavior:
+
+Empty picker / recommended vendors:
+    prioritize distributors and online purveyors
+    exclude manufacturer_direct by default
+
+Explicit name, alias, or domain search:
+    include manufacturer_direct matches
+
+Admin registry:
+    show all roles
+
+Automatically suppress from the ordinary picker:
+
+buying_group
+redistributor
+closed_supply_system
+contract_distributor
+
+unless explicitly searched or already used by that company.
+
+9. Revised ticket order
+Ticket 0 — Neutralize recurring legacy seed behavior
+
+Make the existing startup seed versioned and non-overwriting.
+
+Ticket 1 — Add classification and relationship fields
+
+Add:
+
+canonical_name
+visibility
+verification_status
+last_verified_at
+parent_vendor_id uuid
+service_country_codes
+service_region_codes
+service_scope
+vendor_role
+ordering_mode
+Ticket 2 — Generate the one-time migration diff
+
+Produce exact machine-generated JSON, CSV, and Markdown output.
+
+No database writes.
+
+Ticket 3 — Resolve connector and operating-brand conflicts
+
+Resolve:
+
+FreshPoint versus Sysco alias
+Performance Foodservice versus PFG
+Reinhart alias conflict
+Vistar alias conflict
+
+Preserve existing IDs whenever possible.
+
+Ticket 4 — Add conservative shared connector definitions
+
+Add:
+
+cut_and_dry
+powernet_pnet
+food_order_entry
+
+with only verified capabilities.
+
+Ticket 5 — Update matched records in place
+
+Update canonical names, aliases, domains, geography, parent relationships, ordering modes and connector references.
+
+Do not change status automatically.
+
+Ticket 6 — Import v2-only records
+
+Import exactly:
+
+82 V2_ONLY_APPROVED
+64 V2_ONLY_REVIEW
+17 V2_ONLY_REFERENCE
+Ticket 7 — Classify database-only records by vendor role
+
+Do not delete or inactivate automatically.
+
+Ticket 8 — Add geography-ranked search
+
+Use explicit service_scope; never interpret missing region codes as national availability.
+
+Required confirmation
+
+Before implementation, return:
+
+Exact unique intended v1 seed count from server/index.ts.
+The corrected 82/64/17 import lists.
+The migration-diff files or their complete contents.
+The updated schema with parent_vendor_id uuid.
+The updated search ranking using explicit service_scope.
+The connector capability definitions.
+Confirmation that recurring legacy seed behavior will be neutralized before v2 import.
+Confirmation that no writes have yet been performed.

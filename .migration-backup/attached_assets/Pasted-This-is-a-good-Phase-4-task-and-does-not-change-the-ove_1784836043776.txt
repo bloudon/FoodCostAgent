@@ -1,0 +1,201 @@
+This is a good Phase 4 task and does not change the overall direction. I would let the build continue, but I see a few things to correct before calling it complete.
+
+## 1. Mobile still needs a path to Analyze
+
+We previously decided the mobile bottom bar would remain:
+
+```text
+Home | Count | Order | Prep | More
+```
+
+That means **Analyze must be reachable from More on mobile**.
+
+The current More specification does not include it. Add a manager-visible group such as:
+
+```text
+Insights
+- Analyze
+- Food Cost
+- Variance
+```
+
+Simplest version: one **Analyze & Reports** card linking to `/analyze`.
+
+It can appear in More on all screen sizes without harm, although it is essential on mobile.
+
+## 2. Do not regress from permissions back to hardcoded roles
+
+The task repeatedly uses:
+
+* `store_manager+`
+* `company_admin+`
+* `global_admin`
+
+Those are fine as defaults, but we previously agreed visibility should ultimately follow permissions.
+
+The landing pages and cards should use the same authorization functions as the underlying routes. Otherwise, a user may:
+
+* See a card they cannot open
+* Lose a tool they have been explicitly granted
+* Gain visibility merely because their role name qualifies
+
+Use role checks only where no finer permission currently exists.
+
+## 3. Prep needs a purposeful zero-item state
+
+If `/api/prep-items` returns zero, the landing page should not simply say:
+
+> 0 prep items configured
+
+Instead, change the dominant action:
+
+```text
+Set Up Prep Items
+```
+
+with supporting copy:
+
+> Add the recipes and batches your team prepares regularly.
+
+Once prep items exist, the normal dominant action becomes:
+
+```text
+Prep Today
+```
+
+Also hide the Prep rail item entirely when the feature is unavailable. A direct visit to `/prep` can show the upgrade/unavailable state, but normal navigation should not lead to a dead section.
+
+## 4. “Food Cost” and “Variance Report” may sound duplicated
+
+The Analyze cards currently include:
+
+* Food Cost → `/tfc/variance`
+* Variance Report → `/variance`
+
+Those labels will probably confuse users unless the reports measure clearly different things.
+
+Use names that describe the distinction. For example:
+
+```text
+Theoretical Food Cost
+Inventory Variance
+Import Sales
+```
+
+or:
+
+```text
+Food Cost vs. Sales
+Actual vs. Theoretical
+Import Sales
+```
+
+The exact wording should follow what each screen really reports.
+
+“Variance” should not appear twice with no explanation.
+
+## 5. Feature-gate actions as well as tabs
+
+Hiding only the Menu Insights tab is not enough.
+
+Confirm that:
+
+* Food Cost is hidden or gracefully unavailable if its required feature/data source is absent.
+* Import Sales appears only when the user has access to sales import.
+* Recent variance summaries do not throw or show a permanent error when no POS data exists.
+* Prep actions do not appear when the prep feature is disabled.
+* API Credentials appears only when the applicable integration permission exists.
+
+The landing page should never advertise inaccessible tools.
+
+## 6. Adjust the More groupings slightly
+
+I would not put general **Settings** inside Integrations.
+
+A clearer structure:
+
+```text
+Menu & Recipes
+- Menu Items
+- Recipes
+
+Inventory Setup
+- Categories
+- Unit Conversions
+
+Locations
+- Store Locations
+- Storage Locations
+
+Team
+- Users
+
+Integrations
+- API Credentials
+- Connected Systems
+
+Company
+- Settings
+
+Platform Administration
+- Companies
+- Admin Users
+- Vendor Registry
+```
+
+Also verify whether a store manager should be allowed to manage `/stores`. Viewing store locations and editing company locations may require different permissions.
+
+## 7. Route ordering should be verified, not relied upon
+
+Registering `/prep` before `/prep-chart` is harmless, but the team should not depend on route ordering as the primary protection.
+
+Add route-level tests confirming:
+
+* `/prep` loads the Prep landing page
+* `/prep-chart` loads the existing Prep Chart
+* `/prep-chart/items` remains unchanged
+* `/analyze` does not capture `/tfc/*`
+* `/more` does not interfere with `/settings`
+
+The active-section mapper should also cover every existing child route.
+
+## 8. Add a few explicit completion tests
+
+Before approving Phase 4, verify:
+
+* Every card navigates to the correct existing route.
+* Empty, loading and error states render cleanly.
+* Rail visibility follows features and permissions.
+* Mobile More includes a route to Analyze.
+* Global admin tools never appear for company users.
+* Prep is hidden when unavailable.
+* The layout works without horizontal overflow on mobile.
+* The browser Back button returns predictably from child pages to the landing-page pattern.
+
+## Recommended feedback to Replit
+
+```markdown
+The Phase 4 scope is approved and the build can continue.
+
+Please incorporate these corrections before completion:
+
+1. Add an Analyze & Reports entry under More for store managers and above. This is required because Analyze is intentionally absent from the five-tab mobile bottom navigation.
+
+2. Use existing permissions/feature checks for landing-page cards wherever available. Roles may supply defaults, but cards should not expose inaccessible routes or hide explicitly granted functionality.
+
+3. Add a purposeful Prep zero-state. When no prep items exist, the dominant action should become Set Up Prep Items rather than Prep Today. Hide the Prep rail item when the feature is unavailable; direct route access may show a graceful unavailable state.
+
+4. Clarify the difference between /tfc/variance and /variance in the user-facing labels. Avoid presenting Food Cost and Variance Report as two apparently duplicate choices.
+
+5. Apply feature gating to action cards and data panels, not only the Menu Insights tab.
+
+6. Move general Settings out of the Integrations group and into a Company group. Verify permissions for Store Locations versus Storage Locations.
+
+7. Add route tests confirming that each new landing route and all existing child routes resolve independently. Do not rely only on registration order.
+
+8. Add acceptance coverage for permission visibility, feature visibility, mobile Analyze access, empty states, and active-section highlighting.
+
+Existing sub-pages should remain unchanged.
+```
+
+The most important omission is the **mobile route to Analyze**. Everything else is refinement and permission hardening rather than a redesign.

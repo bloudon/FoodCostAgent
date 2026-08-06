@@ -1,0 +1,179 @@
+# Import List Validation Failed — Correct Before Implementation
+
+Do not run Tickets 5 or 6 yet.
+
+The 82-record count reconciles correctly, but the detailed import list does not match the attached v2 workbook.
+
+A field-level comparison found incorrect state mappings in 10 of the 63 U.S. import records.
+
+## Required geography corrections
+
+| Vendor Key                         | Current Proposed Codes                            | Correct v2 Codes                                                       |
+| ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------- |
+| `a_f_wendling_s_food_service`      | `US-WI, US-MN, US-IA, US-IL`                      | `US-WV, US-VA, US-PA`                                                  |
+| `avalon_foodservice_inc`           | `US-HI`                                           | `US-OH, US-PA, US-WV`                                                  |
+| `carolina_food_service_of_loris`   | `US-SC, US-NC, US-GA`                             | `US-NC, US-SC`                                                         |
+| `cash_wa_distributing`             | `US-NE, US-KS, US-CO, US-WY, US-IA, US-SD, US-MN` | `US-NE, US-CO, US-WY, US-KS, US-OK, US-MO, US-IA, US-MN, US-SD, US-ND` |
+| `curtze_food_service`              | `US-PA, US-OH, US-NY, US-WV, US-MD`               | `US-PA, US-NY, US-VA, US-WV, US-OH, US-MI, US-IN, US-KY, US-MD`        |
+| `dennis_food_service`              | `US-ME, US-NH, US-VT, US-MA`                      | `US-ME, US-NH`                                                         |
+| `diaz_wholesale_and_manufacturing` | `US-FL`                                           | `US-GA, US-VA, US-NJ`                                                  |
+| `dicarlo_distributors_inc`         | `US-NY, US-PA, US-NJ`                             | `US-MA, US-CT, US-NY, US-NJ, US-PA, US-DE, US-MD, US-DC`               |
+| `driscoll_foods`                   | `US-NJ, US-NY, US-CT, US-PA, US-DE, US-MD`        | `US-NJ, US-NY, US-PA, US-CT`                                           |
+| `emaco_food_services`              | `US-FL`                                           | `US-LA`                                                                |
+
+Do not patch only these ten values manually.
+
+Regenerate the entire import dataset directly from the workbook so the spreadsheet remains the single source of truth.
+
+## Required import-generation method
+
+Read the `Seed Export` or `Vendor Master v2` sheet programmatically.
+
+Map fields by header name, not spreadsheet column position:
+
+```text
+vendor_key
+canonical_name
+aliases_pipe
+website_domain
+country_code
+state_codes_csv
+vendor_type
+category
+connector_key
+ordering_url
+active_status
+parent_network
+seed_status
+source_url
+verified_on
+```
+
+Convert region codes deterministically:
+
+```text
+FL → US-FL
+GA → US-GA
+ON → CA-ON
+QC → CA-QC
+```
+
+Do not infer, supplement or remove states inside the migration generator.
+
+Any later correction to geographic research should be an explicit admin or versioned-data update.
+
+## Add field-level pre-write validation
+
+The migration must compare every generated import row against the workbook source and fail before writing on any mismatch involving:
+
+```text
+vendor_key
+canonical_name
+website_domain
+country_code
+state codes
+seed status
+connector key
+ordering URL
+parent relationship
+ordering mode
+```
+
+Validation must verify values, not just counts.
+
+Generate a report with:
+
+```text
+vendor key
+source workbook value
+generated migration value
+match or mismatch
+```
+
+Require zero mismatches before enabling the write phase.
+
+## Separate vendor approval from data verification
+
+Do not assign `verification_status = verified` to every approved vendor automatically.
+
+Use:
+
+```text
+status = approved
+```
+
+to indicate that the vendor is legitimate and may appear in the picker.
+
+Use:
+
+```text
+verification_status = verified
+```
+
+only when the imported website, ordering URL, connector assignment and geography are sufficiently confirmed.
+
+At minimum, retain:
+
+```text
+global_market_foods
+incollingo_food_service
+```
+
+as:
+
+```text
+status = approved
+visibility = public
+verification_status = needs_review
+connector_id = null
+ordering_mode = portal_link
+```
+
+until their branded portal behavior is verified.
+
+## Correct production backup timing
+
+Create and verify production backups before Ticket 0 or any other production schema change.
+
+Schema-only changes are not automatically risk-free.
+
+Required sequence:
+
+```text
+1. Query and export current production row counts
+2. Create a full PostgreSQL database backup
+3. Create a separate platform_vendor_registry data export
+4. Restore both backups into a disposable database
+5. Confirm the disposable restore succeeds
+6. Begin production schema migration
+7. Wrap vendor data updates/imports in a transaction
+8. Record migration completion only after validation passes
+```
+
+The rollback plan must include:
+
+* A tested full-database restoration procedure
+* A data-only restoration procedure
+* A down migration for newly added columns, constraints and seed-gating logic
+
+Do not rely on piping the table dump into the modified production database as the only rollback strategy.
+
+## Constraint migration safety
+
+Make the constraint creation idempotent.
+
+PostgreSQL does not support `ADD CONSTRAINT IF NOT EXISTS` in the same manner as `ADD COLUMN IF NOT EXISTS`.
+
+Use a versioned migration or guarded `DO` blocks so a partially completed deployment cannot fail repeatedly due to existing constraint names.
+
+## Required response before implementation
+
+Return:
+
+1. The regenerated 82-record import sourced directly from the workbook.
+2. A field-level validation report showing zero mismatches.
+3. Confirmation that the ten geography errors above are corrected.
+4. The exact records that will receive `verification_status = needs_review`.
+5. A tested backup and restore procedure.
+6. Confirmation that production backup occurs before Ticket 0.
+7. Confirmation that no production schema or data writes have occurred.

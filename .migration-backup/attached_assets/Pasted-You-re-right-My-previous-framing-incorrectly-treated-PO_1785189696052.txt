@@ -1,0 +1,363 @@
+You’re right. My previous framing incorrectly treated **“POS Provider”** as passive metadata and the Square connection as a separate concept.
+
+Your intended model is cleaner:
+
+> A company identifies its POS, chooses how sales data will enter FnB, and—when electronic connectivity is selected—the universal connector framework loads the appropriate provider adapter.
+
+Square is simply the first implemented adapter within that framework.
+
+## Correct product model
+
+During company setup:
+
+```text
+Which POS do you use?
+[ Square ▼ ]
+
+How should FnB receive sales?
+○ Electronic connection
+○ Manual report upload
+```
+
+When **Electronic connection** is selected:
+
+```text
+Square connector available
+[ Connect Square ]
+```
+
+When **Manual report upload** is selected:
+
+```text
+[ Configure sales report import ]
+```
+
+For a provider that does not yet have an electronic adapter:
+
+```text
+Electronic connection is not yet available for HungerRush.
+
+[ Use manual report upload ]
+[ Request this integration ]
+```
+
+The provider selection is therefore authoritative. The connection record is the implementation and current status of that choice.
+
+## What the data should represent
+
+The company likely needs something conceptually like:
+
+```typescript
+interface CompanySalesConfiguration {
+  posProviderKey: string;
+  salesImportMethod: "electronic" | "manual";
+}
+```
+
+The connector framework then resolves:
+
+```typescript
+connectorRegistry.get(company.posProviderKey)
+```
+
+Square would register as:
+
+```typescript
+{
+  providerKey: "square",
+  displayName: "Square",
+  capabilities: {
+    electronicSalesSync: true,
+    catalogImport: true,
+    locationMapping: true
+  },
+  adapter: squareConnector
+}
+```
+
+The OAuth connection record is related operational state:
+
+```text
+Company POS: Square
+Sales method: Electronic
+Connection status: Connected
+```
+
+Those are not three unrelated settings. They are one configuration with three layers:
+
+1. **Provider:** Square
+2. **Method:** Electronic
+3. **Status:** Connected
+
+## Where the UX went off track
+
+The current setup apparently has:
+
+* POS Provider on the Company tab
+* Square under Data Connections
+* No obvious bridge between them
+
+That makes the implementation look bolted on, even though the architecture was intended to be universal.
+
+The fix is to connect those screens and terminology—not separate them further.
+
+## Recommended settings design
+
+Use one section called:
+
+```text
+POS & Sales Data
+```
+
+It can live under Company Settings or Integrations, but it should show the complete configuration together:
+
+```text
+POS Provider
+Square
+
+Sales Data Method
+Electronic connection
+
+Connection
+● Connected to Square
+Merchant: ABC Pizza LLC
+2 of 2 locations mapped
+Last sync: Today at 4:12 AM
+
+[Manage Connection] [Sync Now]
+```
+
+For manual import:
+
+```text
+POS Provider
+HungerRush
+
+Sales Data Method
+Manual report upload
+
+Last upload
+July 25, 2026
+
+[Upload Sales Report] [Manage Import Format]
+```
+
+## Setup flow
+
+The onboarding sequence should be:
+
+### Step 1 — Select POS
+
+```text
+Square
+Toast
+Clover
+HungerRush
+SpotOn
+Other
+```
+
+### Step 2 — Choose available data method
+
+FnB checks the connector registry.
+
+For Square:
+
+```text
+Electronic connection — Recommended
+Manual report upload
+```
+
+For a provider without an adapter:
+
+```text
+Manual report upload
+Electronic connection — Coming soon
+```
+
+### Step 3 — Complete the chosen workflow
+
+Electronic:
+
+```text
+Authorize provider
+Map POS locations
+Map menu items
+Run initial backfill
+```
+
+Manual:
+
+```text
+Upload sample report
+Map columns
+Save import template
+Run first import
+```
+
+## Universal connector responsibility
+
+The shared framework should handle:
+
+* Company/provider association
+* Supported capabilities
+* Connection status
+* Credentials
+* Location mapping
+* Menu-item mapping
+* Sync jobs
+* Backfills
+* Disconnection and reauthorization
+* Manual fallback availability
+
+Each provider adapter handles only provider-specific behavior:
+
+```typescript
+interface PosConnector {
+  providerKey: string;
+
+  buildAuthorizationUrl(): string;
+  exchangeAuthorizationCode(code: string): Promise<Credentials>;
+  listLocations(connectionId: string): Promise<PosLocation[]>;
+  retrieveCatalog(connectionId: string): Promise<PosCatalogVariation[]>;
+  retrieveSales(
+    connectionId: string,
+    range: PosDateRange
+  ): Promise<PosSalesBatch>;
+  refreshCredentials(connectionId: string): Promise<void>;
+}
+```
+
+Square is adapter number one—not a separate Square feature area.
+
+## Replit correction
+
+````markdown
+# Align Square with the Universal POS Configuration Model
+
+The Square connector should not appear to be independent from the company’s selected POS provider.
+
+The intended product model is:
+
+1. The company selects its POS provider.
+2. The company selects how FnB receives sales:
+   - Electronic connection
+   - Manual report upload
+3. If electronic is selected, the universal POS connector framework loads the adapter registered for that provider.
+4. Square is the first implemented adapter in this framework.
+
+## Authoritative configuration
+
+Treat these as one connected configuration:
+
+- POS provider
+- Sales data method
+- Electronic connection status
+
+Example:
+
+- Provider: Square
+- Method: Electronic
+- Status: Connected
+
+Do not treat the Company POS Provider field as unrelated reporting metadata.
+
+## Company settings UI
+
+Create or revise a unified `POS & Sales Data` section showing:
+
+- Selected POS provider
+- Sales data method
+- Connector availability
+- Connection status
+- Merchant/account identity
+- Location-mapping status
+- Menu-item-mapping status
+- Last successful sync
+- Relevant actions
+
+Electronic Square example:
+
+- POS Provider: Square
+- Sales Method: Electronic connection
+- Status: Connected
+- Actions:
+  - Manage Connection
+  - Manage Locations
+  - Manage Item Mappings
+  - Sync Now
+
+Manual example:
+
+- POS Provider: HungerRush
+- Sales Method: Manual report upload
+- Actions:
+  - Upload Sales Report
+  - Manage Import Template
+
+## Connector registry
+
+The selected provider should resolve through the shared POS connector registry.
+
+Example provider metadata:
+
+```typescript
+{
+  providerKey: "square",
+  displayName: "Square",
+  electronicConnectionAvailable: true,
+  manualImportAvailable: true,
+  adapter: squareConnector
+}
+````
+
+Providers without an electronic adapter should remain selectable and fall back to manual import.
+
+Example:
+
+* Provider: HungerRush
+* Electronic connection: Not available yet
+* Manual import: Available
+
+## Setup workflow
+
+During company onboarding:
+
+1. Select POS provider.
+2. Choose sales data method.
+3. If electronic:
+
+   * Connect provider
+   * Map locations
+   * Map menu items
+   * Run backfill
+4. If manual:
+
+   * Upload sample report
+   * Map columns
+   * Save import template
+
+## Existing Square work
+
+Keep the existing Square:
+
+* OAuth flow
+* Connection table
+* Location mappings
+* Item mappings
+* Sync jobs
+* Backfill
+* Incremental sync
+
+Expose it through the universal provider configuration rather than as an isolated Square settings feature.
+
+## Global-admin company context
+
+It is still useful to show which company a global admin is configuring, but this is secondary.
+
+The primary correction is to make POS selection, sales-import method, and connector status appear as one coherent company configuration.
+
+```
+
+That preserves your original architecture: **one universal POS framework, multiple provider adapters, and manual import as the fallback for providers that are not yet electronically supported.**
+```

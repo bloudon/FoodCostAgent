@@ -1,0 +1,138 @@
+Skip to content
+bloudon
+FoodCostAgent
+Repository navigation
+Code
+Issues
+Pull requests
+Actions
+Projects
+Wiki
+Security and quality
+Insights
+Settings
+Playwright Tests
+feat: persist menu scan session in localStorage so users can resume m… #14
+All jobs
+Run details
+Annotations
+1 error and 1 warning
+Run Playwright browser tests
+failed 6 minutes ago in 10m 31s
+Search logs
+1s
+23s
+3s
+5s
+16s
+22s
+1s
+1s
+1s
+9m 10s
+      229 |
+      230 | // =============================================================================
+        at goToRecipesPage (/home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:227:14)
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:242:5
+
+    Error Context: test-results/recipe-completion-quick-ac-44b82--non-placeholder-recipe-row-chromium-retry2/error-context.md
+
+  13) [chromium] › tests/recipe-completion-quick-actions.spec.ts:253:3 › "Complete" button visibility on desktop recipe rows › "Needs completion" badge appears on placeholder rows but not on regular rows 
+
+    TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.
+    Call log:
+      - waiting for locator('[data-testid^="row-recipe-"]') to be visible
+        21 × locator resolved to 4 elements. Proceeding with the first one: <div data-testid="row-recipe-mobile-ph-recipe-001">…</div>
+
+
+      225 |   // Use ?app to force app-mode routing in the development environment.
+      226 |   await page.goto(`${BASE_URL}/recipes?app`);
+    > 227 |   await page.waitForSelector('[data-testid^="row-recipe-"]', { timeout: 10000 });
+          |              ^
+      228 | }
+      229 |
+      230 | // =============================================================================
+        at goToRecipesPage (/home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:227:14)
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:254:5
+
+    Error Context: test-results/recipe-completion-quick-ac-c6315-ows-but-not-on-regular-rows-chromium/error-context.md
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.
+    Call log:
+      - waiting for locator('[data-testid^="row-recipe-"]') to be visible
+        23 × locator resolved to 4 elements. Proceeding with the first one: <div data-testid="row-recipe-mobile-ph-recipe-001">…</div>
+
+
+      225 |   // Use ?app to force app-mode routing in the development environment.
+      226 |   await page.goto(`${BASE_URL}/recipes?app`);
+    > 227 |   await page.waitForSelector('[data-testid^="row-recipe-"]', { timeout: 10000 });
+          |              ^
+      228 | }
+      229 |
+      230 | // =============================================================================
+        at goToRecipesPage (/home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:227:14)
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:254:5
+
+    Error Context: test-results/recipe-completion-quick-ac-c6315-ows-but-not-on-regular-rows-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/recipe-completion-quick-ac-c6315-ows-but-not-on-regular-rows-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/recipe-completion-quick-ac-c6315-ows-but-not-on-regular-rows-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #2 ───────────────────────────────────────────────────────────────────────────────────────
+
+    TimeoutError: page.waitForSelector: Timeout 10000ms exceeded.
+    Call log:
+      - waiting for locator('[data-testid^="row-recipe-"]') to be visible
+        22 × locator resolved to 4 elements. Proceeding with the first one: <div data-testid="row-recipe-mobile-ph-recipe-001">…</div>
+
+
+      225 |   // Use ?app to force app-mode routing in the development environment.
+      226 |   await page.goto(`${BASE_URL}/recipes?app`);
+    > 227 |   await page.waitForSelector('[data-testid^="row-recipe-"]', { timeout: 10000 });
+          |              ^
+      228 | }
+      229 |
+      230 | // =============================================================================
+        at goToRecipesPage (/home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:227:14)
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/recipe-completion-quick-actions.spec.ts:254:5
+
+    Error Context: test-results/recipe-completion-quick-ac-c6315-ows-but-not-on-regular-rows-chromium-retry2/error-context.md
+
+  14) [chromium] › tests/onboarding-plan-step.spec.ts:282:3 › Onboarding plan step — wizard Step 2 › manual "I've selected a plan" button shows error toast when API still returns free tier 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('No active plan found')
+    Expected: visible
+    Error: strict mode violation: getByText('No active plan found') resolved to 2 elements:
+        1) <div class="text-sm font-semibold">No active plan found</div> aka getByText('No active plan found', { exact: true })
+        2) <span role="status" aria-atomic="true" aria-live="assertive">Notification No active plan foundComplete your pl…</span> aka getByText('Notification No active plan')
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('No active plan found')
+
+
+      295 |
+      296 |     // Should show an error toast (no active plan found)
+    > 297 |     await expect(page.getByText('No active plan found')).toBeVisible({ timeout: 5000 });
+          |                                                          ^
+      298 |
+      299 |     // Should still be on step 2 (plan card still visible)
+      300 |     await expect(page.getByTestId('card-step-plan')).toBeVisible();
+        at /home/runner/work/FoodCostAgent/FoodCostAgent/tests/onboarding-plan-step.spec.ts:297:58
+
+    Error Context: test-results/onboarding-plan-step-Onboa-e936c-API-still-returns-free-tier-chromium/error-context.md
+2s
+3s
+0s
+0s
+0s
+0s

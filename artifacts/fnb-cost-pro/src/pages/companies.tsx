@@ -1,0 +1,1491 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
+import {
+  Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
+  Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
+  ChevronDown, ChevronUp, Wand2, MessageSquare, CheckCircle, XCircle,
+  Pencil, Smartphone, DatabaseBackup, DollarSign, Search, X,
+} from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TIER_LABELS, getTierLabel, type Tier, type DbTier, TIERS } from "@shared/tier-config";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useState, useMemo } from "react";
+
+type AdminStats = {
+  totalCompanies: number;
+  pendingSignups: number;
+  activeUsers: number;
+  activeSessions: number;
+  mobileUsers: number;
+};
+
+type BackupStatus = {
+  status: "success" | "failure" | "unknown";
+  lastRun: string | null;
+  lastLine?: string;
+  message?: string;
+};
+
+function formatAgo(isoTimestamp: string | null): string {
+  if (!isoTimestamp) return "Unknown";
+  const diff = Date.now() - new Date(isoTimestamp).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+type OrphanedSignup = {
+  companyId: string;
+  companyName: string;
+  companyCreatedAt: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  userFirstName: string | null;
+  userActive: number | null;
+};
+
+type ChatLogRow = {
+  id: string;
+  company_id: string;
+  company_name: string | null;
+  user_id: string | null;
+  user_message: string;
+  assistant_response: string;
+  tier: string;
+  created_at: string;
+};
+
+type ChatLogsResponse = {
+  logs: ChatLogRow[];
+  todayCount: number;
+  mostActiveCompany: { name: string; count: number } | null;
+  topTopics: Array<{ label: string; count: number }>;
+};
+
+type ChatCorrection = {
+  id: string;
+  chat_log_id: string | null;
+  user_message: string;
+  corrected_response: string;
+  is_active: number;
+  created_at: string;
+};
+
+type CompanyWithActivity = Company & { lastActivityAt: string | null };
+
+type QbConnectionStatus = {
+  companyId: string;
+  companyName: string;
+  connected: boolean;
+  realmId: string | null;
+  connectionLevel: "company" | "store";
+  lastSyncedAt: string | null;
+  expiresAt: string | null;
+};
+
+export default function Companies() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [isNewCompanyDialogOpen, setIsNewCompanyDialogOpen] = useState(false);
+  const [incompleteSignupsExpanded, setIncompleteSignupsExpanded] = useState(true);
+  const [qbDetailsOpen, setQbDetailsOpen] = useState(false);
+  const [chatLogsExpanded, setChatLogsExpanded] = useState(false);
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyTierFilter, setCompanyTierFilter] = useState<"all" | Tier>("all");
+  const [companyStatusFilter, setCompanyStatusFilter] = useState<"all" | "active" | "inactive" | "suspended">("all");
+  const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
+  const [chatLogCompanyFilter, setChatLogCompanyFilter] = useState<string>("all");
+  const [expandedCorrectionForm, setExpandedCorrectionForm] = useState<string | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState<string>("");
+  const [newCorrectionQuestion, setNewCorrectionQuestion] = useState<string>("");
+
+
+  const { data: companies, isLoading } = useQuery<CompanyWithActivity[]>({
+    queryKey: ["/api/companies"],
+  });
+
+  // Single canonical filter computation — reused for badge, list, and empty state
+  const filteredCompanies = useMemo(() => {
+    if (!companies) return [];
+    return companies.filter(c => {
+      const matchesSearch = !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase());
+      // Normalize legacy/unknown plan values the same way the tier selector does
+      const canonicalTier: Tier = TIERS.includes(c.subscriptionPlan as Tier) ? (c.subscriptionPlan as Tier) : "platform";
+      const matchesTier = companyTierFilter === "all" || canonicalTier === companyTierFilter;
+      const matchesStatus = companyStatusFilter === "all" || c.status === companyStatusFilter;
+      return matchesSearch && matchesTier && matchesStatus;
+    });
+  }, [companies, companySearch, companyTierFilter, companyStatusFilter]);
+
+  const isFiltered = companySearch !== "" || companyTierFilter !== "all" || companyStatusFilter !== "all";
+
+  const qbAppStatusQuery = useQuery<{ data: { configured: boolean; hasClientId: boolean; hasClientSecret: boolean; environment: string } }>({
+    queryKey: ["/api/admin/quickbooks/app-status"],
+  });
+
+  const qbConnectionsQuery = useQuery<QbConnectionStatus[]>({
+    queryKey: ["/api/admin/quickbooks/connections"],
+  });
+
+  const qbDisconnectMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await fetch(`/api/admin/quickbooks/disconnect/${companyId}`, { method: "POST" });
+      if (!res.ok) throw new Error(`Failed to disconnect: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/quickbooks/connections"] });
+      toast({ description: "QuickBooks disconnected." });
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to disconnect QuickBooks." }),
+  });
+
+  const chatLogsQuery = useQuery<ChatLogsResponse>({
+    queryKey: ["/api/admin/chat-logs", chatLogCompanyFilter],
+    queryFn: async () => {
+      const url = chatLogCompanyFilter !== "all"
+        ? `/api/admin/chat-logs?companyId=${chatLogCompanyFilter}`
+        : "/api/admin/chat-logs";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to load chat logs: ${res.status}`);
+      return res.json();
+    },
+    enabled: chatLogsExpanded,
+    refetchInterval: 30000,
+  });
+
+  const correctionsQuery = useQuery<ChatCorrection[]>({
+    queryKey: ["/api/admin/chat-corrections"],
+    enabled: chatLogsExpanded,
+  });
+
+  // Always-on preview: 3 most recent questions shown without expanding
+  const recentChatLogsQuery = useQuery<ChatLogsResponse>({
+    queryKey: ["/api/admin/chat-logs/preview"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/chat-logs?limit=3");
+      if (!res.ok) throw new Error(`Failed: ${res.status}`);
+      return res.json();
+    },
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+
+  const createCorrectionMutation = useMutation({
+    mutationFn: async (payload: { chatLogId?: string | null; userMessage: string; correctedResponse: string }) => {
+      const res = await fetch("/api/admin/chat-corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Failed to create correction: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+      setExpandedCorrectionForm(null);
+      setCorrectionDraft("");
+      setNewCorrectionQuestion("");
+      toast({ description: "Correction saved and will be injected into future prompts." });
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to save correction." }),
+  });
+
+  const toggleCorrectionMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: number }) => {
+      const res = await fetch(`/api/admin/chat-corrections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!res.ok) throw new Error(`Failed to update correction: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to update correction." }),
+  });
+
+  const deleteCorrectionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/chat-corrections/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Failed to delete correction: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chat-corrections"] });
+      toast({ description: "Correction deleted." });
+    },
+    onError: () => toast({ variant: "destructive", description: "Failed to delete correction." }),
+  });
+
+
+  const { data: adminStats } = useQuery<AdminStats>({
+    queryKey: ["/api/admin/stats"],
+    refetchInterval: 30000,
+  });
+
+  const { data: backupStatus } = useQuery<BackupStatus>({
+    queryKey: ["/api/admin/backup-status"],
+    refetchInterval: 300000,
+  });
+
+  const { data: orphanedSignups, isLoading: orphansLoading } = useQuery<OrphanedSignup[]>({
+    queryKey: ["/api/admin/orphaned-signups"],
+    refetchInterval: 60000,
+  });
+
+  const form = useForm<InsertCompany>({
+    resolver: zodResolver(insertCompanySchema),
+    defaultValues: {
+      name: "",
+      status: "active",
+      country: "US",
+      timezone: "America/New_York",
+    },
+  });
+
+  const createCompanyMutation = useMutation({
+    mutationFn: async (data: InsertCompany) => {
+      const response = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+      setIsNewCompanyDialogOpen(false);
+      form.reset();
+      toast({ title: "Company created successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create company", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const purgeCompanyMutation = useMutation({
+    mutationFn: async ({ companyId, dryRun }: { companyId: string; dryRun: boolean }) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/admin/companies/${companyId}/purge?dryRun=${dryRun}`,
+        undefined
+      );
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      if (data.dryRun) {
+        toast({
+          title: "Dry Run Complete",
+          description: `Would delete ${data.summary.totalRowsDeleted} rows from ${data.summary.tablesAffected} tables`,
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/orphaned-signups"] });
+        toast({
+          title: "Company Purged",
+          description: `Deleted ${data.summary.totalRowsDeleted} rows from ${data.summary.tablesAffected} tables`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Purge Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resendOtpMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      const response = await apiRequest(
+        "POST",
+        `/api/admin/orphaned-signups/${companyId}/resend-otp`,
+        {}
+      );
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Activation code sent",
+        description: `A new code was sent to ${data.email}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to send code", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateTierMutation = useMutation({
+    mutationFn: async ({ companyId, tier }: { companyId: string; tier: string }) => {
+      const response = await apiRequest("PATCH", `/api/admin/companies/${companyId}/subscription`, { tier });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      toast({ title: "Subscription tier updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update tier", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleCreateCompany = (data: InsertCompany) => {
+    createCompanyMutation.mutate(data);
+  };
+
+  const handlePurgeCompany = (companyId: string, dryRun: boolean = false) => {
+    purgeCompanyMutation.mutate({ companyId, dryRun });
+  };
+
+  const handleSelectCompany = async (companyId: string) => {
+    try {
+      await apiRequest("POST", "/api/auth/select-company", { companyId });
+      localStorage.setItem("selectedCompanyId", companyId);
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Failed to select company:", error);
+      toast({
+        title: "Error",
+        description: "Failed to select company",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleManageCompany = (companyId: string) => {
+    setLocation(`/companies/${companyId}`);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-lg">Loading companies...</div>
+      </div>
+    );
+  }
+
+  const hasOrphans = (orphanedSignups?.length ?? 0) > 0;
+
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      {/* Page header */}
+      <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-3xl font-bold mb-1" data-testid="text-page-title">Admin Dashboard</h1>
+          <p className="text-muted-foreground text-sm">System health and company management</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => setLocation("/onboarding-wizard")}
+            data-testid="button-launch-onboarding-wizard"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            Launch Onboarding Wizard
+          </Button>
+          <Dialog open={isNewCompanyDialogOpen} onOpenChange={setIsNewCompanyDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-new-company">
+                <Plus className="h-4 w-4 mr-2" />
+                New Company
+              </Button>
+            </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Company</DialogTitle>
+              <DialogDescription>Add a new company to the system</DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleCreateCompany)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Company Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Pizza Paradise Inc." data-testid="input-new-company-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="legalName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Legal Name (Optional)</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value || ""} data-testid="input-new-legal-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="contactEmail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contact Email (Optional)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="email" value={field.value || ""} data-testid="input-new-contact-email" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Timezone</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-new-timezone">
+                            <SelectValue placeholder="Select timezone" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                          <SelectItem value="America/Chicago">Central Time</SelectItem>
+                          <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                          <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsNewCompanyDialogOpen(false)}
+                    data-testid="button-cancel-new-company"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createCompanyMutation.isPending} data-testid="button-save-new-company">
+                    {createCompanyMutation.isPending ? "Creating..." : "Create Company"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        <StatCard
+          icon={<Building2 className="h-5 w-5 text-primary" />}
+          label="Companies"
+          value={adminStats?.totalCompanies ?? "—"}
+          testId="card-stat-total-companies"
+        />
+        <StatCard
+          icon={<Clock className="h-5 w-5 text-amber-500" />}
+          label="Pending Signups"
+          value={adminStats?.pendingSignups ?? "—"}
+          highlight={!!adminStats?.pendingSignups}
+          testId="card-stat-pending-signups"
+        />
+        <StatCard
+          icon={<Users className="h-5 w-5 text-primary" />}
+          label="Users"
+          value={adminStats?.activeUsers ?? "—"}
+          testId="card-stat-active-users"
+          onClick={() => setLocation("/admin/users")}
+          subtitle={
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              {adminStats?.activeSessions != null && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                  <Activity className="h-3 w-3" />
+                  {adminStats.activeSessions} active now
+                </span>
+              )}
+              {adminStats?.mobileUsers != null && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                  <Smartphone className="h-3 w-3" />
+                  {adminStats.mobileUsers} mobile
+                </span>
+              )}
+            </div>
+          }
+        />
+        <StatCard
+          icon={<DollarSign className="h-5 w-5 text-primary" />}
+          label="QB Connected"
+          value={qbConnectionsQuery.data ? qbConnectionsQuery.data.filter(c => c.connected).length : "—"}
+          testId="card-stat-qb"
+          onClick={() => setQbDetailsOpen(true)}
+          subtitle={
+            qbAppStatusQuery.data?.data ? (
+              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                {qbAppStatusQuery.data.data.hasClientId && qbAppStatusQuery.data.data.hasClientSecret ? (
+                  <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-500" />
+                ) : (
+                  <XCircle className="h-3 w-3 text-destructive" />
+                )}
+                <span className="capitalize">{qbAppStatusQuery.data.data.environment}</span>
+              </span>
+            ) : undefined
+          }
+        />
+        <StatCard
+          icon={
+            <DatabaseBackup
+              className={`h-5 w-5 ${
+                backupStatus?.status === "success"
+                  ? "text-green-500"
+                  : backupStatus?.status === "failure"
+                  ? "text-red-500"
+                  : "text-muted-foreground"
+              }`}
+            />
+          }
+          label="Last Backup"
+          value={backupStatus ? formatAgo(backupStatus.lastRun) : "—"}
+          subtitle={
+            backupStatus?.status === "success" ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                <CheckCircle className="h-3 w-3" />
+                OK
+              </span>
+            ) : backupStatus?.status === "failure" ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+                <XCircle className="h-3 w-3" />
+                Failed
+              </span>
+            ) : undefined
+          }
+          highlight={backupStatus?.status === "failure"}
+          testId="card-stat-backup-status"
+        />
+      </div>
+
+      {/* Incomplete signups section */}
+      {(hasOrphans || orphansLoading) && (
+        <Card className="mb-6 border-amber-200 dark:border-amber-900" data-testid="card-incomplete-signups">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <MailWarning className="h-5 w-5 text-amber-500" />
+              <CardTitle className="text-base">Incomplete Signups</CardTitle>
+              {hasOrphans && (
+                <Badge variant="secondary" className="text-xs" data-testid="badge-orphan-count">
+                  {orphanedSignups!.length}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                Companies created but never activated.
+              </p>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIncompleteSignupsExpanded((v) => !v)}
+                data-testid="button-toggle-incomplete-signups"
+                title={incompleteSignupsExpanded ? "Collapse" : "Expand"}
+              >
+                {incompleteSignupsExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {incompleteSignupsExpanded && (
+          <CardContent className="p-0">
+            {orphansLoading ? (
+              <div className="px-4 py-3 text-sm text-muted-foreground">Loading...</div>
+            ) : (
+              <div className="divide-y">
+                {orphanedSignups!.map((orphan) => (
+                  <div
+                    key={orphan.companyId}
+                    className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap"
+                    data-testid={`row-orphan-${orphan.companyId}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm" data-testid={`text-orphan-name-${orphan.companyId}`}>
+                          {orphan.companyName}
+                        </span>
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 dark:border-amber-700">
+                          Pending Activation
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                        {orphan.userEmail && (
+                          <span data-testid={`text-orphan-email-${orphan.companyId}`}>{orphan.userEmail}</span>
+                        )}
+                        {orphan.companyCreatedAt && (
+                          <span>
+                            Created {new Date(orphan.companyCreatedAt).toLocaleDateString(undefined, {
+                              month: "short", day: "numeric", year: "numeric"
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resendOtpMutation.mutate(orphan.companyId)}
+                        disabled={resendOtpMutation.isPending}
+                        data-testid={`button-resend-otp-${orphan.companyId}`}
+                      >
+                        {resendOtpMutation.isPending ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Resend Code
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`button-purge-orphan-${orphan.companyId}`}
+                            title="Delete incomplete signup"
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                          <AlertDialogHeader>
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="h-5 w-5 text-destructive" />
+                              <AlertDialogTitle>Delete Incomplete Signup?</AlertDialogTitle>
+                            </div>
+                            <AlertDialogDescription>
+                              This will permanently remove the company <strong>{orphan.companyName}</strong> and its pending user
+                              {orphan.userEmail && <> ({orphan.userEmail})</>}. This cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePurgeCompany(orphan.companyId, false);
+                              }}
+                              disabled={purgeCompanyMutation.isPending}
+                              className="bg-destructive hover:bg-destructive/90"
+                              data-testid={`button-confirm-purge-orphan-${orphan.companyId}`}
+                            >
+                              {purgeCompanyMutation.isPending ? "Deleting..." : "Delete"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* QuickBooks details modal — triggered from QB stat card */}
+      <Dialog open={qbDetailsOpen} onOpenChange={setQbDetailsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-qb-details">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              QuickBooks Details
+            </DialogTitle>
+            <DialogDescription>App configuration and company connections</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold mb-2">App Configuration</h3>
+              {qbAppStatusQuery.data?.data ? (
+                <div className="flex flex-wrap gap-4 text-sm p-3 bg-muted/40 rounded-md">
+                  <div className="flex items-center gap-2">
+                    {qbAppStatusQuery.data.data.hasClientId ? (
+                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    )}
+                    <span className="text-muted-foreground">Client ID</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {qbAppStatusQuery.data.data.hasClientSecret ? (
+                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    )}
+                    <span className="text-muted-foreground">Client Secret</span>
+                  </div>
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {qbAppStatusQuery.data.data.environment}
+                  </Badge>
+                  {!qbAppStatusQuery.data.data.configured && (
+                    <p className="w-full text-xs text-destructive mt-1">
+                      Set QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET in the server environment to enable QB OAuth.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Unable to load QB configuration.</p>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Company Connections</h3>
+              {qbConnectionsQuery.isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading...</div>
+              ) : !qbConnectionsQuery.data?.length ? (
+                <div className="text-sm text-muted-foreground">No companies found.</div>
+              ) : (
+                <div className="divide-y border rounded-md">
+                  {qbConnectionsQuery.data.map(item => (
+                    <div
+                      key={item.companyId}
+                      className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap"
+                      data-testid={`row-qb-${item.companyId}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{item.companyName}</span>
+                          {item.connected ? (
+                            <Badge variant="outline" className="text-xs text-green-600 border-green-300 dark:border-green-700">
+                              Connected
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              Not connected
+                            </Badge>
+                          )}
+                        </div>
+                        {item.connected && (
+                          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
+                            <span>{item.connectionLevel === "company" ? "Company-wide" : "Store-specific"}</span>
+                            {item.expiresAt && (
+                              <span>Expires {new Date(item.expiresAt).toLocaleDateString()}</span>
+                            )}
+                            {item.lastSyncedAt && (
+                              <span>Last sync {formatAgo(item.lastSyncedAt)}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {item.connected && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => qbDisconnectMutation.mutate(item.companyId)}
+                            disabled={qbDisconnectMutation.isPending}
+                            data-testid={`button-qb-disconnect-${item.companyId}`}
+                          >
+                            Disconnect
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Chat Logs — full width */}
+      <Card data-testid="card-chat-logs" className="mb-6">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <CardTitle className="text-base">AI Chat Logs</CardTitle>
+            {recentChatLogsQuery.data && (
+              <Badge variant="secondary" className="text-xs" data-testid="badge-chat-today">
+                {recentChatLogsQuery.data.todayCount} today
+              </Badge>
+            )}
+            {recentChatLogsQuery.data?.mostActiveCompany && (
+              <Badge variant="outline" className="text-xs" data-testid="badge-chat-most-active">
+                Most active: {recentChatLogsQuery.data.mostActiveCompany.name} ({recentChatLogsQuery.data.mostActiveCompany.count})
+              </Badge>
+            )}
+            {correctionsQuery.data && (
+              <Badge variant="outline" className="text-xs" data-testid="badge-corrections-active">
+                {correctionsQuery.data.filter(c => c.is_active === 1).length} active corrections
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+
+        {/* Always-visible: 3 most recent questions */}
+        <CardContent className="pt-0">
+          {recentChatLogsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading recent logs…</p>
+          ) : !recentChatLogsQuery.data?.logs.length ? (
+            <p className="text-sm text-muted-foreground italic">No chat logs yet.</p>
+          ) : (
+            <div className="space-y-2 mb-3">
+              {recentChatLogsQuery.data.logs.slice(0, 3).map(log => (
+                <div
+                  key={log.id}
+                  className="border rounded-md px-3 py-2 text-sm"
+                  data-testid={`row-recent-log-${log.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">{log.company_name ?? log.company_id}</Badge>
+                      <Badge variant="secondary" className="text-xs capitalize">{log.tier}</Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
+                  </div>
+                  <p className="font-medium text-sm line-clamp-2">{log.user_message}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full text-muted-foreground hover:text-foreground"
+            onClick={() => setChatLogsExpanded(v => !v)}
+            data-testid="button-toggle-chat-logs"
+          >
+            {chatLogsExpanded ? (
+              <><ChevronUp className="h-4 w-4 mr-1.5" />Hide full history</>
+            ) : (
+              <><ChevronDown className="h-4 w-4 mr-1.5" />View all history</>
+            )}
+          </Button>
+        </CardContent>
+
+        {/* Full history — shown when expanded */}
+        {chatLogsExpanded && (
+          <CardContent className="pt-0 border-t">
+            {/* Company filter */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap mt-4">
+              <span className="text-sm text-muted-foreground">Filter by company:</span>
+              <select
+                className="text-sm border rounded-md px-2 py-1 bg-background"
+                value={chatLogCompanyFilter}
+                onChange={e => setChatLogCompanyFilter(e.target.value)}
+                data-testid="select-chat-log-company-filter"
+              >
+                <option value="all">All companies</option>
+                {companies?.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Recap: top question topics */}
+            {chatLogsQuery.data && chatLogsQuery.data.topTopics.length > 0 && (
+              <div className="mb-4 p-3 bg-muted/40 rounded-md" data-testid="section-chat-topics">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">Common question topics:</p>
+                <div className="flex flex-wrap gap-2">
+                  {chatLogsQuery.data.topTopics.map(topic => (
+                    <Badge key={topic.label} variant="secondary" className="text-xs" data-testid={`badge-topic-${topic.label}`}>
+                      {topic.label} ({topic.count})
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active Corrections sub-section */}
+            <div className="mb-4">
+              <button
+                className="flex items-center gap-2 text-sm font-semibold mb-2 hover-elevate rounded-md px-1"
+                onClick={() => setCorrectionsExpanded(v => !v)}
+                data-testid="button-toggle-corrections"
+              >
+                {correctionsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                Active Corrections
+                <Badge variant="secondary" className="text-xs">
+                  {correctionsQuery.data?.filter(c => c.is_active === 1).length ?? 0} active / {correctionsQuery.data?.length ?? 0} total
+                </Badge>
+              </button>
+
+              {correctionsExpanded && (
+                <div className="space-y-2">
+                  {correctionsQuery.isLoading && (
+                    <p className="text-sm text-muted-foreground">Loading corrections...</p>
+                  )}
+                  {correctionsQuery.data?.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">No corrections yet.</p>
+                  )}
+                  {correctionsQuery.data?.map(correction => (
+                    <div
+                      key={correction.id}
+                      className={`border rounded-md p-3 text-sm ${correction.is_active === 1 ? "border-border" : "border-border/40 opacity-60"}`}
+                      data-testid={`row-correction-${correction.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-muted-foreground text-xs mb-1">Question pattern:</p>
+                          <p className="text-sm mb-2">{correction.user_message}</p>
+                          <p className="font-medium text-muted-foreground text-xs mb-1">Ideal answer:</p>
+                          <p className="text-sm whitespace-pre-wrap">{correction.corrected_response}</p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title={correction.is_active === 1 ? "Disable" : "Enable"}
+                            onClick={() => toggleCorrectionMutation.mutate({ id: correction.id, isActive: correction.is_active === 1 ? 0 : 1 })}
+                            data-testid={`button-toggle-correction-${correction.id}`}
+                          >
+                            {correction.is_active === 1
+                              ? <CheckCircle className="h-4 w-4 text-green-600" />
+                              : <XCircle className="h-4 w-4 text-muted-foreground" />
+                            }
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Delete correction"
+                            onClick={() => deleteCorrectionMutation.mutate(correction.id)}
+                            data-testid={`button-delete-correction-${correction.id}`}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add standalone correction */}
+                  {expandedCorrectionForm === "__new__" ? (
+                    <div className="border rounded-md p-3 space-y-2 mt-2" data-testid="form-new-correction">
+                      <p className="text-xs font-semibold text-muted-foreground">New correction</p>
+                      <Textarea
+                        placeholder="Question pattern (e.g. 'How do I add a vendor?')"
+                        rows={2}
+                        value={newCorrectionQuestion}
+                        onChange={e => setNewCorrectionQuestion(e.target.value)}
+                        className="text-sm"
+                        data-testid="input-new-correction-question"
+                      />
+                      <Textarea
+                        placeholder="Ideal answer..."
+                        rows={4}
+                        value={correctionDraft}
+                        onChange={e => setCorrectionDraft(e.target.value)}
+                        className="text-sm"
+                        data-testid="input-new-correction-answer"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (newCorrectionQuestion && correctionDraft) {
+                              createCorrectionMutation.mutate({ userMessage: newCorrectionQuestion, correctedResponse: correctionDraft });
+                            }
+                          }}
+                          disabled={createCorrectionMutation.isPending || !newCorrectionQuestion || !correctionDraft}
+                          data-testid="button-save-new-correction"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); setNewCorrectionQuestion(""); }}
+                          data-testid="button-cancel-new-correction"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-1"
+                      onClick={() => setExpandedCorrectionForm("__new__")}
+                      data-testid="button-add-correction"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Add Correction
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Q&A log cards */}
+            {chatLogsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading chat logs...</p>
+            ) : chatLogsQuery.data?.logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No chat logs found.</p>
+            ) : (
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                {chatLogsQuery.data?.logs.map(log => (
+                  <div
+                    key={log.id}
+                    className="border rounded-md p-3 text-sm"
+                    data-testid={`row-chat-log-${log.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">{log.company_name ?? log.company_id}</Badge>
+                        <Badge variant="secondary" className="text-xs capitalize">{log.tier}</Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(log.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="font-medium mb-1">Q: {log.user_message}</p>
+                    <p className="text-muted-foreground whitespace-pre-wrap">A: {log.assistant_response}</p>
+
+                    {/* Inline "Add Correction from this log" */}
+                    {expandedCorrectionForm === log.id ? (
+                      <div className="mt-3 border-t pt-3 space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground">Edit the AI response to the ideal answer:</p>
+                        <Textarea
+                          rows={6}
+                          value={correctionDraft}
+                          onChange={e => setCorrectionDraft(e.target.value)}
+                          className="text-sm"
+                          data-testid={`input-correction-draft-${log.id}`}
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (correctionDraft) {
+                                createCorrectionMutation.mutate({
+                                  chatLogId: log.id,
+                                  userMessage: log.user_message,
+                                  correctedResponse: correctionDraft,
+                                });
+                              }
+                            }}
+                            disabled={createCorrectionMutation.isPending || !correctionDraft}
+                            data-testid={`button-save-correction-${log.id}`}
+                          >
+                            Save Correction
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setExpandedCorrectionForm(null); setCorrectionDraft(""); }}
+                            data-testid={`button-cancel-correction-${log.id}`}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="mt-2 text-xs text-muted-foreground underline hover-elevate rounded-sm"
+                        onClick={() => {
+                          setExpandedCorrectionForm(log.id);
+                          setCorrectionDraft(log.assistant_response);
+                        }}
+                        data-testid={`button-add-correction-from-log-${log.id}`}
+                      >
+                        <Pencil className="h-3 w-3 inline mr-1" />
+                        Add correction for this response
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Companies list */}
+      <div className="mb-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+            All Companies
+          </h2>
+          {isFiltered && (
+            <Badge variant="secondary" className="text-xs" data-testid="badge-company-filter-count">
+              {filteredCompanies.length} of {companies?.length ?? 0}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search companies…"
+              value={companySearch}
+              onChange={e => setCompanySearch(e.target.value)}
+              className="pl-8 pr-7 h-8 text-sm"
+              data-testid="input-company-search"
+            />
+            {companySearch && (
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setCompanySearch("")}
+                aria-label="Clear search"
+                data-testid="button-clear-company-search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Select
+            value={companyTierFilter}
+            onValueChange={(v) => setCompanyTierFilter(v as "all" | Tier)}
+          >
+            <SelectTrigger className="h-8 w-36 text-sm" data-testid="select-company-tier-filter">
+              <SelectValue placeholder="All tiers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tiers</SelectItem>
+              {TIERS.map((t) => (
+                <SelectItem key={t} value={t}>{TIER_LABELS[t]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={companyStatusFilter}
+            onValueChange={(v) => setCompanyStatusFilter(v as "all" | "active" | "inactive" | "suspended")}
+          >
+            <SelectTrigger className="h-8 w-32 text-sm" data-testid="select-company-status-filter">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="suspended">Suspended</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {filteredCompanies.map((company) => (
+          <Card
+            key={company.id}
+            className="hover-elevate transition-all"
+            data-testid={`card-company-${company.id}`}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                {/* Left: Company info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-lg">{company.name}</h3>
+                      <Badge variant={company.status === "active" ? "default" : "secondary"} className="text-xs">
+                        {company.status}
+                      </Badge>
+                      <TierBadge tier={(company.subscriptionPlan as DbTier) || "platform"} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 ml-8 mb-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Plan:</span>
+                      <Select
+                        value={TIERS.includes(company.subscriptionPlan as Tier) ? (company.subscriptionPlan as Tier) : "platform"}
+                        onValueChange={(value) => {
+                          updateTierMutation.mutate({ companyId: company.id, tier: value });
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-tier-${company.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIERS.map((t) => (
+                            <SelectItem key={t} value={t}>{TIER_LABELS[t]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(company.subscriptionStatus || company.stripeCustomerId || company.subscriptionCurrentPeriodEnd) && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-help">
+                            <CreditCard className="h-3 w-3" />
+                            <span>{company.subscriptionStatus || "none"}</span>
+                            {company.subscriptionTerm && <span>({company.subscriptionTerm})</span>}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="text-xs space-y-1">
+                          {company.stripeCustomerId && <div>Stripe: {company.stripeCustomerId}</div>}
+                          {company.subscriptionCurrentPeriodEnd && (
+                            <div>Period ends: {new Date(company.subscriptionCurrentPeriodEnd).toLocaleDateString()}</div>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-4 ml-8 flex-wrap">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-help">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {company.lastActivityAt
+                              ? `Active ${formatAgo(company.lastActivityAt)}`
+                              : "No activity recorded"}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        {company.lastActivityAt
+                          ? `Last session: ${new Date(company.lastActivityAt).toLocaleString()}`
+                          : "No sessions found for this company"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+
+                  {company.addressLine1 && (
+                    <div className="flex items-start gap-2 text-sm text-muted-foreground ml-8 mt-1">
+                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <div>{company.addressLine1}</div>
+                        {company.addressLine2 && <div>{company.addressLine2}</div>}
+                        <div>
+                          {company.city && `${company.city}, `}
+                          {company.state} {company.postalCode}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectCompany(company.id);
+                    }}
+                    data-testid={`button-become-company-${company.id}`}
+                    title="Become this company"
+                  >
+                    <UserCircle className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleManageCompany(company.id);
+                    }}
+                    data-testid={`button-manage-company-${company.id}`}
+                    title="Manage company"
+                  >
+                    <Settings2 className="h-5 w-5" />
+                  </Button>
+
+                  {/* Purge button — available to all global admins */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`button-purge-company-${company.id}`}
+                        title="Purge company data"
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                      <AlertDialogHeader>
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-destructive" />
+                          <AlertDialogTitle>Purge Company Data?</AlertDialogTitle>
+                        </div>
+                        <AlertDialogDescription>
+                          This will permanently delete <strong>ALL</strong> data for <strong>{company.name}</strong>:
+                          <ul className="list-disc list-inside mt-2 space-y-1">
+                            <li>All stores and inventory</li>
+                            <li>All vendors and purchase orders</li>
+                            <li>All recipes and menu items</li>
+                            <li>All sales data and reports</li>
+                            <li>All users in this company</li>
+                          </ul>
+                          <p className="mt-3 text-destructive font-semibold">
+                            This action cannot be undone!
+                          </p>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePurgeCompany(company.id, true);
+                          }}
+                          disabled={purgeCompanyMutation.isPending}
+                          data-testid={`button-dry-run-purge-${company.id}`}
+                        >
+                          Dry Run (Preview)
+                        </Button>
+                        <AlertDialogCancel onClick={(e) => e.stopPropagation()}>
+                          Cancel
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePurgeCompany(company.id, false);
+                          }}
+                          disabled={purgeCompanyMutation.isPending}
+                          className="bg-destructive hover:bg-destructive/90"
+                          data-testid={`button-confirm-purge-${company.id}`}
+                        >
+                          {purgeCompanyMutation.isPending ? "Purging..." : "Purge Company"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {companies?.length === 0 && (
+        <div className="text-center py-12">
+          <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No companies found</h3>
+          <p className="text-muted-foreground">No companies have been created yet.</p>
+        </div>
+      )}
+      {(companies?.length ?? 0) > 0 && isFiltered && filteredCompanies.length === 0 && (
+        <div className="text-center py-12">
+          <Search className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <h3 className="text-base font-semibold mb-1">No companies match the current filters</h3>
+          <button
+            className="text-sm text-primary underline"
+            onClick={() => { setCompanySearch(""); setCompanyTierFilter("all"); setCompanyStatusFilter("all"); }}
+            data-testid="button-clear-company-filters"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  subtitle,
+  highlight = false,
+  testId,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  subtitle?: React.ReactNode;
+  highlight?: boolean;
+  testId?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <Card
+      className={[
+        highlight ? "border-amber-300 dark:border-amber-700" : "",
+        onClick ? "cursor-pointer hover-elevate" : "",
+      ].join(" ").trim()}
+      data-testid={testId}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-9 w-9 rounded-md bg-muted flex-shrink-0">
+            {icon}
+          </div>
+          <div>
+            <p
+              className={`text-2xl font-bold leading-none ${highlight ? "text-amber-600 dark:text-amber-400" : ""}`}
+              data-testid={testId ? `${testId}-value` : undefined}
+            >
+              {value}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+            {subtitle && <div className="mt-0.5">{subtitle}</div>}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TierBadge({ tier }: { tier: DbTier }) {
+  const variant = tier === "enterprise" ? "destructive" : tier === "platform" ? "default" : "secondary";
+  return (
+    <Badge variant={variant} className="text-xs" data-testid={`badge-tier-${tier}`}>
+      {getTierLabel(tier)}
+    </Badge>
+  );
+}
