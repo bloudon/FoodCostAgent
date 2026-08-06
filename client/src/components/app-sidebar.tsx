@@ -297,6 +297,30 @@ export function AppSidebar() {
           </Link>
         </div>
 
+        {/* Company logo badge — persistent in both collapsed and expanded states */}
+        {company?.logoImagePath && (
+          <div
+            className={cn(
+              "flex items-center px-3 pt-2",
+              isExpanded ? "gap-2" : "justify-center"
+            )}
+            data-testid="company-logo-badge"
+          >
+            <div className="h-9 w-9 shrink-0 rounded-md border bg-background overflow-hidden flex items-center justify-center">
+              <img
+                src={`${company.logoImagePath}?thumbnail=true`}
+                alt={company.name ? `${company.name} logo` : "Company logo"}
+                className="h-full w-full object-contain"
+                data-testid="img-sidebar-company-logo"
+              />
+            </div>
+            {isExpanded && (
+              <span className="text-xs font-medium text-sidebar-foreground truncate">
+                {company.name}
+              </span>
+            )}
+          </div>
+        )}
       </SidebarHeader>
 
       {/* ── Content: flat rail ───────────────────────────────────────────── */}
@@ -332,7 +356,10 @@ export function AppSidebar() {
 
             return (
               <SidebarMenuItem key={item.id}>
-                {!isExpanded ? (
+                {/* Tooltips only when the rail is locked minimized — otherwise
+                    hovering expands the flyout, whose inline labels sit on the
+                    sidebar background instead of floating over page content. */}
+                {!isExpanded && isLockedMinimized ? (
                   <Tooltip>
                     <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
                     <TooltipContent side="right">{item.label}</TooltipContent>
