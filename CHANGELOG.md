@@ -2,6 +2,16 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.16.0] — 2026-08-06
+
+### AI assistant — live data tools + token metering
+
+- **Tool-calling architecture** — the AI chat no longer relies on pre-stuffed prompt snapshots. The model now queries company data on demand through 9 read-only, company-scoped tools: inventory items, recipes (with ingredient costing), menu items (with food cost %), waste log, inventory count sessions, TFC variance runs, menu portfolio, vendors, and purchase orders (`server/chatTools.ts`)
+- **Tenant isolation preserved** — every tool executes server-side with the authenticated session's company ID; the model chooses what to query, never whose data
+- **All company data reachable** — questions about specific items, past counts, waste by item name, vendors, or recent orders are now answered from live records with search terms and date ranges instead of a fixed 30/90-day snapshot
+- **Token metering ledger** — new `ai_token_usage` table records prompt/completion/total tokens, tool call count, and model per AI request (migration v069). Interrupted or failed streams are still metered with estimated counts (`is_estimated` flag), forming the foundation for usage-based billing
+- **Prompt slimming** — dropped ~450 lines of keyword-matched context stuffing; navigation, setup guidance, and correction examples remain
+
 ## [1.15.2] — 2026-08-04
 
 ### Jonas Encore import — operating unit matching fix and preview badges

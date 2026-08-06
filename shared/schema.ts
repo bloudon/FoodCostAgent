@@ -1793,6 +1793,27 @@ export const chatCorrections = pgTable("chat_corrections", {
 export const insertChatCorrectionSchema = createInsertSchema(chatCorrections).omit({ id: true, createdAt: true });
 export type InsertChatCorrection = z.infer<typeof insertChatCorrectionSchema>;
 
+// AI Token Usage — one row per AI request; the metering ledger for usage-based billing
+export const aiTokenUsage = pgTable("ai_token_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  userId: varchar("user_id"), // nullable — logged from session when available
+  feature: text("feature").notNull().default("chat"), // chat | invoice_scan | recipe_scan | menu_scan | csv_import ...
+  model: text("model").notNull(),
+  promptTokens: integer("prompt_tokens").notNull().default(0),
+  completionTokens: integer("completion_tokens").notNull().default(0),
+  totalTokens: integer("total_tokens").notNull().default(0),
+  toolCalls: integer("tool_calls").notNull().default(0), // number of data-tool invocations in the request
+  isEstimated: integer("is_estimated").notNull().default(0), // 1 = stream aborted before authoritative usage; counts estimated from chars
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  companyCreatedIdx: index("ai_token_usage_company_created_idx").on(table.companyId, table.createdAt),
+}));
+
+export const insertAiTokenUsageSchema = createInsertSchema(aiTokenUsage).omit({ id: true, createdAt: true });
+export type InsertAiTokenUsage = z.infer<typeof insertAiTokenUsageSchema>;
+export type AiTokenUsage = typeof aiTokenUsage.$inferSelect;
+
 // ─────────── PREP CHART MODULE (Pro tier) ───────────
 
 // Stations — kitchen production areas (Grill, Cold Prep, Fryer, etc.)

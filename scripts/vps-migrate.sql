@@ -2629,3 +2629,31 @@ DO $$ BEGIN
       VALUES ('v068', 'Task #862: add target_store_id to inventory_import_batches');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v069 — AI token usage ledger for usage-based billing
+-- One row per AI request (chat, scanners, imports). Aggregated monthly per
+-- company to bill token consumption above the plan's included threshold.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v069') THEN
+    CREATE TABLE IF NOT EXISTS ai_token_usage (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id VARCHAR NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      user_id VARCHAR,
+      feature TEXT NOT NULL DEFAULT 'chat',
+      model TEXT NOT NULL,
+      prompt_tokens INTEGER NOT NULL DEFAULT 0,
+      completion_tokens INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      tool_calls INTEGER NOT NULL DEFAULT 0,
+      is_estimated INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS ai_token_usage_company_created_idx
+      ON ai_token_usage (company_id, created_at);
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v069', 'AI token usage ledger (ai_token_usage) for metered billing');
+  END IF;
+END $$;

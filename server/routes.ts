@@ -20306,6 +20306,31 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     let clientDisconnected = false;
     req.on("close", () => { clientDisconnected = true; });
 
+    // Metering state — hoisted so usage is recorded even on error/disconnect paths.
+    const CHAT_MODEL = "gpt-4o-mini";
+    let meterPromptTokens = 0;
+    let meterCompletionTokens = 0;
+    let meterToolCalls = 0;
+    let meterRoundsStarted = 0;
+    let meterEstimatedPromptChars = 0;
+    let meterEstimatedCompletionChars = 0;
+    let usageRecorded = false;
+    const recordTokenUsage = () => {
+      if (usageRecorded || meterRoundsStarted === 0) return;
+      usageRecorded = true;
+      // If the stream aborted before the terminal usage chunk, estimate (~4 chars/token)
+      // so interrupted requests are still metered rather than silently free.
+      const estimated = meterPromptTokens === 0 && meterCompletionTokens === 0;
+      const promptT = estimated ? Math.ceil(meterEstimatedPromptChars / 4) : meterPromptTokens;
+      const completionT = estimated ? Math.ceil(meterEstimatedCompletionChars / 4) : meterCompletionTokens;
+      if (promptT === 0 && completionT === 0) return;
+      const userId = (req as any).user?.id ?? null;
+      db.execute(
+        sql`INSERT INTO ai_token_usage (company_id, user_id, feature, model, prompt_tokens, completion_tokens, total_tokens, tool_calls, is_estimated)
+            VALUES (${companyId}, ${userId}, 'chat', ${CHAT_MODEL}, ${promptT}, ${completionT}, ${promptT + completionT}, ${meterToolCalls}, ${estimated ? 1 : 0})`
+      ).catch((usageErr: any) => console.warn("Failed to save AI token usage:", usageErr));
+    };
+
     try {
       const companyResult = await db.execute(
         sql`SELECT name, subscription_plan FROM companies WHERE id = ${companyId} LIMIT 1`
@@ -20344,412 +20369,6 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         ? topItems.map(i => `${i.name}: $${Number(i.price_per_unit).toFixed(2)}/${i.unit_name || "unit"}`).join(", ")
         : "No priced items yet";
 
-      // Fetch inventory snapshot for personalized AI context (keyword-matched or top 50)
-      // Combine all user messages in the conversation for matching so item references in
-      // earlier turns are also detected, not just the most recent message.
-      const allUserText = messages
-        .filter(m => m.role === "user")
-        .map(m => m.content)
-        .join(" ")
-        .toLowerCase();
-
-      let inventoryContextBlock = "";
-      try {
-        // Fetch all company items (up to 500) so keyword matching works across the full inventory,
-        // not just the most expensive items. Results are ordered by price DESC so that the
-        // no-match fallback (sliced to top 50) reflects the highest-cost items.
-        const inventorySnapshotResult = await db.execute(
-          sql`SELECT ii.name, u.name as unit_name, ii.yield_percent, ii.price_per_unit, c.name as category_name
-              FROM inventory_items ii
-              LEFT JOIN units u ON ii.unit_id = u.id
-              LEFT JOIN categories c ON ii.category_id = c.id
-              WHERE ii.company_id = ${companyId}
-              ORDER BY ii.price_per_unit DESC NULLS LAST
-              LIMIT 500`
-        );
-        const allInventoryItems = ((inventorySnapshotResult as any).rows || inventorySnapshotResult) as Array<{
-          name: string; unit_name: string | null; yield_percent: string | null;
-          price_per_unit: string | null; category_name: string | null;
-        }>;
-
-        if (allInventoryItems.length > 0) {
-          // Keyword match across ALL fetched items using full conversation text.
-          // Uses word-boundary regex to avoid false positives (e.g. "oil" matching "boiling").
-          // Capped at 50 to keep prompt size bounded.
-          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const matchedItems = allInventoryItems
-            .filter(item => {
-              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.name.toLowerCase())}(?![a-z])`);
-              return pattern.test(allUserText);
-            })
-            .slice(0, 50);
-          // If matches found, use them; otherwise fall back to the top 50 by cost
-          const itemsToInclude = matchedItems.length > 0 ? matchedItems : allInventoryItems.slice(0, 50);
-
-          const lines = itemsToInclude.map(item => {
-            const price = item.price_per_unit ? `$${Number(item.price_per_unit).toFixed(4)}` : "no price set";
-            const unit = item.unit_name || "unit";
-            const yld = item.yield_percent ? `yield ${Number(item.yield_percent).toFixed(0)}%` : null;
-            const cat = item.category_name || null;
-            const extras = [yld, cat].filter(Boolean).join(", ");
-            return `  - ${item.name}: ${price}/${unit}${extras ? ` (${extras})` : ""}`;
-          });
-
-          const header = matchedItems.length > 0
-            ? `Inventory items mentioned in this conversation (${companyName}'s actual data):`
-            : `Inventory snapshot — ${companyName}'s top ${itemsToInclude.length} items by cost:`;
-
-          inventoryContextBlock = `\n${header}\n${lines.join("\n")}`;
-        }
-      } catch (invErr) {
-        console.warn("Failed to fetch inventory snapshot for chat:", invErr);
-      }
-
-      // Fetch recipe snapshot for personalized AI context (keyword-matched or top 10 by cost)
-      let recipeContextBlock = "";
-      try {
-        const recipesSnapshotResult = await db.execute(
-          sql`SELECT r.id, r.name, r.computed_cost, r.yield_qty, u.name as yield_unit_name
-              FROM recipes r
-              LEFT JOIN units u ON r.yield_unit_id = u.id
-              WHERE r.company_id = ${companyId} AND r.is_active = 1 AND (r.is_placeholder = 0 OR r.is_placeholder IS NULL)
-              ORDER BY r.computed_cost DESC NULLS LAST
-              LIMIT 300`
-        );
-        const allRecipes = ((recipesSnapshotResult as any).rows || recipesSnapshotResult) as Array<{
-          id: string; name: string; computed_cost: string | null;
-          yield_qty: string | null; yield_unit_name: string | null;
-        }>;
-
-        if (allRecipes.length > 0) {
-          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const matchedRecipes = allRecipes
-            .filter(recipe => {
-              const pattern = new RegExp(`(?<![a-z])${escapeRegex(recipe.name.toLowerCase())}(?![a-z])`);
-              return pattern.test(allUserText);
-            })
-            .slice(0, 5);
-
-          if (matchedRecipes.length > 0) {
-            // Fetch ingredients for each matched recipe and format detailed blocks
-            const detailedBlocks: string[] = [];
-            for (const recipe of matchedRecipes) {
-              const ingredientsResult = await db.execute(
-                sql`SELECT rc.qty,
-                           COALESCE(ii.name, r2.name, rc.missing_item_name) as ingredient_name,
-                           u.name as unit_name,
-                           ii.price_per_unit,
-                           rc.component_type,
-                           COALESCE(rc.yield_override, ii.yield_percent) as effective_yield,
-                           r2.computed_cost as sub_recipe_cost,
-                           r2.yield_qty as sub_recipe_yield_qty
-                    FROM recipe_components rc
-                    LEFT JOIN inventory_items ii ON rc.component_id = ii.id AND rc.component_type = 'inventory_item'
-                    LEFT JOIN recipes r2 ON rc.component_id = r2.id AND rc.component_type = 'recipe'
-                    LEFT JOIN units u ON rc.unit_id = u.id
-                    WHERE rc.recipe_id = ${recipe.id}
-                    ORDER BY rc.sort_order ASC
-                    LIMIT 20`
-              );
-              const ingredients = ((ingredientsResult as any).rows || ingredientsResult) as Array<{
-                qty: string | null; ingredient_name: string | null; unit_name: string | null;
-                price_per_unit: string | null; component_type: string | null; effective_yield: string | null;
-                sub_recipe_cost: string | null; sub_recipe_yield_qty: string | null;
-              }>;
-
-              const cost = recipe.computed_cost ? `$${Number(recipe.computed_cost).toFixed(4)}` : "not costed";
-              const yieldStr = recipe.yield_qty ? `${Number(recipe.yield_qty)} ${recipe.yield_unit_name || "units"}` : "";
-              const header = `Recipe: ${recipe.name} — total cost: ${cost}${yieldStr ? `, yield: ${yieldStr}` : ""}`;
-
-              const ingredientLines = ingredients.map(ing => {
-                const qty = ing.qty ? Number(ing.qty).toFixed(3).replace(/\.?0+$/, "") : "?";
-                const unit = ing.unit_name || "";
-                const name = ing.ingredient_name || "Unknown";
-                // For inventory items use price_per_unit; for sub-recipes derive cost-per-unit from computed_cost/yield_qty
-                let linePrice: string | null = null;
-                if (ing.price_per_unit && ing.qty) {
-                  linePrice = `$${(Number(ing.price_per_unit) * Number(ing.qty)).toFixed(4)}`;
-                } else if (ing.sub_recipe_cost && ing.sub_recipe_yield_qty && ing.qty && Number(ing.sub_recipe_yield_qty) > 0) {
-                  const cpUnit = Number(ing.sub_recipe_cost) / Number(ing.sub_recipe_yield_qty);
-                  linePrice = `$${(cpUnit * Number(ing.qty)).toFixed(4)}`;
-                }
-                const yld = ing.effective_yield ? ` (yield ${Number(ing.effective_yield).toFixed(0)}%)` : "";
-                return `    - ${qty} ${unit} ${name}${yld}${linePrice ? ` → ${linePrice}` : ""}`;
-              });
-
-              detailedBlocks.push(`  ${header}\n${ingredientLines.join("\n")}`);
-            }
-
-            recipeContextBlock = `\nRecipes mentioned in this conversation (${companyName}'s actual data):\n${detailedBlocks.join("\n")}`;
-          } else {
-            // Fall back to compact list of top 10 most expensive recipes
-            const top10 = allRecipes.slice(0, 10);
-            const lines = top10.map(r => {
-              const cost = r.computed_cost ? `$${Number(r.computed_cost).toFixed(4)}` : "not costed";
-              const yieldStr = r.yield_qty ? ` / ${Number(r.yield_qty)} ${r.yield_unit_name || "units"}` : "";
-              return `  - ${r.name}: ${cost}${yieldStr}`;
-            });
-            recipeContextBlock = `\nRecipe snapshot — ${companyName}'s top ${top10.length} recipes by cost:\n${lines.join("\n")}`;
-          }
-        }
-      } catch (recErr) {
-        console.warn("Failed to fetch recipe snapshot for chat:", recErr);
-      }
-
-      // Fetch menu item context for personalized AI context (keyword-matched or top 10 by food cost %)
-      let menuItemContextBlock = "";
-      try {
-        const menuItemsSnapshotResult = await db.execute(
-          sql`SELECT mi.id, mi.name, mi.price, r.name as recipe_name, r.computed_cost
-              FROM menu_items mi
-              LEFT JOIN recipes r ON mi.recipe_id = r.id
-              WHERE mi.company_id = ${companyId} AND mi.active = 1 AND mi.price > 0
-              ORDER BY mi.name ASC
-              LIMIT 300`
-        );
-        const allMenuItems = ((menuItemsSnapshotResult as any).rows || menuItemsSnapshotResult) as Array<{
-          id: string; name: string; price: string | null;
-          recipe_name: string | null; computed_cost: string | null;
-        }>;
-
-        if (allMenuItems.length > 0) {
-          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const matchedMenuItems = allMenuItems
-            .filter(item => {
-              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.name.toLowerCase())}(?![a-z])`);
-              return pattern.test(allUserText);
-            })
-            .slice(0, 10);
-
-          const formatMenuItem = (item: { name: string; price: string | null; recipe_name: string | null; computed_cost: string | null }) => {
-            const price = item.price ? `$${Number(item.price).toFixed(2)}` : "no price";
-            const recipe = item.recipe_name ? item.recipe_name : "no linked recipe";
-            let fcPct = "";
-            if (item.price && item.computed_cost && Number(item.price) > 0) {
-              const pct = (Number(item.computed_cost) / Number(item.price)) * 100;
-              fcPct = `, food cost: ${pct.toFixed(1)}%`;
-            }
-            return `  - ${item.name}: sale price ${price}${fcPct}, recipe: ${recipe}`;
-          };
-
-          if (matchedMenuItems.length > 0) {
-            const lines = matchedMenuItems.map(formatMenuItem);
-            menuItemContextBlock = `\nMenu items mentioned in this conversation (${companyName}'s actual data):\n${lines.join("\n")}`;
-          } else {
-            // Fall back to top 10 by worst food cost % (highest food cost = worst margin)
-            const withFcp = allMenuItems
-              .filter(item => item.price && item.computed_cost && Number(item.price) > 0)
-              .map(item => ({
-                ...item,
-                foodCostPct: (Number(item.computed_cost) / Number(item.price)) * 100,
-              }))
-              .sort((a, b) => b.foodCostPct - a.foodCostPct)
-              .slice(0, 10);
-            if (withFcp.length > 0) {
-              const lines = withFcp.map(formatMenuItem);
-              menuItemContextBlock = `\nMenu item snapshot — ${companyName}'s top ${withFcp.length} items by highest food cost %:\n${lines.join("\n")}`;
-            } else {
-              // No costed menu items — just show first 10 by name
-              const top10 = allMenuItems.slice(0, 10);
-              const lines = top10.map(formatMenuItem);
-              menuItemContextBlock = `\nMenu item snapshot — ${companyName}'s menu items (${top10.length} shown):\n${lines.join("\n")}`;
-            }
-          }
-        }
-      } catch (menuErr) {
-        console.warn("Failed to fetch menu item snapshot for chat:", menuErr);
-      }
-
-      // Fetch waste log snapshot for personalized AI context (keyword-matched or top 10 by cost)
-      let wasteContextBlock = "";
-      try {
-        const wasteSnapshotResult = await db.execute(
-          sql`SELECT
-                COALESCE(ii.name, mi.name, 'Unknown') as item_name,
-                wl.waste_type,
-                SUM(wl.qty) as total_qty,
-                SUM(wl.total_value) as total_cost,
-                u.name as unit_name
-              FROM waste_logs wl
-              LEFT JOIN inventory_items ii ON wl.inventory_item_id = ii.id AND wl.waste_type = 'inventory'
-              LEFT JOIN menu_items mi ON wl.menu_item_id = mi.id AND wl.waste_type = 'menu_item'
-              LEFT JOIN units u ON ii.unit_id = u.id
-              WHERE wl.company_id = ${companyId}
-                AND wl.wasted_at >= NOW() - INTERVAL '30 days'
-              GROUP BY COALESCE(ii.name, mi.name, 'Unknown'), wl.waste_type, u.name
-              ORDER BY total_cost DESC
-              LIMIT 100`
-        );
-        const allWasteItems = ((wasteSnapshotResult as any).rows || wasteSnapshotResult) as Array<{
-          item_name: string; waste_type: string; total_qty: string | null;
-          total_cost: string | null; unit_name: string | null;
-        }>;
-
-        // Fetch totals for current and prior 30-day windows for trend comparison
-        const wasteTotalsResult = await db.execute(
-          sql`SELECT
-                SUM(CASE WHEN wl.wasted_at >= NOW() - INTERVAL '30 days' THEN wl.total_value ELSE 0 END) as current_total,
-                SUM(CASE WHEN wl.wasted_at >= NOW() - INTERVAL '60 days' AND wl.wasted_at < NOW() - INTERVAL '30 days' THEN wl.total_value ELSE 0 END) as prior_total
-              FROM waste_logs wl
-              WHERE wl.company_id = ${companyId}
-                AND wl.wasted_at >= NOW() - INTERVAL '60 days'`
-        );
-        const wasteTotalsRow = (((wasteTotalsResult as any).rows || wasteTotalsResult)[0] || {}) as {
-          current_total: string | null; prior_total: string | null;
-        };
-        const currentTotal = wasteTotalsRow.current_total ? Number(wasteTotalsRow.current_total) : 0;
-        const priorTotal = wasteTotalsRow.prior_total ? Number(wasteTotalsRow.prior_total) : 0;
-
-        let wasteTrendLine = "";
-        if (currentTotal > 0 || priorTotal > 0) {
-          const currentFmt = `$${currentTotal.toFixed(2)}`;
-          const priorFmt = `$${priorTotal.toFixed(2)}`;
-          if (priorTotal > 0) {
-            const pctChange = ((currentTotal - priorTotal) / priorTotal) * 100;
-            const sign = pctChange >= 0 ? "+" : "";
-            wasteTrendLine = `Total waste cost this month: ${currentFmt} vs ${priorFmt} last month (${sign}${pctChange.toFixed(0)}%)`;
-          } else {
-            wasteTrendLine = `Total waste cost this month: ${currentFmt} (no data for prior 30-day period)`;
-          }
-        }
-
-        if (allWasteItems.length > 0) {
-          const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const matchedWasteItems = allWasteItems
-            .filter(item => {
-              const pattern = new RegExp(`(?<![a-z])${escapeRegex(item.item_name.toLowerCase())}(?![a-z])`);
-              return pattern.test(allUserText);
-            })
-            .slice(0, 20);
-
-          const wasteItemsToInclude = matchedWasteItems.length > 0 ? matchedWasteItems : allWasteItems.slice(0, 10);
-
-          const wasteLines = wasteItemsToInclude.map(item => {
-            const qty = item.total_qty ? Number(item.total_qty).toFixed(2).replace(/\.?0+$/, "") : "?";
-            const unit = item.unit_name ? ` ${item.unit_name}` : (item.waste_type === "menu_item" ? " servings" : "");
-            const cost = item.total_cost ? `$${Number(item.total_cost).toFixed(2)}` : "$0.00";
-            return `  - ${item.item_name}: ${qty}${unit} wasted, estimated cost ${cost}`;
-          });
-
-          const wasteHeader = matchedWasteItems.length > 0
-            ? `Waste log entries for items mentioned in this conversation — last 30 days (${companyName}'s actual data):`
-            : `Waste log snapshot — ${companyName}'s top ${wasteItemsToInclude.length} most-wasted items by cost (last 30 days):`;
-
-          wasteContextBlock = `\n${wasteTrendLine ? wasteTrendLine + "\n" : ""}${wasteHeader}\n${wasteLines.join("\n")}`;
-        } else if (wasteTrendLine) {
-          wasteContextBlock = `\n${wasteTrendLine}`;
-        }
-      } catch (wasteErr) {
-        console.warn("Failed to fetch waste log snapshot for chat:", wasteErr);
-      }
-
-      // Fetch inventory count session history for AI context (keyword-triggered, last 90 days)
-      let countHistoryContextBlock = "";
-      try {
-        const countKeywords = ["count", "counted", "counting", "inventory session", "count session", "verify", "audit", "on-hand", "on hand"];
-        const mentionsCounts = countKeywords.some(kw => allUserText.includes(kw));
-        if (mentionsCounts) {
-          const countSessionsResult = await db.execute(
-            sql`SELECT
-                  ic.id,
-                  ic.count_date,
-                  ic.name,
-                  ic.applied,
-                  ic.is_power_session,
-                  cs.name as store_name,
-                  cs.id as store_id,
-                  COUNT(DISTINCT icl.inventory_item_id)::int as item_count,
-                  COALESCE(SUM(icl.qty * icl.unit_cost), 0) as total_value
-                FROM inventory_counts ic
-                LEFT JOIN company_stores cs ON ic.store_id = cs.id
-                LEFT JOIN inventory_count_lines icl ON icl.inventory_count_id = ic.id
-                WHERE ic.company_id = ${companyId}
-                  AND ic.count_date >= NOW() - INTERVAL '90 days'
-                GROUP BY ic.id, ic.count_date, ic.name, ic.applied, ic.is_power_session, cs.name, cs.id
-                ORDER BY ic.count_date DESC
-                LIMIT 25`
-          );
-          const countSessions = ((countSessionsResult as any).rows || countSessionsResult) as Array<{
-            id: string; count_date: string; name: string | null; applied: number;
-            is_power_session: number; store_name: string | null; store_id: string | null;
-            item_count: number; total_value: string | null;
-          }>;
-
-          if (countSessions.length > 0) {
-            // Compute swing vs the prior session at the same store (sessions are ordered newest-first)
-            const priorValueByStore = new Map<string, number[]>();
-            for (const s of countSessions) {
-              const key = s.store_id || "unknown";
-              if (!priorValueByStore.has(key)) priorValueByStore.set(key, []);
-              priorValueByStore.get(key)!.push(Number(s.total_value || 0));
-            }
-
-            const seenPerStore = new Map<string, number>();
-            const lines = countSessions.map(s => {
-              const key = s.store_id || "unknown";
-              const idx = seenPerStore.get(key) ?? 0;
-              seenPerStore.set(key, idx + 1);
-              const values = priorValueByStore.get(key)!;
-              const value = values[idx];
-              const priorValue = idx + 1 < values.length ? values[idx + 1] : null;
-
-              const d = new Date(s.count_date);
-              const dateStr = d.toLocaleDateString();
-              const label = s.name ? ` "${s.name}"` : "";
-              const store = s.store_name || "Unknown store";
-              const status = s.applied === 1 ? "applied" : "not applied";
-              const kind = s.is_power_session === 1 ? ", power-item session" : "";
-              let swing = "";
-              if (priorValue !== null && priorValue > 0) {
-                const pct = ((value - priorValue) / priorValue) * 100;
-                if (Math.abs(pct) >= 15) {
-                  swing = ` — LARGE SWING: ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}% vs prior count at this store`;
-                } else {
-                  swing = ` (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}% vs prior count)`;
-                }
-              }
-              return `  - ${dateStr}${label} (${store}): ${s.item_count} items counted, total value $${value.toFixed(2)}, ${status}${kind}${swing}`;
-            });
-
-            countHistoryContextBlock = `\nInventory count sessions — ${companyName}'s count history (last 90 days, newest first):\n${lines.join("\n")}`;
-          } else {
-            countHistoryContextBlock = `\nInventory count sessions: no count sessions were recorded in the last 90 days.`;
-          }
-        }
-      } catch (countErr) {
-        console.warn("Failed to fetch count session history for chat:", countErr);
-      }
-
-      let tfcSummary = "";
-      // All paid plans (platform and enterprise) get TFC data
-      if (tier) {
-        try {
-          const tfcResult = await db.execute(
-            sql`SELECT tur.sales_date, tur.total_revenue, tur.total_theoretical_cost, tur.total_theoretical_cost_wac, cs.name as store_name
-                FROM theoretical_usage_runs tur
-                LEFT JOIN company_stores cs ON tur.store_id = cs.id
-                WHERE tur.company_id = ${companyId} AND tur.status = 'completed'
-                ORDER BY tur.sales_date DESC LIMIT 5`
-          );
-          const tfcRows = ((tfcResult as any).rows || tfcResult) as Array<{
-            sales_date: string; total_revenue: number; total_theoretical_cost: number;
-            total_theoretical_cost_wac: number; store_name: string;
-          }>;
-          if (tfcRows.length > 0) {
-            const lines = tfcRows.map(r => {
-              const rev = Number(r.total_revenue);
-              const cost = Number(r.total_theoretical_cost);
-              const pct = rev > 0 ? ((cost / rev) * 100).toFixed(1) : "N/A";
-              const d = new Date(r.sales_date);
-              return `${d.toLocaleDateString()} (${r.store_name || "Unknown"}): Revenue $${rev.toFixed(2)}, TFC $${cost.toFixed(2)} (${pct}%)`;
-            });
-            tfcSummary = `\n- Recent TFC variance (last 5 runs): ${lines.join("; ")}`;
-          }
-        } catch (tfcErr) {
-          console.warn("Failed to fetch TFC context for chat:", tfcErr);
-        }
-      }
-
       const isNewAccount = itemCount === 0 && recipeCount === 0 && vendorCount === 0 && storeCount === 0;
 
       // Pull active corrections to inject as few-shot examples
@@ -20765,42 +20384,6 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         }
       } catch (corrErr) {
         console.warn("Failed to fetch chat corrections:", corrErr);
-      }
-
-      // Fetch live/scheduled menus for AI context
-      let menusContextBlock = "";
-      try {
-        const menusResult = await db.execute(
-          sql`SELECT m.name, m.menu_type, m.status, m.effective_start, m.recurrence_days,
-                     COUNT(me.id) AS entry_count
-              FROM menus m
-              LEFT JOIN menu_entries me ON me.menu_id = m.id AND me.company_id = ${companyId}
-              WHERE m.company_id = ${companyId}
-                AND m.status IN ('live', 'scheduled', 'ready', 'draft')
-              GROUP BY m.id, m.name, m.menu_type, m.status, m.effective_start, m.recurrence_days
-              ORDER BY
-                CASE m.status WHEN 'live' THEN 1 WHEN 'scheduled' THEN 2 WHEN 'ready' THEN 3 ELSE 4 END,
-                m.name
-              LIMIT 10`
-        );
-        const menuRows = ((menusResult as any).rows || menusResult) as Array<{
-          name: string; menu_type: string | null; status: string;
-          effective_start: string | null; recurrence_days: string[] | null;
-          entry_count: string;
-        }>;
-        if (menuRows.length > 0) {
-          const lines = menuRows.map(m => {
-            const type = m.menu_type ? ` (${m.menu_type})` : "";
-            const count = `${m.entry_count} item${m.entry_count === "1" ? "" : "s"}`;
-            const start = m.effective_start ? `, starts ${new Date(m.effective_start).toLocaleDateString()}` : "";
-            const days = Array.isArray(m.recurrence_days) && m.recurrence_days.length > 0
-              ? `, served ${(m.recurrence_days as string[]).map((d: string) => d.slice(0, 3)).join("/")}` : "";
-            return `  - ${m.name}${type}: ${m.status}, ${count}${start}${days}`;
-          });
-          menusContextBlock = `\nMenu Portfolio snapshot — ${companyName}'s menus:\n${lines.join("\n")}`;
-        }
-      } catch (menusErr) {
-        console.warn("Failed to fetch menus context for chat:", menusErr);
       }
 
       const systemPrompt = `You are an expert F&B cost management assistant for "${companyName}" (${tier} plan). You help food service operators control costs, optimize recipes, and improve profitability.
@@ -20853,7 +20436,13 @@ PLAN MODEL — be precise about what each plan includes; never invent restrictio
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}${wasteContextBlock}${countHistoryContextBlock}${menusContextBlock}
+- Top items by cost: ${topItemsSummary}
+
+LIVE DATA TOOLS — you have direct, real-time access to ${companyName}'s data through tools:
+- search_inventory_items, get_recipes, get_menu_items, get_waste_log, get_count_sessions, get_tfc_runs, get_menus, get_vendors, get_purchase_orders
+- ALWAYS call the relevant tool(s) before answering any question about their specific data — items, prices, recipes, costs, menus, waste, counts, variance, vendors, or orders. Never guess and never claim you lack access to their account data; fetch it.
+- Use search parameters and date ranges to fetch only what the question needs.
+- If a tool returns no rows, say so plainly (e.g. "no count sessions were recorded in that period").
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
@@ -20992,10 +20581,8 @@ Navigation summary:
 - Forecast panel: inside the menu builder, right-hand panel → "Forecast" card
 
 Guidelines:
-- Give specific, actionable advice based on their data when possible
-- MENU PORTFOLIO DATA: When a Menu Portfolio snapshot is provided in "Current account data", reference actual menu names, statuses, and entry counts. If a user asks about a specific menu and it appears in the snapshot, cite its exact details (e.g. "I can see your Dinner Menu is currently live with 24 items"). If the menu they mention is not in the snapshot, acknowledge you don't see it.
-- COUNT SESSION DATA: When an "Inventory count sessions" block is provided in "Current account data", use it to answer questions about past inventory counts — verifying counts, comparing sessions, or spotting anomalies. Cite exact dates, store names, item counts, and total counted values. Call out any sessions flagged with LARGE SWING as worth reviewing. If the block says no sessions were recorded, tell the user no counts exist for that period. Counts are recorded via Hamburger menu → "Counts".
-- INVENTORY DATA: When an inventory snapshot is provided in "Current account data", use it to give item-specific advice. Reference actual item names, units, prices, yield percentages, and categories from the snapshot. If a user asks about a specific item and it appears in the snapshot, cite its exact details (e.g. "I can see your Chicken Thighs are set up in lb at $3.2500/lb with 85% yield"). If an item they mention is not in the snapshot, acknowledge you don't see it in their inventory.
+- Give specific, actionable advice based on their data — fetch it with the live data tools first
+- USING TOOL DATA: Cite exact names, dates, prices, and values from tool results (e.g. "I can see your Chicken Thighs are set up in lb at $3.2500/lb with 85% yield", "your Dinner Menu is currently live with 24 items"). For count questions, compare session values across dates and flag swings of ±15% or more as worth reviewing; counts are recorded via Hamburger menu → "Counts". If something the user mentions doesn't appear in a tool result, acknowledge you don't see it in their data.
 - Keep answers concise (2-4 paragraphs max)
 - Always name the exact app section to navigate to, not generic instructions
 - Focus on food cost control, waste reduction, recipe optimization, and purchasing strategies
@@ -21010,36 +20597,98 @@ Human Handoff:
 
       const OpenAI = (await import("openai")).default;
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const { chatToolDefinitions, executeChatTool } = await import("./chatTools");
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
-        ],
-        stream: true,
-        max_tokens: 1000,
-        temperature: 0.7,
-      });
+      const MAX_TOOL_ROUNDS = 6; // final round runs without tools to force an answer
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
+      const convo: any[] = [
+        { role: "system", content: systemPrompt },
+        ...messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+      ];
 
       const responseChunks: string[] = [];
+      let headersSent = false;
+      let finished = false;
 
-      for await (const chunk of completion) {
-        if (clientDisconnected) {
-          completion.controller.abort();
+      for (let round = 0; round < MAX_TOOL_ROUNDS && !finished && !clientDisconnected; round++) {
+        const allowTools = round < MAX_TOOL_ROUNDS - 1;
+        meterRoundsStarted++;
+        meterEstimatedPromptChars += JSON.stringify(convo).length;
+        const completion = await openai.chat.completions.create({
+          model: CHAT_MODEL,
+          messages: convo,
+          ...(allowTools ? { tools: chatToolDefinitions, tool_choice: "auto" as const } : {}),
+          stream: true,
+          stream_options: { include_usage: true },
+          max_tokens: 1000,
+          temperature: 0.7,
+        });
+
+        if (!headersSent) {
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.setHeader("X-Accel-Buffering", "no");
+          headersSent = true;
+        }
+
+        // Accumulate streamed tool-call deltas by index
+        const pendingToolCalls: Array<{ id: string; name: string; args: string }> = [];
+
+        for await (const chunk of completion) {
+          if (clientDisconnected) {
+            completion.controller.abort();
+            break;
+          }
+          if ((chunk as any).usage) {
+            meterPromptTokens += (chunk as any).usage.prompt_tokens ?? 0;
+            meterCompletionTokens += (chunk as any).usage.completion_tokens ?? 0;
+          }
+          const delta = chunk.choices[0]?.delta;
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!pendingToolCalls[idx]) pendingToolCalls[idx] = { id: "", name: "", args: "" };
+              if (tc.id) pendingToolCalls[idx].id = tc.id;
+              if (tc.function?.name) pendingToolCalls[idx].name += tc.function.name;
+              if (tc.function?.arguments) pendingToolCalls[idx].args += tc.function.arguments;
+            }
+          }
+          const content = delta?.content;
+          if (content) {
+            responseChunks.push(content);
+            meterEstimatedCompletionChars += content.length;
+            res.write(`data: ${JSON.stringify({ content })}\n\n`);
+          }
+        }
+
+        if (clientDisconnected) break;
+
+        const toolCalls = pendingToolCalls.filter(tc => tc && tc.name);
+        if (toolCalls.length === 0) {
+          finished = true;
           break;
         }
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          responseChunks.push(content);
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+
+        // Record the assistant's tool request, execute each tool company-scoped, feed results back
+        convo.push({
+          role: "assistant",
+          content: null,
+          tool_calls: toolCalls.map(tc => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.name, arguments: tc.args || "{}" },
+          })),
+        });
+        for (const tc of toolCalls) {
+          meterToolCalls++;
+          let parsedArgs: Record<string, any> = {};
+          try { parsedArgs = JSON.parse(tc.args || "{}"); } catch { /* tolerate malformed args */ }
+          const result = await executeChatTool(tc.name, parsedArgs, companyId);
+          convo.push({ role: "tool", tool_call_id: tc.id, content: result });
         }
       }
+
       if (!clientDisconnected) {
         res.write("data: [DONE]\n\n");
         res.end();
@@ -21048,8 +20697,8 @@ Human Handoff:
       // Fire-and-forget: save the Q&A pair to chat_logs (even on disconnect / partial output)
       const fullResponse = responseChunks.join("");
       const lastUserMessage = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+      const userId = (req as any).user?.id ?? null;
       if (lastUserMessage) {
-        const userId = (req as any).user?.id ?? null;
         // Store partial response if disconnected, empty string marker if no output at all
         const storedResponse = fullResponse || "(no response — disconnected or aborted)";
         db.execute(
@@ -21057,8 +20706,12 @@ Human Handoff:
               VALUES (${companyId}, ${userId}, ${lastUserMessage}, ${storedResponse}, ${tier})`
         ).catch((logErr: any) => console.warn("Failed to save chat log:", logErr));
       }
+
+      // Fire-and-forget: record token consumption in the metering ledger (usage-based billing)
+      recordTokenUsage();
     } catch (err: any) {
       console.error("POST /api/chat error:", err);
+      recordTokenUsage(); // meter whatever was consumed before the failure
       if (!res.headersSent) {
         if (err?.status === 429 || err?.code === "insufficient_quota") {
           res.status(503).json({ error: "AI service temporarily unavailable. Please try again later." });
