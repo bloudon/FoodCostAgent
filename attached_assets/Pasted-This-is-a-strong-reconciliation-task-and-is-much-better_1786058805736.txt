@@ -1,0 +1,381 @@
+This is a strong reconciliation task and is much better scoped than #981. The repository structure and `MOBILE_ARCHITECTURE.md` are publicly visible, so the historical source is available for the agent to inspect. ([GitHub][1])
+
+I would make **four changes before running it**.
+
+## 1. Do not let the task both recommend and execute consolidation
+
+The current task says:
+
+> Recommend one future app and one of the three Floor Mode options, with rationale, for user approval.
+
+But a later step says:
+
+> Align the #981 artifact to the established auth flow... remove or quarantine any second implementations only after approval.
+
+That mixes a discovery task with a potentially destructive implementation task. Replit may interpret “after approval” as approval occurring inside the agent flow and begin modifying code.
+
+For #983, I would stop at:
+
+* inventory
+* comparison
+* decision recommendation
+* disposition plan
+* documentation
+
+Do **not** align, migrate, delete, or quarantine code inside this task.
+
+Create a separate implementation task after you approve the report.
+
+Replace the consolidation step with:
+
+> Produce an implementation-ready consolidation plan, but do not modify, delete, quarantine, or migrate either implementation in this task.
+
+## 2. Do not pre-decide that the historical contracts must be adopted unchanged
+
+This line is slightly too rigid:
+
+> The waste voice bridge (version 1) and embedded-route whitelist contracts from the historical repo are adopted unchanged.
+
+They should be treated as the **presumptive baseline**, but the reconciliation may reveal that #981 uses a newer or more appropriate approach.
+
+Better wording:
+
+> Treat the historical waste voice bridge v1 and embedded-route whitelist as the current authoritative baseline. Identify any conflict or required change, but do not alter either contract without a separately approved architecture decision.
+
+That preserves the existing work without making the review outcome artificial.
+
+## 3. Floor Mode cannot be fully decided from the two repositories alone
+
+The old app already confirmed there are no Floor Mode references. The current project may also lack enough information to make a product decision.
+
+The task can recommend one of the three outcomes, but the actual decision should remain yours.
+
+Change:
+
+> The future of the separate Floor Mode product is explicitly decided.
+
+to:
+
+> The report recommends a Floor Mode outcome and identifies the product and technical evidence supporting it. The final decision is recorded only after user approval.
+
+Otherwise the agent may invent a rationale from incomplete evidence.
+
+## 4. Make the output files explicit
+
+The task says “written reconciliation report,” but does not name it.
+
+Require:
+
+```text
+docs/mobile-architecture-reconciliation.md
+```
+
+Also require a machine-readable disposition table—or at least a strict markdown table—so the next implementation task can act on it.
+
+Suggested columns:
+
+| Component | Historical file | #981 file | Capability | Keep source | Action | Reason | Risk |
+| --------- | --------------- | --------- | ---------- | ----------- | ------ | ------ | ---- |
+
+---
+
+# Recommended revised task
+
+```md
+#983 - Mobile Architecture Reconciliation
+
+## What & Why
+
+FnB Cost Pro now has two parallel mobile implementations:
+
+1. The pre-existing Expo mobile app in:
+   https://github.com/bloudon/FnB_mobile.git
+
+   Historical implementation baseline:
+   c90f29cd99ae06ac3a3c004ca7724e9cdfb31b50
+
+   Architecture handoff:
+   MOBILE_ARCHITECTURE.md, added in:
+   d3d3ff83ebfe74c8da176e86b0ef4463a6455f82
+
+2. The proof-of-concept Expo artifact created by Task #981 in this project.
+
+Before any additional mobile feature work, compare these implementations and define one approved target architecture with one authentication model, one API client strategy, one embedded-route contract, and one voice-waste bridge contract.
+
+This is an architecture discovery and decision task only. Do not migrate, delete, quarantine, or replace working code in either implementation.
+
+The merged Replit project becomes the future source of truth only after the reconciliation report is reviewed and approved and a separate consolidation task is completed.
+
+## Done looks like
+
+- `docs/mobile-architecture-reconciliation.md` is created.
+- Both implementations are inventoried with file-level evidence.
+- The report compares:
+  - Existing capabilities
+  - Duplications introduced by #981
+  - Authentication and API differences
+  - Native-versus-embedded differences
+  - Functionality present in only one implementation
+  - Reuse and migration candidates
+- Every duplicated screen, hook, context, API client, bridge, and endpoint has a proposed disposition:
+  - Keep historical
+  - Keep #981
+  - Merge
+  - Replace later
+  - Investigate
+- One authoritative future mobile client is recommended for user approval.
+- A Floor Mode outcome is recommended:
+  - Replace
+  - Keep specialized
+  - Shared shell with role-based modes
+- The report clearly identifies where available evidence is insufficient to make the Floor Mode decision.
+- A native-versus-embedded ownership matrix is documented for:
+  - Authentication
+  - Mobile home
+  - Inventory sessions
+  - Counts
+  - Catch weight
+  - Scanning
+  - Voice waste
+  - Reports
+  - Administrative pages
+  - Settings
+- Transitional WebView usage is labeled explicitly as transitional.
+- The historical waste voice bridge v1 and embedded-route whitelist are treated as the current authoritative baselines.
+- Any proposed contract change is documented as a separate decision requiring user approval.
+- The recommended authentication target includes:
+  - Native login
+  - SecureStore token storage
+  - Established SecureStore key names
+  - Established mobileToken WebView bridge
+  - Short-lived WebView session-token recommendation
+  - No competing token store or bridge dialect
+- `replit.md` receives two linked draft records:
+  - Architecture Decision — pending approval
+  - Implementation Note for #981
+- No additional major mobile feature, including phone alerts, is built as part of this task.
+
+## Out of scope
+
+- Building new mobile features
+- Migrating code
+- Deleting or quarantining code
+- Replacing working screens
+- Changing production APIs
+- Changing the production web app
+- Publishing or EAS configuration
+- App-store setup
+- Implementing the Floor Mode decision
+- Implementing authentication security fixes
+- Implementing phone alerts
+
+## Steps
+
+### 1. Inspect the historical repository
+
+Clone or inspect:
+
+https://github.com/bloudon/FnB_mobile.git
+
+Use these exact references:
+
+- Implementation baseline:
+  `c90f29cd99ae06ac3a3c004ca7724e9cdfb31b50`
+- Architecture handoff commit:
+  `d3d3ff83ebfe74c8da176e86b0ef4463a6455f82`
+
+Read:
+
+- `MOBILE_ARCHITECTURE.md`
+- `docs/waste-voice-bridge.md`
+- `docs/embedded-route-whitelist.md`
+- `artifacts/fnb-cost-pro-mobile/context/AuthContext.tsx`
+- `artifacts/fnb-cost-pro-mobile/components/WebSection.tsx`
+- `artifacts/fnb-cost-pro-mobile/lib/wasteBridge.ts`
+
+Catalog:
+
+- Screens and navigation
+- Hooks and contexts
+- API client
+- SecureStore keys
+- WebView wrappers
+- Authentication bridge
+- Count mutations
+- Scan flows
+- Voice waste
+- i18n
+- Brand assets
+- Tests
+- Known debt
+
+Do not modify the historical repository.
+
+### 2. Inspect the #981 artifact
+
+Review:
+
+- `artifacts/fnb-cost-pro-mobile/hooks/useAuth.tsx`
+- `artifacts/fnb-cost-pro-mobile/hooks/useApi.ts`
+- `artifacts/fnb-cost-pro-mobile/lib/api.ts`
+- `artifacts/fnb-cost-pro-mobile/app/_layout.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/(tabs)/index.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/session/[id].tsx`
+- `artifacts/fnb-cost-pro-mobile/app/scan.tsx`
+- `artifacts/api-server/src/routes.ts`
+- `artifacts/api-server/src/auth.ts`
+
+Also search the entire project for:
+
+- `SecureStore`
+- `mobileToken`
+- `WebView`
+- `addQty`
+- `wasteBridge`
+- `voice`
+- `embedded`
+- `session`
+- `scan`
+- `locationId`
+- `storeId`
+
+### 3. Produce the reconciliation report
+
+Create:
+
+`docs/mobile-architecture-reconciliation.md`
+
+Use this structure:
+
+1. Executive summary
+2. Sources and commits reviewed
+3. Historical app inventory
+4. #981 inventory
+5. Capability comparison
+6. Authentication comparison
+7. API-client comparison
+8. Native-versus-embedded comparison
+9. Contract comparison
+10. Duplicate-component disposition table
+11. One-sided functionality
+12. Recommended authoritative client
+13. Floor Mode recommendation
+14. Workflow ownership matrix
+15. Security and migration risks
+16. Proposed consolidation sequence
+17. Decisions requiring user approval
+18. Proposed `replit.md` records
+
+For every major claim, cite exact file paths and relevant functions, components, or route names.
+
+### 4. Create the duplicate disposition table
+
+Include:
+
+| Capability | Historical implementation | #981 implementation | Recommended source | Disposition | Rationale | Risk |
+|---|---|---|---|---|---|---|
+
+Every overlapping screen, hook, bridge, client, and endpoint must appear in this table.
+
+### 5. Recommend the authoritative client
+
+Recommend one of:
+
+- Historical app as the migration base
+- #981 artifact as the migration base
+- New consolidated shell based primarily on one implementation
+
+Do not choose based only on which implementation is newer.
+
+Evaluate:
+
+- Working capability
+- Contract compatibility
+- Security
+- Code quality
+- Completeness
+- Maintainability
+- Native-device support
+- Embedded-route support
+- Migration cost
+- Regression risk
+
+### 6. Recommend a Floor Mode outcome
+
+Recommend:
+
+- Replace
+- Keep specialized
+- Shared shell with role-based modes
+
+Clearly distinguish:
+
+- Evidence found in code
+- Evidence found in documentation
+- Product assumptions
+- Missing information
+
+Do not record the recommendation as approved.
+
+### 7. Draft the architecture records
+
+Append two draft records to `replit.md`.
+
+#### Architecture Decision — Pending Approval
+
+Include:
+
+- Historical repository URL
+- Commits reviewed
+- Recommended authoritative app
+- Authentication target
+- Contract baseline
+- Native-versus-embedded rule
+- Floor Mode recommendation
+- Approval status: pending
+
+#### #981 Implementation Note
+
+Include:
+
+- What #981 actually created
+- Which capabilities duplicate the historical app
+- What is unique to #981
+- Known deviations from historical contracts
+- No claim that deviations are approved unless explicitly approved by the user
+
+## Important constraints
+
+- Do not change application code.
+- Do not delete duplicate code.
+- Do not quarantine code.
+- Do not migrate screens or hooks.
+- Do not alter authentication.
+- Do not alter API routes.
+- Do not change the voice bridge.
+- Do not change the embedded-route whitelist.
+- Do not begin phone-alert work.
+- Do not mark an architecture recommendation as approved.
+- Do not infer Floor Mode behavior that is unsupported by evidence.
+
+## Final response
+
+Report:
+
+1. Path to the reconciliation report
+2. Commits reviewed
+3. Recommended authoritative client
+4. Recommended Floor Mode outcome
+5. Five largest duplications
+6. Five largest migration or security risks
+7. Decisions requiring user approval
+8. Confirmation that no application code was modified
+```
+
+## PM recommendation
+
+The likely outcome is still that the **historical app should be the functional baseline**, because it already contains the mature hybrid shell, authentication bridge, scan flows, catch-weight support, and voice-waste contract. The #981 artifact may contribute cleaner navigation or selected native UI pieces, but “newer” should not automatically mean “authoritative.”
+
+The important thing now is to force #983 to deliver the comparison **without letting it quietly begin the merger**. Once you review the report, the next task can be a tightly controlled consolidation implementation.
+
+[1]: https://github.com/bloudon/FnB_mobile.git "GitHub - bloudon/FnB_mobile · GitHub"
