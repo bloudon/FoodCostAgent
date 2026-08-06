@@ -1,0 +1,575 @@
+## Decision
+
+**Do not treat #981 as a greenfield mobile-app build. Reframe it as a mobile consolidation and architecture-validation task.**
+
+The task is directionally sensible, but its wording suggests the agent may be building a second mobile architecture without first establishing what already exists. FnB Cost Pro already had a meaningful mobile split:
+
+* Native login and token handling
+* Native camera and AI scan flows
+* Native inventory-session and item screens
+* Wrapped mobile web pages for selected management workflows
+* A `mobileToken` authentication bridge
+* Existing mobile APIs
+* A separate Floor Mode application or artifact
+* Planned native voice-capture groundwork
+
+The current work should be allowed to finish only as a **reviewable proof of concept**, not automatically accepted as the new production mobile foundation.
+
+Before further mobile tasks are approved, the team needs to document:
+
+1. What mobile code already existed
+2. What #981 created
+3. Which app or artifact becomes authoritative
+4. Which workflows are native
+5. Which workflows remain embedded
+6. Whether anything was duplicated
+7. What happens to the existing production Floor Mode app
+
+---
+
+# Rationale
+
+## 1. The task may have misunderstood the starting point
+
+The phrase:
+
+> “Create a separate Expo mobile-app artifact”
+
+sounds reasonable in isolation, but the project already had mobile architecture decisions and functioning mobile components.
+
+Existing context included:
+
+### Native mobile functionality
+
+* Authentication
+* Camera and AI scanning
+* Scan-results review
+* Inventory-session list
+* Inventory items
+* Item detail
+* Settings
+* Legacy count functionality
+* Planned voice capture
+
+### Embedded mobile web functionality
+
+* Mobile dashboard
+* Inventory sessions
+* Count workflows
+* Token bridge between native and web
+* Existing authenticated backend routes
+
+Therefore, the key PM question is not:
+
+> How should we build a new mobile app?
+
+It is:
+
+> How should the newly supported Replit mobile artifact absorb, replace, or coexist with the existing mobile application without creating two competing clients?
+
+That distinction should be captured in `replit.md` immediately.
+
+## 2. “Floor dashboard” is not an established product term
+
+The task says:
+
+> View the floor dashboard
+
+That may have been inferred from the separate Floor Mode app rather than from FnB Cost Pro’s confirmed mobile product structure.
+
+Before this becomes permanent navigation language, define whether the app is for:
+
+* Chefs
+* Inventory counters
+* Floor managers
+* Receiving staff
+* General restaurant employees
+* F&B leadership
+
+The premium positioning is chef-centric. A “floor app” can sound like a limited staff utility rather than the phone-first extension of the culinary operations platform.
+
+A better working label would be:
+
+> **Mobile Home**
+
+or:
+
+> **Today**
+
+The content can still emphasize immediate operational work:
+
+* Continue count
+* Scan an item
+* Log waste
+* Review recent captures
+* Receive an order
+* View alerts
+
+## 3. The native-versus-embedded boundary is underspecified
+
+The task currently says:
+
+> Use embedded mobile web pages where existing mobile-optimized pages already cover a workflow.
+
+That is too permissive. It allows the agent to choose whichever route is fastest rather than whichever architecture is sustainable.
+
+The decision should be based on workflow characteristics.
+
+### Native should own device-first workflows
+
+Use native screens when the workflow depends heavily on:
+
+* Camera
+* Microphone
+* Barcode scanning
+* Rapid repeated entry
+* Offline or interrupted connectivity
+* Background uploads
+* Haptics
+* Push notifications
+* Device permissions
+* Large touch controls
+* Fast navigation between items
+* Draft persistence
+* Image compression or preprocessing
+
+Likely native workflows:
+
+* Sign-in and account context
+* Home
+* Camera capture
+* Barcode or label scan
+* Inventory counting
+* Catch-weight entry
+* Waste voice capture
+* Receiving capture
+* Push-notification routing
+* Upload queue and retry status
+
+### Embedded web can own occasional management workflows
+
+Use embedded routes when the workflow is:
+
+* Form-heavy
+* Infrequently used on a phone
+* Already responsive and stable
+* Not dependent on native device services
+* Likely to change frequently on the web
+* Better maintained from one shared implementation
+
+Possible embedded workflows:
+
+* Dashboard summaries
+* Historical reports
+* Menu administration
+* Recipe review
+* Vendor records
+* Account and billing
+* Complex settings
+* Approval screens
+
+The rule should not be:
+
+> Native unless a mobile web page exists.
+
+It should be:
+
+> Native when the phone materially changes the workflow; embedded when the phone is simply another viewport.
+
+## 4. Inventory counting deserves an explicit decision
+
+The task says both:
+
+> Connect the count workflow to existing mobile APIs
+
+and:
+
+> Continue to use embedded mobile web pages where existing pages cover a workflow.
+
+Inventory counting is exactly where this ambiguity becomes dangerous.
+
+Counting requires:
+
+* Fast next-item progression
+* Large numeric controls
+* Camera and barcode entry
+* Catch-weight support
+* Partial-save resilience
+* Low-friction location changes
+* Possible offline tolerance
+* Minimal page reloads
+* Reliable resume behavior
+
+That strongly favors a native long-term experience.
+
+If #981 wraps the current count page for the proof of concept, document it explicitly as transitional:
+
+> Inventory count is temporarily embedded to validate authentication and navigation. Native count entry remains the intended production architecture.
+
+Without that statement, temporary implementation becomes permanent architecture.
+
+## 5. Authentication must have one owner
+
+The task mentions:
+
+> secure token-based sign-in using the established mobile login flow
+
+That is encouraging, but the implementation must verify that #981 did not create another token model.
+
+The mobile architecture should have one documented flow covering:
+
+* Credential exchange
+* JWT or mobile-token issuance
+* Secure storage
+* Expiration
+* Refresh or reauthentication
+* Company and store switching
+* WebView token injection
+* Logout and token revocation
+* Deep-link authentication
+* Handling suspended or removed users
+* API base-URL configuration by environment
+
+The native app should own authentication. Embedded pages should consume a short-lived authenticated bridge rather than store full credentials independently.
+
+## 6. Company, property, store, outlet, and storage context need consistency
+
+Recent product work has introduced important distinctions:
+
+* Company
+* Operating property/store
+* Operating unit/outlet
+* Inventory storage location
+
+The mobile app cannot use a generic “choose a store” selector everywhere.
+
+The user may need to select:
+
+### Operating location
+
+Which restaurant or property they are working in
+
+### Operating unit
+
+Which outlet, bar, banquet area, or restaurant section activity belongs to
+
+### Storage location
+
+Which walk-in, freezer, cellar, or storeroom they are counting
+
+For a normal single-location restaurant, these should remain simple. For Bay Hill, the hierarchy must remain accurate.
+
+Mobile context should be inherited where possible rather than repeatedly requested.
+
+## 7. The separate Floor Mode app must be addressed
+
+The task marks this out of scope:
+
+> Replacing the separate production Floor Mode app outside this project.
+
+That is acceptable for #981, but not as a permanent architecture answer.
+
+The existence of two mobile products creates potential duplication in:
+
+* Authentication
+* Notifications
+* Inventory workflows
+* Staff permissions
+* Deployment
+* App-store listings
+* Support
+* Versioning
+* Analytics
+* Branding
+
+The architecture log should state one of these intended outcomes:
+
+### Option A — FnB Cost Pro mobile replaces Floor Mode
+
+Best if the new app will ultimately serve all operational mobile users.
+
+### Option B — Floor Mode remains a specialized product
+
+Then its distinct audience and feature boundary must be explicit.
+
+### Option C — Shared mobile shell with role-based modes
+
+One app exposes different navigation based on role and permissions.
+
+My likely recommendation is **Option C**, unless Floor Mode belongs to a separate commercial product. A single app with role-based experiences is usually easier to maintain and explain.
+
+---
+
+# Affected areas
+
+## Mobile repositories and artifacts
+
+* Newly created Expo artifact
+* Existing native mobile application
+* Existing Floor Mode application
+* Shared assets and design tokens
+* Mobile build and deployment configuration
+
+## Authentication
+
+* Mobile login endpoints
+* Token storage
+* WebView token bridge
+* User logout
+* Company and store context
+* Environment configuration
+
+## Inventory
+
+* Inventory-session list
+* Count creation and resumption
+* Count detail
+* Catch-weight entry
+* Shelf counting
+* Item scanning
+* Location assignments
+* Apply-count permissions
+
+## Capture and AI
+
+* Menu scan
+* Recipe scan
+* Invoice scan
+* Label scan
+* Visual inventory count
+* Voice waste capture
+* Upload queue and processing status
+
+## Navigation
+
+* Mobile home
+* Native tab structure
+* Embedded-page routing
+* Deep links
+* Store and outlet switching
+* Permission-based visibility
+
+## Backend APIs
+
+* `/api/mobile/*`
+* Existing inventory-session APIs
+* Voice interpretation endpoints
+* Scan endpoints
+* Mobile-token authentication
+* Store and company access enforcement
+
+## Product terminology
+
+* “Floor dashboard”
+* “Store”
+* “Location”
+* “Outlet”
+* “Storage location”
+* “Inventory session”
+* “Mobile companion”
+
+## Deployment and release
+
+* Expo configuration
+* App identifiers
+* Signing
+* Environment variables
+* Internal review builds
+* App-store ownership
+* Version management
+
+---
+
+# Open risks
+
+## Risk 1 — Duplicate mobile applications
+
+The highest risk is ending with:
+
+* Existing mobile app
+* New Expo artifact
+* Separate Floor Mode app
+
+all overlapping in functionality.
+
+**Required mitigation:** Produce a mobile-code inventory and name the authoritative future client.
+
+## Risk 2 — Temporary WebViews becoming permanent
+
+Embedded pages can accelerate the proof of concept, but counting, scanning, receiving, and voice entry may become frustrating if left wrapped.
+
+**Required mitigation:** Label each embedded workflow as either intentional long-term architecture or transitional debt.
+
+## Risk 3 — Divergent authentication flows
+
+A new artifact may introduce token storage or login behavior that differs from the established mobile bridge.
+
+**Required mitigation:** Document and test one end-to-end authentication sequence.
+
+## Risk 4 — Incorrect location hierarchy
+
+Generic store selection could blur properties, outlets, and storage locations.
+
+**Required mitigation:** Use explicit domain terminology and API contracts for each context type.
+
+## Risk 5 — Mobile app built around the wrong persona
+
+“Floor staff and managers” is broader and potentially less chef-focused than the product positioning.
+
+**Required mitigation:** Define the initial mobile personas and their highest-frequency jobs.
+
+## Risk 6 — Count workflow performance
+
+A responsive web page may function on a phone but still be too slow or fragile for a 5,000-item enterprise count.
+
+**Required mitigation:** Benchmark real count behavior, not only verify that pages load.
+
+## Risk 7 — No offline or retry strategy
+
+Kitchen, cellar, and storeroom connectivity may be inconsistent.
+
+**Required mitigation:** At minimum, preserve drafts and create a visible retry queue for device-generated uploads.
+
+## Risk 8 — Shared visual identity without shared components
+
+Copying tokens and assets may cause future drift between web and mobile.
+
+**Required mitigation:** Centralize documented brand tokens and asset sources, even if code cannot be shared directly.
+
+## Risk 9 — Unclear lifecycle for Floor Mode
+
+Leaving Floor Mode “outside scope” indefinitely guarantees future architectural uncertainty.
+
+**Required mitigation:** Schedule a specific consolidation decision after #981 review.
+
+---
+
+# Recommended direction for #981
+
+Allow the current task to finish, but redefine its acceptance status:
+
+> #981 delivers a reviewable Expo proof of concept using the existing backend and established mobile authentication. It does not become the production mobile foundation until its code and workflows are reconciled with the existing mobile app and Floor Mode architecture.
+
+The review should answer:
+
+* Did it reuse the existing mobile login?
+* Did it discover existing mobile code?
+* Did it duplicate screens or APIs?
+* Which workflows are native?
+* Which are embedded?
+* Does counting perform acceptably?
+* Does scanning use established endpoints?
+* Are permissions enforced server-side?
+* How does it handle store and storage context?
+* What is the intended future relationship with Floor Mode?
+
+---
+
+# Recommended next task
+
+## Mobile Architecture Reconciliation
+
+### What & Why
+
+FnB Cost Pro now contains a newly created Expo mobile artifact, while prior mobile code and a separate Floor Mode application already exist. Before further mobile features are built, reconcile these implementations into one documented target architecture.
+
+### Done looks like
+
+* Inventory of all existing mobile applications, artifacts, screens, APIs, and authentication flows
+* Side-by-side comparison of the pre-existing mobile app and #981 artifact
+* One authoritative future mobile application identified
+* Floor Mode’s future explicitly decided
+* Native-versus-embedded matrix approved for each workflow
+* Duplicate code and endpoints identified
+* Migration or consolidation plan created
+* No additional major mobile feature is built against an unapproved architecture
+* `replit.md` updated with both the decision and what #981 actually shipped
+
+---
+
+# Suggested native-versus-embedded matrix
+
+| Workflow                   | Recommended owner  |
+| -------------------------- | ------------------ |
+| Authentication             | Native             |
+| Mobile home                | Native             |
+| Company/store context      | Native             |
+| Inventory-session list     | Native             |
+| Count entry                | Native long term   |
+| Catch-weight counting      | Native             |
+| Barcode and label scanning | Native             |
+| Camera/AI capture          | Native             |
+| Voice waste entry          | Native             |
+| Upload queue and retry     | Native             |
+| Dashboard reporting        | Embedded initially |
+| Recipe administration      | Embedded           |
+| Menu administration        | Embedded           |
+| Vendor administration      | Embedded           |
+| Billing/account            | Embedded           |
+| Complex reports            | Embedded           |
+| Approvals                  | Embedded initially |
+
+---
+
+# Entry for `replit.md`
+
+```md
+## 2026-08-06: Mobile Artifact Architecture Review
+
+### Decision
+
+Task #981 must be treated as a reviewable Expo proof of concept, not automatically as a greenfield production mobile replacement. FnB Cost Pro already had native mobile functionality, embedded mobile web routes, a mobileToken authentication bridge, existing mobile APIs, and a separate Floor Mode application. The new artifact must be reconciled with those assets before additional major mobile development proceeds.
+
+The intended architecture is native for device-first, repetitive, or connectivity-sensitive workflows and embedded web for occasional management workflows that are already responsive and do not depend heavily on native device capabilities.
+
+### Rationale
+
+The project risks creating three overlapping mobile clients: the existing native app, the new Expo artifact, and the separate Floor Mode app. The mobile product also needs consistent treatment of company, operating store/property, operating unit/outlet, and inventory storage-location context.
+
+Inventory counting, scanning, camera capture, catch-weight entry, voice capture, upload retries, and authentication should be native long term. Reporting, menu administration, recipe administration, vendor management, billing, and other occasional management workflows may remain embedded when responsive and secure.
+
+### Affected areas
+
+- Expo artifact created by #981
+- Existing native mobile application
+- Separate Floor Mode application
+- Mobile authentication and token bridge
+- Inventory sessions and counting
+- AI and camera scanning
+- Voice waste capture
+- Store, outlet, and storage-location context
+- Mobile navigation and deep linking
+- Mobile deployment and app-store configuration
+
+### Open risks
+
+- Duplicate mobile applications and APIs
+- Temporary WebViews becoming permanent
+- Divergent token handling
+- Incorrect location hierarchy
+- Count performance on large inventories
+- Missing draft/offline retry behavior
+- Wrong target persona implied by “floor dashboard”
+- Unclear long-term role of Floor Mode
+
+### Native vs. embedded rule
+
+Use native screens where the phone changes the workflow: camera, microphone, scanning, repeated rapid entry, inventory counts, catch weight, receiving, draft persistence, retry queues, push notifications, or device permissions.
+
+Use embedded mobile web routes where the phone is mainly another viewport: reports, recipes, menus, vendors, account management, billing, settings, and occasional approval workflows.
+
+### Required follow-up
+
+Create a Mobile Architecture Reconciliation task after #981 completes. Inventory all existing mobile code and APIs, compare them with the new artifact, select the authoritative future app, decide the future of Floor Mode, and document the final native/embedded matrix.
+
+### Shipped status
+
+Pending completion and review of #981. Record here what was actually created, which existing components were reused, and any deviations from this decision.
+```
+
+Your proposed `replit.md` workflow is sound. The improvement I would make is to separate entries into two linked records:
+
+> **Architecture Decision** — what should happen
+> **Implementation Note** — what actually shipped
+
+That prevents a completed agent task from quietly rewriting the meaning of the original PM decision.
