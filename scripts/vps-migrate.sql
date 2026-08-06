@@ -2657,3 +2657,44 @@ DO $$ BEGIN
       VALUES ('v069', 'AI token usage ledger (ai_token_usage) for metered billing');
   END IF;
 END $$;
+
+-- =============================================================================
+-- v070 — AI overage acknowledgments + Stripe overage billing ledger
+-- Usage periods are canonical UTC calendar months keyed by period_key 'YYYY-MM'.
+-- Companies accept overage billing per month once the included tokens are
+-- consumed; accepted overage for closed months is added to the next Stripe
+-- renewal invoice via a durable pending/billed/failed ledger.
+-- =============================================================================
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM _migration_log WHERE version = 'v070') THEN
+    CREATE TABLE IF NOT EXISTS ai_usage_acknowledgments (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id VARCHAR NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      period_key VARCHAR(7) NOT NULL,
+      period_start TIMESTAMP NOT NULL,
+      period_end TIMESTAMP NOT NULL,
+      accepted_by_user_id VARCHAR,
+      accepted_at TIMESTAMP NOT NULL DEFAULT now(),
+      CONSTRAINT ai_usage_ack_company_period_unique UNIQUE (company_id, period_key)
+    );
+    CREATE TABLE IF NOT EXISTS ai_overage_billings (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id VARCHAR NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      period_key VARCHAR(7) NOT NULL,
+      period_start TIMESTAMP NOT NULL,
+      period_end TIMESTAMP NOT NULL,
+      overage_tokens INTEGER NOT NULL DEFAULT 0,
+      amount_cents INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      stripe_invoice_item_id TEXT,
+      stripe_invoice_id TEXT,
+      last_error TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP NOT NULL DEFAULT now(),
+      CONSTRAINT ai_overage_billing_company_period_unique UNIQUE (company_id, period_key)
+    );
+
+    INSERT INTO _migration_log (version, description)
+      VALUES ('v070', 'AI overage acknowledgments + Stripe overage billing ledger');
+  END IF;
+END $$;

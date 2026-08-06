@@ -2,6 +2,17 @@
 
 All notable changes to FNB Cost Pro are documented here.
 
+## [1.17.0] — 2026-08-06
+
+### AI usage-based billing — included allowance, overage acceptance, Stripe invoicing
+
+- **2M included tokens per month** — every company gets 2,000,000 AI tokens per UTC calendar month at no extra cost; usage periods use a canonical `YYYY-MM` key across metering, consent, and billing
+- **Usage meter in the AI assistant** — cell-data-style progress bar in the chat panel showing tokens used vs. included, turning amber at 80% and red at the threshold, with accrued overage dollars once crossed
+- **Warning + acceptance at the threshold** — when the allowance is exhausted, AI chat pauses (HTTP 402) and shows an acceptance banner; only a company admin can approve usage-based billing (cost + 40% markup), and consent is recorded per month (`ai_usage_acknowledgments`)
+- **Fail-closed gate** — if usage can't be verified, paid AI requests are blocked rather than silently allowed
+- **Auto-billed on the next renewal invoice** — a Stripe `invoice.created` webhook adds accepted overage from all closed months as invoice items, backed by a durable pending/billed/failed ledger (`ai_overage_billings`) with Stripe idempotency keys so charges can never duplicate and failed charges retry on the next cycle (migration v070)
+- **Cost-plus math** — overage priced as blended OpenAI cost prorated to tokens beyond the threshold × 1.4; unknown models priced at the highest known rate to avoid underbilling
+
 ## [1.16.0] — 2026-08-06
 
 ### AI assistant — live data tools + token metering

@@ -1814,6 +1814,41 @@ export const insertAiTokenUsageSchema = createInsertSchema(aiTokenUsage).omit({ 
 export type InsertAiTokenUsage = z.infer<typeof insertAiTokenUsageSchema>;
 export type AiTokenUsage = typeof aiTokenUsage.$inferSelect;
 
+// AI usage overage acknowledgments — one row per company per billing period once the
+// company accepts overage billing (warning + acceptance when the included threshold is crossed)
+export const aiUsageAcknowledgments = pgTable("ai_usage_acknowledgments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodKey: varchar("period_key", { length: 7 }).notNull(), // canonical "YYYY-MM" usage month
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  acceptedByUserId: varchar("accepted_by_user_id"),
+  acceptedAt: timestamp("accepted_at").notNull().defaultNow(),
+}, (table) => ({
+  companyPeriodUnique: unique("ai_usage_ack_company_period_unique").on(table.companyId, table.periodKey),
+}));
+export type AiUsageAcknowledgment = typeof aiUsageAcknowledgments.$inferSelect;
+
+// AI overage billings — idempotency ledger of overage charges pushed to Stripe invoices
+export const aiOverageBillings = pgTable("ai_overage_billings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  periodKey: varchar("period_key", { length: 7 }).notNull(), // canonical "YYYY-MM" usage month
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  overageTokens: integer("overage_tokens").notNull().default(0),
+  amountCents: integer("amount_cents").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | billed | failed
+  stripeInvoiceItemId: text("stripe_invoice_item_id"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  companyPeriodUnique: unique("ai_overage_billing_company_period_unique").on(table.companyId, table.periodKey),
+}));
+export type AiOverageBilling = typeof aiOverageBillings.$inferSelect;
+
 // ─────────── PREP CHART MODULE (Pro tier) ───────────
 
 // Stations — kitchen production areas (Grill, Cold Prep, Fryer, etc.)

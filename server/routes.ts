@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 import multer from "multer";
 import { createCheckoutSession, stripeWebhook, getPlans } from "./billing";
+import { getUsageSummary, acceptOverage } from "./aiUsage";
 import { GlobalSearchService } from "./globalSearch";
 import { storage } from "./storage";
 import { transcribeAudio, extractSpokenWasteEntries, resolveSpokenWasteEntries } from "./services/wasteInterpreter";
@@ -20265,6 +20266,43 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   // ============ AI CHAT ASSISTANT ============
   const chatRateLimits = new Map<string, { count: number; resetAt: number }>();
 
+  // ─── AI usage metering (cell-data-style meter + overage acceptance) ───
+  app.get("/api/ai-usage", requireAuth, requireTier("platform"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company context" });
+      const summary = await getUsageSummary(companyId);
+      res.json(summary);
+    } catch (err) {
+      console.error("GET /api/ai-usage error:", err);
+      res.status(500).json({ error: "Failed to load AI usage" });
+    }
+  });
+
+  app.post("/api/ai-usage/accept", requireAuth, requireTier("platform"), async (req, res) => {
+    try {
+      const companyId = (req as any).companyId;
+      if (!companyId) return res.status(400).json({ error: "No company context" });
+      // Financial consent: only company admins (or global admins) may authorize
+      // usage-based billing on behalf of the company.
+      const role = (req as any).user?.role;
+      if (role !== "company_admin" && role !== "global_admin") {
+        return res.status(403).json({ error: "Only a company admin can accept usage-based billing. Ask your administrator to approve." });
+      }
+      // Consent is only meaningful once the included allowance is actually exhausted.
+      const before = await getUsageSummary(companyId);
+      if (!before.approvalRequired) {
+        return res.status(400).json({ error: "No overage approval is needed right now.", usage: before });
+      }
+      await acceptOverage(companyId, (req as any).user?.id ?? null);
+      const summary = await getUsageSummary(companyId);
+      res.json({ success: true, usage: summary });
+    } catch (err) {
+      console.error("POST /api/ai-usage/accept error:", err);
+      res.status(500).json({ error: "Failed to record acceptance" });
+    }
+  });
+
   app.post("/api/chat", requireAuth, requireTier("platform"), async (req, res) => {
     const companyId = (req as any).companyId;
 
@@ -20274,6 +20312,23 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
     if (!process.env.OPENAI_API_KEY) {
       return res.status(503).json({ error: "AI chat is not configured" });
+    }
+
+    // Overage gate: once the included monthly tokens are consumed, the company
+    // must accept cost-plus overage billing before AI chat continues.
+    // Fails CLOSED — if usage can't be verified, we do not run paid AI requests.
+    try {
+      const usageSummary = await getUsageSummary(companyId);
+      if (usageSummary.approvalRequired) {
+        return res.status(402).json({
+          error: "overage_approval_required",
+          message: "You've used your included AI allowance for this billing period. Accept usage-based billing to continue.",
+          usage: usageSummary,
+        });
+      }
+    } catch (gateErr) {
+      console.error("AI usage gate check failed (blocking request):", gateErr);
+      return res.status(503).json({ error: "Usage check unavailable — please try again shortly." });
     }
 
     let messages: Array<{ role: "user" | "assistant"; content: string }>;

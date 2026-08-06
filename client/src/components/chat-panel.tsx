@@ -10,9 +10,25 @@ import {
 } from "@/components/ui/sheet";
 import { useTier } from "@/hooks/use-tier";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const HANDOFF_TOKEN = "[SUGGEST_HUMAN_HANDOFF]";
+
+interface AiUsageSummary {
+  includedTokens: number;
+  usedTokens: number;
+  overageTokens: number;
+  overageCents: number;
+  overageAccepted: boolean;
+  approvalRequired: boolean;
+  periodEnd: string;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -45,8 +61,37 @@ export function ChatPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const { hasFeature } = useTier();
+  const queryClient = useQueryClient();
+  const [overageGate, setOverageGate] = useState(false);
+  const [acceptPending, setAcceptPending] = useState(false);
 
   const canUseChat = hasFeature("ai_assistant");
+
+  const { data: aiUsage } = useQuery<AiUsageSummary>({
+    queryKey: ["/api/ai-usage"],
+    enabled: open && canUseChat,
+    staleTime: 60_000,
+  });
+
+  const acceptOverage = async () => {
+    if (acceptPending) return;
+    setAcceptPending(true);
+    try {
+      const res = await fetch("/api/ai-usage/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to record acceptance");
+      setOverageGate(false);
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] });
+    } catch (err: any) {
+      setError(err.message || "Failed to record acceptance");
+    } finally {
+      setAcceptPending(false);
+    }
+  };
 
   const { data: handoffConfig } = useQuery<{ enabled: boolean }>({
     queryKey: ["/api/chat/handoff-enabled"],
@@ -156,6 +201,14 @@ export function ChatPanel() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (res.status === 402 && data.error === "overage_approval_required") {
+          setOverageGate(true);
+          queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] });
+          // Remove the empty assistant placeholder; keep the user's message for retry after acceptance
+          setMessages(prev => prev.slice(0, -1));
+          setIsStreaming(false);
+          return;
+        }
         throw new Error(data.error || `Error ${res.status}`);
       }
 
@@ -216,6 +269,7 @@ export function ChatPanel() {
       });
     } finally {
       setIsStreaming(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/ai-usage"] });
     }
   };
 
@@ -264,6 +318,58 @@ export function ChatPanel() {
               )}
             </SheetTitle>
           </SheetHeader>
+
+          {canUseChat && aiUsage && (
+            <div className="px-4 py-2 border-b bg-muted/40 shrink-0 space-y-1" data-testid="ai-usage-meter">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  AI usage: {formatTokens(aiUsage.usedTokens)} / {formatTokens(aiUsage.includedTokens)} tokens
+                </span>
+                {aiUsage.overageTokens > 0 ? (
+                  <span className="font-medium text-foreground" data-testid="text-overage-amount">
+                    +${(aiUsage.overageCents / 100).toFixed(2)} overage
+                  </span>
+                ) : (
+                  <span>{Math.min(100, Math.round((aiUsage.usedTokens / aiUsage.includedTokens) * 100))}%</span>
+                )}
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    aiUsage.usedTokens >= aiUsage.includedTokens
+                      ? "bg-destructive"
+                      : aiUsage.usedTokens >= aiUsage.includedTokens * 0.8
+                        ? "bg-amber-500"
+                        : "bg-[#f2690d]"
+                  }`}
+                  style={{ width: `${Math.min(100, (aiUsage.usedTokens / aiUsage.includedTokens) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {canUseChat && (overageGate || aiUsage?.approvalRequired) && (
+            <div className="px-4 py-3 border-b bg-amber-50 dark:bg-amber-950/30 shrink-0 space-y-2" data-testid="overage-acceptance-banner">
+              <p className="text-sm font-medium">You've used your included AI allowance</p>
+              <p className="text-xs text-muted-foreground">
+                Your plan includes {formatTokens(aiUsage?.includedTokens ?? 2_000_000)} AI tokens per billing period.
+                To keep using the assistant, accept usage-based billing — additional usage is charged at cost plus 40%
+                and added to your next invoice.
+                {aiUsage && aiUsage.overageCents > 0 && (
+                  <> Accrued so far: <span className="font-medium text-foreground">${(aiUsage.overageCents / 100).toFixed(2)}</span>.</>
+                )}
+              </p>
+              <Button
+                size="sm"
+                className="bg-[#f2690d] hover:bg-[#d95a0b] text-white"
+                onClick={acceptOverage}
+                disabled={acceptPending}
+                data-testid="button-accept-overage"
+              >
+                {acceptPending ? "Saving…" : "Accept & continue"}
+              </Button>
+            </div>
+          )}
 
           {!canUseChat ? (
             <div className="flex-1 flex items-center justify-center p-6">

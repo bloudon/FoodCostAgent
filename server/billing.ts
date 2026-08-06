@@ -4,6 +4,8 @@ import { db } from "./db";
 import { companies } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { PLAN_CATALOG, ADDITIONAL_LOCATION_PRICING } from "@shared/plan-catalog";
+import { sql } from "drizzle-orm";
+import { getBillableOverageMonths } from "./aiUsage";
 
 interface SubscriptionEventData extends Stripe.Event.Data {
   previous_attributes?: Partial<Stripe.Subscription>;
@@ -303,6 +305,67 @@ export async function stripeWebhook(req: Request, res: Response) {
           .where(eq(companies.id, companyId));
 
         console.log(`[Billing] checkout.session.completed: company=${companyId} plan=${plan} term=${term} status=trialing licensedLocationCount=${licensedLocationCount}`);
+        break;
+      }
+
+      case "invoice.created": {
+        // Renewal invoice for a subscription cycle: attach accepted AI overage from
+        // all CLOSED usage months (not yet successfully billed) before Stripe
+        // finalizes the invoice. Durable pending/billed/failed ledger + Stripe
+        // idempotency keys make retries safe and prevent double-billing.
+        const invoice = event.data.object as Stripe.Invoice;
+        if ((invoice as any).billing_reason !== "subscription_cycle") break;
+        const customerId = typeof invoice.customer === "string" ? invoice.customer : null;
+        if (!customerId) break;
+
+        const [company] = await db.select().from(companies).where(eq(companies.stripeCustomerId, customerId));
+        if (!company) break;
+
+        const months = await getBillableOverageMonths(company.id);
+        for (const m of months) {
+          try {
+            // Upsert ledger row; only proceed if it is not already billed.
+            await db.execute(sql`
+              INSERT INTO ai_overage_billings (company_id, period_key, period_start, period_end, overage_tokens, amount_cents, status)
+              VALUES (${company.id}, ${m.periodKey}, ${m.period.start.toISOString()}, ${m.period.end.toISOString()}, ${m.overageTokens}, ${m.overageCents}, 'pending')
+              ON CONFLICT (company_id, period_key) DO UPDATE
+                SET overage_tokens = EXCLUDED.overage_tokens,
+                    amount_cents = EXCLUDED.amount_cents,
+                    status = CASE WHEN ai_overage_billings.status = 'billed' THEN 'billed' ELSE 'pending' END,
+                    updated_at = now()`);
+            const check = await db.execute(sql`
+              SELECT id, status FROM ai_overage_billings
+              WHERE company_id = ${company.id} AND period_key = ${m.periodKey}`);
+            const row = (check as any).rows?.[0];
+            if (!row || row.status === "billed") continue;
+
+            // Stripe idempotency key guarantees at most one invoice item per
+            // company+month even if this handler runs multiple times.
+            const item = await getStripe().invoiceItems.create(
+              {
+                customer: customerId,
+                invoice: invoice.id,
+                amount: m.overageCents,
+                currency: "usd",
+                description: `AI usage overage — ${m.overageTokens.toLocaleString()} tokens above included allowance (${m.periodKey})`,
+              },
+              { idempotencyKey: `ai-overage-${company.id}-${m.periodKey}` },
+            );
+            await db.execute(sql`
+              UPDATE ai_overage_billings
+              SET status = 'billed', stripe_invoice_item_id = ${item.id}, stripe_invoice_id = ${invoice.id ?? null}, last_error = NULL, updated_at = now()
+              WHERE id = ${row.id}`);
+            console.log(`[Billing] AI overage billed on invoice ${invoice.id}: company=${company.id} month=${m.periodKey} tokens=${m.overageTokens} amount=${m.overageCents}c`);
+          } catch (overageErr: any) {
+            // Mark failed so the next renewal invoice retries this month.
+            console.error(`[Billing] Failed to bill AI overage (company=${company.id} month=${m.periodKey}):`, overageErr);
+            await db.execute(sql`
+              UPDATE ai_overage_billings
+              SET status = 'failed', last_error = ${String(overageErr?.message ?? overageErr).slice(0, 500)}, updated_at = now()
+              WHERE company_id = ${company.id} AND period_key = ${m.periodKey} AND status != 'billed'`)
+              .catch(() => {});
+          }
+        }
         break;
       }
 
