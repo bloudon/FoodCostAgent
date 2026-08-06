@@ -20643,6 +20643,83 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         console.warn("Failed to fetch waste log snapshot for chat:", wasteErr);
       }
 
+      // Fetch inventory count session history for AI context (keyword-triggered, last 90 days)
+      let countHistoryContextBlock = "";
+      try {
+        const countKeywords = ["count", "counted", "counting", "inventory session", "count session", "verify", "audit", "on-hand", "on hand"];
+        const mentionsCounts = countKeywords.some(kw => allUserText.includes(kw));
+        if (mentionsCounts) {
+          const countSessionsResult = await db.execute(
+            sql`SELECT
+                  ic.id,
+                  ic.count_date,
+                  ic.name,
+                  ic.applied,
+                  ic.is_power_session,
+                  cs.name as store_name,
+                  cs.id as store_id,
+                  COUNT(DISTINCT icl.inventory_item_id)::int as item_count,
+                  COALESCE(SUM(icl.qty * icl.unit_cost), 0) as total_value
+                FROM inventory_counts ic
+                LEFT JOIN company_stores cs ON ic.store_id = cs.id
+                LEFT JOIN inventory_count_lines icl ON icl.inventory_count_id = ic.id
+                WHERE ic.company_id = ${companyId}
+                  AND ic.count_date >= NOW() - INTERVAL '90 days'
+                GROUP BY ic.id, ic.count_date, ic.name, ic.applied, ic.is_power_session, cs.name, cs.id
+                ORDER BY ic.count_date DESC
+                LIMIT 25`
+          );
+          const countSessions = ((countSessionsResult as any).rows || countSessionsResult) as Array<{
+            id: string; count_date: string; name: string | null; applied: number;
+            is_power_session: number; store_name: string | null; store_id: string | null;
+            item_count: number; total_value: string | null;
+          }>;
+
+          if (countSessions.length > 0) {
+            // Compute swing vs the prior session at the same store (sessions are ordered newest-first)
+            const priorValueByStore = new Map<string, number[]>();
+            for (const s of countSessions) {
+              const key = s.store_id || "unknown";
+              if (!priorValueByStore.has(key)) priorValueByStore.set(key, []);
+              priorValueByStore.get(key)!.push(Number(s.total_value || 0));
+            }
+
+            const seenPerStore = new Map<string, number>();
+            const lines = countSessions.map(s => {
+              const key = s.store_id || "unknown";
+              const idx = seenPerStore.get(key) ?? 0;
+              seenPerStore.set(key, idx + 1);
+              const values = priorValueByStore.get(key)!;
+              const value = values[idx];
+              const priorValue = idx + 1 < values.length ? values[idx + 1] : null;
+
+              const d = new Date(s.count_date);
+              const dateStr = d.toLocaleDateString();
+              const label = s.name ? ` "${s.name}"` : "";
+              const store = s.store_name || "Unknown store";
+              const status = s.applied === 1 ? "applied" : "not applied";
+              const kind = s.is_power_session === 1 ? ", power-item session" : "";
+              let swing = "";
+              if (priorValue !== null && priorValue > 0) {
+                const pct = ((value - priorValue) / priorValue) * 100;
+                if (Math.abs(pct) >= 15) {
+                  swing = ` — LARGE SWING: ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}% vs prior count at this store`;
+                } else {
+                  swing = ` (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}% vs prior count)`;
+                }
+              }
+              return `  - ${dateStr}${label} (${store}): ${s.item_count} items counted, total value $${value.toFixed(2)}, ${status}${kind}${swing}`;
+            });
+
+            countHistoryContextBlock = `\nInventory count sessions — ${companyName}'s count history (last 90 days, newest first):\n${lines.join("\n")}`;
+          } else {
+            countHistoryContextBlock = `\nInventory count sessions: no count sessions were recorded in the last 90 days.`;
+          }
+        }
+      } catch (countErr) {
+        console.warn("Failed to fetch count session history for chat:", countErr);
+      }
+
       let tfcSummary = "";
       // All paid plans (platform and enterprise) get TFC data
       if (tier) {
@@ -20776,7 +20853,7 @@ PLAN MODEL — be precise about what each plan includes; never invent restrictio
 Current account data:
 - Plan: ${tier}
 - ${storeCount} store location(s), ${vendorCount} vendor(s), ${itemCount} inventory items, ${recipeCount} recipes
-- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}${wasteContextBlock}${menusContextBlock}
+- Top items by cost: ${topItemsSummary}${tfcSummary}${inventoryContextBlock}${recipeContextBlock}${menuItemContextBlock}${wasteContextBlock}${countHistoryContextBlock}${menusContextBlock}
 ${isNewAccount ? `
 IMPORTANT — This is a brand-new account with no data yet. Shift your role to onboarding guide. Help them get set up step by step in this recommended order:
 1. Add a store location (Gear icon → Locations)
@@ -20917,6 +20994,7 @@ Navigation summary:
 Guidelines:
 - Give specific, actionable advice based on their data when possible
 - MENU PORTFOLIO DATA: When a Menu Portfolio snapshot is provided in "Current account data", reference actual menu names, statuses, and entry counts. If a user asks about a specific menu and it appears in the snapshot, cite its exact details (e.g. "I can see your Dinner Menu is currently live with 24 items"). If the menu they mention is not in the snapshot, acknowledge you don't see it.
+- COUNT SESSION DATA: When an "Inventory count sessions" block is provided in "Current account data", use it to answer questions about past inventory counts — verifying counts, comparing sessions, or spotting anomalies. Cite exact dates, store names, item counts, and total counted values. Call out any sessions flagged with LARGE SWING as worth reviewing. If the block says no sessions were recorded, tell the user no counts exist for that period. Counts are recorded via Hamburger menu → "Counts".
 - INVENTORY DATA: When an inventory snapshot is provided in "Current account data", use it to give item-specific advice. Reference actual item names, units, prices, yield percentages, and categories from the snapshot. If a user asks about a specific item and it appears in the snapshot, cite its exact details (e.g. "I can see your Chicken Thighs are set up in lb at $3.2500/lb with 85% yield"). If an item they mention is not in the snapshot, acknowledge you don't see it in their inventory.
 - Keep answers concise (2-4 paragraphs max)
 - Always name the exact app section to navigate to, not generic instructions
