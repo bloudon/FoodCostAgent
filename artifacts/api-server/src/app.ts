@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import compression from "compression";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { logger } from "./lib/logger";
 import { setupSsoAuth } from "./ssoAuth";
@@ -11,6 +12,15 @@ import healthRouter from "./routes/health";
 const app: Express = express();
 
 app.disable('etag');
+
+// Expo is served from its own development origin, unlike the web SPA that
+// shares the proxy origin. Keep mobile Bearer-token requests usable in Expo
+// web previews and native clients without broadening production cookie access.
+app.use(cors({
+  origin: (origin, callback) => callback(null, !origin || /^https:\/\/.+\.(replit\.dev|replit\.app)$/.test(origin)),
+  allowedHeaders: ["Authorization", "Content-Type"],
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+}));
 
 // Enable gzip compression for responses >1KB
 app.use(compression({

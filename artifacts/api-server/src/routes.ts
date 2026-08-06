@@ -24501,6 +24501,20 @@ Human Handoff:
       res.cookie("session", token, sessionCookieOptions());
       const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
       const normalizedRole = user.role === "owner" ? "company_admin" : user.role;
+      // Native clients do not have the web's company-picker step. Start their
+      // session in the account's own company so every /api/mobile endpoint
+      // receives the same tenant context as the web application.
+      // Global administrators can operate across companies and historically
+      // have no companyId on their user record. In that case select the first
+      // available company just as the web company's picker does.
+      const selectedCompanyId = user.companyId ?? (await storage.getCompanies())[0]?.id ?? null;
+      if (selectedCompanyId) {
+        const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+        const session = await storage.getAuthSessionByToken(tokenHash);
+        if (session) {
+          await storage.updateAuthSession(session.id, { selectedCompanyId });
+        }
+      }
       return res.json({
         token,
         userId: user.id,

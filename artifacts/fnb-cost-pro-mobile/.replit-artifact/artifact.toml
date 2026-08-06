@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/fnb-cost-pro-mobile/"
+title = "FnB Cost Pro Mobile"
+description = "A floor-first mobile companion for FnB Cost Pro. Restaurant teams can securely sign in, start or resume inventory counts, update item quantities, and access scan workflows using the same company data as the web platform."
+version = "1.0.0"
+id = "artifacts/fnb-cost-pro-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/fnb-cost-pro-mobile/" ]
+localPort = 18265
+
+[services.development]
+run = "pnpm --filter @workspace/fnb-cost-pro-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fnb-cost-pro-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/fnb-cost-pro-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "18265"
+BASE_PATH = "/fnb-cost-pro-mobile/"
