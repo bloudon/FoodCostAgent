@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -36,7 +37,7 @@ const CALORIE_ANNOTATION_RE = /\s*\(\d[\d\s\-–]*\s*cal[a-z.]*\)\s*/gi;
  * The caller is responsible for fetching the image buffer using the appropriate
  * storage service (with proper company-level authorization).
  */
-export async function scanMenuImage(imageBuffer: Buffer, mimeType: string): Promise<MenuScanResult> {
+export async function scanMenuImage(imageBuffer: Buffer, mimeType: string, meter?: AiMeter): Promise<MenuScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured. Please set it in environment variables.');
   }
@@ -111,6 +112,8 @@ Respond ONLY with the JSON object, no markdown or explanation`;
     max_tokens: 4096,
     response_format: { type: 'json_object' },
   });
+
+  void recordAiTokenUsage(meter, 'menu_scan', 'gpt-4o', response.usage);
 
   const rawResponse = response.choices[0]?.message?.content || '{"items":[],"intelligence":{"phones":[],"addresses":[],"locationCount":1,"multiLocationSignal":false}}';
 

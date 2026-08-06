@@ -1,11 +1,12 @@
 import OpenAI from 'openai';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
  * Sends a recipe image to GPT-4o Vision and extracts step-by-step preparation instructions.
  */
-export async function extractRecipeInstructions(imageBuffer: Buffer, mimeType: string): Promise<string> {
+export async function extractRecipeInstructions(imageBuffer: Buffer, mimeType: string, meter?: AiMeter): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured.');
   }
@@ -43,6 +44,8 @@ Example: {"instructions": "1. Preheat oven to 375°F.\n2. Mix flour and sugar.\n
     response_format: { type: 'json_object' },
   });
 
+  void recordAiTokenUsage(meter, 'recipe_scan', 'gpt-4o', response.usage);
+
   const raw = response.choices[0]?.message?.content || '{}';
   try {
     const parsed = JSON.parse(raw);
@@ -70,7 +73,7 @@ export interface RecipeScanResult {
  * Sends a recipe image buffer to GPT-4o Vision and extracts structured recipe data.
  * Returns recipe name, yield, ingredient list, AND preparation instructions in a single AI call.
  */
-export async function scanRecipeImage(imageBuffer: Buffer, mimeType: string): Promise<RecipeScanResult> {
+export async function scanRecipeImage(imageBuffer: Buffer, mimeType: string, meter?: AiMeter): Promise<RecipeScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured. Please set it in environment variables.');
   }
@@ -130,6 +133,8 @@ Rules:
     max_tokens: 2048,
     response_format: { type: 'json_object' },
   });
+
+  void recordAiTokenUsage(meter, 'recipe_scan', 'gpt-4o', response.usage);
 
   const rawResponse = response.choices[0]?.message?.content || '{}';
 

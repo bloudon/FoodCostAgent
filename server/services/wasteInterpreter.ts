@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -80,6 +81,7 @@ export type SpokenEntry = z.infer<typeof spokenEntrySchema>;
  */
 export async function extractSpokenWasteEntries(
   rawTranscript: string,
+  meter?: AiMeter,
 ): Promise<{ entries: SpokenEntry[]; model: string }> {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
 
@@ -111,6 +113,8 @@ Return ONLY valid JSON: { "entries": [ ... ] }`,
       { role: 'user', content: transcript },
     ],
   });
+
+  void recordAiTokenUsage(meter, 'waste_interpret', INTERPRETATION_MODEL, response.usage);
 
   const raw = response.choices[0]?.message?.content ?? '{}';
   let parsed: unknown;

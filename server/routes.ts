@@ -2552,7 +2552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { scanMenuImage } = await import('./services/menuScanner');
-      const result = await scanMenuImage(buffer, detectedMime);
+      const result = await scanMenuImage(buffer, detectedMime, { companyId, userId: userId ?? null });
 
       const [session] = await db.insert(menuImportSessions).values({
         companyId,
@@ -2889,7 +2889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType);
+      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -5487,7 +5487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Run GPT-4o Vision extraction
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType);
+      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -5869,7 +5869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Run GPT-4o Vision extraction
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType);
+      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -6402,7 +6402,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { analyzeColumns } = await import('./services/aiInventoryImporter');
-      const proposal = await analyzeColumns(csvContent);
+      const proposal = await analyzeColumns(csvContent, {
+        companyId: (req as any).companyId,
+        userId: (req as any).user?.id ?? null,
+      });
       res.json(proposal);
     } catch (error: any) {
       console.error('[Inventory Import Analyze]', error);
@@ -6475,7 +6478,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               .filter(n => n.trim().length > 0);
 
             const { normalizeProductNames } = await import('./services/aiInventoryImporter');
-            canonicalNames = await normalizeProductNames(rawNames);
+            canonicalNames = await normalizeProductNames(rawNames, {
+              companyId,
+              userId: (req as any).user?.id ?? null,
+            });
             console.log(`[Inventory Import] Normalized ${canonicalNames.size} product names via AI`);
           }
         } catch (normErr) {
@@ -6764,7 +6770,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const mimeType = detectedMime;
 
       const { scanMenuImage } = await import('./services/menuScanner');
-      const result = await scanMenuImage(buffer, mimeType);
+      const result = await scanMenuImage(buffer, mimeType, {
+        companyId: (req as any).companyId,
+        userId: (req as any).user?.id ?? null,
+      });
 
       if (existingSession) {
         // Append mode: re-read extractedItems and re-validate status inside a transaction
@@ -7248,7 +7257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Run AI extraction
       const { scanRecipeImage } = await import('./services/recipeScanner');
-      const scan = await scanRecipeImage(buffer, mimeType);
+      const scan = await scanRecipeImage(buffer, mimeType, { companyId, userId: userId ?? null });
 
       // Fuzzy-match ingredients: preload inventory + categories once, then match in-process (O(1) DB round-trips)
       const { ItemMatcher } = await import('./services/itemMatcher');
@@ -7556,7 +7565,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const { cropFoodPhotoFromScan } = await import("./services/recipePhotoCropper");
           const userId = (req as any).user?.id ?? "server";
-          const cropResult = await cropFoodPhotoFromScan(session.rawImagePath, userId);
+          const cropResult = await cropFoodPhotoFromScan(session.rawImagePath, userId, {
+            companyId: (req as any).companyId,
+            userId: (req as any).user?.id ?? null,
+          });
           if (cropResult.croppedPath) {
             await db.update(recipes)
               .set({ imagePath: cropResult.croppedPath, sourceImagePath: session.rawImagePath })
@@ -9554,7 +9566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { buffer, mimeType } = await readImageBuffer(parsed.data.objectPath, companyId, userId);
 
       const { extractRecipeInstructions } = await import('./services/recipeScanner');
-      const instructions = await extractRecipeInstructions(buffer, mimeType);
+      const instructions = await extractRecipeInstructions(buffer, mimeType, { companyId, userId: userId ?? null });
 
       res.json({ instructions });
     } catch (error: any) {
@@ -15940,7 +15952,10 @@ Return format: ["ingredient1", "ingredient2", ...]`;
 
       // ── Extract spoken entries ────────────────────────────────────────────
       const { entries: spokenEntries, model: interpretationModel } =
-        await extractSpokenWasteEntries(transcript);
+        await extractSpokenWasteEntries(transcript, {
+          companyId: req.companyId!,
+          userId: (req as any).user?.id ?? null,
+        });
 
       // ── Fetch catalog data for resolution ─────────────────────────────────
       const [allInventoryItems, allMenuItems, allUnits, allItemUnits] = await Promise.all([
@@ -21575,7 +21590,10 @@ Human Handoff:
             console.warn(`[SweepScan] Frame ${idx + 1} has unsupported mime type ${mime}, skipping`);
             return { items: [], notes: `Frame ${idx + 1} skipped: unsupported image type` };
           }
-          return scanShelfImage(file.buffer, mime, contextHint);
+          return scanShelfImage(file.buffer, mime, contextHint, {
+            companyId: (req as any).companyId,
+            userId,
+          });
         });
 
         const frameResults = await Promise.all(scanPromises);
@@ -21703,7 +21721,7 @@ Human Handoff:
         }
 
         const { scanCatchWeightLabel } = await import('./services/shelfScanner');
-        const result = await scanCatchWeightLabel(file.buffer, mime, expectedName);
+        const result = await scanCatchWeightLabel(file.buffer, mime, expectedName, { companyId, userId });
 
         // Optionally apply the extracted weight directly to the count line
         let lineUpdated = false;

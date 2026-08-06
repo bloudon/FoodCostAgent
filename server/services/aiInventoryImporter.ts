@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { CsvColumnMapping } from '../integrations/csv/CsvOrderGuide';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -33,7 +34,7 @@ const FIELD_ALIASES: Record<string, keyof CsvColumnMapping> = {
  * Sends CSV headers + sample rows to OpenAI and gets back a column mapping proposal.
  * Falls back to pattern-matching if OpenAI is unavailable.
  */
-export async function analyzeColumns(csvText: string): Promise<ColumnMappingProposal> {
+export async function analyzeColumns(csvText: string, meter?: AiMeter): Promise<ColumnMappingProposal> {
   const lines = csvText.split('\n').filter(l => l.trim());
   if (lines.length === 0) {
     throw new Error('CSV file is empty');
@@ -64,6 +65,8 @@ Respond ONLY with a valid JSON object.`,
         response_format: { type: 'json_object' },
       });
 
+      void recordAiTokenUsage(meter, 'inventory_import', 'gpt-4o-mini', response.usage);
+
       const raw = response.choices[0]?.message?.content;
       if (raw) {
         const parsed = JSON.parse(raw) as AiColumnMappingResponse;
@@ -86,7 +89,8 @@ Respond ONLY with a valid JSON object.`,
  * canonicalName parameter, improving match quality for abbreviated/coded names.
  */
 export async function normalizeProductNames(
-  rawNames: string[]
+  rawNames: string[],
+  meter?: AiMeter,
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (!rawNames.length || !process.env.OPENAI_API_KEY) return result;
@@ -94,14 +98,14 @@ export async function normalizeProductNames(
   const BATCH_SIZE = 40;
   for (let i = 0; i < rawNames.length; i += BATCH_SIZE) {
     const batch = rawNames.slice(i, i + BATCH_SIZE);
-    const batchResult = await normalizeBatch(batch);
+    const batchResult = await normalizeBatch(batch, meter);
     batchResult.forEach((canonical, raw) => result.set(raw, canonical));
   }
 
   return result;
 }
 
-async function normalizeBatch(names: string[]): Promise<Map<string, string>> {
+async function normalizeBatch(names: string[], meter?: AiMeter): Promise<Map<string, string>> {
   const result = new Map<string, string>();
 
   try {
@@ -127,6 +131,8 @@ ${names.map((n, i) => `${i + 1}. "${n}"`).join('\n')}`;
       max_tokens: 1500,
       response_format: { type: 'json_object' },
     });
+
+    void recordAiTokenUsage(meter, 'inventory_import', 'gpt-4o-mini', response.usage);
 
     const raw = response.choices[0]?.message?.content;
     if (raw) {

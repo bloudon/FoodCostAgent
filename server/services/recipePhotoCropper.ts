@@ -14,6 +14,7 @@ import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
 import { objectStorageClient } from '../objectStorage';
 import { setObjectAclPolicy } from '../objectAcl';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -79,6 +80,7 @@ export interface CropResult {
 export async function cropFoodPhotoFromScan(
   rawImagePath: string,
   ownerId: string,
+  meter?: AiMeter,
 ): Promise<CropResult> {
   if (!process.env.OPENAI_API_KEY) {
     console.warn('[RecipePhotoCropper] OPENAI_API_KEY not set — skipping crop');
@@ -121,6 +123,8 @@ Example: {"found":true,"confidence":0.92,"x":0.55,"y":0.05,"width":0.42,"height"
       max_tokens: 256,
       response_format: { type: 'json_object' },
     });
+
+    void recordAiTokenUsage(meter, 'recipe_scan', 'gpt-4o', response.usage);
 
     const raw = response.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw) as {

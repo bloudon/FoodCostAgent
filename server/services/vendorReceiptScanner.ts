@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -39,6 +40,7 @@ export interface VendorReceiptScanResult {
 export async function scanVendorReceipt(
   imageBuffer: Buffer,
   mimeType: string,
+  meter?: AiMeter,
 ): Promise<VendorReceiptScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured. Please set it in environment variables.');
@@ -102,6 +104,8 @@ Rules:
     max_tokens: 4096,
     response_format: { type: 'json_object' },
   });
+
+  void recordAiTokenUsage(meter, 'invoice_scan', 'gpt-4o', response.usage);
 
   const rawResponse = response.choices[0]?.message?.content || '{"vendorName":null,"items":[]}';
 

@@ -26,6 +26,43 @@ const MODEL_PRICING: Record<string, { inputPerM: number; outputPerM: number }> =
 /** Unknown models are priced at the MOST expensive known rate so we never underbill. */
 const UNKNOWN_MODEL_PRICING = MODEL_PRICING["gpt-4o"];
 
+/**
+ * Context identifying who to bill for an AI call. Passed into AI service
+ * functions so every OpenAI call records its token usage.
+ */
+export interface AiMeter {
+  companyId: string;
+  userId?: string | null;
+}
+
+/**
+ * Record one OpenAI call's token usage into ai_token_usage.
+ * Fire-and-forget safe: never throws (a metering failure must not break the feature).
+ * When `usage` is missing (e.g. stream aborted before the usage chunk), nothing is
+ * recorded unless estimated token counts are supplied.
+ */
+export async function recordAiTokenUsage(
+  meter: AiMeter | undefined,
+  feature: string,
+  model: string,
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined,
+  opts?: { toolCalls?: number; isEstimated?: boolean },
+): Promise<void> {
+  if (!meter?.companyId) return;
+  const promptTokens = Math.max(0, Math.round(usage?.prompt_tokens ?? 0));
+  const completionTokens = Math.max(0, Math.round(usage?.completion_tokens ?? 0));
+  if (promptTokens === 0 && completionTokens === 0) return;
+  try {
+    await db.execute(sql`
+      INSERT INTO ai_token_usage (company_id, user_id, feature, model, prompt_tokens, completion_tokens, total_tokens, tool_calls, is_estimated)
+      VALUES (${meter.companyId}, ${meter.userId ?? null}, ${feature}, ${model},
+              ${promptTokens}, ${completionTokens}, ${promptTokens + completionTokens},
+              ${opts?.toolCalls ?? 0}, ${opts?.isEstimated ? 1 : 0})`);
+  } catch (err) {
+    console.warn(`[AI Usage] Failed to record ${feature} token usage:`, err);
+  }
+}
+
 export interface UsagePeriod {
   key: string; // "YYYY-MM"
   start: Date;

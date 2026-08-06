@@ -13,4 +13,6 @@ Invariants to preserve:
 - **Consent is admin-only** and only recordable while approvalRequired is true.
 - Unknown models are priced at the highest known rate to avoid underbilling.
 
+- **Gate scope is chat-only by decision**: the 402/overage approval gate blocks only the chat assistant. Scan/import features (invoice_scan, recipe_scan, shelf_scan, menu_scan, waste_interpret, inventory_import) are metered via `recordAiTokenUsage` (services accept an optional `AiMeter`) but never blocked — they're core operational/onboarding flows; blocking them mid-shift would be worse than accruing accepted overage.
+
 **How to apply:** any new AI feature must write to ai_token_usage (that's the sole metering source), and any new billing surface must reuse the period key + ledger rather than inventing its own window.

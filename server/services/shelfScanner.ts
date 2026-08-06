@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { recordAiTokenUsage, type AiMeter } from '../aiUsage';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -28,6 +29,7 @@ export async function scanShelfImage(
   imageBuffer: Buffer,
   mimeType: string,
   contextHint?: string,
+  meter?: AiMeter,
 ): Promise<ShelfScanResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured.');
@@ -90,6 +92,8 @@ Rules:
     response_format: { type: 'json_object' },
   });
 
+  void recordAiTokenUsage(meter, 'shelf_scan', 'gpt-4o', response.usage);
+
   const raw = response.choices[0]?.message?.content || '{}';
   try {
     const parsed = JSON.parse(raw);
@@ -139,6 +143,7 @@ export async function scanCatchWeightLabel(
   imageBuffer: Buffer,
   mimeType: string,
   expectedName?: string,
+  meter?: AiMeter,
 ): Promise<CatchWeightLabelResult> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured.');
@@ -198,6 +203,8 @@ Rules:
     max_tokens: 512,
     response_format: { type: 'json_object' },
   });
+
+  void recordAiTokenUsage(meter, 'shelf_scan', 'gpt-4o', response.usage);
 
   const raw = response.choices[0]?.message?.content || '{}';
   try {
