@@ -16,31 +16,73 @@ const AMBIGUOUS_SCORE_MIN = 0.40;
 // ─── Transcription ────────────────────────────────────────────────────────────
 
 /**
+ * Estimate transcription token usage when the API response lacks a usage block.
+ * Audio input: gpt-4o-mini-transcribe audio is ~1,000 tokens per minute of audio.
+ * We estimate duration from the compressed audio size assuming ~32 kbps (typical
+ * for browser-recorded webm/opus voice), i.e. ~4,000 bytes/second — and round up.
+ * Output: ~1 token per 4 characters of transcript.
+ */
+export function estimateTranscriptionUsage(
+  audioByteLength: number,
+  transcript: string,
+): { prompt_tokens: number; completion_tokens: number } {
+  const seconds = Math.max(1, audioByteLength / 4000);
+  const promptTokens = Math.ceil((seconds / 60) * 1000);
+  const completionTokens = Math.max(1, Math.ceil(transcript.length / 4));
+  return { prompt_tokens: promptTokens, completion_tokens: completionTokens };
+}
+
+/**
  * Transcribe an audio buffer using the configured OpenAI transcription model.
  * Returns the transcript string and the model name used.
+ * Records token usage under 'waste_transcribe' — real usage when the API
+ * returns it (json response format), otherwise an estimate flagged is_estimated.
  */
 export async function transcribeAudio(
   audioBuffer: Buffer,
   mimeType: string,
   fileExtension: string,
+  meter?: AiMeter,
 ): Promise<{ transcript: string; model: string }> {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured');
 
   const file = new File([audioBuffer], `recording.${fileExtension}`, { type: mimeType });
 
-  // The OpenAI SDK audio transcriptions endpoint accepts a File/Blob
+  // The OpenAI SDK audio transcriptions endpoint accepts a File/Blob.
+  // response_format 'json' (unlike 'text') includes a usage block for
+  // gpt-4o-mini-transcribe so transcription cost can be metered.
   const response = await (openai.audio.transcriptions.create as Function)({
     model: TRANSCRIPTION_MODEL,
     file,
     prompt:
       'Restaurant inventory and waste report. Expect food names, menu items, vendor products, quantities, pounds, ounces, cases, eaches, gallons, spoilage, overproduction and damage.',
-    response_format: 'text',
+    response_format: 'json',
   });
 
   const transcript =
     typeof response === 'string'
       ? response
       : (response as { text?: string }).text ?? '';
+
+  // Meter the call. Transcription usage reports input_tokens/output_tokens
+  // (not prompt_tokens/completion_tokens like chat completions).
+  const usage = (response as {
+    usage?: { type?: string; input_tokens?: number; output_tokens?: number };
+  })?.usage;
+  if (usage && typeof usage.input_tokens === 'number') {
+    void recordAiTokenUsage(meter, 'waste_transcribe', TRANSCRIPTION_MODEL, {
+      prompt_tokens: usage.input_tokens,
+      completion_tokens: usage.output_tokens ?? 0,
+    });
+  } else {
+    void recordAiTokenUsage(
+      meter,
+      'waste_transcribe',
+      TRANSCRIPTION_MODEL,
+      estimateTranscriptionUsage(audioBuffer.length, transcript),
+      { isEstimated: true },
+    );
+  }
 
   return { transcript: transcript.trim(), model: TRANSCRIPTION_MODEL };
 }

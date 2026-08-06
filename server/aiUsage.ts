@@ -22,6 +22,9 @@ export const OVERAGE_MARKUP = 1.4; // cost + 40%
 const MODEL_PRICING: Record<string, { inputPerM: number; outputPerM: number }> = {
   "gpt-4o-mini": { inputPerM: 0.15, outputPerM: 0.6 },
   "gpt-4o": { inputPerM: 2.5, outputPerM: 10 },
+  // Transcription: input priced at the audio-token rate ($3/M) rather than the
+  // text-token rate ($1.25/M) since inputs are overwhelmingly audio — never underbills.
+  "gpt-4o-mini-transcribe": { inputPerM: 3.0, outputPerM: 5.0 },
 };
 /** Unknown models are priced at the MOST expensive known rate so we never underbill. */
 const UNKNOWN_MODEL_PRICING = MODEL_PRICING["gpt-4o"];

@@ -15912,7 +15912,10 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           return res.status(audioErr.status).json({ error: audioErr.error });
         }
 
-        const result = await transcribeAudio(file.buffer, file.mimetype, ext);
+        const result = await transcribeAudio(file.buffer, file.mimetype, ext, {
+          companyId: req.companyId!,
+          userId: (req as any).user?.id ?? null,
+        });
         transcript = result.transcript;
         transcriptionModel = result.model;
       } else {
