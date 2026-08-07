@@ -1,0 +1,317 @@
+# Decision
+
+**Approve #984 with only a few tightening edits.**
+
+The scope is right, the sequencing is right, and importantly it keeps the operating-model setup separate from the mobile consolidation work. I would run this before #985/#mobile implementation.
+
+The one thing I want to prevent is Replit turning this into a documentation dump instead of an actual usable operating system for future agents.
+
+## Changes I would make before running it
+
+### 1. Make the Skill filenames explicit
+
+Right now it says skills exist under `.agents/skills/`, but I would specify the intended structure so the agent doesn’t improvise five different conventions.
+
+Use:
+
+```text
+.agents/skills/fnb-backend/SKILL.md
+.agents/skills/fnb-mobile/SKILL.md
+.agents/skills/fnb-qa/SKILL.md
+.agents/skills/fnb-security-review/SKILL.md
+.agents/skills/fnb-task-handoff/SKILL.md
+```
+
+And explicitly require each Skill to contain:
+
+* Purpose
+* Activate when
+* Do not activate when
+* Responsibilities
+* Required checks
+* Forbidden actions
+* Expected output
+
+That will make them much more operational.
+
+---
+
+### 2. Add one important rule about implementation agents
+
+I would add this to the operating model:
+
+> **An implementation agent may not certify its own work as having passed independent QA or architecture review.**
+
+That sounds obvious, but it matters a lot once agents start spawning subagents.
+
+You want evidence such as:
+
+```text
+Implemented by: Mobile workstream
+QA reviewed by: QA workstream
+Architecture reviewed by: Security/Architecture workstream
+```
+
+—not:
+
+> “I implemented it and confirmed everything looks good.”
+
+For Level 3 work, independence should be explicit.
+
+---
+
+### 3. Add a “blocking findings” concept
+
+Security/Architecture and QA reviewers need a way to say:
+
+> This task should not proceed to completion.
+
+I would add statuses:
+
+```text
+PASS
+PASS WITH FOLLOW-UP
+BLOCKED
+NOT APPLICABLE
+```
+
+Require Level 2/3 task reports to show:
+
+| Review                | Result   |
+| --------------------- | -------- |
+| Implementation        | Complete |
+| Automated tests       | PASS     |
+| Regression QA         | PASS     |
+| Security/Architecture | PASS     |
+| PM approval required  | Yes/No   |
+
+This makes the handoff much easier for me to review later.
+
+---
+
+### 4. Distinguish “architecture decision” from “architecture review”
+
+This is subtle but important.
+
+The **Security/Architecture Reviewer should not be authorized to invent new product architecture**.
+
+Its job is:
+
+> verify implementation against approved architecture, identify contradictions, and propose a decision if the existing architecture is insufficient.
+
+So add:
+
+> Architecture reviewers may recommend an architectural change but may not treat their recommendation as approved. New architecture decisions return to the Product Owner/PM approval loop.
+
+That keeps Replit from becoming its own product manager.
+
+---
+
+# One change to the approval levels
+
+Your Level 3 definition should explicitly include **financial/business calculations**.
+
+For FnB Cost Pro, errors in these can be as consequential as auth failures.
+
+I would include:
+
+* Recipe costing
+* Theoretical food cost
+* Inventory valuation
+* Purchase-unit conversions
+* Pack normalization
+* Variance calculations
+* Waste valuation
+* Predictive ordering math
+
+So Level 3 becomes:
+
+> architecture, security, data integrity, financial calculations, destructive changes, or shared contracts.
+
+---
+
+# I would also require a standard architecture-decision ID
+
+Instead of only:
+
+```text
+### 2026-08-07 — Mobile Authentication
+```
+
+use something like:
+
+```text
+### ADR-004 — Mobile Authentication
+```
+
+with the date inside.
+
+Example:
+
+```md
+### ADR-004 — Mobile WebView Authentication
+
+Date: 2026-08-07
+Status: Approved
+```
+
+Why? Six months from now it will be easier to say:
+
+> Follow ADR-004.
+
+rather than referring to a date and title every time.
+
+No need for a complicated ADR system. Just sequential IDs.
+
+---
+
+# Revised Done Looks Like
+
+I would change it to this:
+
+```md
+Done looks like
+
+- `replit.md` preserves all existing architecture decisions and adds a concise engineering operating model.
+- Existing decisions are not rewritten merely to fit the new format.
+- Future architecture decisions use sequential ADR identifiers and statuses: Proposed, Approved, Superseded.
+- `docs/agent-operating-model.md` defines:
+  - Integration Lead
+  - Backend Engineer
+  - Web Engineer
+  - Mobile Engineer
+  - QA / Regression Reviewer
+  - Security / Architecture Reviewer
+  - Level 1–3 work classifications
+  - shared-contract rules
+  - independent-review requirements
+  - parallel-work rules
+  - merge gates
+  - blocking-review behavior
+  - external PM handoff
+
+- Level 3 explicitly includes:
+  - authentication
+  - permissions
+  - tenant isolation
+  - schema changes
+  - destructive changes
+  - shared contracts
+  - inventory mutation semantics
+  - costing / valuation calculations
+  - mobile architecture
+  - vendor integrations
+  - AI interpretation contracts
+
+- `docs/task-reports/README.md` defines the required completion-report format for Level 2 and Level 3 work.
+
+- Level 2/3 reports include review status:
+  - Implementation
+  - Automated tests
+  - Regression QA
+  - Security/Architecture review
+  - External PM approval required
+
+- Review outcomes use:
+  - PASS
+  - PASS WITH FOLLOW-UP
+  - BLOCKED
+  - NOT APPLICABLE
+
+- An implementation workstream may not certify itself as having completed independent QA or architecture review.
+
+- Focused project Skills exist at:
+
+  `.agents/skills/fnb-backend/SKILL.md`
+  `.agents/skills/fnb-mobile/SKILL.md`
+  `.agents/skills/fnb-qa/SKILL.md`
+  `.agents/skills/fnb-security-review/SKILL.md`
+  `.agents/skills/fnb-task-handoff/SKILL.md`
+
+- Every Skill explicitly includes:
+  - Purpose
+  - Activate when
+  - Do not activate when
+  - Responsibilities
+  - Required checks
+  - Forbidden actions
+  - Expected output
+
+- No giant all-purpose FnB skill is created.
+
+- A concise proposed Custom Instructions block is documented for manual installation in Workspace Settings.
+
+- The setup report identifies:
+  - files created
+  - files changed
+  - exact commit SHA
+  - remaining manual Replit configuration
+  - confirmation that no application functionality was changed.
+```
+
+# One additional Skill I would consider later
+
+Not for #984—I agree with keeping this setup small.
+
+But eventually I think we want:
+
+```text
+fnb-data-integrity
+```
+
+That reviewer would focus specifically on:
+
+* unit conversions
+* inventory mutation semantics
+* cost calculations
+* pack geometry
+* imports
+* vendor-item normalization
+* location/store scoping
+
+FnB Cost Pro has enough domain-specific data logic that “backend review” and “security review” won't always catch a mathematically valid but operationally wrong calculation.
+
+I would wait until we exercise the system once or twice before adding it.
+
+---
+
+# How I want #984 to finish
+
+The most valuable output isn't the prose documentation.
+
+I want the final answer from Replit to look something like:
+
+```text
+Engineering Operating Model established.
+
+Created:
+- docs/agent-operating-model.md
+- docs/task-reports/README.md
+- .agents/skills/fnb-backend/SKILL.md
+- .agents/skills/fnb-mobile/SKILL.md
+- .agents/skills/fnb-qa/SKILL.md
+- .agents/skills/fnb-security-review/SKILL.md
+- .agents/skills/fnb-task-handoff/SKILL.md
+- docs/replit-custom-instructions.md
+
+Updated:
+- replit.md
+
+Manual action still required:
+- Install proposed Custom Instructions in Replit Workspace Settings.
+
+Product/application files changed:
+- None
+
+Behavior changes:
+- None
+
+Commit:
+<sha>
+```
+
+That becomes our first **PM-reviewable engineering-process handoff**.
+
+Once #984 ships, send me the commit or just say **“review #984”**. Then I'll inspect whether the Skills are actually useful—not just whether all the requested files exist.
+
+After that, mobile consolidation becomes our first **Level 3 real-world test of the model**, which is exactly how I'd want to validate it.
