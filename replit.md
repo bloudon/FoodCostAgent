@@ -1,6 +1,6 @@
-# [Project name]
+# FnB Cost Pro
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Restaurant inventory, cost, counting, and management tools with web and mobile experiences.
 
 ## Run & Operate
 
@@ -26,7 +26,8 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Mobile Architecture Decision — Pending Approval:** The historical hybrid Expo app at `https://github.com/bloudon/FnB_mobile.git` (implementation commit `c90f29cd99ae06ac3a3c004ca7724e9cdfb31b50`; architecture handoff `d3d3ff83ebfe74c8da176e86b0ef4463a6455f82`) is recommended as the consolidation base. Keep device-first workflows native and use embedded pages for broad management workflows during transition. The historical `mobileToken` handoff, embedded-route whitelist, and waste voice bridge v1 are baselines; any change needs a separately approved decision. Floor Mode is recommended as a shared role-based shell, but that product decision is pending user approval. See `docs/mobile-architecture-reconciliation.md`.
+- **#981 Implementation Note:** Task #981 shipped a native Expo proof of concept with SecureStore-backed bearer tokens, a native dashboard/session list, assigned-store count creation, manual count-line edits, and reviewed sweep-scan application. It does not include the historical WebView bridge, catch-weight flow, voice-waste bridge, i18n, or embedded route contract. Its deviation from those historical conventions is not approved as the long-term architecture.
 
 ## Product
 
