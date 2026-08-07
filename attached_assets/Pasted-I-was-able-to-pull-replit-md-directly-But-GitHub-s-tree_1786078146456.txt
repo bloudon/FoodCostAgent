@@ -1,0 +1,31 @@
+I was able to pull replit.md directly. But GitHub's /tree/ and /commits/ routes (the folder-browsing pages) are blocked for automated fetching in this environment, and this repo isn't indexed by web search — so I can't discover the exact blob URLs for nested files like docs/agent-operating-model.md or anything under .agents/skills/ on my own. Once I have an exact file URL I can fetch it fine (that's how I got replit.md), I just can't browse into subfolders to find the URLs in the first place.
+
+Two ways to unblock this — whichever is faster for you:
+
+Paste the direct GitHub blob links for each file (e.g. https://github.com/bloudon/FoodCostAgent/blob/main/docs/agent-operating-model.md), and I'll fetch each one live, or
+Paste the file contents directly into the chat.
+
+Files I still need (from your list):
+
+docs/agent-operating-model.md
+docs/task-reports/README.md
+.agents/skills/fnb-backend/SKILL.md
+.agents/skills/fnb-mobile/SKILL.md
+.agents/skills/fnb-qa/SKILL.md
+.agents/skills/fnb-security-review/SKILL.md
+.agents/skills/fnb-task-handoff/SKILL.md
+Any task report for #984 under docs/task-reports/
+Whatever file documents the proposed Replit Workspace Custom Instructions
+
+For reference, here's what replit.md (main branch, as inspected) actually contains right now:
+
+Run & Operate: pnpm workspace commands, API server on port 5000, DB push, Postgres via DATABASE_URL
+Stack: pnpm workspaces, Node 24, TS 5.9, Express 5, PostgreSQL + Drizzle, Zod, Orval codegen, esbuild
+Where things live: placeholder — not yet populated
+Architecture decisions: two entries — a "Mobile Architecture Decision — Pending Approval" note referencing FnB_mobile and specific commit SHAs, and a "#981 Implementation Note" describing what the native Expo POC did and didn't include
+Product: placeholder — not yet populated
+User preferences: placeholder — not yet populated
+Gotchas: placeholder — not yet populated
+Pointers: one line pointing to a pnpm-workspace skill
+
+Once I have the rest, I'll run the full ten-point evaluation and return the structured review with per-claim file citations.
