@@ -1,0 +1,76 @@
+I reviewed both files on `main`. The reconciliation is solid and I would approve most of it as the PM baseline. The report correctly identifies the historical hybrid app as the stronger consolidation base, while preserving the useful #981 additions such as assigned-store count creation, native count editing, and reviewed scan application. ([GitHub][1])
+
+The strongest part is that it does **not** let the existence of #981 redefine the architecture by accident. It explicitly keeps the historical `mobileToken` bridge, embedded route contract, voice-waste v1 bridge, catch-weight flow, i18n, and hybrid shell as the established baseline, and it treats #981 as a narrower source of selected UX improvements rather than the new source of truth. ([GitHub][1])
+
+I would approve these decisions now:
+
+* **Historical app as the consolidation base**
+* **One Expo app, not two parallel clients**
+* **Native for device-first flows**: auth, camera/scan, catch weight, voice capture, navigation
+* **Embedded initially for broader management flows**: recipes, vendors, reports, billing, complex settings
+* **Preserve the v1 waste bridge and embedded whitelist**
+* **Do not delete duplicated code until replacement flows are tested**
+* **Normalize API DTOs before merging #981 count screens**
+* **Preserve reviewed apply semantics and atomic `addQty` behavior** ([GitHub][1])
+
+The `replit.md` summary is also appropriately short. It records the historical repo/commits, names the historical hybrid app as the recommended base, notes that Floor Mode is still pending approval, and accurately states what #981 actually shipped and what it omitted. ([GitHub][2])
+
+### Two decisions I would change or tighten
+
+**1. Floor Mode:** I would *not* approve “shared shell with role-based modes” yet. The report itself admits there is no direct code evidence tying the separate Floor Mode product to this app, and it lists missing information around pricing, branding, offline requirements, and release commitments. ([GitHub][1])
+
+So I would record:
+
+> **Floor Mode decision remains open.** Shared role-based shell is the preferred technical hypothesis, but not an approved product decision until the separate Floor Mode product is reviewed.
+
+That avoids accidentally collapsing a potentially distinct product.
+
+**2. WebView authentication:** I would approve the direction now: **move toward a short-lived web-session token rather than passing the 30-day native login token into WebView URLs.** The report already identifies the exposure risk and notes that a 5-minute web token endpoint exists. The implementation still needs coordination with the production web app, but the architectural intent should no longer be ambiguous. ([GitHub][1])
+
+So the decision should be:
+
+> Native SecureStore retains the long-lived mobile auth token. Embedded pages receive a short-lived web-session token. Long-lived login tokens should not remain in WebView URLs as the target architecture.
+
+### One thing I would add before the implementation task
+
+The consolidation sequence should include a **minimum regression gate** before any deletion. The report says tests should exist, but I would make the required flows explicit:
+
+* sign in / sign out
+* company/store permission enforcement
+* start/resume count
+* manual quantity update
+* sweep scan → review → apply
+* catch-weight `addQty`
+* voice waste capture → bridge handoff
+* embedded page authentication
+* token expiry/re-login
+* English/Spanish navigation
+
+That gives the next Replit task a concrete “do not delete until these pass” boundary.
+
+## PM approval state
+
+I would update the decisions to:
+
+**Approved**
+
+* Historical hybrid client is the consolidation base.
+* #981 contributes selected native UX, not a competing architecture.
+* One auth provider and one API client layer.
+* Historical waste bridge v1 and embedded whitelist remain authoritative.
+* Native/device-first vs embedded/management split is approved as the transition model.
+* Long-lived native token remains in SecureStore.
+* Target WebView auth moves to a short-lived web-session token.
+
+**Still pending**
+
+* Final Floor Mode product relationship.
+* Exact final ownership of dashboard/session/manual-count screens after usability testing.
+* Final deletion list after regression tests pass.
+
+That gives you enough architecture certainty to start the consolidation task without prematurely deciding the only area where the evidence is genuinely incomplete. ([GitHub][1])
+
+My next move would be a **#984 Mobile Consolidation Phase 1** task limited to moving the historical hybrid foundation into the main artifact, unifying auth/API transport, preserving contracts, and adding the regression gates—**without yet deleting old implementations or adding alerts/features**.
+
+[1]: https://github.com/bloudon/FoodCostAgent/blob/main/docs/mobile-architecture-reconciliation.md "FoodCostAgent/docs/mobile-architecture-reconciliation.md at main · bloudon/FoodCostAgent · GitHub"
+[2]: https://github.com/bloudon/FoodCostAgent/blob/main/replit.md "FoodCostAgent/replit.md at main · bloudon/FoodCostAgent · GitHub"
