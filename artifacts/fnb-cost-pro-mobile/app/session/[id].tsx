@@ -1,224 +1,592 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, TextInput, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useColors } from '@/hooks/useColors';
-import { useSessionItems, useUpdateItemQuantity } from '@/hooks/useApi';
-import { Feather } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useScan } from "@/context/ScanContext";
+import { useSessionDetail } from "@/hooks/useSessionDetail";
+import { useColors } from "@/hooks/useColors";
+
+function formatCurrency(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return "Yesterday";
+  return `${days}d ago`;
+}
+
+function SkeletonBlock({ width, height, style }: { width: number | `${number}%`; height: number; style?: object }) {
+  const anim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [anim]);
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius: 8, backgroundColor: "#E5E7EB", opacity: anim }, style]}
+    />
+  );
+}
 
 export default function SessionDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
-  const router = useRouter();
-  
-  const { data: items, isLoading, refetch } = useSessionItems(id!);
-  const updateQty = useUpdateItemQuantity();
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { setSelectedSessionId } = useScan();
+  const { data, isLoading, error, refetch } = useSessionDetail(id ?? "");
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [search, setSearch] = useState('');
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const topPad = Platform.OS === "web" ? 0 : insets.top;
 
-  useEffect(() => {
-    if (items) {
-      const q: Record<string, string> = {};
-      items.forEach((item: any) => {
-        q[item.id] = item.quantity?.toString() || '0';
-      });
-      setQuantities(q);
-    }
-  }, [items]);
-
-  const handleQtyChange = (lineId: string, text: string) => {
-    setQuantities(prev => ({ ...prev, [lineId]: text }));
-  };
-
-  const handleQtyBlur = (lineId: string) => {
-    const val = parseFloat(quantities[lineId]);
-    if (!isNaN(val)) {
-      updateQty.mutate({ sessionId: id!, lineId, qty: val });
-    }
-  };
-
-  const filteredItems = items?.filter((item: any) => 
-    item.name?.toLowerCase().includes(search.toLowerCase()) || 
-    item.sku?.toLowerCase().includes(search.toLowerCase())
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      refetch();
+      const interval = setInterval(() => {
+        refetch();
+      }, 5000);
+      return () => clearInterval(interval);
+    }, [id, refetch])
   );
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
+
+  const handleScanIntoSession = () => {
+    if (!id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedSessionId(id);
+    router.push("/camera");
+  };
+
+  const handleViewGroup = (
+    groupType: "category" | "location",
+    groupId: string,
+    groupName: string
+  ) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: "/session/items",
+      params: {
+        sessionId: id,
+        groupType,
+        groupId,
+        groupName,
+        sessionName: data?.name ?? "",
+      },
+    });
+  };
+
+  const categories = data?.categories ?? [];
+  const locations = data?.locations ?? [];
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Count Session</Text>
-        <TouchableOpacity 
-          style={styles.scanBtn}
-          onPress={() => router.push(`/scan?sessionId=${id}`)}
-        >
-          <Feather name="camera" size={20} color={colors.primary} />
-          <Text style={[styles.scanBtnText, { color: colors.primary }]}>Scan</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <View style={[styles.searchBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Feather name="search" size={18} color={colors.mutedForeground} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search items..."
-            placeholderTextColor={colors.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-          />
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topPad + 8 }]}>
+        <View style={styles.headerRow}>
+          <Pressable
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <Feather name="arrow-left" size={20} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {isLoading ? "Loading…" : (data?.name ?? "Inventory Session")}
+          </Text>
+          <View style={{ width: 40 }} />
         </View>
       </View>
 
-      {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : (!items || items.length === 0) ? (
-        <View style={styles.center}>
-          <Feather name="package" size={48} color={colors.mutedForeground} style={{ marginBottom: 16 }} />
-          <Text style={[styles.emptyText, { color: colors.text }]}>No items in this session.</Text>
-          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>Use the scan button to review AI results before adding quantities.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <View style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.itemInfo}>
-                <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>
-                  {item.name}
-                </Text>
-                <Text style={[styles.itemMeta, { color: colors.mutedForeground }]}>
-                  {item.sku ? `SKU: ${item.sku} • ` : ''}{item.unit || 'Unit'}
-                </Text>
-              </View>
-              <View style={styles.qtyContainer}>
-                <TextInput
-                  style={[styles.qtyInput, { 
-                    borderColor: colors.border, 
-                    color: colors.text,
-                    backgroundColor: colors.background
-                  }]}
-                  keyboardType="numeric"
-                  value={quantities[item.id] || '0'}
-                  onChangeText={(val) => handleQtyChange(item.id, val)}
-                  onBlur={() => handleQtyBlur(item.id)}
-                />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        {isLoading ? (
+          <>
+            <View style={[styles.statsRow]}>
+              <SkeletonBlock width="45%" height={70} style={{ borderRadius: 12 }} />
+              <SkeletonBlock width="45%" height={70} style={{ borderRadius: 12 }} />
+            </View>
+            <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <SkeletonBlock width={120} height={14} style={{ marginBottom: 16 }} />
+              <View style={styles.cardGrid}>
+                <SkeletonBlock width="47%" height={80} />
+                <SkeletonBlock width="47%" height={80} />
               </View>
             </View>
-          )}
-        />
-      )}
-    </SafeAreaView>
+          </>
+        ) : error ? (
+          <View style={styles.errorBox}>
+            <Feather name="alert-circle" size={24} color={colors.destructive} />
+            <Text style={[styles.errorText, { color: colors.destructive }]}>{error}</Text>
+            <Pressable style={[styles.retryBtn, { borderColor: colors.primary }]} onPress={refetch}>
+              <Text style={[styles.retryText, { color: colors.primary }]}>Try Again</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={styles.statsRow}>
+              <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: colors.primary }]} numberOfLines={1}>
+                  {(data?.totalItems ?? 0) > 0
+                    ? `${data?.countedItems ?? 0}/${data!.totalItems}`
+                    : String(data?.totalItems ?? 0)}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                  Counted
+                </Text>
+              </View>
+              <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: colors.primary }]}>
+                  {formatCurrency(data?.totalValue ?? 0)}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Value</Text>
+              </View>
+              <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {data?.startedAt ? timeAgo(data.startedAt) : "—"}
+                </Text>
+                <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Started</Text>
+              </View>
+            </View>
+
+            {categories.length === 0 && locations.length === 0 ? (
+              <>
+                <View style={[styles.emptySessionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={[styles.emptySessionIcon, { backgroundColor: colors.secondary }]}>
+                    <Feather name="clipboard" size={28} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.emptySessionTitle, { color: colors.foreground }]}>
+                    No items counted yet
+                  </Text>
+                  <Text style={[styles.emptySessionBody, { color: colors.mutedForeground }]}>
+                    Use the camera to scan shelves or invoices, or tap{" "}
+                    <Text style={{ fontWeight: "700", color: colors.foreground }}>Start Counting</Text>
+                    {" "}to enter quantities manually.
+                  </Text>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.startCountingBtn,
+                      { backgroundColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      router.push({
+                        pathname: "/session/count-web",
+                        params: { sessionId: id ?? "", sessionName: data?.name ?? "" },
+                      });
+                    }}
+                  >
+                    <Feather name="edit-3" size={16} color="#fff" />
+                    <Text style={styles.startCountingBtnText}>Start Counting</Text>
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.scanBtn,
+                    { backgroundColor: "#D97706", opacity: pressed ? 0.8 : 1 },
+                  ]}
+                  onPress={handleScanIntoSession}
+                >
+                  <Feather name="camera" size={18} color="#fff" />
+                  <Text style={styles.scanBtnText}>Scan Shelves / Invoice</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <View style={styles.actionRow}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.actionBtnPrimary,
+                      { opacity: pressed ? 0.8 : 1 },
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      router.push({
+                        pathname: "/session/count-web",
+                        params: { sessionId: id ?? "", sessionName: data?.name ?? "" },
+                      });
+                    }}
+                  >
+                    <Feather name="edit-3" size={17} color="#fff" />
+                    <Text style={styles.actionBtnText}>Count Items</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.actionBtnAmber,
+                      { opacity: pressed ? 0.8 : 1 },
+                    ]}
+                    onPress={handleScanIntoSession}
+                  >
+                    <Feather name="camera" size={17} color="#fff" />
+                    <Text style={styles.actionBtnText}>Scan</Text>
+                  </Pressable>
+                </View>
+
+                <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.sectionHeader}>
+                    <Feather name="tag" size={15} color={colors.primary} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Categories</Text>
+                    <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
+                      {categories.length}
+                    </Text>
+                  </View>
+                  {categories.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                        No categories yet
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.cardGrid}>
+                      {categories.map((cat) => (
+                        <Pressable
+                          key={cat.id}
+                          style={({ pressed }) => [
+                            styles.groupCard,
+                            { backgroundColor: colors.secondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
+                          ]}
+                          onPress={() => handleViewGroup("category", cat.id, cat.name)}
+                          testID={`category-card-${cat.id}`}
+                        >
+                          <Text style={[styles.groupCardName, { color: colors.foreground }]} numberOfLines={2}>
+                            {cat.name}
+                          </Text>
+                          <View style={styles.groupCardStats}>
+                            <Text style={[styles.groupCardCount, { color: colors.primary }]}>
+                              {cat.countedItems}/{cat.itemCount} counted
+                            </Text>
+                          </View>
+                          <View style={styles.groupCardArrow}>
+                            <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.sectionHeader}>
+                    <Feather name="map-pin" size={15} color={colors.primary} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Locations</Text>
+                    <Text style={[styles.sectionCount, { color: colors.mutedForeground }]}>
+                      {locations.length}
+                    </Text>
+                  </View>
+                  {locations.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                        No locations yet
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.cardGrid}>
+                      {locations.map((loc) => (
+                        <Pressable
+                          key={loc.id}
+                          style={({ pressed }) => [
+                            styles.groupCard,
+                            { backgroundColor: colors.secondary, borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
+                          ]}
+                          onPress={() => handleViewGroup("location", loc.id, loc.name)}
+                          testID={`location-card-${loc.id}`}
+                        >
+                          <Text style={[styles.groupCardName, { color: colors.foreground }]} numberOfLines={2}>
+                            {loc.name}
+                          </Text>
+                          <View style={styles.groupCardStats}>
+                            <Text style={[styles.groupCardCount, { color: colors.primary }]}>
+                              {loc.countedItems}/{loc.itemCount} counted
+                            </Text>
+                          </View>
+                          <View style={styles.groupCardArrow}>
+                            <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  root: { flex: 1 },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: "#0A0A0A",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingBottom: 16,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   backBtn: {
-    padding: 8,
-    marginLeft: -8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-  },
-  scanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    marginRight: -8,
-  },
-  scanBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    marginLeft: 6,
-    fontSize: 14,
-  },
-  searchContainer: {
-    padding: 16,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    height: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
     flex: 1,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: "Inter_600SemiBold",
+    color: "#fff",
+    textAlign: "center",
   },
-  list: {
-    padding: 16,
-    paddingTop: 0,
-    paddingBottom: 40,
+
+  scroll: { flex: 1 },
+  content: { padding: 16, gap: 14 },
+
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
   },
-  itemCard: {
-    flexDirection: 'row',
-    padding: 16,
+  statCard: {
+    flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 12,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    padding: 14,
+    alignItems: "center",
+    gap: 4,
   },
-  itemInfo: {
+  statValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+  },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+
+  scanBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  scanBtnText: {
+    fontSize: 16,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  actionBtn: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 14,
+  },
+  actionBtnPrimary: {
+    backgroundColor: "#1B4332",
+  },
+  actionBtnAmber: {
+    backgroundColor: "#D97706",
+  },
+  actionBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+  },
+
+  section: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+    paddingBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  sectionTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: "Inter_600SemiBold",
+  },
+  sectionCount: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+
+  cardGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  groupCard: {
+    width: "47%",
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    gap: 6,
+    position: "relative",
+  },
+  groupCardName: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Inter_600SemiBold",
     paddingRight: 16,
   },
-  itemName: {
-    fontSize: 15,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 4,
+  groupCardStats: {
+    gap: 2,
   },
-  itemMeta: {
+  groupCardCount: {
     fontSize: 13,
-    fontFamily: 'Inter_400Regular',
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
   },
-  qtyContainer: {
-    width: 80,
+  groupCardValue: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
   },
-  qtyInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    height: 40,
-    textAlign: 'center',
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+  groupCardArrow: {
+    position: "absolute",
+    top: 10,
+    right: 10,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
+
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 16,
   },
   emptyText: {
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-    marginBottom: 8,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
   },
-  emptySub: {
+
+  emptySessionCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  emptySessionIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  emptySessionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    textAlign: "center",
+  },
+  emptySessionBody: {
     fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
-    lineHeight: 20,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  startCountingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    marginTop: 4,
+    alignSelf: "stretch",
+  },
+  startCountingBtnText: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontFamily: "Inter_700Bold",
+    color: "#fff",
+  },
+
+  errorBox: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 12,
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  retryBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: "600",
+    fontFamily: "Inter_600SemiBold",
   },
 });

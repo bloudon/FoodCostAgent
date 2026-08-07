@@ -5,18 +5,41 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ActiveSession,
+  CatchWeightScanResult,
+  CreateSessionRequest,
+  ErrorResponse,
+  HealthStatus,
+  InventoryCountItem,
+  MobileDashboardResponse,
+  MobileLoginRequest,
+  MobileLoginResponse,
+  MobileSessionItemsParams,
+  MobileSweepScanBody,
+  MobileVoiceWasteInterpretBody,
+  SessionDetailResponse,
+  SessionItem,
+  SessionObject,
+  SweepScanResult,
+  UpdateItemCountRequest,
+  UpdateItemCountResponse,
+  VoiceWasteInterpretResponse,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +122,1073 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Returns a Bearer token for subsequent mobile API calls.
+ * @summary Authenticate a mobile user
+ */
+export const getMobileLoginUrl = () => {
+  return `/api/mobile/login`;
+};
+
+export const mobileLogin = async (
+  mobileLoginRequest: MobileLoginRequest,
+  options?: RequestInit,
+): Promise<MobileLoginResponse> => {
+  return customFetch<MobileLoginResponse>(getMobileLoginUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(mobileLoginRequest),
+  });
+};
+
+export const getMobileLoginMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileLogin>>,
+    TError,
+    { data: BodyType<MobileLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileLogin>>,
+  TError,
+  { data: BodyType<MobileLoginRequest> },
+  TContext
+> => {
+  const mutationKey = ["mobileLogin"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileLogin>>,
+    { data: BodyType<MobileLoginRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return mobileLogin(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileLoginMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileLogin>>
+>;
+export type MobileLoginMutationBody = BodyType<MobileLoginRequest>;
+export type MobileLoginMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Authenticate a mobile user
+ */
+export const useMobileLogin = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileLogin>>,
+    TError,
+    { data: BodyType<MobileLoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileLogin>>,
+  TError,
+  { data: BodyType<MobileLoginRequest> },
+  TContext
+> => {
+  return useMutation(getMobileLoginMutationOptions(options));
+};
+
+/**
+ * Returns business info and recent scan history for the authenticated user.
+ * @summary Home screen dashboard data
+ */
+export const getMobileDashboardUrl = () => {
+  return `/api/mobile/dashboard`;
+};
+
+export const mobileDashboard = async (
+  options?: RequestInit,
+): Promise<MobileDashboardResponse> => {
+  return customFetch<MobileDashboardResponse>(getMobileDashboardUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getMobileDashboardQueryKey = () => {
+  return [`/api/mobile/dashboard`] as const;
+};
+
+export const getMobileDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof mobileDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof mobileDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getMobileDashboardQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof mobileDashboard>>> = ({
+    signal,
+  }) => mobileDashboard({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof mobileDashboard>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type MobileDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mobileDashboard>>
+>;
+export type MobileDashboardQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Home screen dashboard data
+ */
+
+export function useMobileDashboard<
+  TData = Awaited<ReturnType<typeof mobileDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof mobileDashboard>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getMobileDashboardQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns all open (not yet completed) inventory count sessions for the user's company.
+ * @summary List active inventory sessions
+ */
+export const getMobileActiveSessionsUrl = () => {
+  return `/api/mobile/sessions/active`;
+};
+
+export const mobileActiveSessions = async (
+  options?: RequestInit,
+): Promise<ActiveSession[]> => {
+  return customFetch<ActiveSession[]>(getMobileActiveSessionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getMobileActiveSessionsQueryKey = () => {
+  return [`/api/mobile/sessions/active`] as const;
+};
+
+export const getMobileActiveSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof mobileActiveSessions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof mobileActiveSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getMobileActiveSessionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mobileActiveSessions>>
+  > = ({ signal }) => mobileActiveSessions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof mobileActiveSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type MobileActiveSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mobileActiveSessions>>
+>;
+export type MobileActiveSessionsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List active inventory sessions
+ */
+
+export function useMobileActiveSessions<
+  TData = Awaited<ReturnType<typeof mobileActiveSessions>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof mobileActiveSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getMobileActiveSessionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns full detail for a single inventory session including totals and
+a breakdown of item counts and values grouped by category and by location.
+Both arrays come directly from the VPS database — the same categories and
+locations used in the desktop inventory session view.
+
+ * @summary Session detail with category and location breakdown
+ */
+export const getMobileSessionDetailUrl = (sessionId: string) => {
+  return `/api/mobile/sessions/${sessionId}`;
+};
+
+export const mobileSessionDetail = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<SessionDetailResponse> => {
+  return customFetch<SessionDetailResponse>(
+    getMobileSessionDetailUrl(sessionId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getMobileSessionDetailQueryKey = (sessionId: string) => {
+  return [`/api/mobile/sessions/${sessionId}`] as const;
+};
+
+export const getMobileSessionDetailQueryOptions = <
+  TData = Awaited<ReturnType<typeof mobileSessionDetail>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionDetail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getMobileSessionDetailQueryKey(sessionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mobileSessionDetail>>
+  > = ({ signal }) =>
+    mobileSessionDetail(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof mobileSessionDetail>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type MobileSessionDetailQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mobileSessionDetail>>
+>;
+export type MobileSessionDetailQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Session detail with category and location breakdown
+ */
+
+export function useMobileSessionDetail<
+  TData = Awaited<ReturnType<typeof mobileSessionDetail>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionDetail>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getMobileSessionDetailQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns all counted items in a session, optionally filtered by category or location.
+Exactly one of `categoryId` or `locationId` should be provided; if neither is provided,
+all items in the session are returned.
+
+ * @summary Filtered item list for a session
+ */
+export const getMobileSessionItemsUrl = (
+  sessionId: string,
+  params?: MobileSessionItemsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/mobile/sessions/${sessionId}/items?${stringifiedParams}`
+    : `/api/mobile/sessions/${sessionId}/items`;
+};
+
+export const mobileSessionItems = async (
+  sessionId: string,
+  params?: MobileSessionItemsParams,
+  options?: RequestInit,
+): Promise<SessionItem[]> => {
+  return customFetch<SessionItem[]>(
+    getMobileSessionItemsUrl(sessionId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getMobileSessionItemsQueryKey = (
+  sessionId: string,
+  params?: MobileSessionItemsParams,
+) => {
+  return [
+    `/api/mobile/sessions/${sessionId}/items`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getMobileSessionItemsQueryOptions = <
+  TData = Awaited<ReturnType<typeof mobileSessionItems>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  params?: MobileSessionItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionItems>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getMobileSessionItemsQueryKey(sessionId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mobileSessionItems>>
+  > = ({ signal }) =>
+    mobileSessionItems(sessionId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof mobileSessionItems>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type MobileSessionItemsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mobileSessionItems>>
+>;
+export type MobileSessionItemsQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Filtered item list for a session
+ */
+
+export function useMobileSessionItems<
+  TData = Awaited<ReturnType<typeof mobileSessionItems>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  params?: MobileSessionItemsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionItems>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getMobileSessionItemsQueryOptions(
+    sessionId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Creates a new open inventory counting session for the authenticated user's company.
+ * @summary Create a new inventory session
+ */
+export const getMobileCreateSessionUrl = () => {
+  return `/api/mobile/sessions`;
+};
+
+export const mobileCreateSession = async (
+  createSessionRequest: CreateSessionRequest,
+  options?: RequestInit,
+): Promise<SessionObject> => {
+  return customFetch<SessionObject>(getMobileCreateSessionUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createSessionRequest),
+  });
+};
+
+export const getMobileCreateSessionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileCreateSession>>,
+    TError,
+    { data: BodyType<CreateSessionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileCreateSession>>,
+  TError,
+  { data: BodyType<CreateSessionRequest> },
+  TContext
+> => {
+  const mutationKey = ["mobileCreateSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileCreateSession>>,
+    { data: BodyType<CreateSessionRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return mobileCreateSession(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileCreateSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileCreateSession>>
+>;
+export type MobileCreateSessionMutationBody = BodyType<CreateSessionRequest>;
+export type MobileCreateSessionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Create a new inventory session
+ */
+export const useMobileCreateSession = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileCreateSession>>,
+    TError,
+    { data: BodyType<CreateSessionRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileCreateSession>>,
+  TError,
+  { data: BodyType<CreateSessionRequest> },
+  TContext
+> => {
+  return useMutation(getMobileCreateSessionMutationOptions(options));
+};
+
+/**
+ * Returns all inventory items belonging to the authenticated user's company,
+joined with their current count for this session (defaults to 0 if not yet counted).
+
+ * @summary List inventory items for a counting session
+ */
+export const getMobileSessionInventoryUrl = (sessionId: string) => {
+  return `/api/mobile/sessions/${sessionId}/inventory`;
+};
+
+export const mobileSessionInventory = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<InventoryCountItem[]> => {
+  return customFetch<InventoryCountItem[]>(
+    getMobileSessionInventoryUrl(sessionId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getMobileSessionInventoryQueryKey = (sessionId: string) => {
+  return [`/api/mobile/sessions/${sessionId}/inventory`] as const;
+};
+
+export const getMobileSessionInventoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof mobileSessionInventory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionInventory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getMobileSessionInventoryQueryKey(sessionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mobileSessionInventory>>
+  > = ({ signal }) =>
+    mobileSessionInventory(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof mobileSessionInventory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type MobileSessionInventoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mobileSessionInventory>>
+>;
+export type MobileSessionInventoryQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List inventory items for a counting session
+ */
+
+export function useMobileSessionInventory<
+  TData = Awaited<ReturnType<typeof mobileSessionInventory>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof mobileSessionInventory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getMobileSessionInventoryQueryOptions(
+    sessionId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Upserts the count-line row for the given session + item combination.
+Returns 403 if the session does not belong to the authenticated user's company.
+Returns 404 if the session or item does not exist.
+
+ * @summary Update the count for an inventory item in a session
+ */
+export const getMobileUpdateItemCountUrl = (
+  sessionId: string,
+  itemId: string,
+) => {
+  return `/api/mobile/sessions/${sessionId}/inventory/${itemId}`;
+};
+
+export const mobileUpdateItemCount = async (
+  sessionId: string,
+  itemId: string,
+  updateItemCountRequest: UpdateItemCountRequest,
+  options?: RequestInit,
+): Promise<UpdateItemCountResponse> => {
+  return customFetch<UpdateItemCountResponse>(
+    getMobileUpdateItemCountUrl(sessionId, itemId),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateItemCountRequest),
+    },
+  );
+};
+
+export const getMobileUpdateItemCountMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileUpdateItemCount>>,
+    TError,
+    {
+      sessionId: string;
+      itemId: string;
+      data: BodyType<UpdateItemCountRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileUpdateItemCount>>,
+  TError,
+  { sessionId: string; itemId: string; data: BodyType<UpdateItemCountRequest> },
+  TContext
+> => {
+  const mutationKey = ["mobileUpdateItemCount"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileUpdateItemCount>>,
+    {
+      sessionId: string;
+      itemId: string;
+      data: BodyType<UpdateItemCountRequest>;
+    }
+  > = (props) => {
+    const { sessionId, itemId, data } = props ?? {};
+
+    return mobileUpdateItemCount(sessionId, itemId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileUpdateItemCountMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileUpdateItemCount>>
+>;
+export type MobileUpdateItemCountMutationBody =
+  BodyType<UpdateItemCountRequest>;
+export type MobileUpdateItemCountMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update the count for an inventory item in a session
+ */
+export const useMobileUpdateItemCount = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileUpdateItemCount>>,
+    TError,
+    {
+      sessionId: string;
+      itemId: string;
+      data: BodyType<UpdateItemCountRequest>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileUpdateItemCount>>,
+  TError,
+  { sessionId: string; itemId: string; data: BodyType<UpdateItemCountRequest> },
+  TContext
+> => {
+  return useMutation(getMobileUpdateItemCountMutationOptions(options));
+};
+
+/**
+ * Sets completedAt to the current timestamp. Returns 409 if the session
+is already completed. Returns 403 on tenant mismatch.
+
+ * @summary Mark an inventory session as completed
+ */
+export const getMobileCompleteSessionUrl = (sessionId: string) => {
+  return `/api/mobile/sessions/${sessionId}/complete`;
+};
+
+export const mobileCompleteSession = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<SessionObject> => {
+  return customFetch<SessionObject>(getMobileCompleteSessionUrl(sessionId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getMobileCompleteSessionMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileCompleteSession>>,
+    TError,
+    { sessionId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileCompleteSession>>,
+  TError,
+  { sessionId: string },
+  TContext
+> => {
+  const mutationKey = ["mobileCompleteSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileCompleteSession>>,
+    { sessionId: string }
+  > = (props) => {
+    const { sessionId } = props ?? {};
+
+    return mobileCompleteSession(sessionId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileCompleteSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileCompleteSession>>
+>;
+
+export type MobileCompleteSessionMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Mark an inventory session as completed
+ */
+export const useMobileCompleteSession = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileCompleteSession>>,
+    TError,
+    { sessionId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileCompleteSession>>,
+  TError,
+  { sessionId: string },
+  TContext
+> => {
+  return useMutation(getMobileCompleteSessionMutationOptions(options));
+};
+
+/**
+ * Accepts up to 5 image frames as multipart form data. Pass `mode=sweep`
+(default) for general shelf inventory counting or `mode=catchWeight` for
+precision net-weight extraction from thermal protein labels. The server
+routes to the appropriate GPT-4o prompt and returns a mode-tagged envelope.
+
+ * @summary Submit shelf/label photos for GPT-4o analysis
+ */
+export const getMobileSweepScanUrl = () => {
+  return `/api/mobile/sweep-scan`;
+};
+
+export const mobileSweepScan = async (
+  mobileSweepScanBody: MobileSweepScanBody,
+  options?: RequestInit,
+): Promise<SweepScanResult | CatchWeightScanResult> => {
+  const formData = new FormData();
+  if (mobileSweepScanBody.image !== undefined) {
+    mobileSweepScanBody.image.forEach((value) =>
+      formData.append(`image`, value),
+    );
+  }
+  if (mobileSweepScanBody.mode !== undefined) {
+    formData.append(`mode`, mobileSweepScanBody.mode);
+  }
+  if (mobileSweepScanBody.sessionId !== undefined) {
+    formData.append(`sessionId`, mobileSweepScanBody.sessionId);
+  }
+  if (mobileSweepScanBody.itemId !== undefined) {
+    formData.append(`itemId`, mobileSweepScanBody.itemId);
+  }
+  if (mobileSweepScanBody.categoryId !== undefined) {
+    formData.append(`categoryId`, mobileSweepScanBody.categoryId);
+  }
+  if (mobileSweepScanBody.locationId !== undefined) {
+    formData.append(`locationId`, mobileSweepScanBody.locationId);
+  }
+
+  return customFetch<SweepScanResult | CatchWeightScanResult>(
+    getMobileSweepScanUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getMobileSweepScanMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileSweepScan>>,
+    TError,
+    { data: BodyType<MobileSweepScanBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileSweepScan>>,
+  TError,
+  { data: BodyType<MobileSweepScanBody> },
+  TContext
+> => {
+  const mutationKey = ["mobileSweepScan"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileSweepScan>>,
+    { data: BodyType<MobileSweepScanBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return mobileSweepScan(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileSweepScanMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileSweepScan>>
+>;
+export type MobileSweepScanMutationBody = BodyType<MobileSweepScanBody>;
+export type MobileSweepScanMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit shelf/label photos for GPT-4o analysis
+ */
+export const useMobileSweepScan = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileSweepScan>>,
+    TError,
+    { data: BodyType<MobileSweepScanBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileSweepScan>>,
+  TError,
+  { data: BodyType<MobileSweepScanBody> },
+  TContext
+> => {
+  return useMutation(getMobileSweepScanMutationOptions(options));
+};
+
+/**
+ * Accepts a short audio recording (or a pre-transcribed transcript) of a spoken
+waste report plus a storeId. Validates that the authenticated user can access
+the store, transcribes the audio, and extracts spoken waste intents WITHOUT
+resolving them against any catalog — item/unit/reason resolution, costing,
+and submission happen in the main application's Waste wizard.
+Limits: 60s audio, 10 MB upload, max 10 parsed entries. Raw audio is transient
+and discarded after transcription.
+
+ * @summary Transcribe and interpret a spoken waste report
+ */
+export const getMobileVoiceWasteInterpretUrl = () => {
+  return `/api/mobile/voice/waste/interpret`;
+};
+
+export const mobileVoiceWasteInterpret = async (
+  mobileVoiceWasteInterpretBody: MobileVoiceWasteInterpretBody,
+  options?: RequestInit,
+): Promise<VoiceWasteInterpretResponse> => {
+  const formData = new FormData();
+  if (mobileVoiceWasteInterpretBody.audio !== undefined) {
+    formData.append(`audio`, mobileVoiceWasteInterpretBody.audio);
+  }
+  formData.append(`storeId`, mobileVoiceWasteInterpretBody.storeId);
+  if (mobileVoiceWasteInterpretBody.transcript !== undefined) {
+    formData.append(`transcript`, mobileVoiceWasteInterpretBody.transcript);
+  }
+  if (mobileVoiceWasteInterpretBody.durationSeconds !== undefined) {
+    formData.append(
+      `durationSeconds`,
+      mobileVoiceWasteInterpretBody.durationSeconds.toString(),
+    );
+  }
+
+  return customFetch<VoiceWasteInterpretResponse>(
+    getMobileVoiceWasteInterpretUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: formData,
+    },
+  );
+};
+
+export const getMobileVoiceWasteInterpretMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>,
+    TError,
+    { data: BodyType<MobileVoiceWasteInterpretBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>,
+  TError,
+  { data: BodyType<MobileVoiceWasteInterpretBody> },
+  TContext
+> => {
+  const mutationKey = ["mobileVoiceWasteInterpret"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>,
+    { data: BodyType<MobileVoiceWasteInterpretBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return mobileVoiceWasteInterpret(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MobileVoiceWasteInterpretMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>
+>;
+export type MobileVoiceWasteInterpretMutationBody =
+  BodyType<MobileVoiceWasteInterpretBody>;
+export type MobileVoiceWasteInterpretMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Transcribe and interpret a spoken waste report
+ */
+export const useMobileVoiceWasteInterpret = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>,
+    TError,
+    { data: BodyType<MobileVoiceWasteInterpretBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof mobileVoiceWasteInterpret>>,
+  TError,
+  { data: BodyType<MobileVoiceWasteInterpretBody> },
+  TContext
+> => {
+  return useMutation(getMobileVoiceWasteInterpretMutationOptions(options));
+};

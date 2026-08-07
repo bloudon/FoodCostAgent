@@ -8,3 +8,299 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export type SweepScanItemConfidence =
+  (typeof SweepScanItemConfidence)[keyof typeof SweepScanItemConfidence];
+
+export const SweepScanItemConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
+export interface SweepScanItem {
+  name: string;
+  qty: number;
+  unit?: string;
+  confidence?: SweepScanItemConfidence;
+}
+
+export type SweepScanResultMode =
+  (typeof SweepScanResultMode)[keyof typeof SweepScanResultMode];
+
+export const SweepScanResultMode = {
+  sweep: "sweep",
+} as const;
+
+export interface SweepScanResult {
+  mode: SweepScanResultMode;
+  items: SweepScanItem[];
+  frameCount: number;
+  notes?: string[];
+}
+
+export type CatchWeightScanResultMode =
+  (typeof CatchWeightScanResultMode)[keyof typeof CatchWeightScanResultMode];
+
+export const CatchWeightScanResultMode = {
+  catchWeight: "catchWeight",
+} as const;
+
+export type CatchWeightScanResultUnit =
+  (typeof CatchWeightScanResultUnit)[keyof typeof CatchWeightScanResultUnit];
+
+export const CatchWeightScanResultUnit = {
+  lb: "lb",
+} as const;
+
+export type CatchWeightScanResultConfidence =
+  (typeof CatchWeightScanResultConfidence)[keyof typeof CatchWeightScanResultConfidence];
+
+export const CatchWeightScanResultConfidence = {
+  high: "high",
+  low: "low",
+  none: "none",
+} as const;
+
+export interface CatchWeightScanResult {
+  mode: CatchWeightScanResultMode;
+  /** Net weight in pounds extracted from the label, or null if unreadable */
+  netWeight: number | null;
+  unit: CatchWeightScanResultUnit;
+  confidence: CatchWeightScanResultConfidence;
+}
+
+export interface MobileLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface MobileLoginResponse {
+  /** Bearer token for subsequent API calls */
+  token: string;
+  userId?: string;
+  companyId?: string;
+  email?: string;
+  name?: string;
+}
+
+export interface DashboardScan {
+  id: string;
+  createdAt: string;
+  frameCount: number;
+  itemCount: number;
+  sessionId?: string | null;
+  sessionName?: string | null;
+}
+
+export interface MobileDashboardResponse {
+  businessName: string;
+  locationName?: string | null;
+  recentScans: DashboardScan[];
+}
+
+export interface ActiveSession {
+  id: string;
+  name: string;
+  startedAt: string;
+  /** UUID of the location (store/area) this session belongs to, or null if not set. */
+  locationId: string | null;
+  /** Human-readable name of the location, resolved from the sessions table JOIN. Null if no location is assigned. */
+  locationName: string | null;
+  scanCount: number;
+}
+
+/**
+ * A category or location group within a session
+ */
+export interface SessionGroup {
+  id: string;
+  name: string;
+  itemCount: number;
+  value: number;
+}
+
+export interface SessionDetailResponse {
+  id: string;
+  name: string;
+  startedAt: string;
+  /** Total number of distinct items counted in this session */
+  totalItems: number;
+  /** Total inventory value of all counted items */
+  totalValue: number;
+  /** Item counts grouped by inventory category */
+  categories: SessionGroup[];
+  /** Item counts grouped by storage location */
+  locations: SessionGroup[];
+}
+
+export interface SessionItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit?: string | null;
+  value: number;
+  categoryName?: string | null;
+  locationName?: string | null;
+}
+
+/**
+ * An inventory item with its current count for a specific session
+ */
+export interface InventoryCountItem {
+  id: string;
+  name: string;
+  unit: string | null;
+  categoryId: string;
+  categoryName: string;
+  locationId: string | null;
+  locationName: string | null;
+  /** Current counted quantity (defaults to 0 if not yet counted) */
+  currentCount: number;
+  /** Expected quantity (if set) */
+  expectedCount: number | null;
+}
+
+export interface CreateSessionRequest {
+  /**
+   * Name for the new session
+   * @minLength 1
+   */
+  name: string;
+  /** Optional location to associate with this session */
+  locationId?: string;
+}
+
+/**
+ * A full inventory session record
+ */
+export interface SessionObject {
+  id: string;
+  companyId: string;
+  name: string;
+  locationId?: string | null;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+export interface UpdateItemCountRequest {
+  /** The new count value for this item */
+  count: number;
+}
+
+export type VoiceWasteEntryWasteType =
+  | (typeof VoiceWasteEntryWasteType)[keyof typeof VoiceWasteEntryWasteType]
+  | null;
+
+export const VoiceWasteEntryWasteType = {
+  inventory: "inventory",
+  menu_item: "menu_item",
+} as const;
+
+export type VoiceWasteEntryReasonCode =
+  | (typeof VoiceWasteEntryReasonCode)[keyof typeof VoiceWasteEntryReasonCode]
+  | null;
+
+export const VoiceWasteEntryReasonCode = {
+  SPOILED: "SPOILED",
+  DAMAGED: "DAMAGED",
+  OVERPRODUCTION: "OVERPRODUCTION",
+  DROPPED: "DROPPED",
+  CUSTOMER_COMPLAINT: "CUSTOMER_COMPLAINT",
+  QUALITY: "QUALITY",
+  OTHER: "OTHER",
+} as const;
+
+/**
+ * A single spoken waste intent. Only spokenItem is guaranteed; every other
+field is null when the speaker did not state it — the server never invents
+values. Resolution to catalog items/units happens in the main application.
+
+ */
+export interface VoiceWasteEntry {
+  /** The wasted item exactly as spoken */
+  spokenItem: string;
+  wasteType: VoiceWasteEntryWasteType;
+  /** Spoken quantity (positive), or null if not stated */
+  qty: number | null;
+  /** Unit exactly as spoken (not resolved) */
+  spokenUnit: string | null;
+  reasonCode: VoiceWasteEntryReasonCode;
+  notes: string | null;
+}
+
+export interface VoiceWasteInterpretResponse {
+  transcript: string;
+  /** @maxItems 10 */
+  entries: VoiceWasteEntry[];
+  transcriptionWarnings: string[];
+  interpretationWarnings: string[];
+  /** Interpretation model identifier for auditability */
+  model: string;
+  requestId: string;
+}
+
+export interface UpdateItemCountResponse {
+  sessionId: string;
+  itemId: string;
+  currentCount: number;
+}
+
+export type MobileSessionItemsParams = {
+  /**
+   * Filter items to this category only
+   */
+  categoryId?: string;
+  /**
+   * Filter items to this location only
+   */
+  locationId?: string;
+};
+
+/**
+ * "sweep" — identify and count all visible inventory items (default).
+"catchWeight" — extract net weight from a thermal protein label.
+
+ */
+export type MobileSweepScanBodyMode =
+  (typeof MobileSweepScanBodyMode)[keyof typeof MobileSweepScanBodyMode];
+
+export const MobileSweepScanBodyMode = {
+  sweep: "sweep",
+  catchWeight: "catchWeight",
+} as const;
+
+export type MobileSweepScanBody = {
+  /**
+   * Up to 5 image frames (field name "image" repeated)
+   * @maxItems 5
+   */
+  image?: Blob[];
+  /** "sweep" — identify and count all visible inventory items (default).
+"catchWeight" — extract net weight from a thermal protein label.
+ */
+  mode?: MobileSweepScanBodyMode;
+  /** Optional — links the scan to an active session */
+  sessionId?: string;
+  /** Optional — targets a specific inventory item */
+  itemId?: string;
+  /** Optional — scopes the sweep to a category segment */
+  categoryId?: string;
+  /** Optional — scopes the sweep to a location segment */
+  locationId?: string;
+};
+
+export type MobileVoiceWasteInterpretBody = {
+  /** Audio recording (m4a/mp4/aac/mp3/wav/webm), max 10 MB / 60 s */
+  audio?: Blob;
+  /** Store (location) the waste report applies to */
+  storeId: string;
+  /** Optional pre-transcribed text; when provided, audio is not required */
+  transcript?: string;
+  /** Client-reported recording duration; rejected above 60 */
+  durationSeconds?: number;
+};

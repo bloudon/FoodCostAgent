@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useRouter, useSegments } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/context/AuthContext';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { token, isLoading } = useAuth();

@@ -56,6 +56,12 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
-    "expo-secure-store": "~15.0.8"
+    "expo-secure-store": "~15.0.8",
+    "expo-audio": "~1.1.1",
+    "expo-camera": "^17.0.10",
+    "expo-file-system": "^19.0.21",
+    "i18next": "^26.0.8",
+    "react-i18next": "^17.0.6",
+    "react-native-webview": "13.15.0"
   }
 }

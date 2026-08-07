@@ -1,22 +1,29 @@
 {
   "expo": {
-    "name": "FnB Cost Pro Mobile",
+    "name": "FNB Cost Pro Mobile",
     "slug": "fnb-cost-pro-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fnb-cost-pro-mobile",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1B4332"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "FNB Cost Pro needs camera access to scan and count your inventory items.",
+        "NSPhotoLibraryUsageDescription": "FNB Cost Pro needs access to your photo library to upload inventory photos for analysis.",
+        "NSMicrophoneUsageDescription": "FNB Cost Pro needs microphone access to record spoken waste reports."
+      }
     },
-    "android": {},
+    "android": {
+      "permissions": ["android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES", "android.permission.RECORD_AUDIO"]
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -28,7 +35,27 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FNB Cost Pro needs camera access to scan and count your inventory items.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "FNB Cost Pro needs microphone access to record spoken waste reports."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FNB Cost Pro needs access to your photo library to upload inventory photos for analysis."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
