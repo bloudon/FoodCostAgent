@@ -1,0 +1,510 @@
+#986 - Consolidate Mobile Foundation Safely
+
+## What & Why
+
+Resume the mobile consolidation as one Significant effort, using the historical hybrid Expo client as the approved functional base and selectively incorporating proven #981 count workflows.
+
+The purpose is to establish one authoritative mobile client without breaking:
+
+- authentication
+- tenant/company/store scoping
+- count mutations
+- scan review
+- catch weight
+- voice waste
+- embedded pages
+- localization
+- shared mobile/web contracts
+
+This is a Significant task and must follow the project operating model:
+
+PM decision → Builder → separate Reviewer → separate QA → task report → external review
+
+If reviewer/QA separation cannot be verified, report:
+
+`PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`
+
+Do not silently simulate independent review inside one continuous agent session.
+
+---
+
+# Approved Product Owner / PM Decisions
+
+Record these decisions in `replit.md` before affected implementation begins.
+
+Use a short dated architecture-decision entry with status:
+
+`Approved`
+
+## 1. Authoritative mobile client
+
+The pre-existing historical hybrid Expo application is the consolidation and migration base.
+
+Task #981 is not a second long-term mobile architecture.
+
+Reuse selected #981 capabilities only when they:
+
+- improve the consolidated client
+- conform to approved contracts
+- do not introduce a second auth/API/bridge/mutation dialect
+
+Likely reusable #981 capabilities include:
+
+- assigned-store count start
+- session browsing
+- manual line editing
+- reviewed scan matching
+
+These must be normalized against the historical contracts before adoption.
+
+## 2. Floor Mode
+
+Keep the separate Floor Mode product outside #986.
+
+Do not:
+
+- merge Floor Mode into the FnB Cost Pro mobile shell
+- create role-based Floor Mode behavior
+- replace Floor Mode
+- infer its future product relationship
+
+Its long-term relationship to FnB Cost Pro mobile remains a separate product decision.
+
+## 3. Embedded authentication target
+
+Target architecture:
+
+- long-lived native authentication token remains in SecureStore
+- embedded WebViews use the existing short-lived web-session token
+- the long-lived login token should not remain the target mechanism for WebView URL authentication
+
+However:
+
+Do not implement this change unless the existing production API/web contract is verified from actual code and current behavior.
+
+If the contract cannot be verified safely:
+
+- preserve the current mobileToken bridge
+- do not invent a replacement
+- document the blocker
+- create a follow-up decision/task
+
+## 4. Native vs embedded ownership during consolidation
+
+Native ownership:
+
+- authentication
+- navigation
+- inventory session/count workflow
+- camera/scanning
+- catch weight
+- voice capture
+
+Embedded ownership during this transition:
+
+- recipes
+- vendors
+- reports
+- billing
+- complex settings
+- waste resolution/submission
+
+Do not rebuild unrelated embedded management workflows in #986.
+
+---
+
+# Embedded-token verification requirement
+
+“Verify the existing production API/web contract” must be evidence-based.
+
+Before changing WebView authentication, the Builder must identify and record:
+
+1. The exact backend route that issues the short-lived web-session token.
+2. The middleware or route logic that accepts and validates it.
+3. Exact file paths and relevant function names.
+4. Token lifetime.
+5. Token scope.
+6. How the embedded WebView receives the token.
+7. How the embedded page consumes/authenticates with it.
+8. Whether it works with the current embedded-route/auth context.
+9. Any dependency on the production web application that cannot be verified in this repository.
+
+Documentation comments alone are not sufficient proof.
+
+If any essential part of this flow cannot be verified:
+
+- do not modify the authentication protocol
+- preserve the current bridge
+- record the missing evidence/dependency in the task report
+
+---
+
+# Done looks like
+
+- One consolidated Expo client is established as the authoritative mobile target.
+
+- No second long-term implementation remains for:
+  - authentication
+  - API transport
+  - WebView authentication
+  - voice bridge
+  - inventory mutation semantics
+
+- The approved #986 decisions are recorded in `replit.md` before affected implementation.
+
+- Historical mobile contracts remain intact unless explicitly approved otherwise:
+  - mobileToken/WebView bridge baseline
+  - embedded-route whitelist
+  - waste voice bridge v1
+  - English/Spanish behavior
+  - atomic addQty semantics
+
+- Native device-first ownership remains intact for:
+  - auth
+  - navigation
+  - camera/scans
+  - count workflow
+  - catch weight
+  - voice capture
+
+- Embedded management ownership remains intact for:
+  - recipes
+  - vendors
+  - reports
+  - billing
+  - complex settings
+  - waste resolution/submission
+
+- Useful #981 capabilities are normalized before adoption:
+  - assigned-store count start
+  - session browsing
+  - manual line editing
+  - reviewed scan matching
+
+- No working historical or #981 path is deleted or quarantined during this task.
+
+- Duplicate/legacy paths are documented for later cleanup.
+
+- The task ends when:
+  1. one consolidated path is working
+  2. regression gate passes
+  3. duplicates are documented
+
+Cleanup is a separate follow-up.
+
+---
+
+# Shared-contract freeze
+
+Before modifying overlapping mobile behavior, inventory and compare both implementations for:
+
+- native authentication
+- SecureStore keys
+- token getter/provider
+- API transport
+- mobileToken bridge
+- short-lived web-session handling
+- company scoping
+- store scoping
+- outlet/storage-location terminology
+- inventory sessions
+- count lines
+- manual count mutation
+- sweep scanning
+- scan review/apply
+- catch weight
+- addQty
+- embedded routes
+- voice waste bridge
+- localization
+
+If a mismatch is found:
+
+Do not silently normalize it.
+
+Document:
+
+- historical behavior
+- #981 behavior
+- recommended authoritative behavior
+- whether the difference is implementation-only or a contract change
+
+Contract changes require explicit approval.
+
+---
+
+# Implementation direction
+
+## Establish one client foundation
+
+Use the historical hybrid shell as the base.
+
+Retain its proven:
+
+- native capture flows
+- SecureStore/auth model
+- WebView integration
+- i18n
+- branding/assets
+- voice bridge
+- embedded-route handling
+
+Selectively migrate #981 improvements only where they fit the approved target architecture.
+
+## Authentication and API transport
+
+End with:
+
+- one auth provider
+- one SecureStore strategy
+- one token getter
+- one authenticated API client strategy
+- one WebView authentication bridge
+
+Do not maintain competing auth hooks or API layers long-term.
+
+Do not change production auth contracts without the verification requirement above.
+
+## Count workflows
+
+Integrate proven #981 count capabilities without creating a second mutation dialect.
+
+Preserve:
+
+- review-before-apply behavior
+- atomic addQty semantics
+- permission enforcement
+- assigned-store restrictions
+- session resume behavior
+
+Do not revive obsolete legacy native count behavior merely because it exists historically.
+
+---
+
+# Regression gate
+
+The Builder must prepare the consolidated implementation for these checks.
+
+The separate QA workstream must verify:
+
+1. Sign in
+2. Sign out
+3. Company permission enforcement
+4. Store permission enforcement
+5. Start count
+6. Resume count
+7. Manual quantity update
+8. Sweep scan
+9. Scan review
+10. Apply reviewed scan
+11. Catch-weight addQty accumulation
+12. Voice capture
+13. Voice bridge handoff
+14. Embedded-page authentication
+15. Token expiry / re-login behavior
+16. English navigation
+17. Spanish navigation
+18. Camera permission handling
+19. Microphone permission handling
+
+Document actual test evidence, not only code inspection.
+
+---
+
+# Reviewer requirements
+
+After Builder completes, use a fresh separately instantiated Reviewer workstream/session when available.
+
+Reviewer must specifically check:
+
+- no second auth implementation remains
+- no second API client dialect remains
+- no silent shared-contract changes
+- company/store scoping remains enforced
+- embedded authentication matches the approved decision
+- addQty remains atomic
+- reviewed scan application remains intact
+- voice bridge v1 remains compatible
+- localization was not regressed
+- no unapproved cleanup occurred
+
+Reviewer may return:
+
+- PASS
+- FOLLOW-UP
+- BLOCKED
+
+Reviewer may block the task.
+
+Reviewer may not invent or approve new product architecture.
+
+---
+
+# QA requirements
+
+Run QA in a fresh separately instantiated workstream/session when available.
+
+QA may not waive a Reviewer block.
+
+QA must record:
+
+- exact flows tested
+- result of each
+- failures
+- regressions
+- environment used
+- any tests not performed and why
+
+---
+
+# Cleanup rule
+
+Do not delete or quarantine:
+
+- historical paths
+- #981 paths
+- duplicate hooks
+- duplicate screens
+- old bridge code
+
+unless a separate cleanup task is approved after the full regression gate passes.
+
+For #986, document the cleanup candidates only.
+
+---
+
+# Out of scope
+
+- push notifications
+- offline queues
+- new Floor Mode features
+- merging Floor Mode
+- new product workflows
+- unrelated mobile UX redesign
+- production web application changes
+- unapproved schema changes
+- unapproved API changes
+- unapproved auth changes
+- destructive cleanup
+
+---
+
+# Relevant sources
+
+Current project:
+
+- `docs/mobile-architecture-reconciliation.md`
+- `docs/agent-operating-model.md`
+- `docs/task-reports/README.md`
+- `replit.md`
+
+Current #981 artifact:
+
+- `artifacts/fnb-cost-pro-mobile/app/_layout.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/login.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/scan.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/session/[id].tsx`
+- `artifacts/fnb-cost-pro-mobile/app/(tabs)/index.tsx`
+- `artifacts/fnb-cost-pro-mobile/app/(tabs)/settings.tsx`
+- `artifacts/fnb-cost-pro-mobile/components/AuthGuard.tsx`
+- `artifacts/fnb-cost-pro-mobile/hooks/useApi.ts`
+- `artifacts/fnb-cost-pro-mobile/lib/api.ts`
+
+Historical mobile source:
+
+`https://github.com/bloudon/FnB_mobile.git`
+
+Historical implementation baseline:
+
+`c90f29cd99ae06ac3a3c004ca7724e9cdfb31b50`
+
+Architecture handoff commit:
+
+`d3d3ff83ebfe74c8da176e86b0ef4463a6455f82`
+
+Historical files of particular importance:
+
+- `MOBILE_ARCHITECTURE.md`
+- `docs/waste-voice-bridge.md`
+- `docs/embedded-route-whitelist.md`
+- historical AuthContext
+- historical WebSection
+- historical wasteBridge implementation
+
+---
+
+# Significant task report
+
+Create:
+
+`docs/task-reports/986-consolidate-mobile-foundation-safely.md`
+
+Use the project Significant-task format.
+
+It must include:
+
+## Asked
+
+## Shipped
+
+## Deviations
+
+## Review
+
+Separate:
+- Reviewer result
+- QA result
+- independence VERIFIED / UNVERIFIED
+
+## Tests
+
+## Risks / Decisions
+
+## Git
+
+Branch:
+Base SHA:
+Final SHA:
+Diff / PR:
+
+Also include:
+
+## Embedded Auth Verification Evidence
+
+with the exact routes/files/functions used to support any WebView-token change.
+
+## Deferred Cleanup Candidates
+
+List duplicate/legacy mobile paths left intentionally in place.
+
+---
+
+# Stop conditions
+
+Stop and request Product Owner / PM input instead of guessing if:
+
+- the short-lived web-session token contract cannot be verified
+- company/store scoping differs materially between implementations
+- adopting #981 requires changing a shared contract
+- voice bridge v1 is incompatible with the consolidated client
+- addQty semantics differ
+- production web changes appear necessary
+- Floor Mode becomes a dependency
+- the historical app and #981 disagree on a product behavior not already decided
+
+Do not resolve these by inference.
+
+---
+
+# Final completion criteria
+
+Do not call #986 complete until:
+
+- Builder phase is complete
+- Reviewer pass is complete
+- QA pass is complete
+- regression gate evidence exists
+- task report exists
+- Base SHA / Final SHA / Diff are recorded
+- no unresolved BLOCKED finding remains
+- no unapproved cleanup occurred
