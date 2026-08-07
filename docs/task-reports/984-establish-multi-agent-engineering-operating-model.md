@@ -50,6 +50,6 @@ Branch: `main`
 
 Base SHA: `93ef85152f96b59efd7277e27d7e36a0e945c3ab`
 
-Final SHA: to be filled after commit
+Final SHA: `5280f90095b632b45806e9f0e5d406594ff6bb25`
 
 Diff / PR: local commit on `main`; no PR created
