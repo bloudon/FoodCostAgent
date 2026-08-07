@@ -217,3 +217,54 @@ The deferred cleanup of retained #981 duplicate files (Task #992) remains gated 
 | WebView mobileToken round-trip | ✅ no defects (token acceptance by deployed web app unverifiable without live device) | ⏳ PENDING (Task #991) |
 | EN/ES i18n — camera + login screens | ✅ fully covered | — |
 | EN/ES i18n — CatchWeightScanModal, voice-waste, waste-web | ⚠️ hard-coded English (pre-existing gap) | — |
+
+---
+
+## Addendum — Task #991: Physical device verification attempt (2026-08-07)
+
+### Scope
+
+Task #991 was assigned as the hardware gate for the 4 device-dependent flows left pending after Task #989's static code inspection. The stated "done looks like" criterion required a developer to run Expo Go on a real iOS or Android device against the production API and exercise all flows in English and Spanish.
+
+### Outcome
+
+**Physical device testing cannot be performed from the Replit workspace environment.** No iOS or Android hardware is attached to or accessible from this environment. This is the same constraint that prevented live device testing during Task #989; Task #991 does not change that constraint.
+
+No new code defects were discovered. The code-path evidence recorded in the Task #989 addendum above remains the best available workspace-level verification:
+
+- All 4 flows were inspected for correctness of permissions handling, auth token delivery, atomic count writes, waste bridge handshake, and session-scoped dedupe — **no defects found**.
+- Two pre-existing observations were noted (no `Linking.openSettings()` deep-link on permanent camera denial; hard-coded English strings in `CatchWeightScanModal`, `voice-waste.tsx`, and `waste-web.tsx`) — neither is a regression or blocker.
+
+### What remains open
+
+The physical device pass must be completed by a developer with:
+
+- An iOS or Android device with Expo Go installed (or a custom dev build)
+- Live connectivity to `https://app.fnbcostpro.com` (production API)
+- A valid FnB Cost Pro account
+
+**Flows to exercise (English and Spanish):**
+
+1. **Camera sweep scan** — take 1–5 photos → review AI suggestions → apply to an active count session
+2. **Camera catch-weight scan** — open `CatchWeightScanModal` → align label → confirm weight → verify atomic add to count line
+3. **Voice waste** — record → transcribe → interpret → navigate to Waste Entry WebView → confirm bridge handshake delivers the draft
+4. **Login** — enter credentials → token stored in SecureStore → background images load → language syncs per account preference
+5. **WebView mobileToken** — navigate to a tab backed by `WebSection` → confirm the page loads authenticated (no redirect to `/login`)
+
+Any runtime failures should be filed as separate tasks with specific failure details (flow, platform, OS version, error message or screenshot).
+
+### Deferred cleanup gate
+
+The cleanup of retained Task #981 duplicate files (`app/scan.tsx`, `hooks/useAuth.tsx`, `components/AuthGuard.tsx`, `hooks/useApi.ts`, `lib/api.ts`) remains gated on a successful physical device pass confirming these files are not needed at runtime.
+
+### Updated status table
+
+| Flow | Code-path inspection | Physical device |
+|---|---|---|
+| Camera sweep scan | ✅ no defects | ❌ NOT VERIFIED — no hardware in workspace |
+| Camera catch-weight scan | ✅ no defects | ❌ NOT VERIFIED — no hardware in workspace |
+| Voice waste + bridge handoff | ✅ no defects | ❌ NOT VERIFIED — no hardware in workspace |
+| Expo Go device login | ✅ no defects | ❌ NOT VERIFIED — no hardware in workspace |
+| WebView mobileToken round-trip | ✅ no defects | ❌ NOT VERIFIED — no hardware in workspace |
+| EN/ES i18n — camera + login screens | ✅ fully covered | — |
+| EN/ES i18n — CatchWeightScanModal, voice-waste, waste-web | ⚠️ hard-coded English (pre-existing gap) | — |
