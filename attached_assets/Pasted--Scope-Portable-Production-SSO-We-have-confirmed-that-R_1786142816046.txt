@@ -1,0 +1,133 @@
+## Scope Portable Production SSO
+
+We have confirmed that Replit-managed Auth does not officially support arbitrary OAuth/OIDC callbacks for an application served from our external VPS.
+
+Production:
+https://app.fnbcostpro.com
+
+The goal is now to make the smallest possible change necessary to support portable production SSO while preserving FnB Cost Pro's existing internal authentication/session/authorization model.
+
+Do not implement anything yet.
+
+### Architecture principle
+
+The external identity provider should establish identity only.
+
+Preserve the existing FnB Cost Pro ownership of:
+
+- application users
+- PostgreSQL sessions
+- company permissions
+- store permissions
+- roles
+- authorization
+- logout/session lifecycle wherever provider-independent
+
+Do not replace these with provider-specific authorization unless evidence shows it is necessary.
+
+### Investigate the existing Replit Auth dependency
+
+Trace `artifacts/api-server/src/ssoAuth.ts` and all related auth code.
+
+Identify exactly which Replit/OIDC values are consumed:
+
+- `sub`
+- email
+- first name
+- last name
+- display name
+- profile image
+- any Replit-specific claim
+- any provider-specific user ID stored in the database
+
+For each value, show:
+
+- source claim
+- destination DB/session field
+- exact file/function using it
+
+Search the complete project for dependencies on:
+
+- `REPL_ID`
+- `ISSUER_URL`
+- `replit.com/oidc`
+- OIDC `sub`
+- provider identity IDs
+- login claims
+- profile claims
+
+### Determine whether the current OIDC code can be generalized
+
+Evaluate the smallest target design:
+
+Production environment:
+
+OIDC_ISSUER_URL
+OIDC_CLIENT_ID
+OIDC_CLIENT_SECRET
+APP_BASE_URL=https://app.fnbcostpro.com
+
+Callback:
+
+https://app.fnbcostpro.com/api/sso/callback
+
+Determine whether the existing `openid-client` implementation can support a standards-compliant external OIDC provider without changing the existing FnB user/session/permission model.
+
+### Replit development
+
+Determine the cleanest transitional approach:
+
+Option A:
+Keep Replit-managed Auth for Replit development while production uses a generic OIDC provider.
+
+Option B:
+Move both development and production to the same external OIDC provider.
+
+Compare only the practical complexity and risk.
+
+Do not recommend two separate application auth/session systems.
+
+### Provider requirements
+
+Based on what the current application actually needs, define the minimum provider capabilities required.
+
+Examples:
+
+- standards-compliant OIDC
+- email claim
+- verified email
+- stable subject ID
+- name/profile claims
+- logout behavior
+- multiple callback URLs for dev + production
+- optional Google/Microsoft/social login
+
+Do not select a provider based merely on popularity.
+
+### Migration risk
+
+Specifically determine how existing users are currently matched.
+
+Answer:
+
+- Is email the effective identity key?
+- Is OIDC `sub` persisted?
+- Would changing providers create duplicate users?
+- What mapping/migration would be required?
+- Can existing users continue to retain their company/store permissions unchanged?
+
+### Output
+
+Return:
+
+1. Current identity flow
+2. Replit-specific dependencies
+3. Provider-neutral pieces we can preserve
+4. Minimum production OIDC contract
+5. Replit Dev vs Production strategy recommendation
+6. Existing-user migration implications
+7. Minimal files that would need changing
+8. Provider requirements
+9. Any decision requiring Product Owner/PM approval
+
+Do not modify authentication code yet.
