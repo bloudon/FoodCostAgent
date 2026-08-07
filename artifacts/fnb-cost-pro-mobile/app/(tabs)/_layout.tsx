@@ -34,10 +34,6 @@ export default function TabLayout() {
         },
       }}
     >
-      {/* Retained #981 settings screen: kept in place per deferred-cleanup
-          decision, but hidden from the consolidated tab bar (native settings
-          lives at /settings via the More tab). */}
-      <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen
         name="index"
         options={{
