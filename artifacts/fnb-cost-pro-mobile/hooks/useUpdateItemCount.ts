@@ -2,15 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { CountDeltaQueue } from "@/lib/countDeltaQueue";
 
 const DEBOUNCE_MS = 500;
 
-export function useUpdateItemCount(sessionId: string) {
+export function useUpdateItemCount(
+  sessionId: string,
+  onServerQty?: (itemId: string, qty: number) => void,
+) {
   const { getToken } = useAuth();
   const { backendUrl } = useScan();
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pending = useRef<Record<string, number>>({});
   const [hasSaveError, setHasSaveError] = useState(false);
+  const onServerQtyRef = useRef(onServerQty);
+  onServerQtyRef.current = onServerQty;
 
   const patch = useCallback(
     async (itemId: string, count: number): Promise<void> => {
@@ -41,6 +47,61 @@ export function useUpdateItemCount(sessionId: string) {
     [getToken, backendUrl, sessionId]
   );
 
+  // Relative +/- edits: accumulated per item and flushed as a single
+  // `{ addQty }` PATCH so the server performs the atomic increment.
+  // Concurrent devices cannot overwrite each other; the display reconciles
+  // from the server-returned quantity via onServerQty.
+  const patchAdd = useCallback(
+    async (itemId: string, delta: number): Promise<number | null> => {
+      const url = `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`;
+      try {
+        const token = await getToken();
+        const res = await fetch(url, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ addQty: delta }),
+        });
+        if (!res.ok) {
+          let body = "";
+          try { body = await res.text(); } catch {}
+          console.warn(
+            `[useUpdateItemCount] PATCH addQty HTTP ${res.status} — URL: ${url} — body: ${body}`
+          );
+          return null;
+        }
+        const line = await res.json();
+        return typeof line?.qty === "number" ? line.qty : null;
+      } catch (err) {
+        console.warn(`[useUpdateItemCount] Network error — URL: ${url} —`, err);
+        return null;
+      }
+    },
+    [getToken, backendUrl, sessionId]
+  );
+
+  const patchAddRef = useRef(patchAdd);
+  patchAddRef.current = patchAdd;
+
+  const deltaQueueRef = useRef<CountDeltaQueue | null>(null);
+  if (!deltaQueueRef.current) {
+    deltaQueueRef.current = new CountDeltaQueue(
+      (itemId, delta) => patchAddRef.current(itemId, delta),
+      {
+        debounceMs: DEBOUNCE_MS,
+        onServerQty: (itemId, qty) => onServerQtyRef.current?.(itemId, qty),
+        onError: () => setHasSaveError(true),
+      }
+    );
+  }
+
+  /** Relative increment/decrement — atomic server-side accumulation. */
+  const addToCount = useCallback((itemId: string, delta: number) => {
+    deltaQueueRef.current!.add(itemId, delta);
+  }, []);
+
   const saveCount = useCallback(
     (itemId: string, count: number) => {
       pending.current[itemId] = count;
@@ -63,9 +124,10 @@ export function useUpdateItemCount(sessionId: string) {
 
     const snapshot = { ...pending.current };
     pending.current = {};
-    await Promise.all(
-      Object.entries(snapshot).map(([itemId, count]) => patch(itemId, count))
-    );
+    await Promise.all([
+      ...Object.entries(snapshot).map(([itemId, count]) => patch(itemId, count)),
+      deltaQueueRef.current!.flushAll(),
+    ]);
   }, [patch]);
 
   const clearSaveError = useCallback(() => setHasSaveError(false), []);
@@ -109,5 +171,5 @@ export function useUpdateItemCount(sessionId: string) {
     };
   }, [flushAll]);
 
-  return { saveCount, flushAll, hasSaveError, clearSaveError, clearAllCounts };
+  return { saveCount, addToCount, flushAll, hasSaveError, clearSaveError, clearAllCounts };
 }

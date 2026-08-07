@@ -64,7 +64,16 @@ export default function ItemDetailScreen() {
 
   const isCatchWeight = isCatchWeightCategory === "true";
 
-  const { saveCount, flushAll } = useUpdateItemCount(sessionId ?? "");
+  // +/- steppers are relative edits sent as atomic server-side addQty
+  // increments; the display reconciles from the server-returned quantity so
+  // concurrent devices can't overwrite each other. Typed input remains an
+  // intentional absolute direct-set.
+  const { saveCount, addToCount, flushAll } = useUpdateItemCount(
+    sessionId ?? "",
+    (updatedItemId, serverQty) => {
+      if (updatedItemId === itemId) setLocalCount(serverQty);
+    }
+  );
   const inputRef = useRef<TextInput>(null);
 
   const initCountNum = currentCountParam ? parseFloat(currentCountParam) || 0 : 0;
@@ -90,17 +99,15 @@ export default function ItemDetailScreen() {
 
   const handleIncrement = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = localCount + 1;
-    setLocalCount(next);
-    saveCount(itemId ?? "", next);
+    setLocalCount((c) => c + 1); // optimistic; reconciled from server qty
+    addToCount(itemId ?? "", 1);
   };
 
   const handleDecrement = () => {
     if (localCount === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = localCount - 1;
-    setLocalCount(next);
-    saveCount(itemId ?? "", next);
+    setLocalCount((c) => Math.max(0, c - 1)); // optimistic; reconciled from server qty
+    addToCount(itemId ?? "", -1);
   };
 
   const handleInputBlur = () => {

@@ -23,7 +23,13 @@ The external completion review identified two blocking issues, both fixed before
 
 - **Atomic add:** `app/results.tsx` direct apply now sends `{ addQty }` in "add" mode (server-side atomic increment) instead of PATCHing a client-computed absolute count; the bulk `POST /api/mobile/sessions/:id/apply-scan` "add" mode now calls `storage.atomicIncrementCountLineQty` instead of read-then-write arithmetic ("set" mode semantics unchanged).
 - **Token scoping:** the injected scripts in `components/WebSection.tsx`, `app/inventory-web.tsx`, and `app/session/count-web.tsx` now attach the mobileToken Authorization header only to same-origin fetch/XHR requests (same guard `app/waste-web.tsx` already had).
-- **New regression tests:** `artifacts/api-server/src/lib/mobileWebviewTokenScope.test.ts` executes each wrapper's injected script in a sandboxed VM proving same-origin-only token attachment (8 tests), plus a source invariant that apply-scan "add" uses the atomic increment. Full api-server suite: 1107 passed, 1 skipped; same 4 pre-existing unrelated failing files. Mobile typecheck exit 0; the 7 api-server typecheck errors are pre-existing (identical with the change stashed).
+- **New regression tests:** `artifacts/api-server/src/lib/mobileWebviewTokenScope.test.ts` executes each wrapper's injected script in a sandboxed VM proving same-origin-only token attachment (8 tests), plus a source invariant that apply-scan "add" uses the atomic increment.
+
+The second completion review flagged that the native manual +/- flow still raced (debounced client-computed absolute `{ count }` writes). Fixed:
+
+- **Native stepper concurrency policy:** `lib/countDeltaQueue.ts` (pure, RN-free) accumulates relative deltas per line, debounces, and flushes a single `{ addQty }` PATCH so the server performs the atomic increment; the display reconciles from the server-returned quantity. `useUpdateItemCount` exposes `addToCount` (used by the `app/session/item.tsx` steppers) and keeps absolute `saveCount` only for explicit typed input — intentional "the shelf holds N" direct-set, last-write-wins. `flushAll` drains both queues (Done button, backgrounding, unmount).
+- **Concurrency regression tests:** `artifacts/api-server/src/lib/countDeltaQueue.test.ts` simulates two devices incrementing the same line simultaneously (asserts no lost update: 10+5+5=20, where absolute writes yielded 15), server-truth reconciliation after a foreign increment, tap coalescing, error surfacing, and a source invariant that the item-screen steppers use `addToCount`.
+- **Final evidence:** api-server suite 1112 passed, 1 skipped; same 4 pre-existing unrelated failing files. Mobile typecheck exit 0. The 7 api-server typecheck errors are pre-existing (identical with the change stashed).
 
 ## Deviations
 
