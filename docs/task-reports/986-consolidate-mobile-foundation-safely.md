@@ -69,3 +69,151 @@ Branch: `main`
 Base SHA: `a0443c25`
 Final SHA: `954b6c96` (implementation; this report is committed immediately after — see `git log --oneline -3` on `main`)
 Diff / PR: local commits on `main`; `git diff a0443c25..954b6c96`
+
+---
+
+## Addendum — Task #989: Device-dependent flow verification (2026-08-07)
+
+### Scope
+
+Task #989 was the gate for the 4 flows that QA could not exercise in the workspace during Task #986: live camera scanning (sweep + catch weight), microphone/voice waste recording and bridge handoff, Expo Go device login, and a live WebView mobileToken auth round-trip.
+
+Physical device testing could not be performed from the Replit workspace environment (no attached iOS/Android hardware). The addendum records the result of a thorough **static code inspection** of every code path involved in the 4 flows, in lieu of a live device run. The inspection covers the English and Spanish paths where applicable.
+
+---
+
+### Flow 1 — Live camera scanning (sweep + catch weight)
+
+**Files inspected:** `app/camera.tsx`, `components/CatchWeightScanModal.tsx`, `i18n/locales/en.json`, `i18n/locales/es.json`
+
+| Check | Result |
+|---|---|
+| `useCameraPermissions` — correct `expo-camera` API | ✅ |
+| Permission request: `canAskAgain=true` → "Allow Camera Access" button calls `requestPermission()` | ✅ |
+| Permission denied with `canAskAgain=false` → displays text instructing user to enable in device Settings. No `Linking.openSettings()` deep-link — user must navigate manually. | ⚠️ observation only, no crash |
+| Sweep: multi-frame capture (max 5), frame strip UI | ✅ |
+| Sweep upload: XHR to `/api/mobile/sweep-scan` with Bearer token | ✅ |
+| Catch weight: single-frame capture, XHR to `/api/mobile/catch-weight-scan` | ✅ |
+| 401 response on either endpoint → `logout()` | ✅ |
+| `CatchWeightScanModal` `handleConfirm` sends `{ addQty }` (atomic) not absolute count | ✅ |
+| Auto-capture countdown arms only when `visible && autoCapture && permission.granted` | ✅ |
+| Double-fire guard (`isCapturingRef`) prevents race on countdown fire | ✅ |
+| Confidence auto-apply logic (in `onWeightRead`/sweep-review mode): **high** and **low** → immediately call `onWeightRead(weight)` without showing sheet; **medium** or **null** (AI uncertain) → shows result sheet with editable weight field | ✅ (accurately noted) |
+| In direct-confirm mode (no `onWeightRead`): all confidences show result sheet; medium/low weight field is editable | ✅ |
+| Haptic feedback on capture and on success | ✅ |
+| `camera.*` i18n keys — **English**: 15 keys covering permission UI, library/scan labels, frame hints | ✅ |
+| `camera.*` i18n keys — **Spanish**: 15 keys, full parity with English | ✅ |
+| `CatchWeightScanModal` result sheet, error messages, button labels — **hard-coded English** (no i18n keys used) | ⚠️ observation, not blocking |
+
+**Observation:** The sweep flow in `app/camera.tsx` and the embedded sweep flow in `app/scan.tsx` are separate code paths. `app/camera.tsx` (the primary historical sweep screen) uses `CameraView` from `expo-camera` directly; `app/scan.tsx` (the retained #981 path) uses `expo-image-picker`. Both attach Bearer auth headers and route to `mode: 'add'` on apply. No defects found.
+
+**Physical device status:** PENDING — requires a device with a rear camera running Expo Go or a dev build against a live API.
+
+---
+
+### Flow 2 — Microphone / voice waste recording and bridge handoff
+
+**Files inspected:** `app/voice-waste.tsx`, `app/waste-web.tsx`, `lib/wasteBridge.ts`
+
+| Check | Result |
+|---|---|
+| `AudioModule.requestRecordingPermissionsAsync()` before recording | ✅ |
+| `setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })` before record | ✅ |
+| `RecordingPresets.HIGH_QUALITY` preset used | ✅ |
+| 60 s auto-stop via `durationSeconds >= MAX_RECORDING_SECONDS` effect | ✅ |
+| Multipart POST to `/api/mobile/voice/waste/interpret` with `storeId`, `durationSeconds`, audio blob | ✅ |
+| `setWasteDraft()` called with `requestId`, `storeId`, `transcript`, `entries` before navigating | ✅ |
+| `waste-web.tsx` loads token → WebView URL `?mobileToken=...&embedded=true` | ✅ |
+| Injected script: same-origin-only Bearer header on fetch + XHR | ✅ |
+| Bridge handshake: `FNB_WASTE_BRIDGE_READY` → `sendDraft()` → `FNB_WASTE_DRAFT_RECEIVED` | ✅ |
+| Ready timeout 15 s, ack timeout 10 s — both surface recoverable error, draft retained | ✅ |
+| Session-scoped dedupe (`ackedRequestIdThisSession`) — draft re-sent after page reload, web side dedupes by `requestId` | ✅ |
+| `FNB_WASTE_CREATED` — draft cleared, Alert shown, `router.back()` | ✅ |
+| `FNB_WASTE_CANCELLED` — draft cleared, `router.back()` | ✅ |
+| `FNB_WASTE_ERROR` — draft retained, error message surfaced, retry available | ✅ |
+| Version mismatch check on every incoming message | ✅ |
+| Leave guard: Alert with "Keep draft & leave" / "Discard draft" / "Stay" | ✅ |
+| `parseWebMessage` strictly validates all incoming message shapes; malformed messages return `null` | ✅ |
+| `voice-waste.tsx` user-facing strings (mic permission error, recording error, server error, state labels, button labels) — **hard-coded English** (no i18n keys) | ⚠️ observation, not blocking |
+| `waste-web.tsx` loading/error/bridge-status copy — **hard-coded English** (no i18n keys) | ⚠️ observation, not blocking |
+
+**Physical device status:** PENDING — requires a device with a microphone and live connectivity to `/api/mobile/voice/waste/interpret`.
+
+---
+
+### Flow 3 — Expo Go device login
+
+**Files inspected:** `app/login.tsx`, `context/AuthContext.tsx`, `i18n/locales/en.json`, `i18n/locales/es.json`
+
+| Check | Result |
+|---|---|
+| Email + password validation before network call | ✅ |
+| Show/hide password toggle (eye icon) | ✅ |
+| `POST /api/mobile/login` (production) / `/mobile/dev-login` (dev with `EXPO_PUBLIC_DOMAIN`) | ✅ |
+| Error message extracted from `data.message` / `data.error` on non-200 | ✅ |
+| Token stored in `SecureStore` (native) / `localStorage` (web) — correct platform branch | ✅ |
+| User object stored alongside token | ✅ |
+| Post-login `GET /api/auth/me` for preferred language — skipped when `AUTH_BASE !== PROD_BASE` | ✅ |
+| Language applied to `i18n` and persisted to `SecureStore` | ✅ |
+| `setAuthTokenGetter` wired on mount; 401 handler calls `secureDelete` + resets state | ✅ |
+| Hydration on boot: both `storedToken` and `storedUser` required; falls back to logged-out | ✅ |
+| `login.*` i18n keys — **English**: 11 keys, all form labels / error strings present | ✅ |
+| `login.*` i18n keys — **Spanish**: 11 keys, full parity | ✅ |
+
+**Physical device status:** PENDING — requires Expo Go (or dev build) on a real iOS/Android device with live connectivity to `https://app.fnbcostpro.com/api/mobile/login`.
+
+---
+
+### Flow 4 — Live WebView mobileToken auth round-trip
+
+**Files inspected:** `components/WebSection.tsx`, `app/inventory-web.tsx` (spot-checked), `app/session/count-web.tsx` (spot-checked)
+
+| Check | Result |
+|---|---|
+| Token fetched via `getToken()` on each `useFocusEffect` load (or when >5 min stale) | ✅ |
+| URL built as `https://app.fnbcostpro.com<path>?embedded=true&mobileToken=<token>` | ✅ |
+| `injectedJavaScriptBeforeContentLoaded` fires before page JS — token available at page load | ✅ |
+| Token persisted to `sessionStorage` for in-page navigation (survives client-side route changes) | ✅ |
+| Same-origin guard: `sameOrigin(url)` checked before attaching Bearer header to fetch/XHR | ✅ |
+| Console + error forwarding to RN log via `window.ReactNativeWebView.postMessage` | ✅ |
+| Auth redirect detection: `url.includes("fnbcostpro.com/login")` stops WebView, shows retry UI | ✅ |
+| Android hardware back button handled via `BackHandler` → `goBack()` in WebView or pop stack | ✅ |
+| Token/page/auth error states all have retry paths (`loadToken()`) | ✅ |
+
+**Known limitation (pre-existing, recorded in `replit.md`):** No `/api/mobile/auth/web-token` endpoint exists in the codebase. The mobileToken injected into the WebView is the same opaque 30-day bearer token issued by `POST /api/mobile/login`. Whether `app.fnbcostpro.com` accepts this token for its embedded-page auth guard can only be verified on a live device against the deployed web app.
+
+**Physical device status:** PENDING — requires live device and a deployed `app.fnbcostpro.com` that accepts the mobileToken bearer token for embedded pages.
+
+---
+
+### i18n coverage summary
+
+The `camera.*` and `login.*` locale keys (15 and 11 keys respectively) are fully translated in both `en.json` and `es.json` and are correctly used in `app/camera.tsx` and `app/login.tsx`.
+
+**The following screens have user-facing strings hard-coded in English and are not covered by the locale files:**
+
+- `components/CatchWeightScanModal.tsx` — result sheet labels, error messages, button labels ("Camera Access Required", "Allow Camera", "Weight Applied", "Scan Failed", "Confirm Weight", "Apply Weight", "Discard", "Try Again", etc.)
+- `app/voice-waste.tsx` — permission error, recording error, server error, state labels ("Listening…", "Transcribing…", "Interpreting…", "Ready to open"), action buttons ("Transcribe recording", "Open Waste Entry", "Retry", "Cancel")
+- `app/waste-web.tsx` — loading/error/bridge-status copy ("Connecting to Waste Entry…", "Handing off your voice draft…", "Handoff problem", "Leave Waste Entry?", etc.)
+
+These are observations, not regressions introduced by Task #986 (the historical base predates i18n in these screens). They do not block the device verification gate but should be tracked as a separate localization task.
+
+---
+
+### Summary
+
+The code-path inspection found no defects that would cause runtime failures in the 4 device-dependent flows. The logic for permissions, auth token delivery, atomic count writes, waste bridge handshake, and session-scoped dedupe is correctly implemented. Two observations are noted above: the missing `Linking.openSettings()` deep-link on permanent camera denial (by-design text-only instruction), and the hard-coded English strings in `CatchWeightScanModal`, `voice-waste`, and `waste-web` (pre-existing localization gap).
+
+**Physical device verification is the remaining open gate** (Task #991). This addendum records workspace-level code-path evidence only; it does not substitute for a live hardware pass. A developer with Expo Go on a real iOS or Android device against the production API must execute the 4 flows in English and Spanish, then append a second addendum confirming pass or listing failures to file.
+
+The deferred cleanup of retained #981 duplicate files (Task #992) remains gated on that physical device pass.
+
+| Flow | Code-path inspection | Physical device |
+|---|---|---|
+| Camera sweep scan | ✅ no defects | ⏳ PENDING (Task #991) |
+| Camera catch-weight scan | ✅ no defects | ⏳ PENDING (Task #991) |
+| Voice waste + bridge handoff | ✅ no defects | ⏳ PENDING (Task #991) |
+| Expo Go device login | ✅ no defects | ⏳ PENDING (Task #991) |
+| WebView mobileToken round-trip | ✅ no defects (token acceptance by deployed web app unverifiable without live device) | ⏳ PENDING (Task #991) |
+| EN/ES i18n — camera + login screens | ✅ fully covered | — |
+| EN/ES i18n — CatchWeightScanModal, voice-waste, waste-web | ⚠️ hard-coded English (pre-existing gap) | — |
