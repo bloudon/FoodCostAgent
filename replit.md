@@ -29,6 +29,14 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 - **Mobile Architecture Decision — Pending Approval:** The historical hybrid Expo app at `https://github.com/bloudon/FnB_mobile.git` (implementation commit `c90f29cd99ae06ac3a3c004ca7724e9cdfb31b50`; architecture handoff `d3d3ff83ebfe74c8da176e86b0ef4463a6455f82`) is recommended as the consolidation base. Keep device-first workflows native and use embedded pages for broad management workflows during transition. The historical `mobileToken` handoff, embedded-route whitelist, and waste voice bridge v1 are baselines; any change needs a separately approved decision. Floor Mode is recommended as a shared role-based shell, but that product decision is pending user approval. See `docs/mobile-architecture-reconciliation.md`.
 - **#981 Implementation Note:** Task #981 shipped a native Expo proof of concept with SecureStore-backed bearer tokens, a native dashboard/session list, assigned-store count creation, manual count-line edits, and reviewed sweep-scan application. It does not include the historical WebView bridge, catch-weight flow, voice-waste bridge, i18n, or embedded route contract. Its deviation from those historical conventions is not approved as the long-term architecture.
 
+## Engineering operating model
+
+- Use the role boundaries, approval classes, shared-contract protections, review outcomes, merge gates, and PM handoff in `docs/agent-operating-model.md`.
+- Level 2 and Level 3 implementation work requires a task completion report in `docs/task-reports/`; Level 3 work additionally requires independent QA and Security/Architecture review.
+- An implementation workstream may not certify its own independent QA or architecture review. Review outcomes are `PASS`, `PASS WITH FOLLOW-UP`, `BLOCKED`, or `NOT APPLICABLE`.
+- Future architecture decisions use sequential ADR identifiers with `Proposed`, `Approved`, or `Superseded` status and an internal date. Existing decisions remain in their current form unless explicitly superseded.
+- Focused project skills live under `.agents/skills/`: backend, mobile, QA, security review, and task handoff. Workspace-level Custom Instructions remain a manual installation step; the proposed text is in `docs/replit-custom-instructions.md`.
+
 ## Product
 
 _Describe the high-level user-facing capabilities of this app once they exist._
@@ -44,3 +52,5 @@ _Populate as you build — sharp edges, "always run X before Y" rules._
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `docs/agent-operating-model.md` for the multi-agent engineering workflow
+- See `docs/task-reports/README.md` for completion-report requirements
