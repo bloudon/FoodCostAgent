@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, Eye, EyeOff } from "lucide-react";
-const logoImage = "/website-logo-dark.png";
+const logoImage = "/website-logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 import { useAppLanguage } from "@/lib/language-context";
 
