@@ -22,7 +22,12 @@ Restaurant inventory, cost, counting, and management tools with web and mobile e
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server` — Express API and server-side business rules
+- `artifacts/fnb-cost-pro` — React web application
+- `artifacts/fnb-cost-pro-mobile` — Expo mobile companion
+- `packages/db` — PostgreSQL schema and Drizzle database package
+- `docs/mobile-architecture-reconciliation.md` — historical mobile architecture comparison and consolidation guardrails
+- `docs/agent-operating-model.md` — current Builder/Reviewer/QA process
 
 ## Architecture decisions
 
@@ -31,23 +36,26 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 ## Engineering operating model
 
-- Use the role boundaries, approval classes, shared-contract protections, review outcomes, merge gates, and PM handoff in `docs/agent-operating-model.md`.
-- Level 2 and Level 3 implementation work requires a task completion report in `docs/task-reports/`; Level 3 work additionally requires independent QA and Security/Architecture review.
-- An implementation workstream may not certify its own independent QA or architecture review. Review outcomes are `PASS`, `PASS WITH FOLLOW-UP`, `BLOCKED`, or `NOT APPLICABLE`.
-- Future architecture decisions use sequential ADR identifiers with `Proposed`, `Approved`, or `Superseded` status and an internal date. Existing decisions remain in their current form unless explicitly superseded.
-- Focused project skills live under `.agents/skills/`: backend, mobile, QA, security review, and task handoff. Workspace-level Custom Instructions remain a manual installation step; the proposed text is in `docs/replit-custom-instructions.md`.
+- Use only the Builder, Reviewer, and QA operational roles described in `docs/agent-operating-model.md`.
+- Classify work as Routine or Significant; if risk is unclear, use Significant.
+- Significant work requires a PM decision, Builder, separate Reviewer, separate QA, a task report, and external second-opinion review.
+- Reviewer and QA outcomes are recorded separately. If independent sessions cannot be verified, report `PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`.
+- Retained project skills are `.agents/skills/fnb-review`, `.agents/skills/fnb-qa`, and `.agents/skills/fnb-mobile`.
+- Workspace Custom Instructions remain a manual Product Owner step; proposed text is in `docs/replit-custom-instructions.md`.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Food and beverage teams can manage ingredients, vendors, recipes, sales, inventory counts, waste, purchasing, costing, and related operational reporting across web and mobile experiences.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Preserve working behavior and approved shared contracts unless replacement is explicitly approved.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Never bypass company/store/outlet/storage-location scoping.
+- Treat costing, valuation, inventory mutations, and shared contracts as Significant work.
+- Do not expose long-lived native tokens in WebView URLs; preserve the established mobile bridge and embedded-route whitelist.
 
 ## Pointers
 

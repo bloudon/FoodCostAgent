@@ -1,72 +1,56 @@
 # Task Completion Reports
 
-Create one report at `docs/task-reports/<task-number>-<short-slug>.md` for every meaningful Level 2 or Level 3 implementation task. Reports describe what actually shipped and are the primary handoff artifact for independent review and external PM review.
+Create one report at `docs/task-reports/<task-number>-<short-slug>.md` for each Significant implementation task. Reports describe what actually shipped and are the handoff artifact for Reviewer, QA, and external review. Routine work follows **Build → Test → Done** and does not require a formal report.
 
-## Required format
+## Required format for Significant work
 
 ```md
 # Task #NNN — Title
 
-## Requested
+## Asked
 
-Concise summary of the approved scope.
+What was requested.
 
 ## Shipped
 
-What was actually implemented.
+What changed.
 
 ## Deviations
 
-Differences from the approved plan. Use `None` when there were no material deviations.
+Anything different from the approved plan. Use `None` when there were no material deviations.
 
-## Major Files Changed
+## Review
 
-List important files, components, routes, and schemas. Do not dump every changed file.
+Reviewer: PASS | PASS WITH FOLLOW-UP | BLOCKED
+QA: PASS | PASS WITH FOLLOW-UP | BLOCKED
+Independent session/workstream separation: VERIFIED | UNVERIFIED
 
-## Contracts Changed
+Include evidence, reviewer/workstream identity, and any blocking finding.
 
-Identify changes to API contracts, schema, auth, permissions, mobile bridges, and shared interfaces. Use `None` when no shared contract changed.
+## Tests
 
-## Tests and Verification
+What was actually tested, including exact commands and relevant manual checks.
 
-State exactly which automated tests ran, which manual flows were checked, and the results.
+## Risks / Decisions
 
-## Regression Review
+Anything unresolved or requiring Product Owner/PM approval.
 
-State existing functionality specifically checked because it could have been affected.
+## Git
 
-## Review Status
-
-| Review | Result | Reviewer / workstream | Notes |
-|---|---|---|---|
-| Implementation | Complete |  |  |
-| Automated tests | PASS |  |  |
-| Regression QA | PASS |  |  |
-| Security/Architecture | NOT APPLICABLE |  |  |
-| PM approval required | No |  |  |
-
-Allowed review results are `PASS`, `PASS WITH FOLLOW-UP`, `BLOCKED`, and `NOT APPLICABLE`. An implementation workstream may not fill in independent QA or Security/Architecture approval for itself.
-
-## Known Issues / Technical Debt
-
-List remaining issues.
-
-## Decisions Required
-
-Anything that still needs user or PM approval.
-
-## Git Evidence
-
-- Branch:
-- Setup commit SHA:
-- Report commit SHA:
-- Relevant earlier commits:
+Branch:
+Base SHA:
+Final SHA:
+Diff / PR:
 ```
+
+The Base SHA, Final SHA, and Diff/PR are mandatory for Significant work.
 
 ## Review rules
 
-- A `BLOCKED` result prevents recommending completion until the finding is resolved or the approval path changes.
+- The Builder may not fill in its own independent Reviewer or QA result.
+- Reviewer and QA outcomes must be stated separately.
+- If fresh-session separation cannot be verified, record `PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`.
+- `BLOCKED` prevents completion until the finding is resolved or the approval path changes.
 - `PASS WITH FOLLOW-UP` must include a concrete follow-up.
-- `NOT APPLICABLE` must include a reason.
-- Level 3 reports must show independent QA and Security/Architecture review, even when the result is `NOT APPLICABLE`.
-- Reports should distinguish implementation evidence from product or architecture approval.
+- QA may not waive a Reviewer block.
+- Review evidence does not constitute Product Owner/PM approval.

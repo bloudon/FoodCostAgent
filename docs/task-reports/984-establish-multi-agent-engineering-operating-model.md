@@ -1,74 +1,55 @@
-# Task #984 — Establish the Multi-Agent Engineering Operating Model
+# Task #984 — Simplify the Engineering Operating Model
 
-## Requested
+## Asked
 
-Configure the project for explicit engineering roles, Level 1–3 approval gates, independent QA and Security/Architecture review, focused reusable Skills, completion reports, and predictable external PM handoffs. Do not change product functionality.
+Replace the six-role/three-level operating model with the smallest structure that protects against self-certification, hallucinated architecture, auth and tenant-scoping mistakes, data-integrity and costing errors, shared-contract drift, and regressions. Do not change product functionality.
 
 ## Shipped
 
-- Added the project operating model and role boundaries.
-- Added Level 1–3 approval rules, including financial calculations and inventory/data-integrity risks in Level 3.
-- Added shared-contract, independent-review, blocking-review, parallel-work, ADR, merge-gate, and PM-handoff rules.
-- Added the task completion-report format and review-status matrix.
-- Added five focused Skills at the requested paths.
-- Added proposed Workspace Custom Instructions for manual installation.
-- Updated `replit.md` with a concise operating-model section and pointers.
+- Reduced the Replit operating roles to Builder, Reviewer, and QA.
+- Reduced classification to Routine and Significant.
+- Added the explicit fresh-session/workstream independence rule and `PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED` outcome.
+- Consolidated architecture, security, authorization, tenant isolation, shared-contract, inventory, and costing guardrails into `fnb-review` and active project guidance.
+- Retained the specialized mobile skill and its SecureStore, WebView, route-whitelist, camera, microphone, scan, and voice-bridge contracts.
+- Simplified Significant task reports to Asked, Shipped, Deviations, separate Reviewer/QA outcomes, Tests, Risks/Decisions, and mandatory Git evidence.
+- Replaced the proposed Workspace Custom Instructions with the concise eight-line block.
+- Updated `replit.md` with current architecture truth, project map, guardrails, and the simplified process.
 
 ## Deviations
 
-None.
+None from the uploaded Update #984 scope. Useful historical mobile architecture decisions were preserved. No application code, API, auth, schema, artifact, or workflow files changed.
 
-## Major Files Changed
+## Review
 
-- `replit.md`
-- `docs/agent-operating-model.md`
-- `docs/task-reports/README.md`
-- `docs/replit-custom-instructions.md`
-- `.agents/skills/fnb-backend/SKILL.md`
-- `.agents/skills/fnb-mobile/SKILL.md`
-- `.agents/skills/fnb-qa/SKILL.md`
-- `.agents/skills/fnb-security-review/SKILL.md`
-- `.agents/skills/fnb-task-handoff/SKILL.md`
+Reviewer: NOT APPLICABLE — this is the operating-model documentation update itself; the new Reviewer role is defined by this change.
 
-## Contracts Changed
+QA: PASS — structural verification completed against the uploaded requirements.
 
-None. This task changed process documentation only.
+Independent session/workstream separation: UNVERIFIED — this documentation update was completed in one Builder session; the new rule requires fresh Reviewer and QA sessions for future Significant product work.
 
-## Tests and Verification
+## Tests
 
-- Validated required files and Skill paths exist.
-- Validated each Skill has YAML frontmatter and all seven required operational sections.
+- Confirmed the active model presents only Builder, Reviewer, and QA.
+- Confirmed only Routine and Significant task classes remain.
+- Confirmed the separate-session rule and unverified-separation wording are explicit.
+- Confirmed FnB shared-contract and data-integrity guardrails remain visible.
+- Confirmed Significant reports require Base SHA, Final SHA, and Diff/PR.
+- Confirmed the retained skill set is exactly `fnb-review`, `fnb-qa`, and `fnb-mobile`.
+- Confirmed no application files changed.
 - Ran `git diff --check`.
-- Confirmed no application source, API, schema, artifact, or workflow files changed.
 
-## Regression Review
+## Risks / Decisions
 
-Existing product functionality was not exercised because this task made no product or application changes. Existing mobile architecture decisions and the reconciliation report were preserved.
+- Workspace Custom Instructions still require manual Product Owner installation through Workspace Settings.
+- Product Owner/PM approval is still required before this becomes the formal process baseline.
+- The external Challenger review remains required for future Significant work.
 
-## Review Status
+## Git
 
-| Review | Result | Reviewer / workstream | Notes |
-|---|---|---|---|
-| Implementation | Complete | Integration Lead | Documentation/configuration setup only |
-| Automated tests | PASS | Integration Lead | Structural and whitespace checks completed |
-| Regression QA | NOT APPLICABLE | QA / Regression workstream | No product behavior changed |
-| Security/Architecture | PASS WITH FOLLOW-UP | Security / Architecture workstream | Follow-up: install Workspace Custom Instructions manually and use the model on a Level 3 task |
-| PM approval required | Yes | External PM | PM review of the operating model and future Workspace Settings configuration |
+Branch: `main`
 
-## Known Issues / Technical Debt
+Base SHA: `93ef85152f96b59efd7277e27d7e36a0e945c3ab`
 
-- Workspace Custom Instructions cannot be installed from project files and require manual Workspace Settings configuration.
-- Skills are project-local guidance; their usefulness should be evaluated during the first Level 3 mobile consolidation task.
-- A future `fnb-data-integrity` reviewer Skill may be considered after the operating model has been exercised; it is intentionally out of scope here.
+Final SHA: to be filled after commit
 
-## Decisions Required
-
-- Install the proposed Custom Instructions in Workspace Settings.
-- Confirm the operating model is the required process baseline for future work.
-
-## Git Evidence
-
-- Branch: `main`
-- Setup commit SHA: `d29d7fc81fb7030aaccdf3d9c037452e20223be8`
-- Completion report introduced in: `d29d7fc81fb7030aaccdf3d9c037452e20223be8`
-- Relevant earlier commit: `fd8052069202b4f0c354d76fb00c62d56764a9fc` (mobile architecture reconciliation)
+Diff / PR: local commit on `main`; no PR created

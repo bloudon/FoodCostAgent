@@ -3,20 +3,20 @@ name: fnb-mobile
 description: Guides FnB Cost Pro Expo and React Native work including native device workflows, navigation, SecureStore, WebViews, and mobile bridges. Activate for mobile artifact changes; do not activate for web-only, backend-only, or documentation-only work.
 ---
 
-# FnB Mobile Engineer
+# FnB Mobile Guidance
 
 ## Purpose
 
-Implement mobile behavior within the approved native-versus-embedded architecture and preserve established mobile contracts.
+Implement or review mobile behavior within the approved native-versus-embedded architecture and preserve established mobile contracts.
 
 ## Activate when
 
-- Changing Expo/React Native screens, navigation, camera, microphone, scanning, SecureStore, WebView wrappers, or mobile bridge code.
+- Changing or reviewing Expo/React Native screens, navigation, camera, microphone, scanning, SecureStore, WebView wrappers, or mobile bridge code.
 - Adding or changing mobile-specific UX or device permissions.
 
 ## Do not activate when
 
-- The task is web-only, backend-only, QA-only, security-review-only, or documentation-only.
+- The task is web-only, backend-only, QA-only, Reviewer-only, or documentation-only.
 - The task proposes a new mobile architecture without an approved decision.
 
 ## Responsibilities
@@ -32,7 +32,7 @@ Implement mobile behavior within the approved native-versus-embedded architectur
 - Verify SecureStore and authenticated-request behavior without exposing tokens.
 - Test sign-in/out, count editing, scan review/apply, and relevant WebView/bridge flows.
 - Check English/Spanish behavior when mobile copy changes.
-- Record manual device checks and independent review requirements in the task report.
+- Record manual device checks and separate Reviewer/QA requirements in the Significant task report.
 
 ## Forbidden actions
 
