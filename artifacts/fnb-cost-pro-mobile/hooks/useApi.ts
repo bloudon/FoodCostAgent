@@ -23,11 +23,37 @@ export function useSessionItems(id: string) {
   });
 }
 
+export type CountLine = {
+  lineId: string;
+  inventoryItemId: string;
+  itemName: string;
+  unitAbbr: string;
+  qty: number;
+  locationName: string;
+};
+
+export type AssignedStore = {
+  id: string;
+  name: string;
+};
+
+export type SweepScanResult = {
+  items: Array<{
+    name: string;
+    estimatedQty?: number;
+    quantity?: number;
+    unit?: string;
+    confidence?: number;
+  }>;
+  frameCount: number;
+  notes: string[];
+};
+
 export function useUpdateItemQuantity() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ sessionId, itemId, qty }: { sessionId: string; itemId: string; qty: number }) =>
-      fetchWithAuth(`/api/mobile/sessions/${sessionId}/inventory/${itemId}`, {
+    mutationFn: ({ sessionId, lineId, qty }: { sessionId: string; lineId: string; qty: number }) =>
+      fetchWithAuth(`/api/mobile/sessions/${sessionId}/lines/${lineId}`, {
         method: 'PATCH',
         body: JSON.stringify({ qty }),
       }),
@@ -37,10 +63,17 @@ export function useUpdateItemQuantity() {
   });
 }
 
+export function useAssignedStores() {
+  return useQuery<AssignedStore[]>({
+    queryKey: ['assignedStores'],
+    queryFn: () => fetchWithAuth('/api/mobile/stores'),
+  });
+}
+
 export function useCreateSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: any) =>
+    mutationFn: (data: { storeId: string; name?: string; countDate?: string }) =>
       fetchWithAuth('/api/mobile/sessions', {
         method: 'POST',
         body: JSON.stringify(data),

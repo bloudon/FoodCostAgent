@@ -1,11 +1,13 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+
+const AUTH_TOKEN_KEY = 'fnb_auth_token';
 
 export const API_BASE = process.env.EXPO_PUBLIC_DOMAIN 
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` 
   : '';
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-  const token = await AsyncStorage.getItem('auth_token');
+  const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {})

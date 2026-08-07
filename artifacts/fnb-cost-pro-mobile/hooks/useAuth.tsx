@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+
+const AUTH_TOKEN_KEY = 'fnb_auth_token';
 
 type AuthContextType = {
   token: string | null;
@@ -17,7 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadToken() {
       try {
-        const stored = await AsyncStorage.getItem('auth_token');
+        const stored = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
         if (stored) {
           setTokenState(stored);
         }
@@ -33,9 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setToken = async (newToken: string | null) => {
     setTokenState(newToken);
     if (newToken) {
-      await AsyncStorage.setItem('auth_token', newToken);
+      await SecureStore.setItemAsync(AUTH_TOKEN_KEY, newToken);
     } else {
-      await AsyncStorage.removeItem('auth_token');
+      await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
     }
   };
 

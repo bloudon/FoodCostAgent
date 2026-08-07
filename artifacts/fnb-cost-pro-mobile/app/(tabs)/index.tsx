@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { useColors } from '@/hooks/useColors';
-import { useDashboard, useActiveSessions, useCreateSession } from '@/hooks/useApi';
+import { useDashboard, useActiveSessions, useAssignedStores, useCreateSession } from '@/hooks/useApi';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
@@ -11,11 +11,12 @@ export default function DashboardScreen() {
   
   const { data: dashboard, isLoading: dashLoading, refetch: refetchDash } = useDashboard();
   const { data: activeSessions, isLoading: activeLoading, refetch: refetchActive } = useActiveSessions();
+  const { data: stores, isLoading: storesLoading } = useAssignedStores();
   const createSession = useCreateSession();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [storeId, setStoreId] = useState('');
-  const [locationName, setLocationName] = useState('');
+  const [name, setName] = useState('');
 
   const refreshing = dashLoading || activeLoading;
 
@@ -25,15 +26,21 @@ export default function DashboardScreen() {
   };
 
   const handleCreate = () => {
+    if (!storeId) {
+      Alert.alert('Choose a store', 'Select one of your assigned stores before starting a count.');
+      return;
+    }
     createSession.mutate(
-      { storeId, locationName },
+      { storeId, name: name.trim() || undefined },
       {
         onSuccess: (res) => {
           setModalVisible(false);
+          setName('');
           if (res && res.id) {
             router.push(`/session/${res.id}`);
           }
         },
+        onError: (error: Error) => Alert.alert('Could not start count', error.message),
       }
     );
   };
@@ -113,21 +120,35 @@ export default function DashboardScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Start New Count</Text>
             
-            <Text style={[styles.label, { color: colors.text }]}>Store ID (Optional)</Text>
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              value={storeId}
-              onChangeText={setStoreId}
-              placeholder="e.g. STR-123"
-              placeholderTextColor={colors.mutedForeground}
-            />
+            <Text style={[styles.label, { color: colors.text }]}>Assigned store</Text>
+            {storesLoading ? (
+              <ActivityIndicator color={colors.primary} style={styles.storeLoader} />
+            ) : stores && stores.length > 0 ? (
+              <View style={styles.storeList}>
+                {stores.map((store) => {
+                  const selected = store.id === storeId;
+                  return (
+                    <TouchableOpacity
+                      key={store.id}
+                      style={[styles.storeOption, { borderColor: selected ? colors.primary : colors.border, backgroundColor: selected ? colors.primary + '14' : colors.background }]}
+                      onPress={() => setStoreId(store.id)}
+                    >
+                      <Feather name={selected ? 'check-circle' : 'circle'} size={18} color={selected ? colors.primary : colors.mutedForeground} />
+                      <Text style={[styles.storeOptionText, { color: colors.text }]}>{store.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={[styles.noStoresText, { color: colors.mutedForeground }]}>No stores are assigned to your account. Ask an administrator for access.</Text>
+            )}
 
-            <Text style={[styles.label, { color: colors.text }]}>Location / Area</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Count name (optional)</Text>
             <TextInput
               style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              value={locationName}
-              onChangeText={setLocationName}
-              placeholder="e.g. Walk-in Cooler"
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Morning inventory"
               placeholderTextColor={colors.mutedForeground}
             />
 
@@ -141,7 +162,7 @@ export default function DashboardScreen() {
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: colors.primary, marginLeft: 12 }]}
                 onPress={handleCreate}
-                disabled={createSession.isPending}
+                disabled={createSession.isPending || !storeId}
               >
                 <Text style={[styles.modalBtnText, { color: colors.primaryForeground }]}>Start</Text>
               </TouchableOpacity>
@@ -277,6 +298,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontFamily: 'Inter_400Regular',
   },
+  storeLoader: { marginVertical: 16 },
+  storeList: { marginBottom: 20, gap: 8 },
+  storeOption: {
+    minHeight: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  storeOptionText: { marginLeft: 10, fontSize: 15, fontFamily: 'Inter_500Medium' },
+  noStoresText: { fontSize: 14, lineHeight: 20, marginBottom: 20, fontFamily: 'Inter_400Regular' },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',

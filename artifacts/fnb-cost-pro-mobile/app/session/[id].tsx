@@ -27,14 +27,14 @@ export default function SessionDetailScreen() {
     }
   }, [items]);
 
-  const handleQtyChange = (itemId: string, text: string) => {
-    setQuantities(prev => ({ ...prev, [itemId]: text }));
+  const handleQtyChange = (lineId: string, text: string) => {
+    setQuantities(prev => ({ ...prev, [lineId]: text }));
   };
 
-  const handleQtyBlur = (itemId: string) => {
-    const val = parseFloat(quantities[itemId]);
+  const handleQtyBlur = (lineId: string) => {
+    const val = parseFloat(quantities[lineId]);
     if (!isNaN(val)) {
-      updateQty.mutate({ sessionId: id!, itemId, qty: val });
+      updateQty.mutate({ sessionId: id!, lineId, qty: val });
     }
   };
 
@@ -80,7 +80,7 @@ export default function SessionDetailScreen() {
         <View style={styles.center}>
           <Feather name="package" size={48} color={colors.mutedForeground} style={{ marginBottom: 16 }} />
           <Text style={[styles.emptyText, { color: colors.text }]}>No items in this session.</Text>
-          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>Use the scan button to add items via camera, or they will appear here once added.</Text>
+          <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>Use the scan button to review AI results before adding quantities.</Text>
         </View>
       ) : (
         <FlatList
