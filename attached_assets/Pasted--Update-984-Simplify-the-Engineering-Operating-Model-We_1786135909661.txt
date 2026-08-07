@@ -1,0 +1,306 @@
+# Update #984 — Simplify the Engineering Operating Model
+
+We are simplifying the operating model established by Task #984 before using it for Significant production work.
+
+This is a process/documentation/configuration change only. Do not change product functionality.
+
+## Goal
+
+Replace the six-role / three-level operating model with the smallest structure that still protects FnB Cost Pro against:
+
+- self-certifying work
+- hallucinated architecture
+- auth or tenant-scoping mistakes
+- data-integrity errors
+- costing/calculation errors
+- shared-contract drift
+- regressions
+
+Use this principle:
+
+> One builder. One checker. One short report. Escalate only when risk justifies it.
+
+## Final operating model
+
+### External roles
+
+- Product Owner — final business/product decision
+- Primary PM / Architect — defines significant product/architecture direction and reviews shipped work
+- Independent Challenger — second opinion on Significant work
+- Replit — engineering implementation and technical review
+
+Do not create additional permanent organizational layers.
+
+### Replit roles
+
+Use only three operational roles:
+
+#### Builder
+Implements the approved task.
+
+#### Reviewer
+Checks architecture, security, authorization, tenant isolation, shared contracts, data integrity, costing/valuation logic, inventory mutation semantics, and implementation deviations.
+
+Reviewer may BLOCK work.
+
+Reviewer may recommend an architecture change but may not approve or invent new product architecture.
+
+#### QA
+Checks acceptance behavior, regressions, edge cases, and test evidence.
+
+QA may not waive a Reviewer block.
+
+### Independent review rule
+
+For Significant work:
+
+- Builder may not certify its own Reviewer or QA result.
+- Reviewer and QA should run in fresh, separately instantiated agent workstreams/sessions when the platform supports this.
+- If Replit cannot create that separation automatically, stop after the Builder phase and tell the Product Owner exactly which fresh session must be started next.
+- Do not silently simulate independence by relabeling one continuous agent session.
+- If separation cannot be verified, report:
+  `PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`
+
+## Task classification
+
+Use only two classes.
+
+### Routine
+
+Examples:
+- copy changes
+- styling
+- isolated visual fixes
+- low-risk refactors with no behavioral impact
+
+Flow:
+Build → Test → Done
+
+### Significant
+
+Any work that can affect:
+
+- user workflow or behavior
+- stored data
+- API behavior or contracts
+- authentication
+- authorization or permissions
+- tenant/company/store scoping
+- calculations or costing
+- inventory mutations
+- schema or migrations
+- mobile architecture
+- shared contracts
+- vendor integrations
+- AI interpretation contracts
+- destructive changes
+- another feature's behavior
+
+Flow:
+PM decision → Build → separate Reviewer → separate QA → task report → external review
+
+Rule:
+If uncertain, classify the task as Significant.
+
+## Always-active guardrails
+
+Preserve these concrete project protections.
+
+- Never commit or expose secrets.
+- Never bypass tenant/company/store scoping.
+- Never silently change authentication contracts.
+- Never silently change approved shared contracts.
+- Preserve the established mobileToken/WebView bridge unless an approved decision changes it.
+- Preserve the embedded-route whitelist contract unless an approved decision changes it.
+- Preserve waste voice bridge v1 unless an approved decision changes it.
+- Preserve approved inventory mutation semantics.
+- Preserve unit/pack normalization rules.
+- Treat costing, valuation, theoretical cost, variance, and purchasing calculations as high-risk data-integrity logic.
+- Preserve existing working behavior unless replacement is explicitly in scope.
+- Document material deviations from the approved task.
+
+## Skills
+
+Reduce the project skills to only:
+
+- `.agents/skills/fnb-review/SKILL.md`
+- `.agents/skills/fnb-qa/SKILL.md`
+- `.agents/skills/fnb-mobile/SKILL.md`
+
+Retire the need for permanent:
+- backend skill
+- web skill
+- security-review skill
+- task-handoff skill
+
+Do not delete useful domain guidance. Move the valuable guardrails from retired skills into:
+- the always-active project guidance
+- `fnb-review`
+- `fnb-mobile` where specifically mobile
+
+### fnb-review
+
+Must include:
+
+- architecture/security review
+- tenant/company/store checks
+- auth and permission review
+- shared-contract review
+- data-integrity review
+- inventory mutation review
+- costing/valuation review
+- ability to BLOCK
+- prohibition on approving new architecture
+- prohibition on self-certification
+
+### fnb-qa
+
+Must include:
+
+- acceptance verification
+- regression checks
+- edge cases
+- exact tests run
+- PASS / FOLLOW-UP / BLOCKED outcome
+- prohibition on waiving Reviewer blocks
+
+### fnb-mobile
+
+Keep because mobile has specialized recurring contracts:
+
+- SecureStore
+- mobileToken
+- WebView authentication bridge
+- embedded route whitelist
+- native-vs-embedded ownership
+- camera
+- microphone
+- scan flows
+- voice bridge
+- device permissions
+
+## Task reports
+
+Simplify `docs/task-reports/README.md`.
+
+For Significant work, require only:
+
+# Task #NNN — Title
+
+## Asked
+What was requested.
+
+## Shipped
+What changed.
+
+## Deviations
+Anything different from the approved plan.
+
+## Review
+PASS | FOLLOW-UP | BLOCKED
+
+State Reviewer and QA outcomes separately.
+
+State whether independent session/workstream separation was VERIFIED or UNVERIFIED.
+
+## Tests
+What was actually tested.
+
+## Risks / Decisions
+Anything unresolved or requiring approval.
+
+## Git
+Branch:
+Base SHA:
+Final SHA:
+Diff / PR:
+
+The Base SHA, Final SHA, and Diff/PR are mandatory for Significant work.
+
+## replit.md
+
+Keep `replit.md` concise.
+
+It should contain:
+- current architecture truth
+- important project gotchas / shared contracts
+- major decisions
+- short implementation notes
+
+Do not duplicate full task reports or long role descriptions there.
+
+Do not add formal ADR numbering at this stage.
+
+## Workspace Custom Instructions
+
+Update the proposed Workspace Custom Instructions to this concise block:
+
+- Never expose or commit secrets.
+- Never silently change approved shared contracts.
+- Never bypass tenant/company/store scoping.
+- Never self-certify independent review.
+- Significant work requires separate Reviewer and QA passes.
+- If task risk is unclear, treat it as Significant.
+- Preserve working behavior unless replacement is explicitly approved.
+- Document material deviations from the approved task.
+
+Workspace Custom Instructions are a manual Product Owner step.
+
+Clearly report whether they are installed or still pending.
+
+## External review
+
+All Significant tasks should receive an independent second-opinion review after Replit's Builder/Reviewer/QA cycle.
+
+Routine tasks do not require external challenger review.
+
+## What to modify
+
+Update the existing #984 operating-model files rather than layering a competing second model.
+
+Expected areas:
+
+- `docs/agent-operating-model.md`
+- `docs/task-reports/README.md`
+- `docs/replit-custom-instructions.md`
+- `replit.md`
+- `.agents/skills/`
+
+Preserve useful historical architecture decisions.
+
+## What not to do
+
+- Do not change application code.
+- Do not change APIs.
+- Do not change auth.
+- Do not change schema.
+- Do not perform mobile consolidation.
+- Do not create new product features.
+- Do not create additional permanent agent roles.
+- Do not create an Integration Lead skill.
+- Do not create backend/web/security skills merely for symmetry.
+
+## Verification
+
+Before completion:
+
+1. Confirm the old six-role model is no longer presented as the active operating model.
+2. Confirm only Builder / Reviewer / QA are operational roles.
+3. Confirm only Routine / Significant task classes remain.
+4. Confirm the separate-session rule is explicit.
+5. Confirm the specific FnB shared-contract/data-integrity guardrails remain visible.
+6. Confirm task reports require Base SHA / Final SHA / Diff.
+7. Confirm no application files changed.
+8. Report any manual Workspace Settings action still required.
+
+## Final response
+
+Report:
+
+- files changed
+- skills retained
+- skills retired
+- exact Custom Instructions text
+- whether manual installation is still required
+- confirmation of zero product/application behavior changes
+- final commit SHA
