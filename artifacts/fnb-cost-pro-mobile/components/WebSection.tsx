@@ -50,12 +50,21 @@ const INJECTED_SCRIPT = `(function(){
   } catch(e) {}
   send('token', { present: !!tok, length: tok ? tok.length : 0 });
 
+  // Only attach the Authorization header to same-origin requests so the
+  // mobileToken can never leak to third-party origins reached by the page.
+  function sameOrigin(u){
+    try { return new URL(u, window.location.href).origin === window.location.origin; }
+    catch(e) { return false; }
+  }
+
   if (tok) {
     var oF = window.fetch;
     window.fetch = function(input, init){
-      init = init || {};
-      init.headers = Object.assign({'Authorization': 'Bearer ' + tok}, init.headers || {});
       var url = (typeof input === 'string') ? input : (input && input.url) || '';
+      if (sameOrigin(url)) {
+        init = init || {};
+        init.headers = Object.assign({'Authorization': 'Bearer ' + tok}, init.headers || {});
+      }
       return oF.call(this, input, init).then(function(res){
         send('fetch', { url: url, status: res.status });
         return res;
@@ -66,7 +75,7 @@ const INJECTED_SCRIPT = `(function(){
     };
     var oO = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url){
-      this._mt = tok; this._mUrl = url;
+      this._mt = sameOrigin(url) ? tok : null; this._mUrl = url;
       return oO.apply(this, arguments);
     };
     var oS = XMLHttpRequest.prototype.send;

@@ -27,11 +27,16 @@ const INVENTORY_URL = "https://app.fnbcostpro.com/inventory-sessions?embedded=tr
 //     via window.ReactNativeWebView.postMessage (Bug B / C).
 const INJECTED_SCRIPT = `(function(){
   var tok=new URLSearchParams(window.location.search).get('mobileToken');
+  // Same-origin guard: never forward the mobileToken to third-party origins.
+  function sameOrigin(u){
+    try { return new URL(u, window.location.href).origin === window.location.origin; }
+    catch(e) { return false; }
+  }
   if(tok){
     var oF=window.fetch;
-    window.fetch=function(i,o){o=o||{};o.headers=Object.assign({'Authorization':'Bearer '+tok},o.headers||{});return oF.call(this,i,o);};
+    window.fetch=function(i,o){var u=(typeof i==='string')?i:((i&&i.url)||'');if(sameOrigin(u)){o=o||{};o.headers=Object.assign({'Authorization':'Bearer '+tok},o.headers||{});}return oF.call(this,i,o);};
     var oO=XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open=function(){this._mt=tok;return oO.apply(this,arguments);};
+    XMLHttpRequest.prototype.open=function(m,u){this._mt=sameOrigin(u)?tok:null;return oO.apply(this,arguments);};
     var oS=XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send=function(){if(this._mt){try{this.setRequestHeader('Authorization','Bearer '+this._mt);}catch(e){}}return oS.apply(this,arguments);};
   }

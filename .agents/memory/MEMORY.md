@@ -1,1 +1,1 @@
-- [Mobile consolidation constraints](mobile-consolidation.md) — mobileToken bridge stays (no web-token endpoint), webview pinned 13.15.0, composite-lib tsc -b, 4 pre-existing vitest failures.
+- [Mobile consolidation constraints](mobile-consolidation.md) — mobileToken bridge stays, same-origin-only token injection, atomic addQty for count adds, webview pinned 13.15.0.

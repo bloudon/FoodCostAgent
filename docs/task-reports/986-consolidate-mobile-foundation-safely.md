@@ -17,6 +17,14 @@ Reconcile the historical hybrid Expo app with the Task #981 native proof of conc
 
 An independent read-only audit of `artifacts/api-server` found **no `/api/mobile/auth/web-token` route or short-lived web-session token exchange anywhere in the repo**. The only verifiable contract is the opaque 30-day session token from `POST /api/mobile/login` (`src/routes.ts:24474–24533`), hashed and validated by `requireAuth` (`src/auth.ts`), accepted via cookie or Bearer. Per the approved decision, WebView authentication was **not changed**: the historical `mobileToken` bridge and embedded-route whitelist are preserved verbatim, and the blocker is recorded in `replit.md`.
 
+### Completion-review remediation (post Reviewer/QA)
+
+The external completion review identified two blocking issues, both fixed before completion:
+
+- **Atomic add:** `app/results.tsx` direct apply now sends `{ addQty }` in "add" mode (server-side atomic increment) instead of PATCHing a client-computed absolute count; the bulk `POST /api/mobile/sessions/:id/apply-scan` "add" mode now calls `storage.atomicIncrementCountLineQty` instead of read-then-write arithmetic ("set" mode semantics unchanged).
+- **Token scoping:** the injected scripts in `components/WebSection.tsx`, `app/inventory-web.tsx`, and `app/session/count-web.tsx` now attach the mobileToken Authorization header only to same-origin fetch/XHR requests (same guard `app/waste-web.tsx` already had).
+- **New regression tests:** `artifacts/api-server/src/lib/mobileWebviewTokenScope.test.ts` executes each wrapper's injected script in a sandboxed VM proving same-origin-only token attachment (8 tests), plus a source invariant that apply-scan "add" uses the atomic increment. Full api-server suite: 1107 passed, 1 skipped; same 4 pre-existing unrelated failing files. Mobile typecheck exit 0; the 7 api-server typecheck errors are pre-existing (identical with the change stashed).
+
 ## Deviations
 
 - The short-lived web-session token target for embedded pages was NOT implemented — blocked for lack of production/API evidence, exactly as the approved decision requires. Recorded as an open decision in `replit.md`.

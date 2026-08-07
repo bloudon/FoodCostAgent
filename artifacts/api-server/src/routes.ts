@@ -24431,36 +24431,39 @@ Human Handoff:
         if (!existingLine || existingLine.inventoryCountId !== count.id) continue;
         if (Number(qty) < 0) continue;
 
-        let newQty: number;
         if (mode === "set") {
-          newQty = Number(qty);
-        } else {
-          // "add" mode — atomic server-side increment (same as addQty)
-          newQty = (existingLine.qty ?? 0) + Number(qty);
-        }
-
-        const updatedLine = await storage.updateInventoryCountLine(lineId, {
-          qty: newQty,
-          caseQty: null,
-          containerQty: null,
-          looseUnits: null,
-        });
-
-        if (updatedLine) {
-          // Write audit entry
-          const addedQty = mode === "set" ? newQty : Number(qty);
-          if (addedQty !== 0) {
-            if (mode === "set") {
-              // Direct set: replace entries
+          const newQty = Number(qty);
+          const updatedLine = await storage.updateInventoryCountLine(lineId, {
+            qty: newQty,
+            caseQty: null,
+            containerQty: null,
+            looseUnits: null,
+          });
+          if (updatedLine) {
+            // Write audit entry — direct set: replace entries
+            if (newQty !== 0) {
               await storage.deleteEntriesForLine(lineId);
+              await storage.createInventoryCountEntry({
+                inventoryCountLineId: lineId,
+                qty: newQty,
+                userId,
+              });
             }
-            await storage.createInventoryCountEntry({
-              inventoryCountLineId: lineId,
-              qty: mode === "set" ? newQty : Number(qty),
-              userId,
-            });
+            results.push({ lineId, newQty: updatedLine.qty });
           }
-          results.push({ lineId, newQty: updatedLine.qty });
+        } else {
+          // "add" mode — true atomic SQL increment + audit entry in one
+          // serialised transaction (same path as PATCH .../lines/:id addQty),
+          // so concurrent applies cannot lose an update.
+          const addQty = Number(qty);
+          if (addQty === 0) {
+            results.push({ lineId, newQty: existingLine.qty ?? 0 });
+            continue;
+          }
+          const result = await storage.atomicIncrementCountLineQty(lineId, addQty, userId ?? null);
+          if (result) {
+            results.push({ lineId, newQty: result.line.qty });
+          }
         }
       }
 

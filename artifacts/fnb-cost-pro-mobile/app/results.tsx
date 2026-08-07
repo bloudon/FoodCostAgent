@@ -633,6 +633,8 @@ export default function ResultsScreen() {
       setApplying(true);
       setApplyError(null);
       try {
+        // "add" uses the server's atomic addQty increment so concurrent or
+        // resumed edits cannot be overwritten by a stale client-side sum.
         const finalCount = mode === "add" ? existingCount + scanQty : scanQty;
         const token = await getToken();
         const res = await fetch(
@@ -643,7 +645,7 @@ export default function ResultsScreen() {
               "Content-Type": "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({ count: finalCount }),
+            body: JSON.stringify(mode === "add" ? { addQty: scanQty } : { count: scanQty }),
           }
         );
         if (res.ok) {
