@@ -1,0 +1,424 @@
+We are establishing a formal multi-agent engineering operating model for FnB Cost Pro.
+
+This is a process/configuration task. Do not build new product functionality.
+
+## Objective
+
+Configure this project so future Replit Agent work behaves like a small engineering organization rather than a single general-purpose coding agent.
+
+The operating model must support:
+
+- Product/architecture decisions from an external PM
+- Specialized implementation responsibilities
+- Independent QA and architecture review
+- Parallel work where dependencies allow it
+- Clear approval gates
+- Git-backed implementation evidence
+- A predictable handoff for external PM review
+
+## Sources of truth
+
+Use these layers deliberately:
+
+1. Git source code
+   - Truth for what is actually implemented.
+
+2. `replit.md`
+   - Project-specific architecture decisions, domain conventions, approved contracts, and implementation history.
+
+3. Replit Custom Instructions
+   - Small set of always-on engineering guardrails that should apply across sessions.
+
+4. Replit Skills
+   - Narrow role-specific playbooks that load only for relevant work.
+
+5. `docs/task-reports/`
+   - One completion report per meaningful implementation task describing what actually shipped.
+
+Do not put the same detailed information in every layer.
+
+---
+
+# Agent roles
+
+Establish these conceptual roles.
+
+## Integration Lead
+
+Responsibilities:
+- Understand the approved task and dependencies.
+- Break implementation into independent workstreams when beneficial.
+- Sequence work that has dependencies.
+- Integrate results.
+- Ensure required reviewers complete their work before recommending merge.
+
+The Integration Lead does not override approved architecture.
+
+## Backend Engineer
+
+Owns:
+- Express APIs
+- Drizzle/Postgres
+- schema and migrations
+- authentication implementation
+- authorization and tenant scoping
+- server-side business rules
+- API contracts
+
+Must not independently redefine product architecture or shared contracts.
+
+## Web Engineer
+
+Owns:
+- React web application
+- management workflows
+- responsive web UX
+- shared web components
+- browser-specific behavior
+
+Must follow established mobile/web ownership decisions.
+
+## Mobile Engineer
+
+Owns:
+- Expo / React Native
+- native device workflows
+- camera
+- microphone
+- scanning
+- native navigation
+- SecureStore
+- WebView bridge implementation
+- mobile-specific UX
+
+Must follow approved native-vs-embedded architecture.
+
+## QA / Regression Engineer
+
+Owns:
+- acceptance tests
+- regression tests
+- edge-case verification
+- evidence that implementation satisfies the task
+- validation of existing workflows affected by changes
+
+QA should review implementation independently rather than merely restating the implementer's test results.
+
+## Security / Architecture Reviewer
+
+Review-first role.
+
+Owns independent review of:
+- authentication
+- authorization
+- tenant/company/store isolation
+- token handling
+- shared API contracts
+- database migrations
+- cross-artifact architecture
+- security-sensitive WebViews
+- breaking architectural changes
+
+This role may recommend blocking merge.
+
+It should not rewrite large amounts of implementation code during the review unless explicitly tasked to fix approved findings.
+
+---
+
+# Approval classes
+
+Classify meaningful tasks into one of three levels.
+
+## Level 1 — routine
+
+Examples:
+- copy changes
+- isolated styling
+- minor UI bugs
+- low-risk refactors
+
+Required:
+- implementation
+- basic validation
+
+## Level 2 — product behavior
+
+Examples:
+- new workflow
+- new API endpoint
+- meaningful mobile/web UX
+- integration changes
+- AI behavior
+
+Required:
+- implementation
+- QA review
+- task completion report
+
+## Level 3 — architectural / high risk
+
+Examples:
+- authentication
+- permissions
+- tenant isolation
+- database schema changes
+- costing calculations
+- inventory mutations
+- mobile architecture
+- shared API contracts
+- vendor integrations
+- AI interpretation contracts
+- destructive migrations
+
+Required:
+- approved architecture decision before implementation
+- implementation
+- QA review
+- independent Security / Architecture review
+- explicit PM/user review before destructive cleanup or merge when requested
+
+Passing tests does not itself constitute architecture approval.
+
+---
+
+# Shared-contract rule
+
+The following types of contracts may not be casually changed by an implementation agent:
+
+- authentication contracts
+- company/store permission model
+- mobileToken / WebView authentication bridge
+- embedded route contract
+- mobile voice bridge
+- inventory mutation semantics
+- shared API DTOs
+- schema conventions
+- cross-artifact interfaces
+
+If a task discovers that an approved shared contract should change:
+
+1. Do not silently change it.
+2. Document the conflict.
+3. Produce a proposed architecture decision.
+4. Mark it as requiring approval.
+
+---
+
+# Task completion reports
+
+Create:
+
+`docs/task-reports/README.md`
+
+Define the required report format.
+
+Each Level 2 or Level 3 task should create:
+
+`docs/task-reports/<task-number>-<short-slug>.md`
+
+Required structure:
+
+# Task #NNN — Title
+
+## Requested
+
+Concise summary of approved scope.
+
+## Shipped
+
+What was actually implemented.
+
+## Deviations
+
+Differences from the approved plan.
+
+Use `None` when there were no material deviations.
+
+## Major Files Changed
+
+List important files/components/routes/schema.
+
+Do not dump every changed file.
+
+## Contracts Changed
+
+Identify changes to:
+- API contracts
+- schema
+- auth
+- permissions
+- mobile bridges
+- shared interfaces
+
+Use `None` if no shared contract changed.
+
+## Tests and Verification
+
+State exactly:
+- automated tests run
+- manual flows checked
+- results
+
+## Regression Review
+
+State existing functionality specifically checked because it could have been affected.
+
+## Known Issues / Technical Debt
+
+List remaining issues.
+
+## Decisions Required
+
+Anything that still needs user/PM approval.
+
+## Git Evidence
+
+- branch
+- final commit SHA
+- relevant earlier commits if needed
+
+---
+
+# replit.md structure
+
+Preserve existing content.
+
+Organize future additions under:
+
+## Architecture Decisions
+
+Each entry:
+
+### YYYY-MM-DD — Decision title
+
+#### Status
+Proposed | Approved | Superseded
+
+#### Decision
+
+#### Rationale
+
+#### Affected Areas
+
+#### Open Risks
+
+#### Related Tasks
+
+#### Implementation Status
+
+---
+
+## Implementation Notes
+
+Each completed architecture-related task gets a short note linking:
+
+- architecture decision
+- task report
+- commit SHA
+- what actually shipped
+- deviations
+
+Do not paste entire task reports into `replit.md`.
+
+---
+
+# Parallel-agent rules
+
+Use parallel work when workstreams are genuinely independent.
+
+Examples:
+- backend endpoint and independent UI scaffold
+- mobile and web consumers of an already-approved API contract
+- implementation and independent test creation
+- documentation inventory across independent subsystems
+
+Do not parallelize tightly coupled design decisions when doing so would cause agents to invent competing contracts.
+
+Establish shared interfaces first, then parallelize implementations.
+
+---
+
+# Merge gates
+
+Before recommending completion of a Level 3 task:
+
+1. Implementation complete.
+2. Relevant automated tests pass.
+3. QA regression review complete.
+4. Security/Architecture review complete.
+5. No unexplained deviations from the approved architecture.
+6. Task completion report written.
+7. `replit.md` implementation note updated.
+8. Any remaining decision requiring external approval is explicitly marked.
+
+Never interpret implementation completion as product approval.
+
+---
+
+# Initial Skills
+
+Create or propose narrowly scoped Replit Skills for:
+
+- `fnb-backend`
+- `fnb-mobile`
+- `fnb-qa`
+- `fnb-security-review`
+- `fnb-task-handoff`
+
+Do not create one giant `fnb-everything` skill.
+
+Descriptions must state both when the skill should and should not activate.
+
+Where Replit's workspace-level Custom Instructions or Skills cannot be directly created from this project, generate the exact text/files I should add through Workspace Settings → Customization.
+
+---
+
+# Custom Instructions
+
+Propose a short always-on Custom Instructions block.
+
+It should contain only universal engineering guardrails, not detailed FnB architecture.
+
+Examples:
+
+- Never commit or expose secrets.
+- Do not silently change approved shared contracts.
+- Treat tenant/company scoping as mandatory.
+- Document material deviations from approved tasks.
+- Never treat tests passing as architecture approval.
+- Prefer investigation over invention when existing implementation may already solve a problem.
+- Preserve existing working behavior unless replacement is explicitly in scope.
+
+Keep this concise.
+
+---
+
+# PM handoff
+
+External PM review occurs outside Replit.
+
+The standard handoff is:
+
+1. Architecture decision or task is approved.
+2. Replit implements it.
+3. Replit writes the task completion report.
+4. Replit commits/publishes the result.
+5. External PM reviews:
+   - task report
+   - architecture decision
+   - relevant diff/code
+6. Findings return as a new approved task or architecture decision.
+
+Do not expect the implementation agent to approve its own architecture.
+
+---
+
+# Deliverables for this setup task
+
+1. Update `replit.md` with the operating model while preserving existing architecture decisions.
+2. Create `docs/task-reports/README.md`.
+3. Create the proposed Skills or provide exact Skill files/instructions needed to install them.
+4. Provide the proposed Custom Instructions text.
+5. Produce `docs/agent-operating-model.md` explaining the workflow concisely.
+6. Do not modify product functionality.
+7. Report exactly what was created and what still requires manual configuration in Replit Workspace Settings.
