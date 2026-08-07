@@ -69,6 +69,6 @@ Existing product functionality was not exercised because this task made no produ
 ## Git Evidence
 
 - Branch: `main`
-- Setup commit SHA: recorded after the first implementation commit
-- Report commit SHA: recorded after the report update commit
-- Relevant earlier commits: mobile architecture reconciliation commit on `main`
+- Setup commit SHA: `d29d7fc81fb7030aaccdf3d9c037452e20223be8`
+- Completion report introduced in: `d29d7fc81fb7030aaccdf3d9c037452e20223be8`
+- Relevant earlier commit: `fd8052069202b4f0c354d76fb00c62d56764a9fc` (mobile architecture reconciliation)
