@@ -49,5 +49,5 @@ QA findings (non-blocking): F1/F2 orphaned `hooks/useAuth.tsx` and `components/A
 
 Branch: `main`
 Base SHA: `a0443c25`
-Final SHA: `fd214564` (implementation at `954b6c96`, report at `fd214564`)
+Final SHA: `954b6c96` (implementation; this report is committed immediately after — see `git log --oneline -3` on `main`)
 Diff / PR: local commits on `main`; `git diff a0443c25..954b6c96`
