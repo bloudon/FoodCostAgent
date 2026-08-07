@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
-import { CountDeltaQueue } from "@/lib/countDeltaQueue";
+import { CountDeltaQueue, DirectSetQueue } from "@/lib/countDeltaQueue";
 
 const DEBOUNCE_MS = 500;
 
@@ -12,14 +12,15 @@ export function useUpdateItemCount(
 ) {
   const { getToken } = useAuth();
   const { backendUrl } = useScan();
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const pending = useRef<Record<string, number>>({});
   const [hasSaveError, setHasSaveError] = useState(false);
   const onServerQtyRef = useRef(onServerQty);
   onServerQtyRef.current = onServerQty;
 
-  const patch = useCallback(
-    async (itemId: string, count: number): Promise<void> => {
+  // Explicit typed input: absolute direct-set ("the shelf holds N",
+  // last write wins by design). The local display is always reconciled from
+  // the server-returned quantity via onServerQty.
+  const patchSet = useCallback(
+    async (itemId: string, count: number): Promise<number | null> => {
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`;
       try {
         const token = await getToken();
@@ -37,15 +38,32 @@ export function useUpdateItemCount(
           console.warn(
             `[useUpdateItemCount] PATCH HTTP ${res.status} — URL: ${url} — body: ${body}`
           );
-          setHasSaveError(true);
+          return null;
         }
+        const line = await res.json();
+        return typeof line?.qty === "number" ? line.qty : count;
       } catch (err) {
         console.warn(`[useUpdateItemCount] Network error — URL: ${url} —`, err);
-        setHasSaveError(true);
+        return null;
       }
     },
     [getToken, backendUrl, sessionId]
   );
+
+  const patchSetRef = useRef(patchSet);
+  patchSetRef.current = patchSet;
+
+  const setQueueRef = useRef<DirectSetQueue | null>(null);
+  if (!setQueueRef.current) {
+    setQueueRef.current = new DirectSetQueue(
+      (itemId, count) => patchSetRef.current(itemId, count),
+      {
+        debounceMs: DEBOUNCE_MS,
+        onServerQty: (itemId, qty) => onServerQtyRef.current?.(itemId, qty),
+        onError: () => setHasSaveError(true),
+      }
+    );
+  }
 
   // Relative +/- edits: accumulated per item and flushed as a single
   // `{ addQty }` PATCH so the server performs the atomic increment.
@@ -102,33 +120,17 @@ export function useUpdateItemCount(
     deltaQueueRef.current!.add(itemId, delta);
   }, []);
 
-  const saveCount = useCallback(
-    (itemId: string, count: number) => {
-      pending.current[itemId] = count;
-      if (timers.current[itemId]) {
-        clearTimeout(timers.current[itemId]);
-      }
-      timers.current[itemId] = setTimeout(() => {
-        const c = pending.current[itemId];
-        delete pending.current[itemId];
-        delete timers.current[itemId];
-        patch(itemId, c);
-      }, DEBOUNCE_MS);
-    },
-    [patch]
-  );
+  /** Explicit typed direct-set — absolute value, reconciled from server. */
+  const saveCount = useCallback((itemId: string, count: number) => {
+    setQueueRef.current!.set(itemId, count);
+  }, []);
 
   const flushAll = useCallback(async (): Promise<void> => {
-    Object.values(timers.current).forEach(clearTimeout);
-    timers.current = {};
-
-    const snapshot = { ...pending.current };
-    pending.current = {};
     await Promise.all([
-      ...Object.entries(snapshot).map(([itemId, count]) => patch(itemId, count)),
+      setQueueRef.current!.flushAll(),
       deltaQueueRef.current!.flushAll(),
     ]);
-  }, [patch]);
+  }, []);
 
   const clearSaveError = useCallback(() => setHasSaveError(false), []);
 

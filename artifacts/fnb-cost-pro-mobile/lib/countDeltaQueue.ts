@@ -99,3 +99,75 @@ export class CountDeltaQueue {
     await Promise.all(Object.values(this.inFlight));
   }
 }
+
+export type FlushSetFn = (
+  itemId: string,
+  count: number,
+) => Promise<number | null>; // resolves to the server's authoritative qty, or null on failure
+
+/**
+ * Debounced queue for explicit ABSOLUTE direct-set edits (typed input:
+ * "the shelf holds N"). Last write wins by design, but the display is always
+ * reconciled from the server-returned quantity so a stale local view never
+ * survives a save. Relative edits must use CountDeltaQueue instead.
+ */
+export class DirectSetQueue {
+  private pending: Record<string, number> = {};
+  private timers: Record<string, unknown> = {};
+  private inFlight: Record<string, Promise<void> | undefined> = {};
+  private readonly debounceMs: number;
+  private readonly setTimeoutFn: (fn: () => void, ms: number) => unknown;
+  private readonly clearTimeoutFn: (handle: unknown) => void;
+
+  constructor(
+    private readonly flushFn: FlushSetFn,
+    private readonly options: CountDeltaQueueOptions = {},
+  ) {
+    this.debounceMs = options.debounceMs ?? 500;
+    this.setTimeoutFn = options.setTimeoutFn ?? ((fn, ms) => setTimeout(fn, ms));
+    this.clearTimeoutFn = options.clearTimeoutFn ?? ((h) => clearTimeout(h as any));
+  }
+
+  /** Record an absolute value for an item and (re)schedule its flush. */
+  set(itemId: string, count: number): void {
+    if (!itemId || !Number.isFinite(count)) return;
+    this.pending[itemId] = count;
+    if (this.timers[itemId] != null) this.clearTimeoutFn(this.timers[itemId]);
+    this.timers[itemId] = this.setTimeoutFn(() => {
+      void this.flushItem(itemId);
+    }, this.debounceMs);
+  }
+
+  private async flushItem(itemId: string): Promise<void> {
+    if (this.timers[itemId] != null) {
+      this.clearTimeoutFn(this.timers[itemId]);
+      delete this.timers[itemId];
+    }
+    const count = this.pending[itemId];
+    delete this.pending[itemId];
+    if (count == null) return;
+
+    const prev = this.inFlight[itemId] ?? Promise.resolve();
+    const run = prev.then(async () => {
+      try {
+        const serverQty = await this.flushFn(itemId, count);
+        if (serverQty == null) {
+          this.options.onError?.(itemId, count);
+        } else {
+          this.options.onServerQty?.(itemId, serverQty);
+        }
+      } catch {
+        this.options.onError?.(itemId, count);
+      }
+    });
+    this.inFlight[itemId] = run;
+    await run;
+    if (this.inFlight[itemId] === run) delete this.inFlight[itemId];
+  }
+
+  async flushAll(): Promise<void> {
+    const ids = Object.keys(this.pending);
+    await Promise.all(ids.map((id) => this.flushItem(id)));
+    await Promise.all(Object.values(this.inFlight));
+  }
+}

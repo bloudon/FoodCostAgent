@@ -175,7 +175,15 @@ export default function CountScreen() {
   }, [categoryId, locationId]);
 
   const { sections, allItems, isLoading, error, refetch } = useSessionInventory(id ?? "", filter);
-  const { saveCount, flushAll, hasSaveError, clearSaveError, clearAllCounts } = useUpdateItemCount(id ?? "");
+  // Row text inputs are explicit typed direct-sets; the local display is
+  // reconciled from the server-returned quantity after every save so a stale
+  // local view never survives (relative/scan additions go through addQty).
+  const { saveCount, flushAll, hasSaveError, clearSaveError, clearAllCounts } = useUpdateItemCount(
+    id ?? "",
+    (lineId, serverQty) => {
+      setLocalCounts((prev) => ({ ...prev, [lineId]: serverQty }));
+    }
+  );
 
   const [localCounts, setLocalCounts] = useState<Record<string, number>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);

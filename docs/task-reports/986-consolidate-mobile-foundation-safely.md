@@ -29,7 +29,11 @@ The second completion review flagged that the native manual +/- flow still raced
 
 - **Native stepper concurrency policy:** `lib/countDeltaQueue.ts` (pure, RN-free) accumulates relative deltas per line, debounces, and flushes a single `{ addQty }` PATCH so the server performs the atomic increment; the display reconciles from the server-returned quantity. `useUpdateItemCount` exposes `addToCount` (used by the `app/session/item.tsx` steppers) and keeps absolute `saveCount` only for explicit typed input — intentional "the shelf holds N" direct-set, last-write-wins. `flushAll` drains both queues (Done button, backgrounding, unmount).
 - **Concurrency regression tests:** `artifacts/api-server/src/lib/countDeltaQueue.test.ts` simulates two devices incrementing the same line simultaneously (asserts no lost update: 10+5+5=20, where absolute writes yielded 15), server-truth reconciliation after a foreign increment, tap coalescing, error surfacing, and a source invariant that the item-screen steppers use `addToCount`.
-- **Final evidence:** api-server suite 1112 passed, 1 skipped; same 4 pre-existing unrelated failing files. Mobile typecheck exit 0. The 7 api-server typecheck errors are pre-existing (identical with the change stashed).
+The third completion review flagged the count-list rows' absolute writes. Resolution:
+
+- **Count-list contract:** the list rows' only edit control is a typed text input — an explicit absolute direct-set by design (last write wins). It now flows through `DirectSetQueue` (same pure module), and the list screen passes an `onServerQty` callback so `localCounts` is always reconciled from the server-returned quantity after every save; scanned catch-weight additions already used the atomic `addQty` dialect. `useUpdateItemCount` no longer contains any hand-rolled absolute PATCH path.
+- **Behavioral list-flow tests added:** `countDeltaQueue.test.ts` now also covers DirectSetQueue server reconciliation, concurrent-device adds interleaved with a direct-set converging on server truth, typing debounce, error surfacing, plus source invariants that the count-list wires `setLocalCounts` reconciliation and the catch-weight modal uses `addQty` (20 tests total across the two new files).
+- **Final evidence:** api-server suite 1119 passed, 1 skipped; same 4 pre-existing unrelated failing files. Mobile typecheck exit 0. The 7 api-server typecheck errors are pre-existing (identical with the change stashed).
 
 ## Deviations
 

@@ -1,1 +1,1 @@
-- [Mobile consolidation constraints](mobile-consolidation.md) — mobileToken bridge stays, same-origin-only token injection, atomic addQty for count adds, webview pinned 13.15.0.
+- [Mobile count & WebView constraints](mobile-consolidation.md) — bridge auth stays, same-origin-only token injection, atomic relative count edits with server reconciliation.
