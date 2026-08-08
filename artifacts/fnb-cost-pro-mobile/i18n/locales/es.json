@@ -21,7 +21,8 @@
     "forgotPassword": "¿Olvidaste tu contraseña?",
     "errorEmail": "Por favor ingresa tu correo electrónico.",
     "errorPassword": "Por favor ingresa tu contraseña.",
-    "errorFailed": "Error al iniciar sesión. Inténtalo de nuevo."
+    "errorFailed": "Error al iniciar sesión. Inténtalo de nuevo.",
+    "sessionExpired": "Tu sesión ha expirado. Por favor, inicia sesión de nuevo."
   },
   "settings": {
     "backendConfig": "Configuración del servidor",

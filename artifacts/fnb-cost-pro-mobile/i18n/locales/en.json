@@ -21,7 +21,8 @@
     "forgotPassword": "Forgot password?",
     "errorEmail": "Please enter your email address.",
     "errorPassword": "Please enter your password.",
-    "errorFailed": "Login failed. Please try again."
+    "errorFailed": "Login failed. Please try again.",
+    "sessionExpired": "Your session has expired. Please sign in again."
   },
   "settings": {
     "backendConfig": "Backend Configuration",

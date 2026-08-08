@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { Platform } from "react-native";
+import { router } from "expo-router";
 import { setAuthTokenGetter, setUnauthorizedHandler } from "@workspace/api-client-react";
 import i18n from "@/i18n";
 
@@ -294,11 +295,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setUnauthorizedHandler(async () => {
+    setUnauthorizedHandler(async (data?: unknown) => {
       await Promise.all([secureDelete(TOKEN_KEY), secureDelete(USER_KEY)]);
       setToken(null);
       setUser(null);
-      // AuthGate handles redirect to /login automatically when user becomes null.
+      // When the server explicitly signals re-authentication is required
+      // (e.g. Google token was revoked), navigate directly with a reason
+      // parameter so the login screen can show an informative message.
+      const needsReauth =
+        data !== null &&
+        typeof data === "object" &&
+        (data as Record<string, unknown>).reauthenticate === true;
+      if (needsReauth) {
+        router.replace("/login?reason=session_expired" as never);
+      }
+      // For other 401s, AuthGate handles redirect to /login automatically
+      // when user becomes null.
     });
     return () => {
       setUnauthorizedHandler(null);

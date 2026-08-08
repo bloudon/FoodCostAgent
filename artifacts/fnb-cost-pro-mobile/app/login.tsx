@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -32,6 +33,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const { images } = useBackgroundImages();
+  const { reason } = useLocalSearchParams<{ reason?: string }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -157,6 +159,15 @@ export default function LoginScreen() {
           scrollEnabled={false}
         >
           <Text style={styles.cardTitle}>{t("login.cardTitle")}</Text>
+
+          {reason === "session_expired" && (
+            <View style={styles.sessionExpiredBox}>
+              <Feather name="alert-circle" size={14} color="#92400E" />
+              <Text style={styles.sessionExpiredText}>
+                {t("login.sessionExpired")}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.field}>
             <Text style={styles.label}>{t("login.emailLabel")}</Text>
@@ -387,5 +398,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_500Medium",
     color: "#1B4332",
+  },
+  sessionExpiredBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    borderRadius: 10,
+    backgroundColor: "#FFFBEB",
+    padding: 12,
+  },
+  sessionExpiredText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#92400E",
+    fontFamily: "Inter_400Regular",
+    lineHeight: 19,
   },
 });

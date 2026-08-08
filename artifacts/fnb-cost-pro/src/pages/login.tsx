@@ -23,6 +23,9 @@ export default function Login() {
   const { t } = useAppLanguage();
   const [ssoProvider, setSsoProvider] = useState<string>("replit");
 
+  const sessionExpired =
+    new URLSearchParams(window.location.search).get("reason") === "session_expired";
+
   useEffect(() => {
     // Determine which SSO provider is active so the right button shows.
     // Defaults to the generic SSO button if the check fails.
@@ -73,7 +76,13 @@ export default function Login() {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
       <RestaurantBackground />
-      <Card className="w-full max-w-md relative z-10">
+      <div className="w-full max-w-md relative z-10 flex flex-col gap-3">
+        {sessionExpired && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            {t.auth.sessionExpired}
+          </div>
+        )}
+        <Card className="w-full">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
             <img 
@@ -211,7 +220,8 @@ export default function Login() {
           </div>
 
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

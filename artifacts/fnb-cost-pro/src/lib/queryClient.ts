@@ -10,6 +10,13 @@ async function throwIfResNotOk(res: Response) {
       if (parsed.error) {
         message = parsed.error;
       }
+      // When the server signals that re-authentication is required (e.g. a
+      // Google token was revoked), redirect the user to the login page
+      // with a reason parameter so they see an informative message.
+      if (res.status === 401 && parsed.reauthenticate === true) {
+        window.location.href = "/login?reason=session_expired";
+        return; // page is being replaced; no need to throw
+      }
     } catch (_e) {
       // Not JSON — use the raw text fallback
     }
@@ -55,6 +62,17 @@ export const getQueryFn: <T>(options: {
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      // Even in returnNull mode, a reauthenticate:true response means the
+      // session is permanently invalidated — redirect to login with context.
+      try {
+        const text = await res.text();
+        const parsed = JSON.parse(text);
+        if (parsed.reauthenticate === true) {
+          window.location.href = "/login?reason=session_expired";
+        }
+      } catch {
+        // Body unreadable or not JSON — fall through and return null
+      }
       return null;
     }
 

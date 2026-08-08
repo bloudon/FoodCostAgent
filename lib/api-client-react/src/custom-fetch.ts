@@ -10,9 +10,12 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
 /**
  * Called whenever a fetch response comes back with HTTP 401 (Unauthorized).
- * Typically used to trigger logout + redirect to login screen.
+ * Receives the parsed response body so the handler can inspect fields such as
+ * `reauthenticate` and decide how to respond (e.g. hard-redirect vs soft
+ * logout).  The `data` parameter may be `null` when the response body is
+ * empty or cannot be parsed.
  */
-export type UnauthorizedHandler = () => void | Promise<void>;
+export type UnauthorizedHandler = (data?: unknown) => void | Promise<void>;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
@@ -382,10 +385,10 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers });
 
   if (!response.ok) {
-    if (response.status === 401 && _unauthorizedHandler) {
-      await _unauthorizedHandler();
-    }
     const errorData = await parseErrorBody(response, method);
+    if (response.status === 401 && _unauthorizedHandler) {
+      await _unauthorizedHandler(errorData);
+    }
     throw new ApiError(response, errorData, requestInfo);
   }
 
