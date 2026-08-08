@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 export interface SessionCategory {
   id: string;
@@ -155,7 +156,7 @@ function normalizeSessionDetail(
 }
 
 export function useSessionDetail(sessionId: string) {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [data, setData] = useState<SessionDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -181,12 +182,16 @@ export function useSessionDetail(sessionId: string) {
       // The inventory endpoint lets us compute countedItems client-side,
       // which is necessary because the production API may omit that field.
       const [detailRes, inventoryRes] = await Promise.all([
-        fetch(`${backendUrl}/api/mobile/sessions/${sessionId}`, {
-          headers: authHeader,
-        }),
-        fetch(`${backendUrl}/api/mobile/sessions/${sessionId}/inventory`, {
-          headers: authHeader,
-        }).catch(() => null),
+        fetchWithAuth(
+          `${backendUrl}/api/mobile/sessions/${sessionId}`,
+          { headers: authHeader },
+          handleUnauthorized,
+        ),
+        fetchWithAuth(
+          `${backendUrl}/api/mobile/sessions/${sessionId}/inventory`,
+          { headers: authHeader },
+          handleUnauthorized,
+        ).catch(() => null),
       ]);
 
       if (detailRes.ok) {
@@ -204,7 +209,7 @@ export function useSessionDetail(sessionId: string) {
       if (initialLoad) setIsLoading(false);
       inFlight.current = false;
     }
-  }, [getToken, backendUrl, sessionId]);
+  }, [getToken, backendUrl, sessionId, handleUnauthorized]);
 
   return { data, isLoading, error, refetch: fetch_ };
 }

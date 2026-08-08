@@ -2,6 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 export interface ActiveSession {
   id: string;
@@ -12,7 +13,7 @@ export interface ActiveSession {
 }
 
 export function useActiveSessions(locationId?: string | null) {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,9 +26,11 @@ export function useActiveSessions(locationId?: string | null) {
       if (locationId) {
         url.searchParams.set("locationId", locationId);
       }
-      const res = await fetch(url.toString(), {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetchWithAuth(
+        url.toString(),
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized,
+      );
       if (res.ok) {
         const json = (await res.json()) as unknown;
         const raw = Array.isArray(json) ? (json as ActiveSession[]) : [];

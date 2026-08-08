@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 export interface InventoryItem {
   id: string;
@@ -99,7 +100,7 @@ export function useSessionInventory(
   sessionId: string,
   filter?: { categoryId?: string; locationId?: string }
 ) {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [sections, setSections] = useState<InventorySection[]>([]);
   const [allItems, setAllItems] = useState<InventoryItem[]>([]);
@@ -117,9 +118,11 @@ export function useSessionInventory(
       if (filter?.locationId) params.set("locationId", filter.locationId);
       const qs = params.toString();
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/inventory${qs ? `?${qs}` : ""}`;
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetchWithAuth(
+        url,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized,
+      );
       if (res.ok) {
         const json = (await res.json()) as unknown;
         const items = unwrapItems(json).map(normalizeItem);

@@ -46,6 +46,14 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   getToken: () => Promise<string | null>;
+  /**
+   * Clears local credentials and navigates to /login.
+   * Pass `reauthenticate=true` when the server signals the session was
+   * revoked (e.g. Google token expired) so the login screen shows an
+   * informative message.  Used by fetchWithAuth in hooks that make
+   * direct fetch() calls outside the generated API client.
+   */
+  handleUnauthorized: (reauthenticate: boolean) => Promise<void>;
   updateName: (name: string) => Promise<void>;
   setLanguage: (lang: string) => Promise<void>;
 }
@@ -282,6 +290,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // AuthGate in app/_layout.tsx observes `user` and redirects to /login automatically.
   }, []);
 
+  /**
+   * Shared 401 handler for hooks that use direct fetch() calls.
+   * Mirrors the logic in the setUnauthorizedHandler callback above so
+   * that scan/count screens redirect to login when a session is revoked
+   * mid-count (e.g. Google token expired).
+   */
+  const handleUnauthorized = useCallback(async (reauthenticate: boolean) => {
+    await Promise.all([secureDelete(TOKEN_KEY), secureDelete(USER_KEY)]);
+    setToken(null);
+    setUser(null);
+    if (reauthenticate) {
+      router.replace("/login?reason=session_expired" as never);
+    }
+    // For plain 401s (reauthenticate=false), AuthGate redirects automatically
+    // when user becomes null.
+  }, []);
+
   const getToken = useCallback(async (): Promise<string | null> => {
     if (token) return token;
     return secureGet(TOKEN_KEY);
@@ -318,7 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, language, login, logout, getToken, updateName, setLanguage }}>
+    <AuthContext.Provider value={{ user, token, isLoading, language, login, logout, getToken, handleUnauthorized, updateName, setLanguage }}>
       {children}
     </AuthContext.Provider>
   );

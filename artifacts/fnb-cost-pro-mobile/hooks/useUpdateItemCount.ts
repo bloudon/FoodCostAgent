@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
 import { CountDeltaQueue, DirectSetQueue } from "@/lib/countDeltaQueue";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 const DEBOUNCE_MS = 500;
 
@@ -10,7 +11,7 @@ export function useUpdateItemCount(
   sessionId: string,
   onServerQty?: (itemId: string, qty: number) => void,
 ) {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [hasSaveError, setHasSaveError] = useState(false);
   const onServerQtyRef = useRef(onServerQty);
@@ -24,14 +25,18 @@ export function useUpdateItemCount(
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`;
       try {
         const token = await getToken();
-        const res = await fetch(url, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        const res = await fetchWithAuth(
+          url,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ count }),
           },
-          body: JSON.stringify({ count }),
-        });
+          handleUnauthorized,
+        );
         if (!res.ok) {
           let body = "";
           try { body = await res.text(); } catch {}
@@ -47,7 +52,7 @@ export function useUpdateItemCount(
         return null;
       }
     },
-    [getToken, backendUrl, sessionId]
+    [getToken, backendUrl, sessionId, handleUnauthorized]
   );
 
   const patchSetRef = useRef(patchSet);
@@ -74,14 +79,18 @@ export function useUpdateItemCount(
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`;
       try {
         const token = await getToken();
-        const res = await fetch(url, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        const res = await fetchWithAuth(
+          url,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ addQty: delta }),
           },
-          body: JSON.stringify({ addQty: delta }),
-        });
+          handleUnauthorized,
+        );
         if (!res.ok) {
           let body = "";
           try { body = await res.text(); } catch {}
@@ -97,7 +106,7 @@ export function useUpdateItemCount(
         return null;
       }
     },
-    [getToken, backendUrl, sessionId]
+    [getToken, backendUrl, sessionId, handleUnauthorized]
   );
 
   const patchAddRef = useRef(patchAdd);
@@ -143,10 +152,14 @@ export function useUpdateItemCount(
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/inventory${qs ? `?${qs}` : ""}`;
       try {
         const token = await getToken();
-        const res = await fetch(url, {
-          method: "DELETE",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const res = await fetchWithAuth(
+          url,
+          {
+            method: "DELETE",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          },
+          handleUnauthorized,
+        );
         if (!res.ok) {
           setHasSaveError(true);
           return false;
@@ -157,7 +170,7 @@ export function useUpdateItemCount(
         return false;
       }
     },
-    [getToken, backendUrl, sessionId]
+    [getToken, backendUrl, sessionId, handleUnauthorized]
   );
 
   useEffect(() => {

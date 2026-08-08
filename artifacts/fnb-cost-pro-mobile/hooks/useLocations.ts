@@ -2,6 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 export interface StoreLocation {
   id: string;
@@ -20,7 +21,7 @@ function normalizeLocations(json: unknown): StoreLocation[] {
 }
 
 export function useLocations() {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [locations, setLocations] = useState<StoreLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,9 +30,11 @@ export function useLocations() {
     setIsLoading(true);
     try {
       const token = await getToken();
-      const res = await fetch(`${backendUrl}/api/mobile/locations`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetchWithAuth(
+        `${backendUrl}/api/mobile/locations`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized,
+      );
       if (res.ok) {
         const json = (await res.json()) as unknown;
         setLocations(normalizeLocations(json));

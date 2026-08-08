@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 
 export interface SessionItem {
   id: string;
@@ -46,7 +47,7 @@ export function useSessionItems(
   sessionId: string,
   filter: { categoryId?: string; locationId?: string }
 ) {
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [items, setItems] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,9 +69,11 @@ export function useSessionItems(
       if (filter.categoryId) params.set("categoryId", filter.categoryId);
       if (filter.locationId) params.set("locationId", filter.locationId);
       const url = `${backendUrl}/api/mobile/sessions/${sessionId}/items?${params.toString()}`;
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetchWithAuth(
+        url,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized,
+      );
       if (res.ok) {
         const json = (await res.json()) as unknown;
         setItems(unwrapArray(json).map(normalizeItem));
