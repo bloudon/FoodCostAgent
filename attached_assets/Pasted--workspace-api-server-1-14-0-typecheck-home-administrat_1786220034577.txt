@@ -1,0 +1,19 @@
+
+> @workspace/api-server@1.14.0 typecheck /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> tsc -p tsconfig.json --noEmit
+
+src/routes.ts(12030,13): error TS2353: Object literal may only specify known properties, and 'canEdit' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; storeId?: string | SQL<...> | PgColumn<...> | undefined; ... 14 more ...; importedSnapshotTotal?: number | ... 3 more ... | undefined; }'.
+src/routes.ts(13585,16): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(value: { companyId: string | SQL<unknown> | Placeholder<string, any>; inventoryItemId: string | SQL<unknown> | Placeholder<string, any>; vendorItemId: string | SQL<...> | Placeholder<...>; ... 25 more ...; destinationPoLineId?: string | ... 3 more ... | undefined; }): PgInsertBase<...>', gave the following error.
+    Type 'string | string[]' is not assignable to type 'string | SQL<unknown> | Placeholder<string, any>'.
+      Type 'string[]' is not assignable to type 'string | SQL<unknown> | Placeholder<string, any>'.
+  Overload 2 of 2, '(values: { companyId: string | SQL<unknown> | Placeholder<string, any>; inventoryItemId: string | SQL<unknown> | Placeholder<string, any>; vendorItemId: string | SQL<...> | Placeholder<...>; ... 25 more ...; destinationPoLineId?: string | ... 3 more ... | undefined; }[]): PgInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'companyId' does not exist in type '{ companyId: string | SQL<unknown> | Placeholder<string, any>; inventoryItemId: string | SQL<unknown> | Placeholder<string, any>; vendorItemId: string | SQL<...> | Placeholder<...>; ... 25 more ...; destinationPoLineId?: string | ... 3 more ... | undefined; }[]'.
+src/routes.ts(14967,13): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; storeId?: string | SQL<...> | PgColumn<...> | undefined; ... 5 more ...; receivedBy?: string | ... 3 more ... | undefined; }'.
+src/routes.ts(14984,13): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; storeId?: string | SQL<...> | PgColumn<...> | undefined; ... 5 more ...; notes?: string | ... 3 more ... | undefined; }'.
+src/routes.ts(17444,13): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; fromStoreId?: string | SQL<...> | PgColumn<...> | undefined; ... 9 more ...; executedBy?: string | ... 3 more ... | undefined; }'.
+src/routes.ts(17553,13): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; fromStoreId?: string | SQL<...> | PgColumn<...> | undefined; ... 9 more ...; executedBy?: string | ... 3 more ... | undefined; }'.
+src/routes.ts(24363,68): error TS2353: Object literal may only specify known properties, and 'canEdit' does not exist in type '{ companyId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; storeId?: string | SQL<...> | PgColumn<...> | undefined; ... 14 more ...; importedSnapshotTotal?: number | ... 3 more ... | undefined; }'.
+/home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/api-server@1.14.0 typecheck: `tsc -p tsconfig.json --noEmit`
+Exit status 1
