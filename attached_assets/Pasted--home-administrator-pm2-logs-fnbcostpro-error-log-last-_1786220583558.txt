@@ -1,0 +1,64 @@
+
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 60 lines:
+13|fnbcost | npm error To see a list of scripts, run:
+13|fnbcost | npm error   npm run
+13|fnbcost | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_43_592Z-debug-0.log
+13|fnbcost | npm error Missing script: "start"
+13|fnbcost | npm error
+13|fnbcost | npm error Did you mean one of these?
+13|fnbcost | npm error   npm star # Mark your favorite packages
+13|fnbcost | npm error   npm stars # View packages marked as favorites
+13|fnbcost | npm error
+13|fnbcost | npm error To see a list of scripts, run:
+13|fnbcost | npm error   npm run
+13|fnbcost | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_44_218Z-debug-0.log
+13|fnbcost | npm error Missing script: "start"
+13|fnbcost | npm error
+13|fnbcost | npm error Did you mean one of these?
+13|fnbcost | npm error   npm star # Mark your favorite packages
+13|fnbcost | npm error   npm stars # View packages marked as favorites
+13|fnbcost | npm error
+13|fnbcost | npm error To see a list of scripts, run:
+13|fnbcost | npm error   npm run
+13|fnbcost | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_44_839Z-debug-0.log
+13|fnbcost | npm error Missing script: "start"
+13|fnbcost | npm error
+13|fnbcost | npm error Did you mean one of these?
+13|fnbcost | npm error   npm star # Mark your favorite packages
+13|fnbcost | npm error   npm stars # View packages marked as favorites
+13|fnbcost | npm error
+13|fnbcost | npm error To see a list of scripts, run:
+13|fnbcost | npm error   npm run
+13|fnbcost | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_45_459Z-debug-0.log
+13|fnbcost | Error: DATABASE_URL must be set. Did you forget to provision a database?
+13|fnbcost |     at ../../lib/db/src/index.ts (file:///home/administrator/apps/CostPro/fnbcostpro/lib/db/src/index.ts:8:9)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/db.ts:14:1)
+13|fnbcost |     at init_db (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/storage.ts:2:1)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/ssoAuth.ts:8:1
+13|fnbcost |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+13|fnbcost |     at ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+13|fnbcost | Error: DATABASE_URL must be set. Did you forget to provision a database?
+13|fnbcost |     at ../../lib/db/src/index.ts (file:///home/administrator/apps/CostPro/fnbcostpro/lib/db/src/index.ts:8:9)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/db.ts:14:1)
+13|fnbcost |     at init_db (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/storage.ts:2:1)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/ssoAuth.ts:8:1
+13|fnbcost |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+13|fnbcost |     at ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+13|fnbcost | Error: DATABASE_URL must be set. Did you forget to provision a database?
+13|fnbcost |     at ../../lib/db/src/index.ts (file:///home/administrator/apps/CostPro/fnbcostpro/lib/db/src/index.ts:8:9)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/db.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/db.ts:14:1)
+13|fnbcost |     at init_db (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at src/storage.ts (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/storage.ts:2:1)
+13|fnbcost |     at __init (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs:22:56)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/ssoAuth.ts:8:1
+13|fnbcost |     at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+13|fnbcost |     at ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+
+curl: (7) Failed to connect to 127.0.0.1 port 3004 after 0 ms: Connection refused
