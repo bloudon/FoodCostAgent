@@ -121,8 +121,15 @@ const RAIL: RailItem[] = [
   { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menus",       testId: "nav-menu" },
   { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
   { id: "waste",     label: "Waste",     icon: Trash2,           href: "/waste",      testId: "nav-waste" },
-  { id: "settings",  label: "Settings",  icon: Settings,          href: "/more",       testId: "nav-settings" },
 ];
+
+const SETTINGS_ITEM: RailItem = {
+  id: "settings",
+  label: "Settings",
+  icon: Settings,
+  href: "/more",
+  testId: "nav-settings",
+};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -247,11 +254,54 @@ export function AppSidebar() {
   const activeSection = getActiveSection(location);
 
   const visibleItems = RAIL.filter((item) => {
-    if (isGlobalAdmin && !company && item.id !== "home" && item.id !== "settings") return false;
+    if (isGlobalAdmin && !company && item.id !== "home") return false;
     if (item.roles && !item.roles.includes(role)) return false;
     if (item.id === "prep" && !hasFeature("prep_chart")) return false;
     return true;
   });
+
+  const renderRailItem = (item: RailItem) => {
+    const active = activeSection === item.id;
+
+    const linkEl = (
+      <Link
+        href={item.href}
+        onClick={closeMobile}
+        data-testid={isMobile ? `${item.testId}-mobile` : item.testId}
+        className={cn(
+          "flex items-center rounded-md transition-colors w-full",
+          "text-sidebar-foreground",
+          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          active && "bg-sidebar-accent text-sidebar-accent-foreground",
+          isExpanded ? "gap-3 px-3 py-2" : "justify-center py-3 px-0"
+        )}
+      >
+        <item.icon className="h-7 w-7 shrink-0" />
+        {isExpanded ? (
+          <span className={cn("text-sm font-medium", active && "font-semibold")}>
+            {item.label}
+          </span>
+        ) : (
+          <span className="sr-only">{item.label}</span>
+        )}
+      </Link>
+    );
+
+    return (
+      <SidebarMenuItem key={item.id}>
+        {/* Tooltips only when the rail is locked minimized — otherwise
+            hovering expands the flyout, whose inline labels sit on the
+            sidebar background instead of floating over page content. */}
+        {!isExpanded && isLockedMinimized ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+            <TooltipContent side="right">{item.label}</TooltipContent>
+          </Tooltip>
+        ) : linkEl}
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <>
@@ -321,54 +371,16 @@ export function AppSidebar() {
       {/* ── Content: flat rail ───────────────────────────────────────────── */}
       <SidebarContent>
         <SidebarMenu className="gap-0.5 px-1 py-2">
-          {visibleItems.map((item) => {
-            const active = activeSection === item.id;
-
-            const linkEl = (
-              <Link
-                href={item.href}
-                onClick={closeMobile}
-                data-testid={isMobile ? `${item.testId}-mobile` : item.testId}
-                className={cn(
-                  "flex items-center rounded-md transition-colors w-full",
-                  "text-sidebar-foreground",
-                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                  active && "bg-sidebar-accent text-sidebar-accent-foreground",
-                  isExpanded ? "gap-3 px-3 py-2" : "justify-center py-3 px-0"
-                )}
-              >
-                <item.icon className="h-7 w-7 shrink-0" />
-                {isExpanded ? (
-                  <span className={cn("text-sm font-medium", active && "font-semibold")}>
-                    {item.label}
-                  </span>
-                ) : (
-                  <span className="sr-only">{item.label}</span>
-                )}
-              </Link>
-            );
-
-            return (
-              <SidebarMenuItem key={item.id}>
-                {/* Tooltips only when the rail is locked minimized — otherwise
-                    hovering expands the flyout, whose inline labels sit on the
-                    sidebar background instead of floating over page content. */}
-                {!isExpanded && isLockedMinimized ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
-                    <TooltipContent side="right">{item.label}</TooltipContent>
-                  </Tooltip>
-                ) : linkEl}
-              </SidebarMenuItem>
-            );
-          })}
+          {visibleItems.map(renderRailItem)}
         </SidebarMenu>
       </SidebarContent>
 
-      {/* ── Footer: pin-expanded control ─────────────────────────────────── */}
-      {!isMobile && (
-        <SidebarFooter className="border-t p-2">
+      {/* ── Footer: Settings shortcut + pin-expanded control ─────────────── */}
+      <SidebarFooter className="border-t p-2">
+        <SidebarMenu className="gap-0.5">
+          {renderRailItem(SETTINGS_ITEM)}
+        </SidebarMenu>
+        {!isMobile && (
           <div className="flex justify-center">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -386,8 +398,8 @@ export function AppSidebar() {
               </TooltipContent>
             </Tooltip>
           </div>
-        </SidebarFooter>
-      )}
+        )}
+      </SidebarFooter>
     </Sidebar>
 
     {/*
