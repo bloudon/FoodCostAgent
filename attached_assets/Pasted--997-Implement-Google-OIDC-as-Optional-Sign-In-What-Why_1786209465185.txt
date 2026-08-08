@@ -1,0 +1,210 @@
+#997 - Implement Google OIDC as Optional Sign-In
+
+## What & Why
+
+Implement the approved Google Identity OIDC login for FnB Cost Pro production while preserving the existing email/password authentication path and all FnB-owned authorization.
+
+This task implements the durable Google OIDC architecture guidance already recorded in the project.
+
+Google is an optional authentication method. It does not replace email/password and does not become the owner of FnB users, roles, permissions, companies, or stores.
+
+This is a Significant authentication task.
+
+## Approved Production Configuration
+
+Production must use:
+
+- `OIDC_ISSUER_URL=https://accounts.google.com`
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+- `APP_BASE_URL=https://app.fnbcostpro.com`
+- `SESSION_SECRET`
+
+Production callback:
+
+`https://app.fnbcostpro.com/api/sso/callback`
+
+Production Google authentication must not depend on:
+
+- `REPL_ID`
+- `req.hostname`
+- Replit-managed OIDC behavior
+
+Do not commit secret values.
+
+## Account Linking
+
+For an existing FnB user, Google linking is permitted only when:
+
+- Google returns an email
+- `email_verified === true`
+- normalized Google email exactly matches the existing FnB email
+
+Only the provider identity association required for Google login may be updated.
+
+Do not change the existing user's:
+
+- password credentials
+- company
+- role
+- store access
+- permissions
+- application identity/history
+- unrelated profile or operational relationships
+
+Do not create a duplicate FnB user when a verified Google email matches an existing account.
+
+## Existing Password Login
+
+Email/password remains first-class authentication.
+
+After an existing user links Google:
+
+- Google login must work
+- existing email/password login must still work
+
+Do not migrate or invalidate password credentials as part of Google linking.
+
+## Missing / Unverified Email
+
+Fail closed when:
+
+- email is missing
+- `email_verified` is missing
+- `email_verified` is false
+
+Return a controlled authentication failure.
+
+Do not attempt email normalization or invitation comparison before verifying that a valid email exists.
+
+Explicitly eliminate the existing missing-email crash path.
+
+## Invitations
+
+For a new invited user, preserve the existing invitation-only account creation behavior.
+
+For an existing FnB user:
+
+A pending invitation must not silently modify:
+
+- company
+- role
+- store access
+- permissions
+
+If an existing verified Google user also has a pending invitation that would change those assignments:
+
+- do not apply it automatically
+- leave the invitation unresolved
+- return a controlled result
+- require explicit administrative resolution
+
+## Logout
+
+Local FnB logout is authoritative.
+
+`/api/sso/logout` should:
+
+1. destroy the FnB application session
+2. return/redirect to the FnB login page
+
+Do not require Google-wide account logout.
+
+Provider-wide logout is out of scope unless separately approved.
+
+## Login UI
+
+Preserve the existing email/password login.
+
+Add Google as an additional clear option, conceptually:
+
+`Continue with Google`
+
+followed by the existing email/password login path.
+
+Do not make Google mandatory.
+
+Do not redesign the broader authentication UI beyond what is required to cleanly expose the additional option.
+
+## Regression Gate
+
+Automated and/or verified tests must cover:
+
+1. Existing email/password login still works.
+2. Existing user can sign in with verified Google email.
+3. Existing password still works after Google linking.
+4. No duplicate FnB user is created.
+5. Normalized exact-email matching works.
+6. Missing Google email is denied safely.
+7. `email_verified=false` is denied.
+8. Missing `email_verified` is denied.
+9. Unknown Google user without invitation cannot self-register.
+10. New invited Google user follows existing invitation rules.
+11. Existing user plus conflicting invitation cannot change company/role/store.
+12. Existing company/store/permission relationships remain intact after linking.
+13. Local logout destroys the FnB session.
+14. Production callback is derived from `APP_BASE_URL`.
+15. Production Google OIDC does not require `REPL_ID`.
+16. Invalid/expired OIDC responses fail cleanly.
+
+## Stop Conditions
+
+Stop for Product Owner / PM review if:
+
+- safe linking requires a schema redesign
+- preserving Replit Auth and Google simultaneously requires a new identity-link architecture
+- Google claims differ materially from the approved assumptions
+- company/store permission behavior would need to change
+- password authentication must be modified
+- production callback behavior requires broader web infrastructure changes
+- a new shared auth contract is required
+
+Do not invent a broader identity platform.
+
+## Significant Review Process
+
+After Builder completes:
+
+- run a fresh Reviewer workstream/session
+- run a fresh QA workstream/session
+
+If true separation cannot be verified, report:
+
+`PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`
+
+Reviewer may BLOCK.
+
+QA may not waive a Reviewer block.
+
+## Task Report
+
+Create:
+
+`docs/task-reports/997-implement-google-oidc-optional-sign-in.md`
+
+Include:
+
+### Asked
+### Shipped
+### Deviations
+### Review
+- Reviewer result
+- QA result
+- independence status
+
+### Tests
+### Risks / Decisions
+
+### Git
+- Branch
+- Base SHA
+- Final SHA
+- Diff / PR
+
+Also include:
+
+### Account Linking Evidence
+Show the before/after behavior and relevant functions.
+
+### Production Configuration Evidence
+Show how `APP_BASE_URL`, issuer, client ID, and client secret configuration are consumed without exposing secret values.
