@@ -1,0 +1,42 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ cd /home/administrator/apps/CostPro/fnbcostpro
+
+# Ensure the application user—not root—owns the checkout.
+sudo chown -R administrator:administrator /home/administrator/apps/CostPro/fnbcostpro
+
+# Preserve the entire current, partial migration before touching Git.
+tar \
+  --exclude='./node_modules' \
+  --exclude='./dist' \
+  --exclude='./.git' \
+  -czf "$HOME/fnbcostpro-pre-recovery-$(date +%F-%H%M%S).tgz" \
+  .
+
+# Record what is present locally and what Git believes is checked out.
+git status --short > "$HOME/fnbcostpro-pre-recovery-status.txt"
+git rev-parse HEAD
+git log -1 --oneline
+git remote -v
+[sudo] password for administrator:
+
+90f13924d07c3e5e65ae895720ba9afc068598d8
+90f1392 (HEAD -> main) Add unit tests verifying scan/import features record ai_token_usage rows and getUsageSummary counts them
+origin  https://github.com/bloudon/FoodCostAgent.git (fetch)
+origin  https://github.com/bloudon/FoodCostAgent.git (push)
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ git log --oneline --decorate -10
+git branch -vv
+git rev-parse HEAD
+git rev-parse origin/main
+90f1392 (HEAD -> main) Add unit tests verifying scan/import features record ai_token_usage rows and getUsageSummary counts them
+989dfae Meter waste voice transcription: JSON response usage recorded as 'waste_transcribe' (estimated fallback flagged is_estimated) and add gpt-4o-mini-transcribe pricing
+85c80f3 Update package lock file
+988599d Meter AI token usage for invoice, recipe, shelf, menu scans, waste interpretation, and inventory import
+2f2fa35 Add AI usage billing documentation and update memory file
+acfca4f v1.17.0: AI usage-based billing — 2M included tokens/month, admin overage acceptance, fail-closed gate, Stripe overage invoicing with durable ledger
+cff2b90 v1.16.0: AI chat tool-calling refactor + ai_token_usage metering ledger
+263569b Update dependency lock file
+7e52f2f AI assistant: add inventory count-session history context to /api/chat so it can answer questions about past counts
+1eea1e9 Add new image asset
+* main 90f1392 [origin/main: behind 48] Add unit tests verifying scan/import features record ai_token_usage rows and getUsageSummary counts them
+90f13924d07c3e5e65ae895720ba9afc068598d8
+157172488ab5c7e2889c3867669951c3adf0b7bb
