@@ -433,7 +433,32 @@ export const isSsoAuthenticated: RequestHandler = async (req, res, next) => {
     }
     return next();
   } catch (error) {
-    // Refresh failed, let other auth methods handle it
+    // Check whether this is a terminal revocation (invalid_grant / token_revoked).
+    // Those errors mean the user has revoked app access and a retry will never succeed,
+    // so we destroy the session and tell the frontend to redirect to /login.
+    // Transient errors (network, 5xx, etc.) fall through as before.
+    //
+    // openid-client wraps OAuth errors as ResponseBodyError (from oauth4webapi), which
+    // carries the provider error code in its `.error` property — NOT in `.message`
+    // (message is always the generic "server responded with an error in the response body").
+    // We check the structured `.error` property first; fall back to message matching for
+    // any other libraries or edge cases.
+    const oauthCode = (error as any)?.error ?? "";
+    const msg = error instanceof Error ? error.message : String(error);
+    const TERMINAL = /^(invalid_grant|token_revoked)$/i;
+    const isTerminal = TERMINAL.test(oauthCode) || TERMINAL.test(msg);
+    if (isTerminal) {
+      req.logout(() => {
+        req.session.destroy((err) => {
+          if (err) console.error("Session destroy error on token revocation:", err);
+        });
+      });
+      return res.status(401).json({
+        error: "Token revoked. Please sign in again.",
+        reauthenticate: true,
+      });
+    }
+    // Transient refresh failure — let other auth methods handle it
     return next();
   }
 };

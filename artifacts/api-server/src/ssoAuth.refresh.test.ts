@@ -200,21 +200,106 @@ describe("isSsoAuthenticated — no refresh token", () => {
   });
 });
 
-describe("isSsoAuthenticated — refresh failure", () => {
-  it("calls next() gracefully when the Google refresh grant throws", async () => {
-    mockRefreshTokenGrant.mockRejectedValue(new Error("invalid_grant"));
+describe("isSsoAuthenticated — refresh failure (transient)", () => {
+  it("calls next() gracefully when the Google refresh grant throws a transient error", async () => {
+    mockRefreshTokenGrant.mockRejectedValue(new Error("network_error"));
     const req = makeReq({ provider: "google", expires_at: EXPIRED });
     const next = makeNext();
     await isSsoAuthenticated(req, makeRes(), next);
     expect(next).toHaveBeenCalledOnce();
   });
 
-  it("calls next() gracefully when the Replit refresh grant throws", async () => {
+  it("calls next() gracefully when the Replit refresh grant throws a transient error", async () => {
     mockRefreshTokenGrant.mockRejectedValue(new Error("token_expired"));
     const req = makeReq({ provider: "replit", expires_at: EXPIRED });
     const next = makeNext();
     await isSsoAuthenticated(req, makeRes(), next);
     expect(next).toHaveBeenCalledOnce();
+  });
+});
+
+describe("isSsoAuthenticated — terminal token revocation", () => {
+  /**
+   * Build an error that matches the real openid-client / oauth4webapi shape.
+   * ResponseBodyError sets `.error` to the OAuth code and `.message` to the
+   * generic string "server responded with an error in the response body".
+   * We replicate that so the detection code is exercised faithfully.
+   */
+  function makeOAuthError(code: string) {
+    const err = new Error("server responded with an error in the response body") as any;
+    err.error = code;
+    return err;
+  }
+
+  function makeRevocableReq(provider: string) {
+    const req = makeReq({ provider, expires_at: EXPIRED });
+    req.logout = vi.fn((cb: () => void) => cb());
+    req.session.destroy = vi.fn((cb: (err: any) => void) => cb(null));
+    return req;
+  }
+
+  function makeJsonRes() {
+    const json = vi.fn().mockReturnValue(undefined);
+    const status = vi.fn().mockReturnValue({ json });
+    return { status, json } as any;
+  }
+
+  it("returns 401 with reauthenticate:true on invalid_grant (ResponseBodyError shape) for Google", async () => {
+    mockRefreshTokenGrant.mockRejectedValue(makeOAuthError("invalid_grant"));
+    const req = makeRevocableReq("google");
+    const res = makeJsonRes();
+    const next = makeNext();
+    await isSsoAuthenticated(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.status().json).toHaveBeenCalledWith(
+      expect.objectContaining({ reauthenticate: true }),
+    );
+    expect(req.logout).toHaveBeenCalled();
+  });
+
+  it("returns 401 with reauthenticate:true on token_revoked (ResponseBodyError shape) for Google", async () => {
+    mockRefreshTokenGrant.mockRejectedValue(makeOAuthError("token_revoked"));
+    const req = makeRevocableReq("google");
+    const res = makeJsonRes();
+    const next = makeNext();
+    await isSsoAuthenticated(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.status().json).toHaveBeenCalledWith(
+      expect.objectContaining({ reauthenticate: true }),
+    );
+    expect(req.logout).toHaveBeenCalled();
+  });
+
+  it("destroys the session on terminal revocation", async () => {
+    mockRefreshTokenGrant.mockRejectedValue(makeOAuthError("invalid_grant"));
+    const req = makeRevocableReq("google");
+    const res = makeJsonRes();
+    await isSsoAuthenticated(req, res, makeNext());
+    expect(req.session.destroy).toHaveBeenCalled();
+  });
+
+  it("does NOT return 401 for a transient error (falls through to next)", async () => {
+    // server_error has .error = "server_error" (not a terminal code) — should fall through
+    mockRefreshTokenGrant.mockRejectedValue(makeOAuthError("server_error"));
+    const req = makeRevocableReq("google");
+    const res = makeJsonRes();
+    const next = makeNext();
+    await isSsoAuthenticated(req, res, next);
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("also catches invalid_grant carried only in the error message (fallback path)", async () => {
+    // Some edge-case libraries surface the code in message rather than .error
+    mockRefreshTokenGrant.mockRejectedValue(new Error("invalid_grant"));
+    const req = makeRevocableReq("google");
+    const res = makeJsonRes();
+    const next = makeNext();
+    await isSsoAuthenticated(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 });
 
