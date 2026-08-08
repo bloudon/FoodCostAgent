@@ -1,0 +1,173 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ cat > /tmp/vps-port-audit.sh <<'EOF'
+#!/usr/bin/env bash
+set +e
+
+echo "===== LISTENING TCP/UDP PORTS ====="
+sudo ss -lntup
+
+echo
+echo "===== PM2 APPLICATIONS ====="
+pm2 list
+
+echo
+echo "===== ACTIVE NGINX UPSTREAMS ====="
+sudo nginx -T 2>/dev/null \
+  | grep -E '^[[:space:]]*(listen|server_name|proxy_pass)[[:space:]^]' \
+  | sort -u
+
+echo
+echo "===== COMMON SYSTEM SERVICES ====="
+for service in nginx postgresql postgresql@15-main redis redis-server docker; do
+  state=$(systemctl is-active "$service" 2>/dev/null)
+  enabled=$(systemctl is-enabled "$service" 2>/dev/null)
+  if [ "$state" != "unknown" ] || [ "$enabled" != "unknown" ]; then
+    printf '%-22s active=%-10s enabled=%s\n' "$service" "$state" "$enabled"
+  fi
+done
+
+echo
+echo "===== KNOWN APPLICATION PORTS ====="
+for port in 3000 3002 3003 3004 5000 8000 8080 8090; do
+  owner=$(sudo ss -ltnp "sport = :$port" 2>/dev/null | tail -n +2)
+  if [ -n "$owner" ]; then
+    echo "--- port $port ---"
+    echo "$owner"
+    code=$(curl --max-time 3 -sS -o /dev/null \
+      -w '%{http_code}' "http://127.0.0.1:$port/" 2>/dev/null)
+    echo "HTTP localhost response: $code"
+  fi
+done
+
+echo
+echo "===== DATABASE / CACHE HEALTH ====="
+if command -v pg_isready >/dev/null 2>&1; then
+  pg_isready 2>&1
+fi
+
+if command -v redis-cli >/dev/null 2>&1; then
+  redis-cli --no-auth-warning ping 2>&1
+/tmp/vps-port-audit.sht-audit.sh {{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}'
+===== LISTENING TCP/UDP PORTS =====
+[sudo] password for administrator:
+Netid    State     Recv-Q    Send-Q         Local Address:Port          Peer Address:Port    Process
+udp      UNCONN    0         0                  127.0.0.1:8125               0.0.0.0:*        users:(("netdata",pid=30094,fd=384))
+udp      UNCONN    0         0              127.0.0.53%lo:53                 0.0.0.0:*        users:(("systemd-resolve",pid=809,fd=13))
+udp      UNCONN    0         0                  127.0.0.1:323                0.0.0.0:*        users:(("chronyd",pid=888,fd=5))
+udp      UNCONN    0         0                    0.0.0.0:51820              0.0.0.0:*       
+udp      UNCONN    0         0                      [::1]:323                   [::]:*        users:(("chronyd",pid=888,fd=6))
+udp      UNCONN    0         0                       [::]:51820                 [::]:*       
+tcp      LISTEN    0         511                  0.0.0.0:443                0.0.0.0:*        users:(("nginx",pid=3159808,fd=12),("nginx",pid=2831978,fd=12),("nginx",pid=2831976,fd=12),("nginx",pid=2831975,fd=12),("nginx",pid=2831974,fd=12),("nginx",pid=2831973,fd=12),("nginx",pid=2831972,fd=12))
+tcp      LISTEN    0         4096               127.0.0.1:17000              0.0.0.0:*        users:(("php-fpm8.2",pid=893,fd=8))
+tcp      LISTEN    0         511                  0.0.0.0:8443               0.0.0.0:*        users:(("nginx",pid=954,fd=6),("nginx",pid=953,fd=6),("nginx",pid=952,fd=6),("nginx",pid=951,fd=6),("nginx",pid=950,fd=6),("nginx",pid=949,fd=6),("nginx",pid=948,fd=6))
+tcp      LISTEN    0         128                  0.0.0.0:22                 0.0.0.0:*        users:(("sshd",pid=1040,fd=3))
+tcp      LISTEN    0         128                  0.0.0.0:21                 0.0.0.0:*        users:(("proftpd",pid=1125312,fd=0))
+tcp      LISTEN    0         100                  0.0.0.0:25                 0.0.0.0:*        users:(("master",pid=2820,fd=13))
+tcp      LISTEN    0         511                  0.0.0.0:80                 0.0.0.0:*        users:(("nginx",pid=3159808,fd=11),("nginx",pid=2831978,fd=11),("nginx",pid=2831976,fd=11),("nginx",pid=2831975,fd=11),("nginx",pid=2831974,fd=11),("nginx",pid=2831973,fd=11),("nginx",pid=2831972,fd=11))
+tcp      LISTEN    0         4096               127.0.0.1:18000              0.0.0.0:*        users:(("php-fpm8.3",pid=894,fd=8))
+tcp      LISTEN    0         4096               127.0.0.1:19000              0.0.0.0:*        users:(("php-fpm8.4",pid=898,fd=8))
+tcp      LISTEN    0         4096               127.0.0.1:11000              0.0.0.0:*        users:(("php-fpm7.1",pid=875,fd=7))
+tcp      LISTEN    0         1024               127.0.0.1:11211              0.0.0.0:*        users:(("memcached",pid=860,fd=22))
+tcp      LISTEN    0         511                  0.0.0.0:3002               0.0.0.0:*        users:(("node /home/admi",pid=2795054,fd=20))
+tcp      LISTEN    0         511                  0.0.0.0:3000               0.0.0.0:*        users:(("node /home/admi",pid=2795053,fd=24))
+tcp      LISTEN    0         511                  0.0.0.0:3004               0.0.0.0:*        users:(("node /home/admi",pid=2869614,fd=19))
+tcp      LISTEN    0         10                 127.0.0.1:34887              0.0.0.0:*        users:(("varnishd",pid=1033,fd=9))
+tcp      LISTEN    0         4096           127.0.0.53%lo:53                 0.0.0.0:*        users:(("systemd-resolve",pid=809,fd=14))
+tcp      LISTEN    0         4096               127.0.0.1:20000              0.0.0.0:*        users:(("php-fpm8.5",pid=902,fd=8))
+tcp      LISTEN    0         4096               127.0.0.1:12000              0.0.0.0:*        users:(("php-fpm7.2",pid=880,fd=7))
+tcp      LISTEN    0         4096                 0.0.0.0:19999              0.0.0.0:*        users:(("netdata",pid=30094,fd=6))
+tcp      LISTEN    0         4096               127.0.0.1:13000              0.0.0.0:*        users:(("php-fpm7.3",pid=881,fd=7))
+tcp      LISTEN    0         128                127.0.0.1:4317               0.0.0.0:*        users:(("otel-plugin",pid=30731,fd=12))
+tcp      LISTEN    0         4096               127.0.0.1:14000              0.0.0.0:*        users:(("php-fpm7.4",pid=890,fd=7))
+tcp      LISTEN    0         1024                 0.0.0.0:6081               0.0.0.0:*        users:(("cache-main",pid=1447,fd=3),("varnishd",pid=1033,fd=3))
+tcp      LISTEN    0         200                127.0.0.1:5432               0.0.0.0:*        users:(("postgres",pid=1121,fd=6))
+tcp      LISTEN    0         4096               127.0.0.1:15000              0.0.0.0:*        users:(("php-fpm8.0",pid=891,fd=8))
+tcp      LISTEN    0         511                127.0.0.1:6379               0.0.0.0:*        users:(("redis-server",pid=914,fd=6))
+tcp      LISTEN    0         4096               127.0.0.1:16000              0.0.0.0:*        users:(("php-fpm8.1",pid=892,fd=8))
+tcp      LISTEN    0         4096               127.0.0.1:8125               0.0.0.0:*        users:(("netdata",pid=30094,fd=385))
+tcp      LISTEN    0         511                     [::]:443                   [::]:*        users:(("nginx",pid=3159808,fd=13),("nginx",pid=2831978,fd=13),("nginx",pid=2831976,fd=13),("nginx",pid=2831975,fd=13),("nginx",pid=2831974,fd=13),("nginx",pid=2831973,fd=13),("nginx",pid=2831972,fd=13))
+tcp      LISTEN    0         70                         *:33060                    *:*        users:(("mysqld",pid=1182,fd=30))
+tcp      LISTEN    0         511                     [::]:8443                  [::]:*        users:(("nginx",pid=954,fd=7),("nginx",pid=953,fd=7),("nginx",pid=952,fd=7),("nginx",pid=951,fd=7),("nginx",pid=950,fd=7),("nginx",pid=949,fd=7),("nginx",pid=948,fd=7))
+tcp      LISTEN    0         128                     [::]:22                    [::]:*        users:(("sshd",pid=1040,fd=4))
+tcp      LISTEN    0         100                     [::]:25                    [::]:*        users:(("master",pid=2820,fd=14))
+tcp      LISTEN    0         511                     [::]:80                    [::]:*        users:(("nginx",pid=3159808,fd=14),("nginx",pid=2831978,fd=14),("nginx",pid=2831976,fd=14),("nginx",pid=2831975,fd=14),("nginx",pid=2831974,fd=14),("nginx",pid=2831973,fd=14),("nginx",pid=2831972,fd=14))
+tcp      LISTEN    0         511                    [::1]:6379                  [::]:*        users:(("redis-server",pid=914,fd=7))
+tcp      LISTEN    0         511                        *:3003                     *:*        users:(("node /home/admi",pid=2795072,fd=19))
+tcp      LISTEN    0         512                        *:3306                     *:*        users:(("mysqld",pid=1182,fd=32))
+tcp      LISTEN    0         4096                    [::]:19999                 [::]:*        users:(("netdata",pid=30094,fd=8))
+tcp      LISTEN    0         1024                    [::]:6081                  [::]:*        users:(("cache-main",pid=1447,fd=5),("varnishd",pid=1033,fd=5))
+tcp      LISTEN    0         511                        *:8080                     *:*        users:(("node /home/admi",pid=2795095,fd=19))
+
+===== PM2 APPLICATIONS =====
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ docu-submit        │ fork     │ 9    │ online    │ 0%       │ 88.6mb   │
+│ 13 │ fnbcostpro         │ fork     │ 1511 │ online    │ 0%       │ 382.5mb  │
+│ 12 │ kaye-api           │ fork     │ 7    │ online    │ 0%       │ 87.5mb   │
+│ 1  │ permitflow         │ fork     │ 9    │ online    │ 0%       │ 138.8mb  │
+│ 3  │ tk5-api            │ fork     │ 9    │ online    │ 0%       │ 75.0mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+===== ACTIVE NGINX UPSTREAMS =====
+    listen [::]:443 ssl;
+    listen 443 ssl;
+  listen [::]:443 ssl http2;
+  listen 443 ssl http2;
+    listen [::]:443 ssl ipv6only=on;
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    listen [::]:80;
+    listen 80;
+  listen [::]:80;
+  listen 80;
+    listen [::]:80 default_server;
+    listen 80 default_server;
+        proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3002;
+        proxy_pass http://127.0.0.1:3003;
+        proxy_pass http://127.0.0.1:3004;
+    proxy_pass http://127.0.0.1:8090/;
+        proxy_pass http://localhost:3004;
+    proxy_pass http://localhost:8080;
+    server_name app.fnbcostpro.com;
+    server_name app.permitsmanager.com;
+    server_name bldpermit.com www.bldpermit.com expeditepermit.com www.expeditepermit.com;
+  server_name erecording-fl.com;
+  server_name fhd.com www1.fhd.com;
+    server_name fnbcostpro.com;
+    server_name kayeflooring.com www.kayeflooring.com;
+    server_name pflow.permitsmanager.com;
+  server_name www.erecording-fl.com;
+  server_name www.fhd.com;
+
+===== COMMON SYSTEM SERVICES =====
+nginx                  active=active     enabled=enabled
+postgresql             active=active     enabled=enabled
+postgresql@15-main     active=inactive   enabled=disabled
+redis                  active=active     enabled=alias
+redis-server           active=active     enabled=enabled
+docker                 active=inactive   enabled=
+
+===== KNOWN APPLICATION PORTS =====
+--- port 3000 ---
+LISTEN 0      511          0.0.0.0:3000      0.0.0.0:*    users:(("node /home/admi",pid=2795053,fd=24))
+HTTP localhost response: 200
+--- port 3002 ---
+LISTEN 0      511          0.0.0.0:3002      0.0.0.0:*    users:(("node /home/admi",pid=2795054,fd=20))
+HTTP localhost response: 200
+--- port 3003 ---
+LISTEN 0      511                *:3003            *:*    users:(("node /home/admi",pid=2795072,fd=19))
+HTTP localhost response: 404
+--- port 3004 ---
+LISTEN 0      511          0.0.0.0:3004      0.0.0.0:*    users:(("node /home/admi",pid=2869614,fd=19))
+HTTP localhost response: 404
+--- port 8080 ---
+LISTEN 0      511                *:8080            *:*    users:(("node /home/admi",pid=2795095,fd=19))
+HTTP localhost response: 404
+
+===== DATABASE / CACHE HEALTH =====
+/var/run/postgresql:5432 - accepting connections
+PONG
+
+===== DOCKER CONTAINERS, IF PRESENT =====
