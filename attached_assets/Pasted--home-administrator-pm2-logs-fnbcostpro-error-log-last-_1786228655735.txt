@@ -1,0 +1,52 @@
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 50 lines:
+13|fnbcost |     at NeonPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at NeonPreparedQuery.execute (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/neon-serverless/session.ts:152:18)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:1003:22 {
+13|fnbcost |   query: 'select "id", "object_path", "external_url", "label", "sort_order", "is_active", "is_free_background", "is_mobile_available", "created_at" from "background_images" where "background_images"."is_active" = $1 order by "background_images"."sort_order" asc, "background_images"."created_at" asc',
+13|fnbcost |   params: [ 1 ],
+13|fnbcost |   cause: ErrorEvent {
+13|fnbcost |     [Symbol(kTarget)]: _WebSocket {
+13|fnbcost |       _events: [Object: null prototype],
+13|fnbcost |       _eventsCount: 4,
+13|fnbcost |       _maxListeners: undefined,
+13|fnbcost |       _binaryType: 'arraybuffer',
+13|fnbcost |       _closeCode: 1006,
+13|fnbcost |       _closeFrameReceived: false,
+13|fnbcost |       _closeFrameSent: false,
+13|fnbcost |       _closeMessage: <Buffer >,
+13|fnbcost |       _closeTimer: null,
+13|fnbcost |       _errorEmitted: true,
+13|fnbcost |       _extensions: {},
+13|fnbcost |       _paused: false,
+13|fnbcost |       _protocol: '',
+13|fnbcost |       _readyState: 3,
+13|fnbcost |       _receiver: null,
+13|fnbcost |       _sender: null,
+13|fnbcost |       _socket: null,
+13|fnbcost |       _bufferedAmount: 0,
+13|fnbcost |       _isServer: false,
+13|fnbcost |       _redirects: 0,
+13|fnbcost |       _autoPong: true,
+13|fnbcost |       _closeTimeout: 30000,
+13|fnbcost |       _url: 'wss://127.0.0.1/v2',
+13|fnbcost |       _req: null,
+13|fnbcost |       [Symbol(shapeMode)]: false,
+13|fnbcost |       [Symbol(kCapture)]: false
+13|fnbcost |     },
+13|fnbcost |     [Symbol(kType)]: 'error',
+13|fnbcost |     [Symbol(kError)]: Error: Hostname/IP does not match certificate's altnames: IP: 127.0.0.1 is not in the cert's list:
+13|fnbcost |         at Object.checkServerIdentity (node:tls:316:12)
+13|fnbcost |         at TLSSocket.onConnectSecure (node:_tls_wrap:1709:27)
+13|fnbcost |         at TLSSocket.emit (node:events:524:28)
+13|fnbcost |         at TLSSocket._finishInit (node:_tls_wrap:1097:8)
+13|fnbcost |         at TLSWrap.ssl.onhandshakedone (node:_tls_wrap:883:12) {
+13|fnbcost |       code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+13|fnbcost |       reason: "IP: 127.0.0.1 is not in the cert's list: ",
+13|fnbcost |       host: '127.0.0.1',
+13|fnbcost |       cert: [Object]
+13|fnbcost |     },
+13|fnbcost |     [Symbol(kMessage)]: "Hostname/IP does not match certificate's altnames: IP: 127.0.0.1 is not in the cert's list: "
+13|fnbcost |   }
+13|fnbcost | }
+
