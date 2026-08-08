@@ -1,0 +1,76 @@
+Resolving deltas: 100% (416/416), completed with 2 local objects.
+From https://github.com/bloudon/FoodCostAgent
+ * branch            main       -> FETCH_HEAD
+   90f1392..1571724  main       -> origin/main
+Updating 90f1392..1571724
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T18-14-32-009Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T18-22-07-397Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T18-27-37-848Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T18-34-19-764Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T18-40-16-711Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-30T21-56-24-307Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T03-37-24-857Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T05-53-20-929Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T09-56-23-396Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T15-25-29-263Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T15-56-23-304Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T19-18-14-772Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T21-30-32-067Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T21-54-24-825Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-06-24-099Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-08-23-792Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-13-06-250Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-14-10-324Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-15-19-889Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-19-32-403Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T22-20-50-750Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T23-06-08-612Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-07-31T23-36-31-146Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T00-08-20-686Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T01-29-23-313Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T04-00-24-060Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T05-06-24-880Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T06-37-29-267Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T15-51-39-003Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T20-31-20-460Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T21-02-33-325Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T21-16-23-538Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T21-17-07-845Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T21-18-05-244Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-01T21-50-30-977Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T00-23-39-372Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T00-45-50-307Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T01-16-57-157Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T03-50-35-056Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T05-26-08-539Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T09-50-39-227Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-18-54-718Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-27-59-939Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-31-05-127Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-34-08-385Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-39-26-238Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-42-57-203Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T14-45-19-165Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T18-26-39-873Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T19-31-56-758Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T19-59-31-348Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T21-31-58-951Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-02T22-37-41-341Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-03T01-59-36-072Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-03T04-40-39-587Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-03T07-16-20-884Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-03T19-56-40-578Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-04T02-53-43-023Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-04T08-53-46-743Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-04T20-04-06-062Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-05T01-34-06-877Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-05T04-28-31-830Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T03-50-53-588Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T04-52-21-127Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T04-54-14-869Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T04-57-36-827Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T04-58-27-938Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T16-55-39-739Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T17-06-53-848Z.txt: Permission denied
+error: unable to create file logs/pack-geometry-backfill-2026-08-06T19-01-07-976Z.txt: Permission denied
+Updating files: 100% (2722/2722), done.
