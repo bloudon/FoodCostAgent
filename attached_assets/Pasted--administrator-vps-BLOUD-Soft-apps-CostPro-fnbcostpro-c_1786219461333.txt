@@ -1,0 +1,43 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ curl -s https://app.fnbcostpro.com/api/sso/provider
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <title>FnB Cost Pro | Culinary Operations Intelligence for Chefs</title>
+    <meta name="description" content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders." />
+    <meta property="og:title" content="FnB Cost Pro | Culinary Operations Intelligence for Chefs" />
+    <meta property="og:description" content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/website-logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FnB Cost Pro | Culinary Operations Intelligence for Chefs" />
+    <meta name="twitter:description" content="Built for the way chefs work. Turn recipes, photos, inventory and vendor data into accurate food costs, vendor comparisons and predictive orders." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Google tag (gtag.js) — pageview calls are guarded at runtime; only fire on fnbcostpro.com -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5YH6X21RM4"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      // Bootstrap config without sending an initial pageview — the useGa4 hook
+      // fires gtag('config', ...) on every Wouter route change (including mount),
+      // so this avoids a duplicate hit on first load.
+      gtag('config', 'G-5YH6X21RM4', { send_page_view: false });
+    </script>
+    <script type="module" crossorigin src="/assets/index-C0tWFX2R.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-ClT4uxSx.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
