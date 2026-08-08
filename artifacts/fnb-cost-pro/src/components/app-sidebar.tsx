@@ -7,9 +7,8 @@ import {
   ChefHat,
   UtensilsCrossed,
   BarChart3,
-  FileBarChart2,
   Trash2,
-  MoreHorizontal,
+  Settings,
   Pin,
   PinOff,
   Lock,
@@ -88,10 +87,7 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/menu-insights")
   ) return "analyze";
 
-  if (
-    loc === "/reports" ||
-    loc.startsWith("/reports/")
-  ) return "reports";
+  if (loc === "/reports" || loc.startsWith("/reports/")) return "analyze";
 
   if (
     loc === "/menu-items" || loc.startsWith("/menu-items/") ||
@@ -101,7 +97,7 @@ function getActiveSection(loc: string): string {
     loc.startsWith("/recipe")
   ) return "menu";
 
-  return "more";
+  return "settings";
 }
 
 // ---------------------------------------------------------------------------
@@ -124,9 +120,8 @@ const RAIL: RailItem[] = [
   { id: "prep",      label: "Prep",      icon: ChefHat,          href: "/prep",       testId: "nav-prep" },
   { id: "menu",      label: "Menus",     icon: UtensilsCrossed,  href: "/menus",       testId: "nav-menu" },
   { id: "analyze",   label: "Analyze",   icon: BarChart3,        href: "/analyze",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-analyze" },
-  { id: "reports",   label: "Reports",   icon: FileBarChart2,    href: "/reports",    roles: ["store_manager", "company_admin", "global_admin"], testId: "nav-reports" },
   { id: "waste",     label: "Waste",     icon: Trash2,           href: "/waste",      testId: "nav-waste" },
-  { id: "more",      label: "More",      icon: MoreHorizontal,   href: "/more",       testId: "nav-more" },
+  { id: "settings",  label: "Settings",  icon: Settings,          href: "/more",       testId: "nav-settings" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -252,7 +247,7 @@ export function AppSidebar() {
   const activeSection = getActiveSection(location);
 
   const visibleItems = RAIL.filter((item) => {
-    if (isGlobalAdmin && !company && item.id !== "home" && item.id !== "more") return false;
+    if (isGlobalAdmin && !company && item.id !== "home" && item.id !== "settings") return false;
     if (item.roles && !item.roles.includes(role)) return false;
     if (item.id === "prep" && !hasFeature("prep_chart")) return false;
     return true;

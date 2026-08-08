@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getLabelForPath, ROUTE_CONFIG } from "./route-config";
+import { getLabelForPath, getSectionForPath, ROUTE_CONFIG } from "./route-config";
 
 describe("getLabelForPath", () => {
   // Home — should return undefined (no label shown)
@@ -11,7 +11,7 @@ describe("getLabelForPath", () => {
   it("returns label for exact static route", () => {
     expect(getLabelForPath("/recipes")).toBe("Recipes");
     expect(getLabelForPath("/inventory-items")).toBe("Inventory Items");
-    expect(getLabelForPath("/settings")).toBe("Settings");
+    expect(getLabelForPath("/settings")).toBe("Company Settings");
   });
 
   // Dynamic param at end
@@ -97,5 +97,24 @@ describe("role-gate enforcement", () => {
         `Route "${r.route}" is under /companies* but requiredRole "${r.requiredRole ?? "undefined"}" does not meet minimum "company_admin"`
       ).toBe(true);
     }
+  });
+});
+
+describe("approved navigation ownership", () => {
+  it("keeps reports under Analyze while preserving report URLs", () => {
+    expect(getSectionForPath("/reports")).toBe("analyze");
+    expect(getSectionForPath("/reports/scheduled")).toBe("analyze");
+    expect(ROUTE_CONFIG.find((route) => route.route === "/reports")?.label).toBe("Reports");
+  });
+
+  it("makes Settings the home for setup while keeping Store Locations Manager+", () => {
+    expect(getSectionForPath("/more")).toBe("settings");
+    expect(getSectionForPath("/stores")).toBe("settings");
+    expect(ROUTE_CONFIG.find((route) => route.route === "/stores")?.requiredRole).toBe("store_manager");
+  });
+
+  it("keeps menus and recipes out of Settings", () => {
+    expect(getSectionForPath("/menus")).toBe("menus");
+    expect(getSectionForPath("/recipes")).toBe("menus");
   });
 });

@@ -2,8 +2,6 @@ import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { useTier } from "@/hooks/use-tier";
 import {
-  Utensils,
-  BookOpen,
   Ruler,
   Tag,
   MapPin,
@@ -16,8 +14,8 @@ import {
   Package,
   Image,
   ChevronRight,
-  BarChart3,
   Layers,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -88,48 +86,10 @@ function SectionCard({
 
 export default function MoreLanding() {
   const { user } = useAuth();
-  const { hasFeature } = useTier();
   const role = user?.role ?? "store_user";
   const isManager = role === "store_manager" || role === "company_admin" || role === "global_admin";
   const isAdmin = role === "company_admin" || role === "global_admin";
   const isGlobalAdmin = role === "global_admin";
-
-  // Insights — manager+ only; essential for mobile where Analyze has no rail slot
-  const insights: NavItem[] = isManager
-    ? [
-        {
-          href: "/analyze",
-          icon: BarChart3,
-          label: "Analyze & Reports",
-          description: "Food cost, variance, and sales analytics",
-          testId: "more-nav-analyze",
-        },
-      ]
-    : [];
-
-  const menuRecipes: NavItem[] = [
-    {
-      href: "/menus",
-      icon: Layers,
-      label: "Menus",
-      description: "Build and manage your menu portfolio",
-      testId: "more-nav-menus",
-    },
-    {
-      href: "/menu-items",
-      icon: Utensils,
-      label: "Item Library",
-      description: "Canonical items, sizes, and selling prices",
-      testId: "more-nav-menu-items",
-    },
-    {
-      href: "/recipes",
-      icon: BookOpen,
-      label: "Recipes",
-      description: "Build and cost recipes and sub-recipes",
-      testId: "more-nav-recipes",
-    },
-  ];
 
   const inventorySetup: NavItem[] = [
     {
@@ -207,6 +167,13 @@ export default function MoreLanding() {
           description: "Manage API keys for integrations",
           testId: "more-nav-api-credentials",
         },
+        {
+          href: "/settings?tab=connections",
+          icon: RefreshCw,
+          label: "POS & Sales",
+          description: "Connect POS systems and manage sales sync",
+          testId: "more-nav-pos-connections",
+        },
       ]
     : [];
 
@@ -215,9 +182,9 @@ export default function MoreLanding() {
         {
           href: "/settings",
           icon: Settings,
-          label: "Settings",
-          description: "Account, billing, and company preferences",
-          testId: "more-nav-settings",
+          label: "Company Settings",
+          description: "Company details, preferences, billing, and profile",
+          testId: "settings-nav-company",
         },
       ]
     : [];
@@ -252,6 +219,13 @@ export default function MoreLanding() {
           description: "Manage mobile background images",
           testId: "more-nav-backgrounds",
         },
+        {
+          href: "/admin/pos-sync-jobs",
+          icon: RefreshCw,
+          label: "POS Sync Jobs",
+          description: "Monitor and manage platform POS sync jobs",
+          testId: "settings-nav-pos-sync-jobs",
+        },
       ]
     : [];
 
@@ -259,16 +233,12 @@ export default function MoreLanding() {
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">More</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
           <p className="text-sm text-muted-foreground">
-            Configuration, team management, and platform tools.
+            Set up your operation, manage access, and administer integrations.
           </p>
         </div>
 
-        {insights.length > 0 && (
-          <SectionCard title="Insights" items={insights} />
-        )}
-        <SectionCard title="Menu & Recipes" items={menuRecipes} />
         <SectionCard title="Inventory Setup" items={inventorySetup} />
         {locations.length > 0 && (
           <SectionCard title="Locations" items={locations} />

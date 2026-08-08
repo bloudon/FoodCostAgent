@@ -45,6 +45,7 @@ import {
   ArrowRight,
   ArrowLeft,
   Database,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useTier } from "@/hooks/use-tier";
@@ -101,10 +102,12 @@ const SECTION_LABELS: Record<NavSection, string> = {
   order: "Order",
   prep: "Prep",
   analyze: "Analyze",
-  more: "More",
+  menus: "Menus",
+  settings: "Settings",
+  waste: "Waste",
 };
 
-const SECTION_ORDER: NavSection[] = ["home", "count", "order", "prep", "analyze", "more"];
+const SECTION_ORDER: NavSection[] = ["home", "count", "order", "prep", "menus", "analyze", "waste", "settings"];
 
 function SectionIcon({ section, className }: { section: NavSection; className?: string }) {
   const props = { className: className ?? "h-4 w-4 shrink-0 text-muted-foreground" };
@@ -114,7 +117,9 @@ function SectionIcon({ section, className }: { section: NavSection; className?: 
     case "order":   return <ShoppingCart {...props} />;
     case "prep":    return <Flame {...props} />;
     case "analyze": return <BarChart2 {...props} />;
-    case "more":    return <Settings2 {...props} />;
+    case "menus":   return <Utensils {...props} />;
+    case "settings": return <Settings2 {...props} />;
+    case "waste":   return <Trash2 {...props} />;
   }
 }
 

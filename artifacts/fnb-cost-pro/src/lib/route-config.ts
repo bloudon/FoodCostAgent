@@ -17,7 +17,9 @@ export type NavSection =
   | "order"
   | "prep"
   | "analyze"
-  | "more";
+  | "menus"
+  | "settings"
+  | "waste";
 
 export interface RouteConfig {
   /** Canonical URL path */
@@ -64,7 +66,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/orderly-import", label: "Orderly Import", section: "count", keywords: "orderly upload import sync" },
   { route: "/orderly-report", label: "Orderly Report", section: "count" },
   { route: "/shelf-scans", label: "Shelf Scans", section: "count" },
-  { route: "/waste", label: "Waste", section: "count", keywords: "waste loss spoilage" },
+  { route: "/waste", label: "Waste", section: "waste", keywords: "waste loss spoilage" },
 
   // ── Order ────────────────────────────────────────────────────────────────
   { route: "/order", label: "Order", section: "order", requiredRole: "store_manager" },
@@ -99,29 +101,35 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/tfc/sales-import", label: "Import Sales", section: "analyze", requiredRole: "store_manager" },
   { route: "/variance", label: "Inventory Variance", section: "analyze", requiredRole: "store_manager" },
   { route: "/menu-insights", label: "Menu Insights", section: "analyze" },
+  { route: "/reports", label: "Reports", section: "analyze", requiredRole: "store_manager", keywords: "report reporting scheduled" },
+  { route: "/reports/scheduled", label: "Scheduled Reports", section: "analyze", requiredRole: "store_manager" },
+  { route: "/reports/view", label: "Report Viewer", section: "analyze", requiredRole: "store_manager" },
 
-  // ── More ─────────────────────────────────────────────────────────────────
-  { route: "/more", label: "More", section: "more" },
-  { route: "/menu-items", label: "Menu Items", section: "more" },
-  { route: "/menus", label: "Menus", section: "more" },
-  { route: "/menu-scan", label: "Menu Scan", section: "more", legacyRoutes: ["/menu-import"], keywords: "scan import menu photo camera" },
-  { route: "/recipes", label: "Recipes", section: "more", keywords: "recipe builder" },
-  { route: "/recipe-import", label: "Import Recipes", section: "more" },
-  { route: "/categories", label: "Categories", section: "more", requiredRole: "store_manager" },
-  { route: "/unit-conversions", label: "Unit Conversions", section: "more", requiredRole: "store_manager" },
-  { route: "/storage-locations", label: "Storage Locations", section: "more", requiredRole: "store_manager" },
-  { route: "/stores", label: "Store Locations", section: "more", requiredRole: "store_manager" },
-  { route: "/users", label: "Users", section: "more", requiredRole: "company_admin" },
-  { route: "/api-credentials", label: "API Credentials", section: "more", requiredRole: "company_admin" },
-  { route: "/settings", label: "Settings", section: "more", requiredRole: "company_admin", keywords: "company configuration pos integrations" },
+  // ── Menus ────────────────────────────────────────────────────────────────
+  { route: "/menu-items", label: "Menu Items", section: "menus" },
+  { route: "/menus", label: "Menus", section: "menus" },
+  { route: "/menu-scan", label: "Menu Scan", section: "menus", legacyRoutes: ["/menu-import"], keywords: "scan import menu photo camera" },
+  { route: "/recipes", label: "Recipes", section: "menus", keywords: "recipe builder" },
+  { route: "/recipe-import", label: "Import Recipes", section: "menus" },
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+  { route: "/more", label: "Settings", section: "settings" },
+  { route: "/categories", label: "Categories", section: "settings", requiredRole: "store_manager" },
+  { route: "/unit-conversions", label: "Unit Conversions", section: "settings", requiredRole: "store_manager" },
+  { route: "/storage-locations", label: "Storage Locations", section: "settings", requiredRole: "store_manager" },
+  { route: "/operating-units", label: "Operating Units", section: "settings", requiredRole: "store_manager" },
+  { route: "/stores", label: "Store Locations", section: "settings", requiredRole: "store_manager" },
+  { route: "/users", label: "Users", section: "settings", requiredRole: "company_admin" },
+  { route: "/api-credentials", label: "API Credentials", section: "settings", requiredRole: "company_admin" },
+  { route: "/settings", label: "Company Settings", section: "settings", requiredRole: "company_admin", keywords: "company configuration pos integrations" },
 
   // ── Platform Admin ───────────────────────────────────────────────────────
-  { route: "/companies", label: "Companies", section: "more", requiredRole: "global_admin" },
-  { route: "/companies/:id", label: "Company Detail", section: "more", requiredRole: "global_admin" },
-  { route: "/admin/users", label: "Admin Users", section: "more", requiredRole: "global_admin" },
-  { route: "/admin/vendor-registry", label: "Vendor Registry", section: "more", requiredRole: "global_admin" },
-  { route: "/admin/backgrounds", label: "Backgrounds", section: "more", requiredRole: "global_admin" },
-  { route: "/admin/pos-sync-jobs", label: "POS Sync Jobs", section: "more", requiredRole: "global_admin", keywords: "pos sync square jobs" },
+  { route: "/companies", label: "Companies", section: "settings", requiredRole: "global_admin" },
+  { route: "/companies/:id", label: "Company Detail", section: "settings", requiredRole: "global_admin" },
+  { route: "/admin/users", label: "Admin Users", section: "settings", requiredRole: "global_admin" },
+  { route: "/admin/vendor-registry", label: "Vendor Registry", section: "settings", requiredRole: "global_admin" },
+  { route: "/admin/backgrounds", label: "Backgrounds", section: "settings", requiredRole: "global_admin" },
+  { route: "/admin/pos-sync-jobs", label: "POS Sync Jobs", section: "settings", requiredRole: "global_admin", keywords: "pos sync square jobs" },
 ];
 
 /**
