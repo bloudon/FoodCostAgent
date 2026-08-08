@@ -1,0 +1,42 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 logs fnbcostpro --lines 150 --nostream | grep -iE 'google|sso|error|session'
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 150 lines:
+7|fnbcostp |   error: FetchError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+7|fnbcostp |       at emitErrorEvent (node:_http_client:101:11)
+7|fnbcostp |       at Socket.socketErrorListener (node:_http_client:504:5)
+7|fnbcostp |       at emitErrorNT (node:internal/streams/destroy:169:8)
+7|fnbcostp |       at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+7|fnbcostp |   [Symbol(gaxios-gaxios-error)]: '6.7.1'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | Error: ENOENT: no such file or directory, stat '/home/administrator/apps/CostPro/fnbcostpro/dist/public/index.html'
+7|fnbcostp | URIError: Failed to decode param '/.env.local%A0'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/.env.local%85'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/.aws/credentials%A0'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/CLAUDE.md%A0'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/.env%A0'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/.env%85'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | URIError: Failed to decode param '/CLAUDE.md%85'
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/serve-static/index.js:121:7)
+7|fnbcostp |     at SendStream.error (/home/administrator/apps/CostPro/fnbcostpro/node_modules/send/index.js:270:17)
+7|fnbcostp | 7:27:11 PM [express] ✅ Session cleanup completed
+7|fnbcostp | 7:57:12 PM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+7|fnbcostp | 7:57:12 PM [express] GET /api/auth/me 401 in 1ms :: {"error":"Not authenticated"}
+7|fnbcostp | 8:01:36 PM [express] GET /api/sso/provider 200 in 10ms
+7|fnbcostp | 8:01:39 PM [express] GET /api/sso/login 200 in 3ms
+7|fnbcostp | 8:03:57 PM [express] GET /api/sso/provider 200 in 4ms
