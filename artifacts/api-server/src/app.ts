@@ -81,8 +81,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Health check — must be mounted before auth so it's always reachable
 app.use("/api", healthRouter);
 
-// Setup SSO auth (passport)
-setupSsoAuth(app);
+/**
+ * Complete asynchronous app initialization (session middleware, Passport,
+ * SSO/Google OIDC discovery, and the canonical /api/sso/* routes).
+ *
+ * MUST be awaited before registering the remaining routes or listening —
+ * otherwise early requests could race the pending SSO handlers, and a
+ * discovery/configuration failure would become an unhandled rejection
+ * instead of a controlled startup failure.
+ */
+export async function initApp(): Promise<Express> {
+  await setupSsoAuth(app);
+  return app;
+}
 
 export { app };
 export default app;

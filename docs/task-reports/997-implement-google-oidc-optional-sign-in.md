@@ -29,6 +29,11 @@ Optional "Continue with Google" sign-in added alongside existing email/password 
 - Fixed canonical callback: `https://app.fnbcostpro.com/api/sso/callback` — derived exclusively from `APP_BASE_URL`; `req.hostname` and `REPL_ID` are never used on the Google path (test-enforced).
 - Verified live in Google-simulated mode: `/api/sso/provider` → `{"provider":"google"}`; `/api/sso/login` → 302 to `accounts.google.com` with `redirect_uri=https://app.fnbcostpro.com/api/sso/callback`.
 
+## Startup sequencing
+
+- `artifacts/api-server/src/app.ts` exports async `initApp()`; `index.ts` awaits it before `registerRoutes`/`listen`, so the canonical `/api/sso/*` handlers (including async Google discovery) are fully registered before traffic is served. An SSO discovery/configuration failure is a fatal, logged startup error (`process.exit(1)`), never an unhandled rejection.
+- `artifacts/api-server/src/appInit.test.ts` — 3 integration tests: Google-configured init serves `/api/sso/provider` = `google` and `/api/sso/login` 302 with the fixed callback; discovery failure rejects `initApp()`; Replit fallback registers when Google env is absent.
+
 ## Tests
 
 - `artifacts/api-server/src/googleAuth.test.ts` — 19 tests, all pass (claim validation, linking preservation, invitation safety, configuration/callback rules).

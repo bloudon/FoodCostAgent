@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { app } from "./app";
+import { app, initApp } from "./app";
 import { registerRoutes, setupWebSocket } from "./routes";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./seed";
@@ -17,6 +17,16 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 (async () => {
+  // Auth/SSO initialization must complete before any routes are registered
+  // or traffic is served. A failure here (e.g. OIDC discovery/config error)
+  // is fatal by design — never serve with authentication half-initialized.
+  try {
+    await initApp();
+  } catch (err) {
+    logger.error({ err }, "Fatal: SSO/auth initialization failed — refusing to start");
+    process.exit(1);
+  }
+
   try {
     // seedDatabase is optional; skip if it throws
     await seedDatabase().catch((e) => logger.warn({ err: e }, "seed skipped"));
