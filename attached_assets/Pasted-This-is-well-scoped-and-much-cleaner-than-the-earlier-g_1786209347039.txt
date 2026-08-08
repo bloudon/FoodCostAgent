@@ -1,0 +1,69 @@
+This is well scoped and much cleaner than the earlier generic OIDC task. I would approve it with a few additions so Replit cannot accidentally broaden the auth model.
+
+The main thing missing is the **exact configuration contract**. Add that production Google OIDC must be driven by explicit env vars, with no Replit-only fallback in production:
+
+```md
+## Production configuration
+
+Use explicit configuration:
+
+- `OIDC_ISSUER_URL=https://accounts.google.com`
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+- `APP_BASE_URL=https://app.fnbcostpro.com`
+- `SESSION_SECRET`
+
+Production callback:
+
+`https://app.fnbcostpro.com/api/sso/callback`
+
+Do not derive the production callback from `req.hostname`.
+
+Do not require `REPL_ID` for production Google authentication.
+```
+
+I would also tighten the account-linking language. “Existing FnB user row remains unchanged” conflicts slightly with linking Google, because the provider identity fields presumably do need to change. Better:
+
+> Existing FnB user identity, company, role, stores, permissions, password credentials, and historical relationships remain unchanged. Only the fields required to associate the verified Google identity may be updated.
+
+That makes it clear we are not creating/replacing the user while still allowing the Google `sub` to be attached.
+
+For invitations, state the exact behavior:
+
+> If a verified Google email matches an existing user and there is also a pending invitation, the invitation must not alter that user’s company, role, or store assignments. Return a controlled result and leave the invitation unresolved for explicit administrative action.
+
+I would also make **password preservation** a test case, because that is a core product decision:
+
+> An account that links Google must still be able to authenticate with its existing FnB email/password credentials afterward.
+
+And logout should be explicit:
+
+> `/api/sso/logout` destroys the FnB session and returns the user to the FnB login page. Do not require or automatically invoke Google global logout.
+
+### Revised regression cases
+
+I’d require these tests:
+
+* email/password login still works before Google linking
+* successful Google login for an existing user with `email_verified=true`
+* same user can still use email/password after Google linking
+* no duplicate user created
+* normalized email comparison works
+* missing email denied cleanly
+* `email_verified=false` denied cleanly
+* absent `email_verified` denied cleanly
+* verified Google user without existing account/invitation cannot self-register
+* invited new Google user can be created under existing invitation rules
+* existing user + pending conflicting invitation cannot change company/role/store
+* company/store/permission records unchanged after linking
+* local logout destroys FnB session
+* production callback comes from `APP_BASE_URL`
+* production does not depend on `REPL_ID`
+
+One other point: because this touches auth and account linking, I would explicitly tell Replit it is **Significant** and requires fresh Reviewer + QA passes under the new operating model.
+
+So my status is:
+
+**APPROVED TO BUILD with those tightening additions.**
+
+I would not expand it further. No Auth0 abstraction, no multiple-provider framework, no password redesign, no schema redesign unless Replit discovers the current schema cannot safely represent the Google link—in which case it should stop and bring that back for review.
