@@ -24,10 +24,42 @@
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 import passport from "passport";
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { storage } from "./storage";
 
 export const GOOGLE_STRATEGY_NAME = "google-oidc";
+
+// ── Google-specific Strategy subclass ────────────────────────────────────────
+//
+// openid-client's Strategy.authorizationRequestParams() maps a fixed set of
+// named options (scope, prompt, loginHint, …) to URLSearchParams. It does NOT
+// handle `access_type`, which is a Google-specific extension parameter.
+//
+// Google requires access_type=offline in the authorization request to issue a
+// refresh_token. The OIDC offline_access scope alone is not sufficient — Google
+// ignores it and still omits the refresh token without this parameter.
+// Subclassing and overriding authorizationRequestParams is the documented way
+// to inject extra authorization URL parameters with openid-client v6+.
+class GoogleStrategy extends Strategy {
+  override authorizationRequestParams(req: Request, options: any): URLSearchParams {
+    // The base class declares the return as URLSearchParams | Record<string, string> | undefined
+    // but always returns a URLSearchParams at runtime (see passport.js source).
+    // We normalise to URLSearchParams defensively.
+    const base = super.authorizationRequestParams(req, options);
+    const params: URLSearchParams =
+      base instanceof URLSearchParams
+        ? base
+        : new URLSearchParams(
+            base != null ? Object.entries(base) : [],
+          );
+    // Required by Google to receive a refresh_token. Without this, Google only
+    // issues an access token (valid 1 hour) even when the user grants consent.
+    // The OIDC offline_access scope alone is not sufficient for Google — this
+    // Google-specific parameter must also be present in the authorization URL.
+    params.set("access_type", "offline");
+    return params;
+  }
+}
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -232,6 +264,16 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
   const oidcConfig = await getGoogleOidcConfig();
 
   const verify: VerifyFunction = async (tokens, verified) => {
+    // Warn loudly when Google omits the refresh_token. This should never
+    // happen given access_type=offline + prompt=consent, but surfacing it
+    // in logs makes regressions immediately visible.
+    if (!tokens.refresh_token) {
+      console.warn(
+        "[Google SSO] WARNING: Google callback did not include a refresh_token. " +
+        "Sessions will expire after 1 hour. Check that access_type=offline and " +
+        "prompt=consent are present in the authorization request.",
+      );
+    }
     const sessionData: any = {
       provider: "google",
       claims: tokens.claims(),
@@ -243,12 +285,13 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
   };
 
   passport.use(
-    new Strategy(
+    new GoogleStrategy(
       {
         name: GOOGLE_STRATEGY_NAME,
         config: oidcConfig,
-        // offline_access requests a refresh token so sessions survive past the
-        // 1-hour Google access-token expiry without forcing a re-login.
+        // offline_access is the OIDC scope for offline access. Google also
+        // requires access_type=offline in the authorization URL — that is
+        // injected by GoogleStrategy.authorizationRequestParams above.
         scope: "openid email profile offline_access",
         callbackURL,
       },
@@ -269,6 +312,15 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
       // isSsoAuthenticated can silently renew sessions past the 1-hour
       // Google access-token expiry.
       scope: ["openid", "email", "profile", "offline_access"],
+      // prompt=consent is required on every login, not just the first.
+      // Google only issues a refresh_token when the user explicitly grants
+      // consent. On repeat logins without this flag Google skips the consent
+      // screen and omits the refresh_token entirely, leaving the user with
+      // only a 1-hour access token. Forcing consent on every login guarantees
+      // a fresh refresh_token so isSsoAuthenticated can silently renew
+      // sessions indefinitely. The minor extra friction (one extra click on
+      // repeat logins) is the accepted tradeoff.
+      prompt: "consent",
     })(req, res, next);
   });
 
