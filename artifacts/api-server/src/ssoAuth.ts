@@ -303,8 +303,6 @@ export async function setupSsoAuth(app: Express) {
         return res.redirect("/login");
       }
       
-      console.log("SSO sessionData:", sessionData);
-      
       // Retrieve invitation token from signed cookie
       let invitationToken: string | null = null;
       const cookieToken = req.signedCookies?.pendingInvitation;
@@ -368,17 +366,12 @@ export async function setupSsoAuth(app: Express) {
     })(req, res, next);
   });
 
-  // SSO Logout route
+  // SSO Logout route — local session only (no OIDC end-session redirect for dev)
   app.get("/api/sso/logout", (req, res) => {
     req.logout(() => {
       req.session.destroy((err) => {
         if (err) console.error("Session destroy error:", err);
-        res.redirect(
-          client.buildEndSessionUrl(config, {
-            client_id: process.env.REPL_ID!,
-            post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-          }).href
-        );
+        res.redirect("/");
       });
     });
   });
