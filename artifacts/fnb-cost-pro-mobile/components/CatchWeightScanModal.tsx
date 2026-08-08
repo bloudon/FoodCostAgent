@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import { useScan } from "@/context/ScanContext";
 
 type Confidence = "high" | "medium" | "low";
@@ -101,7 +102,7 @@ export default function CatchWeightScanModal({
 }: CatchWeightScanModalProps) {
   const insets = useSafeAreaInsets();
   const { backendUrl } = useScan();
-  const { getToken, logout } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [facing] = useState<CameraType>("back");
@@ -221,7 +222,12 @@ export default function CatchWeightScanModal({
       );
 
       if (xhrResult.status === 401) {
-        await logout();
+        let reauthenticate = false;
+        try {
+          const body = JSON.parse(xhrResult.body) as Record<string, unknown>;
+          reauthenticate = body.reauthenticate === true;
+        } catch { /* non-JSON body — treat as plain 401 */ }
+        await handleUnauthorized(reauthenticate);
         return { status: 401, data: null };
       }
 
@@ -233,7 +239,7 @@ export default function CatchWeightScanModal({
       }
       return { status: xhrResult.status, data };
     },
-    [sessionId, itemId, lineId, backendUrl, getToken, logout]
+    [sessionId, itemId, lineId, backendUrl, getToken, handleUnauthorized]
   );
 
   const handleCapture = useCallback(async () => {
@@ -321,7 +327,7 @@ export default function CatchWeightScanModal({
       // PATCH /api/mobile/sessions/:id/lines/:lineId accumulates atomically and writes
       // an audit entry, so this is exactly equivalent to the previous "apply" path.
       const token = await getToken();
-      const res = await fetch(
+      const res = await fetchWithAuth(
         `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${lineId}`,
         {
           method: "PATCH",
@@ -330,9 +336,10 @@ export default function CatchWeightScanModal({
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({ addQty: weightToApply }),
-        }
+        },
+        handleUnauthorized
       );
-      if (res.status === 401) { await logout(); return; }
+      if (res.status === 401) { return; } // handleUnauthorized already called by fetchWithAuth
       if (res.status === 403) {
         setScanState({ phase: "error", message: "Session is locked or you are not assigned to this store." });
         return;
@@ -353,7 +360,7 @@ export default function CatchWeightScanModal({
     } catch {
       setScanState({ phase: "error", message: "Network error. Could not save weight." });
     }
-  }, [scanState, editedWeight, currentCount, backendUrl, getToken, logout, sessionId, lineId, onWeightApplied, onClose, hideSheet, onWeightRead]);
+  }, [scanState, editedWeight, currentCount, backendUrl, getToken, handleUnauthorized, sessionId, lineId, onWeightApplied, onClose, hideSheet, onWeightRead]);
 
   const handleDiscard = useCallback(() => {
     hideSheet(() => {

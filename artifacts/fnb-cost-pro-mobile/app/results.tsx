@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useScan } from "@/context/ScanContext";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import CatchWeightScanModal from "@/components/CatchWeightScanModal";
 
 type Confidence = "high" | "medium" | "low";
@@ -281,7 +282,7 @@ export default function ResultsScreen() {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { getToken } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const {
     lastResult,
     setLastResult,
@@ -355,9 +356,11 @@ export default function ResultsScreen() {
       if (scanCategoryId) params.set("categoryId", scanCategoryId);
       else if (scanLocationId) params.set("locationId", scanLocationId);
       const invUrl = `${backendUrl}/api/mobile/sessions/${selectedSessionId}/inventory?${params}`;
-      const invRes = await fetch(invUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const invRes = await fetchWithAuth(
+        invUrl,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized
+      );
       if (!invRes.ok) {
         setSegmentFetchError(`Could not load inventory lines. (${invRes.status})`);
         return;
@@ -396,7 +399,7 @@ export default function ResultsScreen() {
     } finally {
       setSegmentFetching(false);
     }
-  }, [backendUrl, getToken, selectedSessionId, scanCategoryId, scanLocationId, lastResult]);
+  }, [backendUrl, getToken, handleUnauthorized, selectedSessionId, scanCategoryId, scanLocationId, lastResult]);
 
   const doSegmentConfirm = useCallback(async () => {
     if (!segmentPending || !selectedSessionId) return;
@@ -406,7 +409,6 @@ export default function ResultsScreen() {
     );
     const result: SegmentApplyResult = { applied: [], unmatched: [...segmentUnmatched], error: null };
     try {
-      const token = await getToken();
       const body = {
         lines: saveable.map((match) => {
           const overrideStr = catchWeightOverrides.get(match.lineId);
@@ -415,7 +417,8 @@ export default function ResultsScreen() {
         }),
         mode: segmentMode === "add" ? "add" : "set",
       };
-      const applyRes = await fetch(
+      const token = await getToken();
+      const applyRes = await fetchWithAuth(
         `${backendUrl}/api/mobile/sessions/${selectedSessionId}/apply-scan`,
         {
           method: "POST",
@@ -424,7 +427,8 @@ export default function ResultsScreen() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(body),
-        }
+        },
+        handleUnauthorized
       );
       if (applyRes.ok) {
         const applyData = (await applyRes.json()) as {
@@ -466,7 +470,7 @@ export default function ResultsScreen() {
         setTimeout(() => router.back(), 320);
       }, delay);
     }
-  }, [backendUrl, getToken, selectedSessionId, segmentPending, segmentUnmatched, segmentMode, catchWeightOverrides]);
+  }, [backendUrl, getToken, handleUnauthorized, selectedSessionId, segmentPending, segmentUnmatched, segmentMode, catchWeightOverrides]);
 
   useEffect(() => {
     if (
@@ -507,7 +511,7 @@ export default function ResultsScreen() {
     try {
       const token = await getToken();
       const finalCount = Math.round(catchWeightTotal * 1000) / 1000;
-      const res = await fetch(
+      const res = await fetchWithAuth(
         `${backendUrl}/api/mobile/sessions/${selectedSessionId}/lines/${selectedItemId}`,
         {
           method: "PATCH",
@@ -516,7 +520,8 @@ export default function ResultsScreen() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({ count: finalCount }),
-        }
+        },
+        handleUnauthorized
       );
       if (res.ok) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -542,6 +547,7 @@ export default function ResultsScreen() {
   }, [
     backendUrl,
     getToken,
+    handleUnauthorized,
     selectedItemId,
     selectedItemName,
     selectedSessionId,
@@ -637,7 +643,7 @@ export default function ResultsScreen() {
         // resumed edits cannot be overwritten by a stale client-side sum.
         const finalCount = mode === "add" ? existingCount + scanQty : scanQty;
         const token = await getToken();
-        const res = await fetch(
+        const res = await fetchWithAuth(
           `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`,
           {
             method: "PATCH",
@@ -646,7 +652,8 @@ export default function ResultsScreen() {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify(mode === "add" ? { addQty: scanQty } : { count: scanQty }),
-          }
+          },
+          handleUnauthorized
         );
         if (res.ok) {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -668,7 +675,7 @@ export default function ResultsScreen() {
         setApplying(false);
       }
     },
-    [backendUrl, getToken, selectedItemName, setSelectedItemId, setSelectedItemName]
+    [backendUrl, getToken, handleUnauthorized, selectedItemName, setSelectedItemId, setSelectedItemName]
   );
 
   const handleApplyToItem = async () => {

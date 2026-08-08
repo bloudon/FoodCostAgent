@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import { useScan } from "@/context/ScanContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -27,7 +28,7 @@ export default function CameraScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { backendUrl, setLastResult, selectedSessionId, setSelectedSessionId, selectedItemId, setSelectedItemId, setSelectedItemName, selectedItemIsCatchWeight, setSelectedItemIsCatchWeight, scanCategoryId, scanLocationId } = useScan();
-  const { getToken, logout } = useAuth();
+  const { getToken, handleUnauthorized } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing] = useState<CameraType>("back");
   const [isUploading, setIsUploading] = useState(false);
@@ -53,10 +54,11 @@ export default function CameraScreen() {
   useEffect(() => {
     if (selectedSessionId) return;
     getToken().then((token) => {
-      if (!token) return;
-      return fetch(`${backendUrl}/api/mobile/sessions/active`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      return fetchWithAuth(
+        `${backendUrl}/api/mobile/sessions/active`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        handleUnauthorized
+      );
     }).then((res) => {
       if (res && res.ok) return res.json();
     }).then((data) => {
@@ -116,7 +118,12 @@ export default function CameraScreen() {
       );
 
       if (xhrResult.status === 401) {
-        await logout();
+        let reauthenticate = false;
+        try {
+          const body = JSON.parse(xhrResult.body) as Record<string, unknown>;
+          reauthenticate = body.reauthenticate === true;
+        } catch { /* non-JSON body — treat as plain 401 */ }
+        await handleUnauthorized(reauthenticate);
         return;
       }
 
