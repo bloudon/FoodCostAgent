@@ -1,0 +1,76 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ cd /home/administrator/apps/CostPro/fnbcostpro
+
+env -u DATABASE_URL node --input-type=module <<'NODE'
+import dotenv from "dotenv";
+import pg from "pg";
+
+dotenv.config({ path: ".env", override: true });
+
+const url = new URL(process.env.DATABASE_URL);
+console.log(
+  `Testing user=${decodeURIComponent(url.username)} host=${url.hostname} port=${url.port || 5432} database=${url.pathname.slice(1)}`
+);
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: false,
+});
+
+try {
+  const result = await pool.query(
+    "SELECT current_user, current_database(), (SELECT count(*) FROM companies) AS companies"
+  );
+  console.log(result.rows[0]);
+} catch (error) {
+  console.error(`${error.code || "ERROR"}: ${error.message}`);
+  process.exitCode = 1;
+} finally {
+  await pool.end();
+}
+NODE
+[dotenv@17.3.1] injecting env (29) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+Testing user=fnbcostpro_user host=127.0.0.1 port=5432 database=fnbcostpro
+{
+  current_user: 'fnbcostpro_user',
+  current_database: 'fnbcostpro',
+  companies: '17'
+}
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ PID=$(pm2 pid fnbcostpro | tail -1 | tr -d '[:space:]')
+
+sudo python3 - "$PID" <<'PY'
+import os
+import sys
+from urllib.parse import urlsplit
+
+pid = sys.argv[1]
+
+with open(f"/proc/{pid}/environ", "rb") as f:
+    env = {}
+    for item in f.read().split(b"\0"):
+        if b"=" in item:
+            key, value = item.split(b"=", 1)
+            env[key.decode(errors="replace")] = value.decode(errors="replace")
+
+print("PID:", pid)
+print("Working directory:", os.readlink(f"/proc/{pid}/cwd"))
+
+for key in ("AUTH_MODE", "STORAGE_MODE", "PORT"):
+    print(f"{key}:", env.get(key, "<not set>"))
+
+raw = env.get("DATABASE_URL")
+if raw:
+    parsed = urlsplit(raw)
+    print("DATABASE_URL user:", parsed.username)
+    print("DATABASE_URL host:", parsed.hostname)
+    print("DATABASE_URL port:", parsed.port or 5432)
+    print("DATABASE_URL database:", parsed.path.lstrip("/"))
+else:
+    print("DATABASE_URL: <not present in PM2 environment; app must load .env>")
+PY
+[sudo] password for administrator:
+PID: 2879390
+Working directory: /home/administrator/apps/CostPro/fnbcostpro
+AUTH_MODE: local
+STORAGE_MODE: local
+PORT: 3004
+DATABASE_URL: <not present in PM2 environment; app must load .env>
