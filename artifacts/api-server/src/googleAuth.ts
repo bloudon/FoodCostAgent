@@ -48,7 +48,7 @@ export function isGoogleConfigured(): boolean {
 // Cached OIDC discovery (1-hour TTL)
 let cachedDiscovery: { config: client.Configuration; ts: number } | null = null;
 
-async function getGoogleOidcConfig(): Promise<client.Configuration> {
+export async function getGoogleOidcConfig(): Promise<client.Configuration> {
   if (cachedDiscovery && Date.now() - cachedDiscovery.ts < 3600 * 1000) {
     return cachedDiscovery.config;
   }
@@ -233,6 +233,7 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
 
   const verify: VerifyFunction = async (tokens, verified) => {
     const sessionData: any = {
+      provider: "google",
       claims: tokens.claims(),
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
@@ -246,7 +247,9 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
       {
         name: GOOGLE_STRATEGY_NAME,
         config: oidcConfig,
-        scope: "openid email profile",
+        // offline_access requests a refresh token so sessions survive past the
+        // 1-hour Google access-token expiry without forcing a re-login.
+        scope: "openid email profile offline_access",
         callbackURL,
       },
       verify,
@@ -262,7 +265,10 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
   app.get("/api/sso/login", (req, res, next) => {
     console.log("[Google SSO] Starting Google login");
     passport.authenticate(GOOGLE_STRATEGY_NAME, {
-      scope: ["openid", "email", "profile"],
+      // offline_access is required to receive a refresh token so that
+      // isSsoAuthenticated can silently renew sessions past the 1-hour
+      // Google access-token expiry.
+      scope: ["openid", "email", "profile", "offline_access"],
     })(req, res, next);
   });
 

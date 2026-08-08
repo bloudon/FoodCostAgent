@@ -7,7 +7,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import crypto from "crypto";
-import { isGoogleConfigured, setupGoogleSsoRoutes } from "./googleAuth";
+import { isGoogleConfigured, setupGoogleSsoRoutes, getGoogleOidcConfig } from "./googleAuth";
 
 // Temporary store for invitation tokens during SSO flow
 // Maps nonce -> invitation token
@@ -246,10 +246,10 @@ export async function setupSsoAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const sessionData = {};
+    const sessionData: any = { provider: "replit" };
     updateUserSession(sessionData, tokens);
     // Store claims in session data for callback handler to access
-    (sessionData as any).claims = tokens.claims();
+    sessionData.claims = tokens.claims();
     
     verified(null, sessionData);
   };
@@ -412,7 +412,10 @@ export const isSsoAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const config = await getOidcConfig();
+    // Use the provider-specific OIDC config so Google sessions don't accidentally
+    // attempt a refresh against the Replit token endpoint (and vice-versa).
+    const config =
+      user.provider === "google" ? await getGoogleOidcConfig() : await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
     
