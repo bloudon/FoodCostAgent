@@ -1,0 +1,63 @@
+
+
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 60 lines:
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_41_587Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_42_302Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_42_965Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_43_592Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_44_218Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_44_839Z-debug-0.log
+7|fnbcostp | npm error Missing script: "start"
+7|fnbcostp | npm error
+7|fnbcostp | npm error Did you mean one of these?
+7|fnbcostp | npm error   npm star # Mark your favorite packages
+7|fnbcostp | npm error   npm stars # View packages marked as favorites
+7|fnbcostp | npm error
+7|fnbcostp | npm error To see a list of scripts, run:
+7|fnbcostp | npm error   npm run
+7|fnbcostp | npm error A complete log of this run can be found in: /home/administrator/.npm/_logs/2026-08-08T20_15_45_459Z-debug-0.log
