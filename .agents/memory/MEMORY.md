@@ -1,3 +1,4 @@
 - [Mobile count & WebView constraints](mobile-consolidation.md) — bridge auth stays, same-origin-only token injection, atomic relative count edits with server reconciliation.
 - [Google OIDC product decision](google-oidc-decision.md) — Google is the approved additional SSO method with verified-email linking and preserved FnB authorization.
 - [gitsafe-backup remote divergence](git-backup-remote.md) — backup remote holds unrelated legacy history; never pull/push it, a rebase against it once wiped the workspace.
+- [Approved navigation direction](navigation-direction.md) — keep the current rail interaction; make Settings the setup/admin home and route reporting through Analyze.
