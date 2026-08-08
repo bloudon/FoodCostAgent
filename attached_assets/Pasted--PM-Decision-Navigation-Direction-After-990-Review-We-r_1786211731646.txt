@@ -1,0 +1,143 @@
+## PM Decision — Navigation Direction After #990 Review
+
+We reviewed Task #990 and the resulting navigation audit.
+
+The decision is to make the smallest set of navigation changes supported by the audit rather than redesigning the primary interaction model.
+
+### Keep the current primary rail behavior
+
+Preserve the current:
+
+- icon-only rail
+- hover label
+- direct click to the major domain landing page
+
+Do not change the rail interaction pattern as part of this work.
+
+### Target primary navigation
+
+- Home
+- Inventory
+- Order
+- Prep
+- Menus
+- Analyze
+- Waste
+- Settings
+
+### Reports
+
+Remove Reports as a separate primary rail destination.
+
+Make Analyze the home for both analytics and reporting.
+
+Existing report routes must remain functional and discoverable through Analyze.
+
+### Replace More with Settings
+
+The current More area should become a structured Settings landing page.
+
+Settings is for setup and administration, not duplicate operational navigation.
+
+Suggested grouping:
+
+#### Inventory Setup
+- Categories
+- Unit Conversions
+
+#### Locations
+- Storage Locations
+- Operating Units
+- Store Locations
+
+#### Team
+- Users
+
+#### Integrations
+- API Credentials
+- POS/integration administration
+- sync administration where appropriate
+
+#### Company
+- Company Settings
+
+#### Platform Administration
+Global-admin-only tools such as:
+- Companies
+- Admin Users
+- Vendor Registry
+- POS Sync Jobs
+- other platform administration utilities
+
+Only show sections/items allowed by the user's existing permissions.
+
+### Remove duplication
+
+Settings should not duplicate:
+
+- Menus
+- Analyze
+- Reports
+
+Recipes remain under Menus.
+
+Vendors remain under Order.
+
+Do not create additional top-level domains as part of this work.
+
+### Navigation correctness issues
+
+Resolve the findings from #990 that are independent of visual design:
+
+#### `/inventory-count`
+Reconcile the conflict among route metadata, normal web behavior, and embedded/mobile behavior.
+
+Document one canonical route behavior and any intentional embedded-specific handling.
+
+#### Route metadata
+Bring the affected route catalog into alignment so it can be trusted for:
+
+- labels
+- breadcrumbs
+- active-section ownership
+- global search
+- discoverability
+- navigation grouping
+
+Route metadata must not replace authorization enforcement.
+
+#### Store Locations permissions
+Resolve the documented Manager+ versus Admin+ inconsistency.
+
+If current product intent is not clear from the implementation and existing decisions, return this as a specific PM decision instead of choosing silently.
+
+### Mobile
+
+Do not redesign mobile navigation as part of this task.
+
+Preserve the approved curated native/hybrid mobile model.
+
+### Non-goals
+
+Do not:
+
+- redesign the overall rail interaction
+- create new top-level domains
+- redesign mobile navigation
+- remove working report routes
+- combine unrelated page redesigns into this work
+
+### Completion criteria
+
+- primary rail reflects the approved destinations
+- existing hover/direct-click behavior remains
+- More is replaced by Settings
+- Settings is grouped cleanly by setup/admin purpose
+- duplicate Menus/Analyze/Reports entries are removed
+- Reports is discoverable through Analyze
+- admin/integration tools have a consistent home
+- `/inventory-count` behavior is reconciled
+- affected route metadata is consistent
+- Store Locations permission mismatch is resolved or returned for PM decision
+- authorization remains unchanged
+- affected navigation and direct URLs pass regression checks

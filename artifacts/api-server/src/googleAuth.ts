@@ -12,8 +12,13 @@
  *    It is left unresolved for administrative action.
  *  - New user: requires a valid invitation (same rule as existing Replit SSO).
  *  - Logout: local FnB session only. No Google-wide logout.
- *  - Production callback is derived exclusively from APP_BASE_URL.
- *    req.hostname is never used. REPL_ID is never required.
+ *  - Production callback is derived exclusively from APP_BASE_URL and uses the
+ *    canonical /api/sso/callback path. req.hostname is never used.
+ *    REPL_ID is never required.
+ *
+ * Route registration happens through setupSsoAuth (ssoAuth.ts), which mounts
+ * these Google handlers on the canonical /api/sso/* routes when Google is
+ * configured, and falls back to Replit OIDC for development otherwise.
  */
 
 import * as client from "openid-client";
@@ -22,7 +27,7 @@ import passport from "passport";
 import type { Express } from "express";
 import { storage } from "./storage";
 
-const GOOGLE_STRATEGY_NAME = "google-oidc";
+export const GOOGLE_STRATEGY_NAME = "google-oidc";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -204,35 +209,24 @@ export async function upsertGoogleUser(
 
 // ── Route registration ────────────────────────────────────────────────────────
 
-export async function setupGoogleAuth(app: Express): Promise<void> {
-  const { clientId, clientSecret, appBaseUrl } = getGoogleEnvConfig();
-  const configured = !!(clientId && clientSecret && appBaseUrl);
+/**
+ * Build the canonical fixed callback URL from APP_BASE_URL.
+ * Exported for tests. Never derived from req.hostname.
+ */
+export function getGoogleCallbackUrl(): string {
+  const { appBaseUrl } = getGoogleEnvConfig();
+  if (!appBaseUrl) throw new Error("APP_BASE_URL is not configured");
+  return `${appBaseUrl.replace(/\/+$/, "")}/api/sso/callback`;
+}
 
-  if (!configured) {
-    console.warn(
-      "[Google SSO] OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, or APP_BASE_URL not set — Google SSO disabled",
-    );
-
-    // Register stub routes so the UI button degrades gracefully
-    app.get("/api/auth/google", (_req, res) =>
-      res.redirect("/login?error=google-not-configured"),
-    );
-    app.get("/api/auth/google/callback", (_req, res) =>
-      res.redirect("/login?error=google-not-configured"),
-    );
-    app.get("/api/auth/google/logout", (req: any, res) => {
-      const done = () => res.redirect("/login");
-      if (req.logout) {
-        req.logout(() => (req.session?.destroy ? req.session.destroy(done) : done()));
-      } else {
-        done();
-      }
-    });
-    return;
-  }
-
+/**
+ * Mount the Google OIDC handlers on the canonical /api/sso/* routes.
+ * Only called by setupSsoAuth when isGoogleConfigured() is true.
+ * Session middleware and passport initialization are owned by ssoAuth.ts.
+ */
+export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
   // Fixed production callback — NEVER derived from req.hostname
-  const callbackURL = `${appBaseUrl}/api/auth/google/callback`;
+  const callbackURL = getGoogleCallbackUrl();
   console.log("[Google SSO] Configured. Production callback:", callbackURL);
 
   const oidcConfig = await getGoogleOidcConfig();
@@ -259,16 +253,21 @@ export async function setupGoogleAuth(app: Express): Promise<void> {
     ),
   );
 
-  // GET /api/auth/google — initiate Google login
-  app.get("/api/auth/google", (req, res, next) => {
+  // GET /api/sso/provider — lets the login UI show the correct button
+  app.get("/api/sso/provider", (_req, res) => {
+    res.json({ provider: "google" });
+  });
+
+  // GET /api/sso/login — initiate Google login
+  app.get("/api/sso/login", (req, res, next) => {
     console.log("[Google SSO] Starting Google login");
     passport.authenticate(GOOGLE_STRATEGY_NAME, {
       scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
 
-  // GET /api/auth/google/callback — handle Google OIDC response
-  app.get("/api/auth/google/callback", (req, res, next) => {
+  // GET /api/sso/callback — handle Google OIDC response (canonical callback)
+  app.get("/api/sso/callback", (req, res, next) => {
     passport.authenticate(
       GOOGLE_STRATEGY_NAME,
       async (err: any, sessionData: any) => {
@@ -337,10 +336,10 @@ export async function setupGoogleAuth(app: Express): Promise<void> {
     )(req, res, next);
   });
 
-  // GET /api/auth/google/logout — local FnB session only
+  // GET /api/sso/logout — local FnB session only
   // Per approved spec: destroy the FnB application session and return to login.
   // Google-wide logout is NOT performed.
-  app.get("/api/auth/google/logout", (req: any, res) => {
+  app.get("/api/sso/logout", (req: any, res) => {
     req.logout(() => {
       req.session?.destroy((err: any) => {
         if (err) console.error("[Google SSO] Session destroy error:", err);

@@ -7,6 +7,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import crypto from "crypto";
+import { isGoogleConfigured, setupGoogleSsoRoutes } from "./googleAuth";
 
 // Temporary store for invitation tokens during SSO flow
 // Maps nonce -> invitation token
@@ -118,7 +119,13 @@ async function upsertSsoUser(
   const ssoId = claims["sub"];
   const email = claims["email"];
   const ssoProvider = "replit"; // Could be extracted from issuer if supporting multiple providers
-  
+
+  // Safety: an identity without an email cannot be linked or invited.
+  if (!email || typeof email !== "string") {
+    console.error("[SSO] Missing email claim — rejecting");
+    return null;
+  }
+
   let user = await storage.getUserBySsoId(ssoProvider, ssoId);
   
   if (!user && email) {
@@ -151,29 +158,13 @@ async function upsertSsoUser(
       updatedAt: new Date(),
     };
     
-    // If accepting an invitation, also update company and role
+    // Safety (approved #997 guardrail, applies to all providers): a pending
+    // invitation must NEVER silently reassign an existing user's company,
+    // role, or store access. Leave the invitation unresolved for an admin.
     if (invitation) {
-      console.log("[SSO] Updating existing user with invitation data");
-      updates.companyId = invitation.companyId;
-      updates.role = invitation.role;
-      
-      // Mark invitation as accepted
-      await storage.acceptInvitation(invitation.token);
-      
-      // If company admin, auto-assign to all stores
-      if (invitation.role === "company_admin") {
-        const companyStores = await storage.getCompanyStores(invitation.companyId);
-        for (const store of companyStores) {
-          await storage.assignUserToStore(user.id, store.id);
-        }
-      } else if (invitation.storeIds && invitation.storeIds.length > 0) {
-        // Assign user to stores specified in invitation
-        for (const storeId of invitation.storeIds) {
-          await storage.assignUserToStore(user.id, storeId);
-        }
-      }
+      console.warn("[SSO] Existing user has a pending invitation — leaving it unresolved for admin action");
     }
-    
+
     await storage.updateUser(user.id, updates);
   } else {
     // No existing user - create new one
@@ -226,6 +217,29 @@ export async function setupSsoAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
   
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+  // ── Google OIDC (production) ───────────────────────────────────────────────
+  // When explicit Google configuration is present (OIDC_CLIENT_ID,
+  // OIDC_CLIENT_SECRET, APP_BASE_URL), the canonical /api/sso/* routes are
+  // served by the Google adapter with a fixed callback URL derived from
+  // APP_BASE_URL. No REPL_ID or req.hostname dependency.
+  if (isGoogleConfigured()) {
+    await setupGoogleSsoRoutes(app);
+    return;
+  }
+
+  // ── Replit OIDC fallback (development on Replit) ──────────────────────────
+  if (!process.env.REPL_ID) {
+    console.warn("[SSO] No Google OIDC config and no REPL_ID — SSO disabled");
+    app.get("/api/sso/provider", (_req, res) => res.json({ provider: "none" }));
+    app.get("/api/sso/login", (_req, res) => res.redirect("/login?error=sso-not-configured"));
+    return;
+  }
+
+  app.get("/api/sso/provider", (_req, res) => res.json({ provider: "replit" }));
+
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
@@ -260,9 +274,6 @@ export async function setupSsoAuth(app: Express) {
       registeredStrategies.add(strategyName);
     }
   };
-
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   // SSO Login route
   app.get("/api/sso/login", (req, res, next) => {

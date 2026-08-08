@@ -14,6 +14,13 @@ const envSchema = z.object({
   
   // Session
   SESSION_SECRET: z.string().optional(),
+
+  // Google OIDC (production SSO) — all three of OIDC_CLIENT_ID,
+  // OIDC_CLIENT_SECRET, and APP_BASE_URL must be set to enable Google sign-in.
+  OIDC_ISSUER_URL: z.string().url().optional(),
+  OIDC_CLIENT_ID: z.string().optional(),
+  OIDC_CLIENT_SECRET: z.string().optional(),
+  APP_BASE_URL: z.string().url().optional(),
   
   // EDI Gateway Configuration
   EDI_GATEWAY_BASE_URL: z.string().url().optional(),

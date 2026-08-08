@@ -16,7 +16,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 // App version — keep in sync with package.json
-const pkgJson = { version: "1.0.0" };
+const pkgJson = { version: "1.14.0" };
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { StoreProvider, useStoreContext } from "@/hooks/use-store-context";
 import { useCompany } from "@/hooks/use-company";
