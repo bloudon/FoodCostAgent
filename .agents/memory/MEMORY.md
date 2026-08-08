@@ -1,1 +1,2 @@
 - [Mobile count & WebView constraints](mobile-consolidation.md) — bridge auth stays, same-origin-only token injection, atomic relative count edits with server reconciliation.
+- [Google OIDC product decision](google-oidc-decision.md) — Google is the approved additional SSO method with verified-email linking and preserved FnB authorization.

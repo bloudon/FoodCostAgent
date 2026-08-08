@@ -1,13 +1,13 @@
 # Portable Production SSO Assessment
 
 **Audience:** Product Management, Engineering, Security Review  
-**Status:** Decision document — no authentication changes implemented  
+**Status:** PM decision recorded — no authentication changes implemented
 **Production application:** `https://app.fnbcostpro.com`  
 **Objective:** Make production SSO portable to a standards-compliant external OpenID Connect (OIDC) provider while preserving FnB Cost Pro’s application-owned users, permissions, authorization, and session model.
 
 ## Executive conclusion
 
-The existing SSO implementation already uses the standards-based `openid-client` library and receives ordinary OIDC claims. It can be generalized without replacing the FnB Cost Pro user, company, store, role, or authorization model.
+The existing SSO implementation already uses the standards-based `openid-client` library and receives ordinary OIDC claims. Product Management has approved Google Identity as the replacement production OIDC provider for Replit-managed SSO. It can be generalized without replacing the FnB Cost Pro user, company, store, role, or authorization model.
 
 The smallest safe target is an external OIDC client configured with:
 
@@ -287,16 +287,24 @@ These files are the verified starting points for an implementation task. The fin
 - `artifacts/fnb-cost-pro/src/pages/login.tsx`
 - `artifacts/fnb-cost-pro/src/pages/settings.tsx`
 
-## 10. PM and Product Owner decisions required
+## 10. Approved Product Owner decisions
 
-1. **Identity provider selection criteria:** Confirm the minimum contract in Section 5 and any required workforce/social provider options. Provider selection should follow these requirements, not popularity.
-2. **Development strategy:** Approve Option A as a temporary split or Option B as the unified provider path.
-3. **Account-link policy:** Approve cutover, dual-link, or admin-approved linking for existing users.
-4. **Verified-email rule:** Confirm that an unverified, missing, or changed email must never automatically link to an existing FnB user.
-5. **Rollback window:** Decide whether Replit Auth must remain usable after the external provider launches, and for how long.
-6. **New-user eligibility:** Confirm that invitation-only SSO creation remains the intended rule.
-7. **Provider logout expectation:** Decide whether signing out of FnB should also sign out at the external provider or only end the FnB application session.
-8. **Invitation precedence:** Confirm whether accepting an invitation may change a known user’s company, role, or store assignments during an external-provider identity link. The safe default is to block and require an explicit account-management action.
+The uploaded Product Owner / PM decision approves the following implementation boundaries:
+
+1. **Provider:** Use Google Identity through standard server-side OIDC. Do not introduce Auth0, Clerk, or another identity broker.
+2. **Authentication methods:** Google SSO is an additional login method. Existing FnB email/password authentication remains supported and Google is not mandatory.
+3. **Application ownership:** FnB Cost Pro continues to own users, passwords, sessions, companies, stores, roles, permissions, invitations, and authorization. Google establishes external identity only.
+4. **Existing-user linking:** Link by normalized exact email only when an email claim is present and `email_verified` is explicitly `true`. Do not create a duplicate when that verified email matches an existing FnB user.
+5. **Permission preservation:** Company, role, store access, and permissions must remain unchanged during Google linking.
+6. **Safety fixes:** Missing email must fail safely; an unverified email must not link; and an invitation must not silently reassign a known user’s company, role, or store access.
+7. **Logout:** Destroy the local FnB session by default. Google-wide logout is not required.
+8. **Production callback:** Use the explicit `APP_BASE_URL` configuration and register:
+
+   ```text
+   https://app.fnbcostpro.com/api/sso/callback
+   ```
+
+The development-provider strategy, rollback window, and any broader provider-link retention model should be documented before implementation if they remain operationally relevant. These do not change the approved Google linking and authorization guardrails above.
 
 ## Source evidence
 
@@ -309,3 +317,4 @@ These files are the verified starting points for an implementation task. The fin
 - `artifacts/fnb-cost-pro/src/pages/login.tsx`
 - `artifacts/fnb-cost-pro/src/pages/settings.tsx`
 - `attached_assets/Pasted--Scope-Portable-Production-SSO-We-have-confirmed-that-R_1786142816046.txt`
+- `attached_assets/Pasted--Product-Owner-PM-Authentication-Decision-Google-Identi_1786209165154.txt`
