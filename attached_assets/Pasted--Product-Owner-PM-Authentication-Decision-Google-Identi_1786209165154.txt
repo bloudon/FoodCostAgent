@@ -1,0 +1,79 @@
+## Product Owner / PM Authentication Decision
+
+Google Identity is approved as the replacement production OIDC provider for Replit-managed SSO.
+
+FnB Cost Pro will continue to support its existing email/password authentication.
+
+Google SSO is an additional trusted authentication method, not a requirement for using FnB Cost Pro.
+
+### Target experience
+
+Users may authenticate through either:
+
+- Google OIDC
+- Existing FnB email/password authentication
+
+Do not introduce Auth0, Clerk, or another identity broker as part of this work.
+
+### Architecture
+
+Preserve FnB ownership of:
+
+- users
+- passwords/password authentication
+- sessions
+- companies
+- stores
+- roles
+- permissions
+- invitations
+- application authorization
+
+Google establishes external identity only.
+
+Use standard Google OIDC through the existing server-side OIDC architecture where practical.
+
+Do not introduce Google-specific authorization logic throughout the application.
+
+### Google account linking
+
+For an existing FnB user:
+
+A Google identity may be linked by email only when:
+
+- an email claim is present
+- `email_verified` is explicitly true
+- the normalized email exactly matches the existing FnB user
+
+The existing FnB user's:
+
+- company
+- role
+- store access
+- permissions
+
+must remain unchanged during linking.
+
+Do not create a duplicate user when a verified Google email matches an existing FnB account.
+
+### Non-Google users
+
+No migration is required.
+
+They continue using existing email/password authentication.
+
+Do not make Google authentication mandatory.
+
+### Existing safety fixes
+
+The implementation must also explicitly correct the confirmed existing SSO issues:
+
+1. Require `email_verified` before email-based SSO linking.
+2. Fail safely when an SSO email is missing.
+3. Do not allow an invitation to silently reassign an existing user's company, role, or store access.
+4. Default logout to destroying the local FnB session; Google-wide logout is not required.
+5. Use explicit `APP_BASE_URL` for the production callback rather than `req.hostname`.
+
+Production callback target:
+
+https://app.fnbcostpro.com/api/sso/callback
