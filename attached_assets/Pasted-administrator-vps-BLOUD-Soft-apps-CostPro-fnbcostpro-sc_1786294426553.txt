@@ -1,0 +1,78 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro/scripts$ cd ~/apps/CostPro/fnbcostpro
+git log -1 --oneline
+pm2 list
+pm2 describe fnbcostpro | head -40
+ls -la dist lib | head -40
+node -v; command -v pnpm && pnpm -v
+ls .migration-backup/scripts
+ac295b7 (HEAD -> main, origin/main, origin/HEAD) Implement optional Google OIDC sign-in and update documentation
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 2882512  │ 17h    │ 10   │ online    │ 0%       │ 90.4mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.14.0  │ fork    │ 2882551  │ 17h    │ 1517 │ online    │ 0%       │ 260.9mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 2882535  │ 17h    │ 8    │ online    │ 0%       │ 98.4mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.0   │ fork    │ 2882513  │ 17h    │ 10   │ online    │ 0%       │ 138.9mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 2882528  │ 17h    │ 10   │ online    │ 0%       │ 80.0mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+ Describing process with id 13 - name fnbcostpro
+┌───────────────────┬─────────────────────────────────────────────────────────────────────────────────┐
+│ status            │ online                                                                          │
+│ name              │ fnbcostpro                                                                      │
+│ namespace         │ default                                                                         │
+│ version           │ 1.14.0                                                                          │
+│ restarts          │ 1517                                                                            │
+│ uptime            │ 17h                                                                             │
+│ script path       │ /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs │
+│ script args       │ N/A                                                                             │
+│ error log path    │ /home/administrator/.pm2/logs/fnbcostpro-error.log                              │
+│ out log path      │ /home/administrator/.pm2/logs/fnbcostpro-out.log                                │
+│ pid path          │ /home/administrator/.pm2/pids/fnbcostpro-13.pid                                 │
+│ interpreter       │ /usr/bin/node                                                                   │
+│ interpreter args  │ --enable-source-maps                                                            │
+│ script id         │ 13                                                                              │
+│ exec cwd          │ /home/administrator/apps/CostPro/fnbcostpro                                     │
+│ exec mode         │ fork_mode                                                                       │
+│ node.js version   │ 20.20.2                                                                         │
+│ node env          │ production                                                                      │
+│ watch & reload    │ ✘                                                                               │
+│ unstable restarts │ 0                                                                               │
+│ created at        │ 2026-08-08T23:17:50.706Z                                                        │
+└───────────────────┴─────────────────────────────────────────────────────────────────────────────────┘
+ Actions available
+┌────────────────────────┐
+│ km:heapdump            │
+│ km:cpu:profiling:start │
+│ km:cpu:profiling:stop  │
+│ km:heap:sampling:start │
+│ km:heap:sampling:stop  │
+└────────────────────────┘
+ Trigger via: pm2 trigger fnbcostpro <action_name>
+
+ Code metrics value
+┌────────────────────────┬──────────────────────┐
+│ Used Heap Size         │ 108.53 MiB           │
+│ Heap Usage             │ 91.01 %              │
+│ Heap Size              │ 119.25 MiB           │
+│ Event Loop Latency p95 │ 1.18 ms              │
+dist:
+total 1900
+drwxrwxr-x  3 administrator administrator    4096 Aug  6 20:15 .
+drwxrwxr-x 15 administrator administrator    4096 Aug  8 23:03 ..
+-rw-rw-r--  1 administrator administrator 1933085 Aug  6 20:15 index.js
+drwxrwxr-x  4 administrator administrator    4096 Aug  6 20:15 public
+
+lib:
+total 24
+drwxrwxr-x  6 administrator administrator 4096 Aug  8 19:21 .
+drwxrwxr-x 15 administrator administrator 4096 Aug  8 23:03 ..
+drwxrwxr-x  5 administrator administrator 4096 Aug  8 20:10 api-client-react
+drwxrwxr-x  3 administrator administrator 4096 Aug  8 19:38 api-spec
+drwxrwxr-x  5 administrator administrator 4096 Aug  8 20:10 api-zod
+drwxrwxr-x  5 administrator administrator 4096 Aug  8 20:10 db
+v20.20.2
+/usr/bin/pnpm
+10.34.5
+backup                   ci-seed.ts                       deploy-vps.sh                                 purge-test-data.sql      seed.sh                        vps-migrate.sql
+capture-screenshots.mjs  cleanup-calorie-annotations.sql  patch-001-breakfast-nook-recipe-units-oz.sql  purge_test_data.sql      seed-test-menus.ts
+check-bundle-tla.js      composite-recipe.mjs             post-merge.sh                                 seed-big-city-pizza.sql  stripe_seed_subscriptions.mjs
