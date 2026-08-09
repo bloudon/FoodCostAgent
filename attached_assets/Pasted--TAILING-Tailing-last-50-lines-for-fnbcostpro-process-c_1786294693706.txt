@@ -1,0 +1,104 @@
+[TAILING] Tailing last 50 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 50 lines:
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | GET /api/background-images error: _DrizzleQueryError: Failed query: select "id", "object_path", "external_url", "label", "sort_order", "is_active", "is_free_background", "is_mobile_available", "created_at" from "background_images" where "background_images"."is_active" = $1 order by "background_images"."sort_order" asc, "background_images"."created_at" asc
+13|fnbcost | params: 1
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:1003:22 {
+13|fnbcost |   query: 'select "id", "object_path", "external_url", "label", "sort_order", "is_active", "is_free_background", "is_mobile_available", "created_at" from "background_images" where "background_images"."is_active" = $1 order by "background_images"."sort_order" asc, "background_images"."created_at" asc',
+13|fnbcost |   params: [ 1 ],
+13|fnbcost |   cause: error: password authentication failed for user "permitapp"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:1003:22 {
+13|fnbcost |     length: 105,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=2daff5be-3526-4285-9891-5891967532c1 recipeId=e3c35368-0823-4579-917d-7e737297de47 componentRowId=9dfff979-f500-450f-b48b-f905ff819315
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=78b84058-6838-4741-be72-7905a2e93a8d recipeId=e3c35368-0823-4579-917d-7e737297de47 componentRowId=6d7eac6e-a7c9-436a-983c-00db717e8c2d
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 50 lines:
+13|fnbcost | {"level":30,"time":1786284355905,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/graphql 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284356041,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/env 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786284356330,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284356541,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/config 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284356579,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/settings 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284356643,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/settings 404 in 4ms"}
+13|fnbcost | {"level":30,"time":1786284356854,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v2/config 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284356940,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/config 404 in 5ms"}
+13|fnbcost | {"level":30,"time":1786284357012,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284357073,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/openapi.json 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786284357086,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/health 200 in 2ms :: {\"status\":\"ok\",\"version\":\"1.14.0\",\"timestamp\":\"20…"}
+13|fnbcost | {"level":30,"time":1786284357115,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v2/settings 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786288669896,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 27ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786288670100,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 7ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786289166725,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786289171096,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env.example 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786289171639,"pid":2882551,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v2/.env 404 in 3ms"}
+13|fnbcost | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcost | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcost | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcost | 🌱 Seeding database with pizza restaurant data...
+13|fnbcost | 📏 Seeding comprehensive kitchen units...
+13|fnbcost | ✅ All 41 comprehensive kitchen units already seeded
+13|fnbcost | 📏 Created default menu item sizes for Olive garden
+13|fnbcost | ✅ Database already seeded
+13|fnbcost | ✅ All unit conversions already present
+13|fnbcost | 🏢 Creating Brian's Pizza company and stores...
+13|fnbcost | 🔗 Migrating vendors to store assignments...
+13|fnbcost |    All vendors already assigned to stores
+13|fnbcost | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | [Migration] Already applied (menu_item_recipes)
+13|fnbcost | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcost | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcost | [Migration] Already applied (voice_interpret_logs)
+13|fnbcost | [Migration] Already applied (operating_units_rename)
+13|fnbcost | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] qb_reconciliations table ready
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | {"level":30,"time":1786294653484,"pid":3062354,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] Already applied (menu_descriptions)
