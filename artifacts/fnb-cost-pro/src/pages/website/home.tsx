@@ -107,6 +107,12 @@ export default function WebsiteHome() {
           <p className="text-lg sm:text-xl text-gray-200 max-w-2xl mx-auto mb-10 leading-relaxed font-light">
             {home.subheadline}
           </p>
+          <p
+            className="max-w-3xl mx-auto mb-10 rounded-xl border border-white/20 bg-black/25 px-5 py-4 text-sm sm:text-base leading-relaxed text-white/90 backdrop-blur-sm"
+            data-testid="homepage-purpose"
+          >
+            {home.purposeStatement}
+          </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link href={contactHref}>
               <Button

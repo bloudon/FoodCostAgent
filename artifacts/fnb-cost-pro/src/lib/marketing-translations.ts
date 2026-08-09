@@ -56,6 +56,8 @@ export const translations = {
       headline: "Built for the way chefs work.",
       subheadline:
         "Turn handwritten recipes, photos, invoices and existing files into accurate recipe costs, inventory intelligence and smarter purchasing — without burying your culinary team in data entry.",
+      purposeStatement:
+        "FnB Cost Pro is restaurant and Food & Beverage operations software for managing recipe costing, inventory, vendor pricing, purchasing and food-cost performance.",
       ctaPrimary: "Schedule a Culinary Review",
       ctaSecondary: "See How It Works",
       workflowLabel: "How it works",
@@ -695,6 +697,8 @@ export const translations = {
       headline: "Construida para la forma en que los chefs trabajan.",
       subheadline:
         "Convierte recetas escritas a mano, fotos, facturas y archivos existentes en costos de recetas precisos, inteligencia de inventario y compras más inteligentes — sin sobrecargar a tu equipo culinario con entrada de datos.",
+      purposeStatement:
+        "FnB Cost Pro es software de operaciones para restaurantes y equipos de Alimentos y Bebidas que gestiona el costeo de recetas, inventario, precios de proveedores, compras y desempeño del costo de alimentos.",
       ctaPrimary: "Agendar una Revisión Culinaria",
       ctaSecondary: "Cómo Funciona",
       workflowLabel: "Cómo funciona",
