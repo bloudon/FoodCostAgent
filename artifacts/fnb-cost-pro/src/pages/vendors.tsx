@@ -178,9 +178,8 @@ export default function Vendors() {
     enabled: !!vendors && vendors.length > 0,
   });
 
-  const form = useForm<VendorFormData, any, VendorFormData>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(vendorFormSchema) as any,
+  const form = useForm<z.input<typeof vendorFormSchema>, any, VendorFormData>({
+    resolver: zodResolver(vendorFormSchema),
     defaultValues: {
       name: "",
       accountNumber: "",

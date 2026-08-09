@@ -991,7 +991,7 @@ export function VendorsOrderGuidesStep({ onComplete }: { onComplete: () => void 
   });
 
   // Vendor form
-  const vendorForm = useForm<OnboardingVendorFormData>({
+  const vendorForm = useForm<z.input<typeof onboardingVendorFormSchema>, any, OnboardingVendorFormData>({
     resolver: zodResolver(onboardingVendorFormSchema),
     defaultValues: {
       name: "",

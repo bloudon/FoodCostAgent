@@ -571,7 +571,7 @@ export default function MenuItemsPage() {
     },
   });
 
-  const editForm = useForm<EditMenuItemForm>({
+  const editForm = useForm<z.input<typeof editMenuItemFormSchema>, any, EditMenuItemForm>({
     resolver: zodResolver(editMenuItemFormSchema),
     defaultValues: {
       name: "",
@@ -591,7 +591,7 @@ export default function MenuItemsPage() {
     },
   });
 
-  const variantForm = useForm<AddVariantForm>({
+  const variantForm = useForm<z.input<typeof addVariantFormSchema>, any, AddVariantForm>({
     resolver: zodResolver(addVariantFormSchema),
     defaultValues: {
       size: "",
