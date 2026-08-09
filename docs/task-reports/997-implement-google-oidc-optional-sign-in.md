@@ -56,3 +56,46 @@ Optional "Continue with Google" sign-in added alongside existing email/password 
 
 - Base: `6fc1b3ad` (initial Google adapter draft). Completion commit contains the canonical-route integration, hardened Replit fallback, env validation, UI, translations, tests, versioning, and this report, committed on local `main`.
 - Note: the `gitsafe-backup` remote holds an unrelated legacy (pre-monorepo) history, so a direct push is a non-fast-forward against foreign commits. The work is preserved on local `main` and by platform checkpoints; reconciling or repointing the backup remote needs an explicit decision before any force-push.
+
+## 2026-08-09 production invalid-scope correction
+
+### Asked
+
+Correct Google production sign-in after Google returned `Error 400: invalid_scope` for the unsupported `offline_access` scope. Preserve refresh-token behavior and leave the Replit development fallback unchanged.
+
+### Shipped
+
+- The Google-only authorization request now uses only `openid`, `email`, and `profile`.
+- Google’s supported `access_type=offline` parameter remains in the Google strategy, so refresh-token requests remain enabled.
+- Regression assertions inspect the generated authorization redirect for the exact valid scope set, the absence of `offline_access`, and the presence of `access_type=offline`.
+
+### Deviations
+
+None. No deployment, production environment setting, migration, VPS application, or database change was made.
+
+### Review
+
+- **Reviewer:** PASS — separately instantiated review workstream found no authentication, authorization, tenant-isolation, callback, session, or sensitive-token handling regression. No blocking findings.
+- **QA:** PASS — separately instantiated QA workstream passed 37 focused auth tests: Google scope/redirect behavior, app initialization, and provider-specific refresh behavior.
+- **Independent session/workstream separation:** **UNVERIFIED**. Separate review and QA workstreams were instantiated, but platform-level cryptographic verification of their separation is unavailable. **PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED.**
+- **External second opinion:** Reviewer workstream completed independently of Builder and QA; no additional Product Owner decision is required for this narrow compatibility correction.
+
+### Tests
+
+- `pnpm exec vitest run artifacts/api-server/src/googleAuth.test.ts artifacts/api-server/src/appInit.test.ts` — 23/23 passed.
+- Independent focused review: `googleAuth`, `appInit`, and `ssoAuth.refresh` suites — 37/37 passed.
+- Restarted only `artifacts/api-server: API Server`; build completed and `/api/health` plus `/api/healthz` returned 200.
+- The local API environment does not have production Google credentials and correctly selects the Replit fallback. Production Google acceptance therefore remains a post-deployment browser verification: complete one Google sign-in and confirm a subsequent session refresh after token expiry.
+- `pnpm --filter @workspace/api-server run typecheck` remains blocked by seven existing `routes.ts` errors (`canEdit`, `sourcePoId`, and `updatedAt` shape mismatches), outside this change.
+
+### Risks / Decisions
+
+- Deploy the corrected API build before retesting production Google sign-in. The Google OAuth consent-screen callback must remain exactly `APP_BASE_URL/api/sso/callback`.
+- No application/database changes were made to the VPS-hosted environment; only the local API workflow was restarted.
+
+### Git
+
+- Branch: `main`
+- Base SHA: `f605a1a989cde4d0afb147178dfe67e971c959cc`
+- Final SHA: `d9934d86c9095eb9c163174dfefcdd0639d360ad` (working-tree patch not committed)
+- Diff / PR: local working-tree diff for `artifacts/api-server/src/googleAuth.ts`, `artifacts/api-server/src/googleAuth.test.ts`, and `artifacts/api-server/src/appInit.test.ts`

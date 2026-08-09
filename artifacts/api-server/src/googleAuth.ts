@@ -28,6 +28,9 @@ import type { Express, Request } from "express";
 import { storage } from "./storage";
 
 export const GOOGLE_STRATEGY_NAME = "google-oidc";
+// Google supports refresh-token issuance through the Google-specific
+// access_type=offline parameter, not the OIDC offline_access scope.
+export const GOOGLE_OIDC_SCOPES = ["openid", "email", "profile"] as const;
 
 // ── Google-specific Strategy subclass ────────────────────────────────────────
 //
@@ -289,10 +292,10 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
       {
         name: GOOGLE_STRATEGY_NAME,
         config: oidcConfig,
-        // offline_access is the OIDC scope for offline access. Google also
-        // requires access_type=offline in the authorization URL — that is
+        // Google rejects the OIDC offline_access scope. Refresh-token
+        // issuance is requested with Google's access_type=offline parameter,
         // injected by GoogleStrategy.authorizationRequestParams above.
-        scope: "openid email profile offline_access",
+        scope: GOOGLE_OIDC_SCOPES.join(" "),
         callbackURL,
       },
       verify,
@@ -308,10 +311,9 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
   app.get("/api/sso/login", (req, res, next) => {
     console.log("[Google SSO] Starting Google login");
     passport.authenticate(GOOGLE_STRATEGY_NAME, {
-      // offline_access is required to receive a refresh token so that
-      // isSsoAuthenticated can silently renew sessions past the 1-hour
-      // Google access-token expiry.
-      scope: ["openid", "email", "profile", "offline_access"],
+      // Google issues refresh tokens through access_type=offline, not the
+      // unsupported OIDC offline_access scope.
+      scope: [...GOOGLE_OIDC_SCOPES],
       // prompt=consent is required on every login, not just the first.
       // Google only issues a refresh_token when the user explicitly grants
       // consent. On repeat logins without this flag Google skips the consent

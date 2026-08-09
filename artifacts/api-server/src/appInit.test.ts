@@ -93,6 +93,9 @@ describe("app initialization sequencing", () => {
       expect(location).toContain(
         encodeURIComponent("https://app.fnbcostpro.com/api/sso/callback"),
       );
+      expect(location).toContain("scope=openid+email+profile");
+      expect(location).not.toContain("offline_access");
+      expect(location).toContain("access_type=offline");
     } finally {
       await srv.close();
       

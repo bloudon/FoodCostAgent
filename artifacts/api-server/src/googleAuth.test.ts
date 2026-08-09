@@ -31,6 +31,7 @@ import {
   upsertGoogleUser,
   isGoogleConfigured,
   getGoogleCallbackUrl,
+  GOOGLE_OIDC_SCOPES,
 } from "./googleAuth";
 
 const mockStorage = storage as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -241,5 +242,10 @@ describe("production configuration", () => {
   it("throws when APP_BASE_URL is missing rather than falling back to a hostname", () => {
     delete process.env.APP_BASE_URL;
     expect(() => getGoogleCallbackUrl()).toThrow();
+  });
+
+  it("uses only Google's supported OIDC identity scopes", () => {
+    expect(GOOGLE_OIDC_SCOPES).toEqual(["openid", "email", "profile"]);
+    expect(GOOGLE_OIDC_SCOPES).not.toContain("offline_access");
   });
 });
