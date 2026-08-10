@@ -524,6 +524,13 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
 async function main() {
   console.log('Building static Expo Go deployment...');
 
+  // In CI (GitHub Actions) the Replit deployment domain is not available.
+  // The mobile artifact is built during Replit deployment, not in CI.
+  if (process.env.CI === 'true') {
+    console.log('CI environment detected — skipping mobile static build.');
+    process.exit(0);
+  }
+
   setupSignalHandlers();
 
   const domain = getDeploymentDomain();
