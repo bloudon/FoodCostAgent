@@ -1,0 +1,103 @@
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 50 lines:
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | GET /api/background-images error: _DrizzleQueryError: Failed query: select "id", "object_path", "external_url", "label", "sort_order", "is_active", "is_free_background", "is_mobile_available", "created_at" from "background_images" where "background_images"."is_active" = $1 order by "background_images"."sort_order" asc, "background_images"."created_at" asc
+13|fnbcost | params: 1
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:1003:22 {
+13|fnbcost |   query: 'select "id", "object_path", "external_url", "label", "sort_order", "is_active", "is_free_background", "is_mobile_available", "created_at" from "background_images" where "background_images"."is_active" = $1 order by "background_images"."sort_order" asc, "background_images"."created_at" asc',
+13|fnbcost |   params: [ 1 ],
+13|fnbcost |   cause: error: password authentication failed for user "permitapp"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:1003:22 {
+13|fnbcost |     length: 105,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=2daff5be-3526-4285-9891-5891967532c1 recipeId=e3c35368-0823-4579-917d-7e737297de47 componentRowId=9dfff979-f500-450f-b48b-f905ff819315
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=78b84058-6838-4741-be72-7905a2e93a8d recipeId=e3c35368-0823-4579-917d-7e737297de47 componentRowId=6d7eac6e-a7c9-436a-983c-00db717e8c2d
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 50 lines:
+13|fnbcost | {"level":30,"time":1786345513975,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/webhook 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786345513990,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/webhook 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786345513997,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/webhook 404 in 1ms"}
+13|fnbcost | {"level":30,"time":1786362806022,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/order-guides/warning-counts 200 in 48ms :: {}"}
+13|fnbcost | {"level":30,"time":1786362806025,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 54ms :: []"}
+13|fnbcost | {"level":30,"time":1786362806039,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/stores/accessible 200 in 71ms :: [{\"id\":\"b8bca47d-0732-48cd-9b1f-07fbb…"}
+13|fnbcost | {"level":30,"time":1786362806065,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/onboarding/milestones 200 in 102ms :: {\"milestones\":[{\"id\":\"menu_scan\"…"}
+13|fnbcost | {"level":30,"time":1786365341841,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786366954755,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786368245270,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 21ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786368245538,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 5ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786368629503,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 20ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786368637549,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786368907748,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 21ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786368908259,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786369036429,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 22ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786369037013,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786377696887,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 20ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786377702397,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 6ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786377854125,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/config 404 in 4ms"}
+13|fnbcost | {"level":30,"time":1786377858160,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.aws/credentials 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377858162,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377858902,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/fetch 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377859026,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/fetch 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377859048,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/proxy 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377859160,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/proxy 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377859426,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/fetch 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377859570,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/fetch 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377859577,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/webhook 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377860024,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/webhook 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377860265,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/download 404 in 2ms"}
+13|fnbcost | {"level":30,"time":1786377861672,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/download 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377865296,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/aws/credentials 404 in 5ms"}
+13|fnbcost | {"level":30,"time":1786377865309,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/aws/credentials 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377869118,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/credentials 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377870667,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/settings 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377871709,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/settings 404 in 4ms"}
+13|fnbcost | {"level":30,"time":1786377872072,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/..;/actuator/env 404 in 4ms"}
+13|fnbcost | {"level":30,"time":1786377873486,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/config 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377873505,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377873636,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/env 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786377873656,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/config.json 404 in 3ms"}
+13|fnbcost | {"level":30,"time":1786378078777,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 18ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786378582523,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 19ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786378593382,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 7ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786378595342,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786384736065,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 20ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786384737012,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 6ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786389770358,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 20ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786389776271,"pid":3065783,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 i
