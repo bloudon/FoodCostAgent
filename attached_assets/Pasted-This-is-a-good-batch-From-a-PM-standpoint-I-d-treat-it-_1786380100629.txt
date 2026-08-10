@@ -1,0 +1,36 @@
+This is a good batch. From a PM standpoint, I’d treat it as **one quality-hardening milestone**, not eight unrelated commits.
+
+The main story is:
+
+> **Auth UX is now safer, dependency drift is constrained, key data-entry edge cases have regression coverage, and CI is in place to stop future breakage from merging silently.**
+
+A few specific calls:
+
+* `efcf587f` is worth keeping. Pinning Zod/resolver compatibility is boring infrastructure, but it directly prevents the kind of “everything was fine yesterday” form breakage that wastes time.
+* `b65ed0d7` is the biggest confidence gain: end-to-end coverage across login, invitation acceptance, password reset, and account activation.
+* `12d513b6` is strategically important because it changes the project from **“test when we remember”** to **“every PR proves itself.”**
+* The Zod commits `d2ee0a13`, `d895c05a`, `4b268a42`, and `cd09de73` are appropriate guardrails rather than overengineering; these are high-frequency auth paths where bad client validation creates needless server noise and confusing UX.
+* `af72a16c` is especially valuable because it starts extending regression protection beyond auth into **operational data integrity**—zero-value quantity/price behavior is exactly the kind of small edge case that can corrupt restaurant workflows if left untested.
+
+### PM decision on the open issue
+
+I agree with the recommendation on **#1036**: fix the ~26 pre-existing TypeScript errors **before the first real PR starts relying on CI**.
+
+A permanently red typecheck job is worse than no typecheck job because the team quickly learns to ignore it.
+
+I’d make the rule:
+
+> CI goes live as a merge signal only after the baseline is green.
+
+And I would keep #1036 tightly scoped:
+
+* resolve existing type errors
+* no opportunistic refactors
+* no behavior changes unless required to make the types truthful
+* document any errors that reveal a real contract mismatch instead of simply casting around them
+
+One small improvement I’d add to CI, if it isn’t already there: make the PR checks visibly separate for **typecheck**, **build**, and **E2E/tests** rather than one giant “CI” result. That makes failures much faster to diagnose.
+
+My overall status:
+
+**APPROVED. Prioritize #1036 next so the new CI becomes a trustworthy green/red gate rather than background noise.**
