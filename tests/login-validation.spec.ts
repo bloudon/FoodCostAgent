@@ -97,4 +97,24 @@ test.describe('Login form — Zod validation', () => {
     await page.waitForTimeout(300);
     expect(apiWasCalled()).toBe(false);
   });
+
+  test('shows "Please enter a valid email address" and makes no API call when email is malformed', async ({ page }) => {
+    const apiWasCalled = await interceptLoginApi(page);
+
+    await goToLogin(page);
+
+    // Enter a clearly invalid string that is not an email address
+    await page.getByTestId('input-email').fill('notanemail');
+    await page.getByTestId('input-password').fill('somepassword');
+    await page.getByTestId('button-login').click();
+
+    // Zod field error must appear on the email field
+    const errorEl = page.getByTestId('error-email');
+    await expect(errorEl).toBeVisible({ timeout: 5_000 });
+    await expect(errorEl).toContainText('Please enter a valid email address');
+
+    // The login API must NOT have been called
+    await page.waitForTimeout(300);
+    expect(apiWasCalled()).toBe(false);
+  });
 });
