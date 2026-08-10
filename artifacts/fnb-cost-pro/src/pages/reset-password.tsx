@@ -147,7 +147,7 @@ export default function ResetPassword() {
                           </button>
                         </div>
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage data-testid="error-password" />
                     </FormItem>
                   )}
                 />
@@ -176,7 +176,7 @@ export default function ResetPassword() {
                           </button>
                         </div>
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage data-testid="error-confirm-password" />
                     </FormItem>
                   )}
                 />
