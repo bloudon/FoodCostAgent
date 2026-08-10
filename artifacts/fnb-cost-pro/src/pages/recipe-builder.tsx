@@ -187,6 +187,7 @@ function InlineIngredientRow({
   companyRecipeUnits,
   onUpdate,
   onDelete,
+  onEdit,
   onAddToInventory,
   onLinkToExisting,
   isUncostable = false,
@@ -200,6 +201,7 @@ function InlineIngredientRow({
   companyRecipeUnits: InventoryItemUnit[] | undefined;
   onUpdate: (updated: ComponentWithDetails) => void;
   onDelete: () => void;
+  onEdit?: () => void;
   onAddToInventory?: (component: ComponentWithDetails) => void;
   onLinkToExisting?: (component: ComponentWithDetails) => void;
   isUncostable?: boolean;
@@ -824,6 +826,20 @@ function InlineIngredientRow({
         >
           ${component.cost.toFixed(2)}
         </span>
+
+        {/* Edit button */}
+        {onEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onEdit}
+            className="h-8 w-8"
+            data-testid={`button-edit-ingredient-${component.id}`}
+            title="Edit ingredient"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </Button>
+        )}
 
         {/* Delete button */}
         <Button
@@ -1537,7 +1553,15 @@ function RecipeBuilderContent() {
 
   // Save edited ingredient
   const handleSaveEdit = () => {
-    if (!editingComponent || !editQty || !editUnitId) return;
+    if (!editQty || parseFloat(editQty) <= 0) {
+      toast({
+        title: "Quantity required",
+        description: "Please enter a valid quantity greater than zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!editingComponent || !editUnitId) return;
 
     const updatedComponents = components.map((comp) => {
       if (comp.id === editingComponent.id) {
@@ -2883,6 +2907,7 @@ function RecipeBuilderContent() {
                             companyRecipeUnits={companyRecipeUnits}
                             onUpdate={handleInlineComponentUpdate}
                             onDelete={() => handleDeleteIngredient(component.id)}
+                            onEdit={() => handleEditIngredient(component)}
                             onAddToInventory={handleOpenAddToInventory}
                             onLinkToExisting={handleOpenLinkToExisting}
                             isUncostable={isComponentUncostable(component)}

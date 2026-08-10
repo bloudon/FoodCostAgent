@@ -1824,6 +1824,16 @@ export default function InventoryItemDetail() {
     const rowData = vendorRowEdits[rowId];
     if (!rowData) return;
 
+    const casePrice = parseFloat(rowData.lastCasePrice ?? "");
+    if (!rowData.lastCasePrice || isNaN(casePrice) || casePrice <= 0) {
+      toast({
+        title: "Unit cost required",
+        description: "Please enter a case price before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const data = {
       inventoryItemId: id,
       vendorId: rowData.vendorId,
