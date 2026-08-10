@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Company, InsertCompany, insertCompanySchema } from "@shared/schema";
+import { PendingUsersPanel } from "@/components/PendingUsersPanel";
 import {
   Building2, MapPin, Plus, Settings2, UserCircle, Trash2, AlertTriangle,
   Users, CreditCard, Clock, MailWarning, RefreshCw, Activity,
@@ -609,6 +610,9 @@ export default function Companies() {
           testId="card-stat-backup-status"
         />
       </div>
+
+      {/* Pending Approval section — authenticated users with no company */}
+      <PendingUsersPanel companies={companies ?? []} />
 
       {/* Incomplete signups section */}
       {(hasOrphans || orphansLoading) && (
