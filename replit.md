@@ -60,6 +60,7 @@ Food and beverage teams can manage ingredients, vendors, recipes, sales, invento
 - Never bypass company/store/outlet/storage-location scoping.
 - Treat costing, valuation, inventory mutations, and shared contracts as Significant work.
 - Do not expose long-lived native tokens in WebView URLs; preserve the established mobile bridge and embedded-route whitelist.
+- **zod / @hookform/resolvers must stay on compatible major versions.** `resolvers v5.x` requires `zod v4.x`; `resolvers v3.x/v4.x` requires `zod v3.x`. Upgrading one without the other breaks all form schema types silently (no runtime error — only TypeScript type errors). After any `pnpm update` touching either package, run `pnpm --filter @workspace/fnb-cost-pro run check-deps` to verify. The compatibility table lives in `artifacts/fnb-cost-pro/scripts/check-zod-resolvers-compat.mjs`.
 
 ## Pointers
 
