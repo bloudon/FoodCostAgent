@@ -1,0 +1,27 @@
+From https://github.com/bloudon/FoodCostAgent
+   2383e2c..6b5348e  main                   -> origin/main
+ * [new branch]      ci/verify-three-checks -> origin/ci/verify-three-checks
+6b5348e (origin/main, origin/HEAD) Remove Git troubleshooting screenshots
+1fbc3f4 Add new image asset to attached assets directory
+e00063f Add image asset to repository
+9652347 Add image asset
+d93ae68 Add image asset to attached assets
+0ef3691 (origin/ci/verify-three-checks) fix: skip mobile static build in CI environment
+0d63c8d fix: exclude test files from mobile tsconfig to fix CI typecheck
+4bcac7d ci: add verification note to confirm three separate CI checks
+9846d8b Update CI workflow configuration
+1161ae1 Add meeting notes regarding batch processing from PM perspective
+d5bcbec Add diagnosis for git push rejection to memory files
+7bee82e Add attached asset image
+af72a16 Add Playwright validation tests for recipe ingredient edit dialog and inventory vendor row
+cd09de7 Add malformed-email Playwright test to login-validation suite
+4b268a4 Add Zod validation to login form and Playwright tests for blank credential blocking
+d895c05 Add Playwright tests for reset-password Zod validation (empty, too-short, mismatched passwords) and add data-testid attributes to FormMessage components in reset-password.tsx
+d2ee0a1 Add Zod validation to forgot-password form and e2e tests confirming empty/invalid email is blocked
+12d513b Add GitHub Actions CI: typecheck and build all packages on every pull request
+b65ed0d Add Playwright e2e tests for Zod form validation (login, accept-invitation, reset-password, activate-account) — 14 tests pass
+efcf587 Pin zod and @hookform/resolvers together with version constraint documentation and compatibility check script
+f9f7998 Fix TypeScript build: upgrade @hookform/resolvers to v5 for Zod v4 compatibility
+721d91f Update SEO configurations and marketing content for FNB Cost Pro
+a2c99cc Add new image asset
+2e97d06 Add image asset to attached assets directory
