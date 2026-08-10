@@ -177,10 +177,11 @@ describe("invitation handling", () => {
     expect(mockStorage.createUser).not.toHaveBeenCalled();
   });
 
-  it("ignores an invitation whose email does not match the Google email", async () => {
+  it("rejects with invitation_email_mismatch when the invitation email does not match the Google email", async () => {
     mockStorage.getInvitationByToken.mockResolvedValue({ ...invitation, email: "other@fnb.com" });
     const result = await upsertGoogleUser(verifiedClaims, "inv-tok");
-    expect(result).toEqual({ ok: false, reason: "no_invitation" });
+    expect(result.ok).toBe(false);
+    expect((result as any).reason).toBe("invitation_email_mismatch");
     expect(mockStorage.createUser).not.toHaveBeenCalled();
     expect(mockStorage.acceptInvitation).not.toHaveBeenCalled();
   });

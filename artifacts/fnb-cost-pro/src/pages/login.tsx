@@ -43,6 +43,23 @@ export default function Login() {
   const sessionExpired =
     new URLSearchParams(window.location.search).get("reason") === "session_expired";
 
+  const ssoErrorCode = new URLSearchParams(window.location.search).get("error");
+  const SSO_ERROR_MESSAGES: Record<string, string> = {
+    "google-invitation-email-mismatch":
+      "The Google account you used doesn't match the email address this invitation was sent to. Please sign in with the Google account that matches the invited email, or return to the invitation link and create a password instead.",
+    "google-access-denied":
+      "Your Google account isn't linked to this organization. Please contact your administrator or use a password to sign in.",
+    "google-auth-failed":
+      "Google sign-in failed. Please try again.",
+    "google-missing-email":
+      "Google did not share your email address. Please grant email access and try again.",
+    "google-unverified-email":
+      "Your Google account's email address is not verified. Please verify it with Google first.",
+    "google-invitation-conflict":
+      "A pending invitation for this account requires administrative action. Please contact your administrator.",
+  };
+  const ssoErrorMessage = ssoErrorCode ? (SSO_ERROR_MESSAGES[ssoErrorCode] ?? "Sign-in failed. Please try again.") : null;
+
   useEffect(() => {
     // Determine which SSO provider is active so the right button shows.
     // Defaults to the generic SSO button if the check fails.
@@ -99,6 +116,14 @@ export default function Login() {
         {sessionExpired && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
             {t.auth.sessionExpired}
+          </div>
+        )}
+        {ssoErrorMessage && (
+          <div
+            className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            data-testid="text-sso-error"
+          >
+            {ssoErrorMessage}
           </div>
         )}
         <Card className="w-full">

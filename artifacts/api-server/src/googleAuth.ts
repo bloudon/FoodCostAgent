@@ -114,6 +114,7 @@ export type UpsertGoogleResult =
         | "missing_email"
         | "unverified_email"
         | "no_invitation"
+        | "invitation_email_mismatch"
         | "invitation_conflict"
         | "error";
       detail?: string;
@@ -153,12 +154,14 @@ export async function upsertGoogleUser(
 
   // ── 4. Resolve invitation token ────────────────────────────────────────────
   let invitation: any = undefined;
+  let invitationEmailMismatch = false;
   if (invitationToken) {
     invitation = await storage.getInvitationByToken(invitationToken);
     if (invitation) {
       if (normalizeEmail(invitation.email) !== email) {
-        console.error("[Google SSO] Invitation email mismatch — ignoring invitation");
+        console.error("[Google SSO] Invitation email mismatch — rejecting for new users");
         invitation = undefined;
+        invitationEmailMismatch = true;
       }
     }
   }
@@ -207,6 +210,14 @@ export async function upsertGoogleUser(
   // ── 6. New user branch ────────────────────────────────────────────────────
   // New users require a valid matching invitation — same rule as Replit SSO.
   if (!invitation) {
+    if (invitationEmailMismatch) {
+      console.log("[Google SSO] Invitation email mismatch for new user — rejecting:", email);
+      return {
+        ok: false,
+        reason: "invitation_email_mismatch",
+        detail: "The Google account email does not match the invited email address",
+      };
+    }
     console.log("[Google SSO] No existing user and no valid invitation — rejecting:", email);
     return { ok: false, reason: "no_invitation" };
   }
@@ -357,6 +368,7 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
             missing_email: "google-missing-email",
             unverified_email: "google-unverified-email",
             no_invitation: "google-access-denied",
+            invitation_email_mismatch: "google-invitation-email-mismatch",
             invitation_conflict: "google-invitation-conflict",
             error: "google-auth-failed",
           };
