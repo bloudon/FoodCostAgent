@@ -1,21 +1,45 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { MailCheck } from "lucide-react";
 const logoImage = "/logo.png";
 import { RestaurantBackground } from "@/components/restaurant-background";
 
+const forgotPasswordSchema = z.object({
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
+});
+
+type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+
 export default function ForgotPassword() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
+
+  const form = useForm<ForgotPasswordValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: "" },
+  });
 
   const mutation = useMutation({
     mutationFn: async (email: string) => {
@@ -38,10 +62,10 @@ export default function ForgotPassword() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email.trim()) mutation.mutate(email.trim());
-  };
+  function onSubmit(data: ForgotPasswordValues) {
+    setSubmittedEmail(data.email);
+    mutation.mutate(data.email);
+  }
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
@@ -63,7 +87,7 @@ export default function ForgotPassword() {
             <div className="flex flex-col items-center gap-4 py-4 text-center">
               <MailCheck className="w-12 h-12 text-primary" />
               <p className="text-sm text-muted-foreground">
-                If an account exists for <strong>{email}</strong>, you'll receive a reset
+                If an account exists for <strong>{submittedEmail}</strong>, you'll receive a reset
                 link shortly. Check your spam folder if it doesn't arrive within a few minutes.
               </p>
               <Button
@@ -76,39 +100,47 @@ export default function ForgotPassword() {
               </Button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoFocus
-                  data-testid="input-email"
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email address</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          placeholder="you@example.com"
+                          autoFocus
+                          data-testid="input-email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage data-testid="error-email" />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={mutation.isPending}
-                data-testid="button-send-reset"
-              >
-                {mutation.isPending ? "Sending..." : "Send Reset Link"}
-              </Button>
-              <div className="text-center">
-                <button
-                  type="button"
-                  className="text-sm text-muted-foreground hover:underline cursor-pointer"
-                  onClick={() => setLocation("/login")}
-                  data-testid="link-back-to-login"
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={mutation.isPending}
+                  data-testid="button-send-reset"
                 >
-                  Back to Sign In
-                </button>
-              </div>
-            </form>
+                  {mutation.isPending ? "Sending..." : "Send Reset Link"}
+                </Button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground hover:underline cursor-pointer"
+                    onClick={() => setLocation("/login")}
+                    data-testid="link-back-to-login"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              </form>
+            </Form>
           )}
         </CardContent>
       </Card>
