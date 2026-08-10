@@ -837,8 +837,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    // @ts-ignore
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    // Case-insensitive lookup — email addresses must match regardless of how
+    // they were originally stored (e.g. admin-created accounts with capitals).
+    const [user] = await db.select().from(users).where(
+      sql`lower(${users.email}) = lower(${email})`
+    );
     return user || undefined;
   }
 
@@ -925,8 +928,8 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(invitations)
       .where(and(
-        // @ts-ignore
-        eq(invitations.email, email),
+        // Case-insensitive email match for invitation lookup
+        sql`lower(${invitations.email}) = lower(${email})`,
         // @ts-ignore
         eq(invitations.companyId, companyId),
         // @ts-ignore

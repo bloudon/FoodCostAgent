@@ -461,6 +461,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateNormalizeEmailCase() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'normalize_email_case'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        // Normalize any mixed-case email addresses stored in users and invitations
+        // so that sign-in with Google (which always returns lowercase) matches correctly.
+        await db.execute(sql`
+          UPDATE users SET email = lower(email) WHERE email != lower(email);
+        `);
+        await db.execute(sql`
+          UPDATE invitations SET email = lower(email) WHERE email != lower(email);
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('normalize_email_case')`
+        );
+        console.log("[Migration] Applied normalize_email_case");
+      } else {
+        console.log("[Migration] Already applied (normalize_email_case)");
+      }
+    } catch (err) {
+      console.error("[Migration] normalize_email_case error:", err);
+    }
+  })();
+
   (async function migrateMenuDescriptions() {
     try {
       await db.execute(sql`
@@ -3782,6 +3815,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Global admins must have null companyId" });
       }
       
+      // Normalize email to lowercase
+      if (userData.email) {
+        userData.email = userData.email.toLowerCase().trim();
+      }
+
       // Hash the password
       const passwordHash = await hashPassword(userData.password);
       delete userData.password;
@@ -3869,6 +3907,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle password update if provided
       if (password) {
         updates.passwordHash = await hashPassword(password);
+      }
+
+      // Normalize email to lowercase if being updated
+      if (updates.email) {
+        updates.email = (updates.email as string).toLowerCase().trim();
       }
       
       // Update the user
@@ -4111,14 +4154,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Store users and store managers must be assigned to at least one store" });
       }
 
+      // Normalize email to lowercase
+      const normalizedEmail = email.toLowerCase().trim();
+
       // Check if user already exists in THIS company
-      const existingUser = await storage.getUserByEmail(email);
+      const existingUser = await storage.getUserByEmail(normalizedEmail);
       if (existingUser && existingUser.companyId === companyId) {
         return res.status(400).json({ error: "User is already a member of this company" });
       }
 
       // Check if there's already a pending invitation for this email and company
-      const existingInvitation = await storage.getInvitationByEmail(email, companyId);
+      const existingInvitation = await storage.getInvitationByEmail(normalizedEmail, companyId);
       if (existingInvitation) {
         return res.status(400).json({ error: "Pending invitation already exists for this email" });
       }
@@ -4132,7 +4178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create invitation
       const invitation = await storage.createInvitation({
-        email,
+        email: normalizedEmail,
         companyId,
         role,
         storeIds: storeIdsArray,
@@ -4148,7 +4194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const inviterName = [currentUser.firstName, currentUser.lastName].filter(Boolean).join(" ") || currentUser.email;
       import("./email").then(({ sendInvitationEmail }) => {
         sendInvitationEmail({
-          to: email,
+          to: normalizedEmail,
           inviterName,
           companyName: company?.name || "your company",
           role,
