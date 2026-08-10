@@ -12027,7 +12027,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             applied: 1,
             appliedAt: new Date(),
             appliedBy: user.id,
-            canEdit: 0 // Lock the count from further edits
           })
           .where(
             and(
@@ -13583,34 +13582,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // @ts-ignore
               .insert(poRoutingAudit)
               .values({
-                companyId,
-                sourcePoId,
-                sourcePOLineId: vl.poLineId,
-                destinationPoId: targetPoId,
-                vendorItemId: vl.targetViRow.vi.id,
-                inventoryItemId: vl.inventoryItemId,
-                userId,
+                companyId: companyId as string,
+                sourcePoId: sourcePoId as string,
+                sourcePOLineId: vl.poLineId as string,
+                destinationPoId: targetPoId as string,
+                vendorItemId: vl.targetViRow.vi.id as string,
+                inventoryItemId: vl.inventoryItemId as string,
+                userId: userId as string | null,
                 operatorName: snapshotOperatorName,
                 fromUnitPrice: vl.fromUnitPrice,
                 toUnitPrice: vl.toUnitPrice,
-                fromCasePrice: vl.fromCasePrice,
-                toCasePrice: vl.toCasePrice,
-                orderedQty: vl.line.orderedQty,
-                projectedSavingsPerCase: vl.projectedSavingsPerCase,
-                savingsReliable: vl.savingsReliable ? 1 : 0,
-                projectedLineSavings: vl.projectedLineSavings,
+                fromCasePrice: vl.fromCasePrice as number | null,
+                toCasePrice: vl.toCasePrice as number | null,
+                orderedQty: vl.line.orderedQty as number,
+                projectedSavingsPerCase: vl.projectedSavingsPerCase as number | null,
+                savingsReliable: (vl.savingsReliable ? 1 : 0) as number,
+                projectedLineSavings: vl.projectedLineSavings as number | null,
                 savingsReliabilityReasons: JSON.stringify(vl.savingsReliabilityReasons),
-                sourceVendorItemId: vl.sourceVendorItemId,
-                sourceCaseSize: vl.sourceCaseSize,
-                sourceInnerPackSize: vl.sourceInnerPackSize,
-                sourcePricedAt: vl.sourcePricedAt,
-                sourcePriceSource: vl.sourcePriceSource,
-                targetCaseSize: vl.targetCaseSize,
-                targetInnerPackSize: vl.targetInnerPackSize,
-                targetPricedAt: vl.targetPricedAt,
-                targetPriceSource: vl.targetPriceSource,
-                destinationPoLineId,
-              })
+                sourceVendorItemId: vl.sourceVendorItemId as string | null,
+                sourceCaseSize: vl.sourceCaseSize as number | null,
+                sourceInnerPackSize: vl.sourceInnerPackSize as number | null,
+                sourcePricedAt: vl.sourcePricedAt as Date | null,
+                sourcePriceSource: vl.sourcePriceSource as string | null,
+                targetCaseSize: vl.targetCaseSize as number | null,
+                targetInnerPackSize: vl.targetInnerPackSize as number | null,
+                targetPricedAt: vl.targetPricedAt as Date | null,
+                targetPriceSource: vl.targetPriceSource as string | null,
+                destinationPoLineId: destinationPoLineId as string | null,
+              } as typeof poRoutingAudit.$inferInsert)
               .onConflictDoNothing()
               // @ts-ignore
               .returning({ id: poRoutingAudit.id });
@@ -14964,7 +14963,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: "completed",
             // @ts-ignore
             receivedBy: req.userId, // Track who completed the receipt
-            updatedAt: new Date()
           })
           .where(
             and(
@@ -14981,7 +14979,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .update(purchaseOrders)
           .set({ 
             status: "received",
-            updatedAt: new Date()
           })
           .where(
             and(
@@ -17441,7 +17438,6 @@ Return format: ["ingredient1", "ingredient2", ...]`;
             status: "in_transit",
             // @ts-ignore
             executedBy: req.userId, // Track who executed the transfer
-            updatedAt: new Date()
           })
           .where(
             and(
@@ -17550,7 +17546,6 @@ Return format: ["ingredient1", "ingredient2", ...]`;
             completedAt: new Date(),
             // @ts-ignore
             receivedBy: req.userId, // Track who received the transfer
-            updatedAt: new Date()
           })
           .where(
             and(
@@ -24360,7 +24355,7 @@ Human Handoff:
         await tx
           // @ts-ignore
           .update(inventoryCounts)
-          .set({ applied: 1, appliedAt, appliedBy: userId ?? null, canEdit: 0 })
+          .set({ applied: 1, appliedAt, appliedBy: userId ?? null })
           .where(
             and(
               // @ts-ignore
