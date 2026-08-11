@@ -615,7 +615,7 @@ function MenuCard({ menu }: { menu: MenuWithStats }) {
 
 function EmptyStateNoMenus({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
+    <div className="flex flex-col items-center justify-center py-14 text-center sm:py-20">
       <div className="p-4 rounded-full bg-muted mb-4">
         <BookOpen className="h-8 w-8 text-muted-foreground" />
       </div>
@@ -623,21 +623,21 @@ function EmptyStateNoMenus({ onNew }: { onNew: () => void }) {
       <p className="text-sm text-muted-foreground max-w-xs mb-6">
         Create your first menu to organise items into sections with location assignments and pricing.
       </p>
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button onClick={onNew} data-testid="button-first-new-menu">
+      <div className="flex w-full max-w-xs flex-col items-stretch gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-3">
+        <Button onClick={onNew} className="w-full sm:w-auto" data-testid="button-first-new-menu">
           <Plus className="h-4 w-4 mr-2" />
           Create Menu
         </Button>
-        <Button variant="outline" asChild data-testid="button-scan-from-image-empty">
-          <Link href="/menu-scan?mode=menu">
-            <Camera className="h-4 w-4 mr-2" />
-            Scan from Image
-          </Link>
-        </Button>
-        <Button variant="outline" asChild>
+        <Button variant="outline" className="w-full sm:w-auto" asChild>
           <Link href="/menu-items">
             <ShoppingBag className="h-4 w-4 mr-2" />
             Browse Item Catalog
+          </Link>
+        </Button>
+        <Button variant="outline" className="w-full sm:w-auto" asChild data-testid="button-scan-from-image-empty">
+          <Link href="/menu-scan?mode=menu">
+            <Camera className="h-4 w-4 mr-2" />
+            Scan from Image
           </Link>
         </Button>
       </div>
@@ -839,30 +839,29 @@ export default function MenusPage() {
   const hasContent = filtered.length > 0;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-5">
+    <div className="flex h-full min-w-0 flex-col">
+      <div className="min-w-0 flex-1 overflow-auto p-4 md:p-6 space-y-5">
 
         {/* ── Page header ── */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             <h1 className="text-2xl font-semibold tracking-tight">Menus</h1>
             <p className="text-sm text-muted-foreground">
               Organize, review, and manage menus across every location.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          {allMenus.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
             <Button variant="outline" asChild onClick={() => track("browse_item_catalog_clicked")}>
               <Link href="/menu-items">
                 <ShoppingBag className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Browse Item Catalog</span>
-                <span className="sm:hidden">Catalog</span>
+              <span>Browse Item Catalog</span>
               </Link>
             </Button>
             <Button variant="outline" asChild data-testid="button-scan-from-image">
               <Link href="/menu-scan?mode=menu">
                 <Camera className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Scan from Image</span>
-                <span className="sm:hidden">Scan</span>
+              <span>Scan from Image</span>
               </Link>
             </Button>
             <Button
@@ -873,10 +872,10 @@ export default function MenusPage() {
               data-testid="button-new-menu"
             >
               <Plus className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Create Menu</span>
-              <span className="sm:hidden">New</span>
+              <span>Create Menu</span>
             </Button>
           </div>
+          )}
         </div>
 
         {/* ── Loading skeletons ── */}

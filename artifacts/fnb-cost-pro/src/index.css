@@ -235,6 +235,8 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   /* Remove number input spinner controls */
@@ -247,6 +249,28 @@
   input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
+  }
+}
+
+/*
+ * Responsive authenticated-shell safety rail. This prevents browser-level
+ * horizontal panning while individual wide data grids keep responsibility for
+ * their own scoped scroll containers.
+ */
+#root {
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+@media (max-width: 639px) {
+  [data-slot="sidebar-inset"] {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  [data-slot="sidebar-wrapper"] {
+    width: 100%;
+    max-width: 100%;
   }
 }
 

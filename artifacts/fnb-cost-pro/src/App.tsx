@@ -302,13 +302,16 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
     "inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover-elevate active-elevate-2 transition-colors disabled:opacity-30 disabled:pointer-events-none";
 
   return (
-    <div className="sticky top-0 z-50 grid grid-cols-[1fr_auto_1fr] h-12 items-center border-b px-4 bg-accent gap-2">
+    <div
+      className="sticky top-0 z-50 flex h-12 min-w-0 items-center gap-2 border-b bg-accent px-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:px-4"
+      data-testid="app-mobile-utility-bar"
+    >
       {/* ── Left: hamburger, logo, nav controls, page label ── */}
-      <div className="flex items-center gap-1 min-w-0">
+      <div className="flex min-w-0 shrink-0 items-center gap-1">
         {isMobile && (
           <SidebarTrigger data-testid="button-mobile-menu" />
         )}
-        <img src="/website-logo.png" alt="FNB Cost Pro" className="h-7 w-auto md:hidden mr-1" />
+        <img src="/website-logo.png" alt="FNB Cost Pro" className="mr-1 h-7 w-auto md:hidden" />
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -317,7 +320,7 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
               disabled={!canGoBack}
               aria-label="Back"
               data-testid="button-nav-back"
-              className={navBtnClass}
+              className={`${navBtnClass} hidden sm:inline-flex`}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -332,7 +335,7 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
               disabled={!canGoForward}
               aria-label="Forward"
               data-testid="button-nav-forward"
-              className={navBtnClass}
+              className={`${navBtnClass} hidden sm:inline-flex`}
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -346,7 +349,7 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
               onClick={refresh}
               aria-label="Refresh"
               data-testid="button-nav-refresh"
-              className={navBtnClass}
+              className={`${navBtnClass} hidden sm:inline-flex`}
             >
               <RotateCcw className="h-4 w-4" />
             </button>
@@ -364,16 +367,16 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
         )}
       </div>
 
-      {/* ── Center: global search box ── */}
+      {/* ── Center: search collapses to an icon on phones ── */}
       {onSearchOpen ? (
         <button
           onClick={onSearchOpen}
           aria-label="Search"
           data-testid="button-global-search"
-          className="flex items-center gap-2 h-8 w-48 sm:w-56 md:w-72 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground hover:bg-accent hover:border-ring transition-colors"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:border-ring sm:flex sm:w-56 sm:gap-2 sm:px-3 md:w-72"
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1 text-left text-sm">Search…</span>
+          <span className="hidden flex-1 text-left text-sm sm:block">Search…</span>
           <kbd className="hidden md:inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/60">
             {isMac ? "⌘K" : "Ctrl K"}
           </kbd>
@@ -383,11 +386,11 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
       )}
 
       {/* ── Right: store picker, company name, theme, language, avatar, logout ── */}
-      <div className="flex items-center justify-end gap-1">
+      <div className="ml-auto flex min-w-0 items-center justify-end gap-1">
         {company && stores.length > 0 && (
           <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
             <SelectTrigger
-              className="h-8 w-36 text-xs"
+              className="h-8 min-w-0 w-[7.5rem] text-xs sm:w-36"
               data-testid={isMobile ? "select-store-mobile" : "select-store"}
             >
               <Store className="h-3.5 w-3.5 mr-1 shrink-0 text-muted-foreground" />
@@ -415,8 +418,10 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
           </span>
         )}
 
-        <ThemeToggle />
-        <LanguageToggle />
+        <div className="hidden sm:contents">
+          <ThemeToggle />
+          <LanguageToggle />
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <div
@@ -436,7 +441,7 @@ function AppTopBar({ onSearchOpen }: { onSearchOpen?: () => void }) {
             <button
               onClick={logout}
               data-testid={isMobile ? "button-logout-mobile" : "button-logout"}
-              className={navBtnClass}
+              className={`${navBtnClass} hidden sm:inline-flex`}
               aria-label={t.auth.logout}
             >
               <LogOut className="h-4 w-4" />
@@ -552,10 +557,10 @@ function ProtectedLayoutContent() {
 
   return (
     <NavHistoryProvider>
-    <div className="flex flex-col h-screen">
+    <div className="flex h-[100dvh] min-w-0 flex-col overflow-hidden">
       {isGlobalAdmin && <GlobalAdminHeader />}
       <SidebarProvider
-        className="flex-1 min-h-0"
+        className="min-h-0 min-w-0 flex-1 overflow-hidden"
         defaultOpen={false}
         style={{
           "--sidebar-width": "230px",
@@ -563,7 +568,7 @@ function ProtectedLayoutContent() {
         } as React.CSSProperties}
       >
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="min-w-0 overflow-hidden">
           <AppTopBar onSearchOpen={openSearch} />
 
           <VersionBanner
@@ -574,7 +579,7 @@ function ProtectedLayoutContent() {
 
           <PosDisconnectedBanner />
 
-          <main className="flex-1 overflow-auto">
+          <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/companies/:id" component={CompanyDetail} />
@@ -659,7 +664,7 @@ function ProtectedLayoutContent() {
             </Switch>
           </main>
 
-          <footer className="shrink-0 border-t px-4 py-1 text-center" data-testid="app-footer-version">
+          <footer className="shrink-0 border-t px-4 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-center" data-testid="app-footer-version">
             <button
               type="button"
               onClick={() => setWhatsNewOpen(true)}
