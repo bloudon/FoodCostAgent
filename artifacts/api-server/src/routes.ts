@@ -17803,9 +17803,36 @@ Return format: ["ingredient1", "ingredient2", ...]`;
   app.get("/api/admin/stats", requireAuth, async (req, res) => {
     // @ts-ignore
     const user = await storage.getUser(req.user!.id);
-    if (user?.role !== "global_admin") {
-      return res.status(403).json({ error: "Only global admins can access this" });
+    if (!user || (user.role !== "global_admin" && user.role !== "company_admin")) {
+      return res.status(403).json({ error: "Only admins can access this" });
     }
+
+    // Company admins get a lightweight scoped response (pending count for their company only)
+    if (user.role === "company_admin") {
+      try {
+        if (!user.companyId) {
+          return res.json({ pendingUsersCount: 0 });
+        }
+        // Count unassigned users whose email matches a valid pending invitation for this company
+        const result = await db.execute(
+          sql`SELECT COUNT(DISTINCT u.id) AS count
+              FROM users u
+              INNER JOIN invitations i ON i.email = u.email
+                AND i.company_id = ${user.companyId}
+                AND i.accepted_at IS NULL
+                AND i.expires_at > NOW()
+              WHERE u.company_id IS NULL
+                AND u.role != 'global_admin'`
+        );
+        const rows = (result as { rows?: any[] }).rows ?? (result as any[]);
+        const count = Number(rows?.[0]?.count ?? 0);
+        return res.json({ pendingUsersCount: count });
+      } catch (error) {
+        console.error("Admin stats (company_admin) error:", error);
+        return res.status(500).json({ error: "Failed to fetch stats" });
+      }
+    }
+
     try {
       const { authSessions } = await import("@workspace/db");
       const now = new Date();

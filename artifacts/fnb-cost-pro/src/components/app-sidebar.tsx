@@ -249,11 +249,12 @@ export function AppSidebar() {
   const logoIcon = "/android-chrome-192x192.png";
   const role = user?.role ?? "store_user";
   const isGlobalAdmin = role === "global_admin";
+  const isCompanyAdmin = role === "company_admin";
 
-  // Pending-users badge — only fetched for global admins
+  // Pending-users badge — fetched for global admins (unfiltered) and company admins (scoped to their company)
   const { data: adminStats } = useQuery<{ pendingUsersCount: number }>({
     queryKey: ["/api/admin/stats"],
-    enabled: isGlobalAdmin,
+    enabled: isGlobalAdmin || isCompanyAdmin,
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
@@ -424,8 +425,8 @@ export function AppSidebar() {
                   </Tooltip>
                 ) : linkEl;
               })()}
-              {/* Pending-users badge — visible to global admins only */}
-              {isGlobalAdmin && pendingUsersCount > 0 && (
+              {/* Pending-users badge — visible to global admins and company admins */}
+              {(isGlobalAdmin || isCompanyAdmin) && pendingUsersCount > 0 && (
                 <span
                   className="pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-semibold text-white leading-none"
                   data-testid="badge-pending-users-sidebar"
