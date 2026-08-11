@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +67,38 @@ function formatRelative(isoStr: string | null): string {
   return new Date(isoStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+/** Skeleton shown on first load (no cached data yet). */
+function PendingUsersSkeleton() {
+  return (
+    <Card
+      className="mb-6 border-orange-200 dark:border-orange-900"
+      data-testid="card-pending-approval-skeleton"
+      aria-busy="true"
+      aria-label="Loading pending approvals"
+    >
+      <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <UserCheck className="h-5 w-5 text-orange-500 opacity-40" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-5 w-6 rounded-full" />
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+              <Skeleton className="h-8 w-16 rounded-md" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 function AssignDialog({
   user,
   companies,
@@ -311,19 +344,49 @@ export function PendingUsersPanel({
   const [expanded, setExpanded] = useState(true);
   const [assigningUser, setAssigningUser] = useState<PendingUser | null>(null);
 
-  const { data, isLoading, refetch } = useQuery<PendingUsersResponse>({
+  const { data, isLoading } = useQuery<PendingUsersResponse>({
     queryKey: ["/api/admin/pending-users"],
-    refetchInterval: 60000,
+    // Refresh every 30 s (down from 60 s) so assignments made elsewhere
+    // are reflected faster without polling too aggressively.
+    refetchInterval: 30_000,
+    // Keep prior data "fresh" for 20 s so a background refetch doesn't
+    // cause the panel to flash in then disappear when the updated list
+    // comes back empty.
+    staleTime: 20_000,
   });
 
   const pendingUsers = data?.pendingUsers ?? [];
 
-  if (isLoading) {
-    return null; // Silent while loading — avoids layout shift when there are none
+  // First load with no cached data: show skeleton so the page doesn't
+  // shift after data arrives. We only show the skeleton when there is no
+  // data at all yet (isLoading + no cached result).
+  if (isLoading && !data) {
+    return <PendingUsersSkeleton />;
   }
 
   if (pendingUsers.length === 0) {
     return null; // Nothing to show
+  }
+
+  /**
+   * Optimistically removes the assigned user from the cached list so the row
+   * disappears immediately. A background invalidation then syncs the server
+   * state without causing a visible flash.
+   */
+  function handleAssigned(userId: string) {
+    queryClient.setQueryData<PendingUsersResponse>(
+      ["/api/admin/pending-users"],
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pendingUsers: old.pendingUsers.filter((u) => u.id !== userId),
+        };
+      }
+    );
+    // Invalidate in background so next refetch is fresh.
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
   }
 
   return (
@@ -435,8 +498,7 @@ export function PendingUsersPanel({
             if (!open) setAssigningUser(null);
           }}
           onAssigned={() => {
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+            handleAssigned(assigningUser.id);
           }}
           lockedCompanyId={lockedCompanyId}
         />
