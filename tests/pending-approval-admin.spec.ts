@@ -405,3 +405,67 @@ test.describe('admin dashboard — assign pending user', () => {
     await expect(page.getByTestId('button-confirm-assign')).toBeEnabled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 3: UI behaviour when server returns 409 (user already has a company)
+//
+// The server-side 409 guard is tested against the real database in:
+//   artifacts/api-server/src/routes/pendingUserAssign.test.ts
+//
+// These UI tests verify that the React layer handles a 409 response correctly —
+// the dialog stays open and a destructive toast is shown.
+// ---------------------------------------------------------------------------
+
+test.describe('admin dashboard — assign 409 guard (user already has a company)', () => {
+  /**
+   * When the server returns 409 the dialog must stay open and an error toast
+   * must appear so the admin knows the assignment was rejected.
+   */
+  test('shows error toast and keeps dialog open when server returns 409', async ({ page }) => {
+    await mockAdminDashboard(page);
+
+    // Intercept the assign POST and simulate the 409 the server returns when
+    // the target user's companyId is already set.
+    await page.route(
+      `**/api/admin/pending-users/${PENDING_USER.id}/assign`,
+      async (route) => {
+        if (route.request().method() === 'POST') {
+          await route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'User is already assigned to a company' }),
+          });
+        } else {
+          await route.continue();
+        }
+      },
+    );
+
+    await gotoAdminDashboard(page);
+
+    // Open the assign dialog
+    await page.getByTestId(`button-assign-pending-${PENDING_USER.id}`).click();
+    await expect(page.getByTestId('button-confirm-assign')).toBeVisible({ timeout: 5_000 });
+
+    // Pick a company and role so the submit button is enabled
+    const companyTrigger = page.getByTestId('select-assign-company');
+    await companyTrigger.click();
+    await page.getByRole('option', { name: 'Alpha Bistro' }).click();
+
+    const roleTrigger = page.getByTestId('select-assign-role');
+    await roleTrigger.click();
+    await page.getByRole('option', { name: 'Company Admin' }).click();
+
+    // Submit — the server will return 409
+    await page.getByTestId('button-confirm-assign').click();
+
+    // The dialog must remain open (the confirm button is still visible)
+    await expect(page.getByTestId('button-confirm-assign')).toBeVisible({ timeout: 5_000 });
+
+    // A destructive toast must appear with the error message
+    const toast = page.locator('[data-testid="toast"], [role="status"], [data-radix-toast-viewport] li').first();
+    await expect(toast).toBeVisible({ timeout: 5_000 });
+    await expect(toast).toContainText(/assign|fail|already/i);
+  });
+
+});
