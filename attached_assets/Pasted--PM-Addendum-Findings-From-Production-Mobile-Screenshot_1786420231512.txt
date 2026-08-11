@@ -1,0 +1,123 @@
+## PM Addendum — Findings From Production Mobile Screenshot Review
+
+Independent review of the production screenshot confirms the shell-first plan and adds several concrete acceptance requirements.
+
+### 1. Explicitly include the global utility bar in Phase 1
+
+The mobile shell review must include the global utility/header row containing controls such as:
+
+- search
+- current store/location selector
+- theme
+- language
+- profile/avatar
+- logout/account controls
+
+This is separate from the page-level Menus header.
+
+At all target phone widths, this utility bar must:
+
+- remain fully inside the viewport
+- not force document width wider than the screen
+- not clip controls
+- not rely on horizontal page scrolling
+- intentionally collapse, hide, group, or move secondary controls when there is not enough room
+
+Do not preserve the current desktop control density on phones merely by shrinking individual controls.
+
+The existing breadcrumb/context row appears to fit acceptably in the supplied production screenshot and can be preserved unless implementation evidence shows otherwise.
+
+---
+
+### 2. Menus header action clipping is an explicit regression case
+
+The current production screenshot visibly clips the page-header `New Menu` action at the right edge.
+
+At:
+
+- 320px
+- 360px
+- 375px
+- 390px
+- 430px
+
+the Menus page action area must never:
+
+- clip button text
+- extend beyond the viewport
+- create document-level horizontal scroll
+- require inaccessible off-screen controls
+
+---
+
+### 3. Resolve all duplicated Menus empty-state actions
+
+The current empty state duplicates all three page-header actions:
+
+- `Catalog` ↔ `Browse Item Catalog`
+- `Scan` ↔ `Scan from Image`
+- `New Menu` ↔ `Create Menu`
+
+This should be resolved intentionally rather than merely stacked responsively.
+
+#### Approved mobile behavior for the empty state
+
+When there are no menus:
+
+- the empty state should own the task actions
+- remove/hide the redundant page-header action group on mobile
+- keep the fuller, more descriptive empty-state actions
+- maintain one visually dominant primary action: `Create Menu`
+- Catalog and Scan remain secondary actions
+
+Conceptually:
+
+Menus
+short description
+
+[empty-state visual]
+
+No menus yet
+supporting copy
+
+[ Create Menu ]
+
+[ Browse Item Catalog ]
+[ Scan from Image ]
+
+Do not show another Catalog / Scan / New Menu toolbar above this on the same mobile empty-state screen.
+
+#### Once menus exist
+
+The regular responsive page header/action pattern may appear again because the empty state is no longer present.
+
+That state should be reviewed separately so primary and secondary actions remain clear without reproducing desktop toolbar geometry.
+
+---
+
+### 4. Empty-state behavior should become a reusable UX rule
+
+Use Menus as the reference implementation for a broader mobile-web convention:
+
+When an empty state already provides the actions necessary to create/import/populate the resource, do not duplicate the same actions in the mobile page header.
+
+Desktop behavior may remain different where the available width and page context justify persistent header actions.
+
+This should be implemented through shared responsive/page-header behavior where practical rather than a one-off Menus CSS exception.
+
+---
+
+### Updated Phase 1 visual acceptance evidence
+
+Capture or verify representative screenshots at the required widths showing:
+
+- full viewport width used
+- no blank right gutter
+- no clipped global utility controls
+- no clipped page actions
+- no document-level horizontal scroll
+- drawer/navigation overlay behaves correctly
+- breadcrumb/context remains readable
+- fixed chat/help control stays within the visual viewport
+
+The production Menus screenshot should be considered a baseline failure case that the completed work must visibly correct.
