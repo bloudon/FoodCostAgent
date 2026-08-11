@@ -1,0 +1,36 @@
+13|fnbcostpro  | [Migration] normalize_email_case error: _DrizzleQueryError: Failed query:
+13|fnbcostpro  |           UPDATE users SET email = lower(email) WHERE email != lower(email);
+13|fnbcostpro  |
+13|fnbcostpro  | params:
+13|fnbcostpro  |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcostpro  |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcostpro  |     at migrateNormalizeEmailCase (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:480:9) {
+13|fnbcostpro  |   query: '\n' +
+13|fnbcostpro  |     '          UPDATE users SET email = lower(email) WHERE email != lower(email);\n' +
+13|fnbcostpro  |     '        ',
+13|fnbcostpro  |   params: [],
+13|fnbcostpro  |   cause: error: duplicate key value violates unique constraint "users_email_unique"
+13|fnbcostpro  |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcostpro  |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcostpro  |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:149:14
+13|fnbcostpro  |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcostpro  |       at migrateNormalizeEmailCase (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:480:9) {
+13|fnbcostpro  |     length: 219,
+13|fnbcostpro  |     severity: 'ERROR',
+13|fnbcostpro  |     code: '23505',
+13|fnbcostpro  |     detail: 'Key (email)=(stacyloudon@gmail.com) already exists.',
+13|fnbcostpro  |     hint: undefined,
+13|fnbcostpro  |     position: undefined,
+13|fnbcostpro  |     internalPosition: undefined,
+13|fnbcostpro  |     internalQuery: undefined,
+13|fnbcostpro  |     where: undefined,
+13|fnbcostpro  |     schema: 'public',
+13|fnbcostpro  |     table: 'users',
+13|fnbcostpro  |     column: undefined,
+13|fnbcostpro  |     dataType: undefined,
+13|fnbcostpro  |     constraint: 'users_email_unique',
+13|fnbcostpro  |     file: 'nbtinsert.c',
+13|fnbcostpro  |     line: '666',
+13|fnbcostpro  |     routine: '_bt_check_unique'
+13|fnbcostpro  |   }
+13|fnbcostpro  | }
