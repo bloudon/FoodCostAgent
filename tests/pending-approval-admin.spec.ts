@@ -58,6 +58,12 @@ const MOCK_STATS = {
   mobileUsers: 1,
 };
 
+/** Stats payload that includes one pending user — makes the sidebar badge appear. */
+const MOCK_STATS_WITH_PENDING: typeof MOCK_STATS & { pendingUsersCount: number } = {
+  ...MOCK_STATS,
+  pendingUsersCount: 1,
+};
+
 const MOCK_BACKUP_STATUS = {
   status: 'success',
   lastRun: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
@@ -415,6 +421,146 @@ test.describe('admin dashboard — assign pending user', () => {
 // These UI tests verify that the React layer handles a 409 response correctly —
 // the dialog stays open and a destructive toast is shown.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Suite 4: Sidebar badge disappears immediately on last-user assignment
+//
+// Verifies that the optimistic updates in handleAssigned (setQueryData on both
+// /api/admin/pending-users and /api/admin/stats) cause the sidebar badge and
+// the panel row to vanish synchronously — before the background refetch returns.
+// ---------------------------------------------------------------------------
+
+test.describe('sidebar badge — disappears immediately when last pending user is assigned', () => {
+  /**
+   * Registers all routes needed for this suite, overriding the stats route to
+   * include pendingUsersCount: 1 so the sidebar badge is visible on load.
+   *
+   * The background refetch of /api/admin/stats after invalidation is intentionally
+   * delayed (never resolves during the assertion window) so we can confirm the
+   * badge disappearance is due to the optimistic setQueryData, not the refetch.
+   */
+  async function mockWithPendingBadge(
+    page: Page,
+    options: {
+      /** Whether to delay the stats refetch (simulates slow server; default true). */
+      delayStatsRefetch?: boolean;
+    } = {},
+  ): Promise<void> {
+    const { delayStatsRefetch = true } = options;
+
+    await mockAdminDashboard(page, [PENDING_USER]);
+
+    // Override /api/admin/stats:
+    //   - First call (page load) → returns pendingUsersCount: 1 immediately.
+    //   - Subsequent calls (after invalidation) → blocked for 30 s so assertions
+    //     run against the optimistic update, not a server-driven re-render.
+    let statsCallCount = 0;
+    await page.route('**/api/admin/stats', async (route) => {
+      statsCallCount += 1;
+      if (statsCallCount === 1 || !delayStatsRefetch) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(MOCK_STATS_WITH_PENDING),
+        });
+      } else {
+        // Never fulfils during the test — simulates a slow refetch.
+        // Playwright aborts pending routes on page close, so no leak.
+        await new Promise<void>(() => { /* intentionally never resolves */ });
+      }
+    });
+
+    // Mock the assign endpoint — responds with success after a realistic delay
+    await page.route(
+      `**/api/admin/pending-users/${PENDING_USER.id}/assign`,
+      async (route) => {
+        if (route.request().method() === 'POST') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              user: { ...PENDING_USER, companyId: 'co-alpha', role: 'company_admin' },
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      },
+    );
+
+    // After assignment the pending-users endpoint returns empty (background refetch)
+    let pendingCallCount = 0;
+    await page.route('**/api/admin/pending-users', async (route) => {
+      if (route.request().method() === 'GET') {
+        pendingCallCount += 1;
+        const users = pendingCallCount === 1 ? [PENDING_USER] : [];
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ pendingUsers: users }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+  }
+
+  test('sidebar badge is visible before assignment', async ({ page }) => {
+    await mockWithPendingBadge(page);
+    await gotoAdminDashboard(page);
+
+    // Confirm the badge renders with count 1 before any assignment
+    await expect(page.getByTestId('badge-pending-users-sidebar')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('badge-pending-users-sidebar')).toHaveText('1');
+  });
+
+  test('sidebar badge disappears immediately after assigning the last pending user', async ({ page }) => {
+    await mockWithPendingBadge(page);
+    await gotoAdminDashboard(page);
+
+    // Confirm both badge and row are present before assignment
+    await expect(page.getByTestId('badge-pending-users-sidebar')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId(`row-pending-user-${PENDING_USER.id}`)).toBeVisible({ timeout: 10_000 });
+
+    // Open the assign dialog for the only pending user
+    await page.getByTestId(`button-assign-pending-${PENDING_USER.id}`).click();
+    await expect(page.getByTestId('button-confirm-assign')).toBeVisible({ timeout: 5_000 });
+
+    // Pick company and switch to company_admin (no store required)
+    await page.getByTestId('select-assign-company').click();
+    await page.getByRole('option', { name: 'Alpha Bistro' }).click();
+    await page.getByTestId('select-assign-role').click();
+    await page.getByRole('option', { name: 'Company Admin' }).click();
+
+    // Submit — triggers the optimistic setQueryData calls in handleAssigned
+    await page.getByTestId('button-confirm-assign').click();
+
+    // The badge and the row must disappear immediately (optimistic update),
+    // before the blocked stats refetch could possibly resolve.
+    await expect(page.getByTestId('badge-pending-users-sidebar')).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId(`row-pending-user-${PENDING_USER.id}`)).not.toBeVisible({ timeout: 5_000 });
+  });
+
+  test('panel row disappears simultaneously with the sidebar badge', async ({ page }) => {
+    await mockWithPendingBadge(page);
+    await gotoAdminDashboard(page);
+
+    await expect(page.getByTestId('badge-pending-users-sidebar')).toBeVisible({ timeout: 10_000 });
+
+    // Assign the last user
+    await page.getByTestId(`button-assign-pending-${PENDING_USER.id}`).click();
+    await expect(page.getByTestId('button-confirm-assign')).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId('select-assign-company').click();
+    await page.getByRole('option', { name: 'Alpha Bistro' }).click();
+    await page.getByTestId('select-assign-role').click();
+    await page.getByRole('option', { name: 'Company Admin' }).click();
+    await page.getByTestId('button-confirm-assign').click();
+
+    // Both must be gone at the same time — check neither is visible
+    await expect(page.getByTestId(`row-pending-user-${PENDING_USER.id}`)).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('badge-pending-users-sidebar')).not.toBeVisible({ timeout: 1_000 });
+  });
+});
 
 test.describe('admin dashboard — assign 409 guard (user already has a company)', () => {
   /**
