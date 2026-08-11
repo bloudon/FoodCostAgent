@@ -36,9 +36,12 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { User, CompanyStore } from "@shared/schema";
 import { UserPlus, Pencil, Trash2, Mail, X, Copy } from "lucide-react";
 import type { Invitation } from "@shared/schema";
+import { useAuth } from "@/lib/auth-context";
+import { PendingUsersPanel } from "@/components/PendingUsersPanel";
 
 export function UsersManagement({ companyId }: { companyId: string }) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -46,6 +49,20 @@ export function UsersManagement({ companyId }: { companyId: string }) {
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
   const [createUserRole, setCreateUserRole] = useState<string>("store_user");
   const [inviteRole, setInviteRole] = useState<string>("store_user");
+
+  const isCompanyAdmin = currentUser?.role === "company_admin";
+
+  // Fetch own company for the PendingUsersPanel locked company display
+  const { data: ownCompany } = useQuery<{ id: string; name: string } | null>({
+    queryKey: ["/api/companies", companyId],
+    queryFn: async () => {
+      if (!companyId) return null;
+      const res = await fetch(`/api/companies/${companyId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: isCompanyAdmin && !!companyId,
+  });
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ["/api/users", companyId],
@@ -325,6 +342,13 @@ export function UsersManagement({ companyId }: { companyId: string }) {
 
   return (
     <>
+    {/* Pending Approval panel — visible to company admins whose invitations have arrived */}
+    {isCompanyAdmin && (
+      <PendingUsersPanel
+        companies={ownCompany ? [ownCompany as any] : []}
+        lockedCompanyId={companyId}
+      />
+    )}
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">

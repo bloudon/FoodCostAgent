@@ -18946,36 +18946,67 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  // GET /api/admin/pending-users — global admin: list authenticated users with no company assignment
+  // GET /api/admin/pending-users — global_admin: all unassigned users; company_admin: only those matching their company's invitations
   // @ts-ignore
   app.get("/api/admin/pending-users", requireAuth, async (req, res) => {
     try {
       // @ts-ignore
       const reqUser = await storage.getUser(req.user!.id);
-      if (reqUser?.role !== "global_admin") {
-        return res.status(403).json({ error: "Only global admins can access this endpoint" });
+      if (!reqUser || (reqUser.role !== "global_admin" && reqUser.role !== "company_admin")) {
+        return res.status(403).json({ error: "Insufficient permissions" });
       }
 
-      // Find users with no company that are not global admins (they legitimately have no company)
-      const result = await db.execute(
-        sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active,
-                   u.created_at, u.sso_provider, u.profile_image_url,
-                   MAX(s.last_active_at) as last_login_at
-            FROM users u
-            LEFT JOIN auth_sessions s ON s.user_id = u.id
-            WHERE u.company_id IS NULL
-              AND u.role != 'global_admin'
-            GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active,
-                     u.created_at, u.sso_provider, u.profile_image_url
-            ORDER BY u.created_at DESC`
-      );
+      let pendingUsers: any[] = [];
 
-      const rawRows = (result as { rows?: any[] }).rows ?? (result as any[]);
-      const pendingUsers: any[] = Array.isArray(rawRows) ? rawRows : [];
+      if (reqUser.role === "global_admin") {
+        // Global admins see ALL users with no company assignment
+        const result = await db.execute(
+          sql`SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.active,
+                     u.created_at, u.sso_provider, u.profile_image_url,
+                     MAX(s.last_active_at) as last_login_at
+              FROM users u
+              LEFT JOIN auth_sessions s ON s.user_id = u.id
+              WHERE u.company_id IS NULL
+                AND u.role != 'global_admin'
+              GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active,
+                       u.created_at, u.sso_provider, u.profile_image_url
+              ORDER BY u.created_at DESC`
+        );
+        const rawRows = (result as { rows?: any[] }).rows ?? (result as any[]);
+        pendingUsers = Array.isArray(rawRows) ? rawRows : [];
+      } else {
+        // Company admins see only unassigned users whose email matches a pending invitation for their company
+        if (!reqUser.companyId) {
+          return res.json({ pendingUsers: [] });
+        }
+        const result = await db.execute(
+          sql`SELECT DISTINCT u.id, u.email, u.first_name, u.last_name, u.role, u.active,
+                     u.created_at, u.sso_provider, u.profile_image_url,
+                     MAX(s.last_active_at) as last_login_at
+              FROM users u
+              LEFT JOIN auth_sessions s ON s.user_id = u.id
+              INNER JOIN invitations i ON i.email = u.email
+                AND i.company_id = ${reqUser.companyId}
+                AND i.accepted_at IS NULL
+                AND i.expires_at > NOW()
+              WHERE u.company_id IS NULL
+                AND u.role != 'global_admin'
+              GROUP BY u.id, u.email, u.first_name, u.last_name, u.role, u.active,
+                       u.created_at, u.sso_provider, u.profile_image_url
+              ORDER BY u.created_at DESC`
+        );
+        const rawRows = (result as { rows?: any[] }).rows ?? (result as any[]);
+        pendingUsers = Array.isArray(rawRows) ? rawRows : [];
+      }
 
       // For each pending user, check if there's a matching pending invitation
       const enriched = await Promise.all(
         pendingUsers.map(async (u) => {
+          // Company admins: restrict invitation lookup to their own company
+          const companyFilter =
+            reqUser.role === "company_admin" && reqUser.companyId
+              ? sql`AND i.company_id = ${reqUser.companyId}`
+              : sql``;
           const inviteResult = await db.execute(
             sql`SELECT i.id, i.email, i.company_id, i.role, i.store_ids, i.token, i.expires_at, i.created_at,
                        c.name as company_name
@@ -18984,6 +19015,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
                 WHERE i.email = ${u.email}
                   AND i.accepted_at IS NULL
                   AND i.expires_at > NOW()
+                  ${companyFilter}
                 ORDER BY i.created_at DESC
                 LIMIT 1`
           );
@@ -19001,14 +19033,14 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     }
   });
 
-  // POST /api/admin/pending-users/:id/assign — global admin: assign a pending user to a company
+  // POST /api/admin/pending-users/:id/assign — global_admin: any company; company_admin: own company only
   // @ts-ignore
   app.post("/api/admin/pending-users/:id/assign", requireAuth, async (req, res) => {
     try {
       // @ts-ignore
       const reqUser = await storage.getUser(req.user!.id);
-      if (reqUser?.role !== "global_admin") {
-        return res.status(403).json({ error: "Only global admins can assign pending users" });
+      if (!reqUser || (reqUser.role !== "global_admin" && reqUser.role !== "company_admin")) {
+        return res.status(403).json({ error: "Insufficient permissions" });
       }
 
       // Explicitly cast to string — Express route params are always strings, never arrays
@@ -19030,6 +19062,31 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       if (!companyId || typeof companyId !== "string") {
         return res.status(400).json({ error: "companyId is required" });
       }
+      // Company admins may only assign to their own company
+      if (reqUser.role === "company_admin" && companyId !== reqUser.companyId) {
+        return res.status(403).json({ error: "Company admins can only assign users to their own company" });
+      }
+
+      // For company_admin: the target user must have a valid, unexpired, unaccepted invitation
+      // for the caller's company. This prevents a company_admin from claiming arbitrary unassigned
+      // users who were never invited to their company.
+      if (reqUser.role === "company_admin") {
+        const inviteCheck = await db.execute(
+          sql`SELECT id FROM invitations
+              WHERE email = ${targetUser.email}
+                AND company_id = ${companyId}
+                AND accepted_at IS NULL
+                AND expires_at > NOW()
+              LIMIT 1`
+        );
+        const inviteRows = (inviteCheck as { rows?: any[] }).rows ?? (inviteCheck as any[]);
+        if (!Array.isArray(inviteRows) || inviteRows.length === 0) {
+          return res.status(403).json({
+            error: "No valid invitation exists for this user at your company",
+          });
+        }
+      }
+
       if (!role) {
         return res.status(400).json({ error: "role is required" });
       }

@@ -72,16 +72,18 @@ function AssignDialog({
   open,
   onOpenChange,
   onAssigned,
+  lockedCompanyId,
 }: {
   user: PendingUser;
   companies: Company[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAssigned: () => void;
+  lockedCompanyId?: string;
 }) {
   const { toast } = useToast();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
-    user.matchingInvitation?.company_id ?? ""
+    lockedCompanyId ?? user.matchingInvitation?.company_id ?? ""
   );
   const [selectedRole, setSelectedRole] = useState<string>(
     user.matchingInvitation?.role ?? "store_user"
@@ -148,6 +150,9 @@ function AssignDialog({
 
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
 
+  // Resolve display name for the locked company
+  const lockedCompany = lockedCompanyId ? companies.find((c) => c.id === lockedCompanyId) : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -183,21 +188,30 @@ function AssignDialog({
             </Alert>
           )}
 
-          {/* Company picker */}
+          {/* Company picker — read-only when lockedCompanyId is set */}
           <div className="space-y-1.5">
             <Label>Company</Label>
-            <Select value={selectedCompanyId} onValueChange={handleCompanyChange}>
-              <SelectTrigger data-testid="select-assign-company">
-                <SelectValue placeholder="Select a company…" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {lockedCompanyId ? (
+              <div
+                className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground"
+                data-testid="select-assign-company-locked"
+              >
+                {lockedCompany?.name ?? lockedCompanyId}
+              </div>
+            ) : (
+              <Select value={selectedCompanyId} onValueChange={handleCompanyChange}>
+                <SelectTrigger data-testid="select-assign-company">
+                  <SelectValue placeholder="Select a company…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Role picker */}
@@ -286,7 +300,14 @@ function AssignDialog({
   );
 }
 
-export function PendingUsersPanel({ companies }: { companies: Company[] }) {
+export function PendingUsersPanel({
+  companies,
+  lockedCompanyId,
+}: {
+  companies: Company[];
+  /** When set (company_admin scope), the company picker is pre-selected and locked to this value. */
+  lockedCompanyId?: string;
+}) {
   const [expanded, setExpanded] = useState(true);
   const [assigningUser, setAssigningUser] = useState<PendingUser | null>(null);
 
@@ -417,6 +438,7 @@ export function PendingUsersPanel({ companies }: { companies: Company[] }) {
             queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
             queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
           }}
+          lockedCompanyId={lockedCompanyId}
         />
       )}
     </>
