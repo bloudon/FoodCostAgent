@@ -1,0 +1,89 @@
+## PM Final Approval — Responsive Web / Mobile UX Foundation
+
+APPROVED TO BUILD.
+
+Proceed with the plan as written.
+
+### Final guardrails
+
+1. Phase 1 is a hard gate.
+
+Do not proceed into broad page-level responsive work until the authenticated shell visibly passes at:
+
+- 320px
+- 360px
+- 375px
+- 390px
+- 430px
+
+If there is still:
+- document-level horizontal scroll
+- reserved desktop sidebar width
+- clipped global controls
+- clipped page actions
+- blank gutter
+- drawer-induced document shifting
+
+continue fixing the shell first.
+
+2. Compact mobile chrome must preserve capability.
+
+Controls removed from the persistent mobile utility bar must remain intentionally accessible elsewhere when still relevant.
+
+Do not simply hide functionality to make the layout fit.
+
+Examples:
+- Search may collapse to an icon or drawer entry.
+- Theme/language may move into account/settings.
+- Account/logout may move into the profile menu.
+- Store/location context must remain readily accessible.
+
+3. Preserve existing embedded contracts.
+
+Responsive/WebView layout changes must not silently alter:
+
+- mobileToken/web-session behavior
+- embedded route whitelist behavior
+- authentication contracts
+- company/store scoping
+- native ↔ embedded handoff semantics
+
+If responsive implementation requires changing one of those contracts, STOP and return it for PM review.
+
+### Design-system expectation
+
+Prefer reusable shared components and layout rules over page-specific breakpoint patches.
+
+If a primitive is introduced specifically for this work, it should have a clear reusable responsibility rather than becoming a generic abstraction for hypothetical future cases.
+
+### Menus remains the reference implementation
+
+The approved empty-state behavior is authoritative:
+
+- Create Menu = primary CTA
+- Browse Item Catalog = secondary
+- Scan from Image = secondary
+- no duplicate mobile header action set while empty
+
+The populated state may restore the responsive page action pattern.
+
+### Significant review gate
+
+After Builder completion:
+
+- fresh Reviewer pass
+- fresh QA pass
+
+Reviewer should focus particularly on:
+- hidden overflow masking
+- desktop regressions
+- WebView regressions
+- duplicated responsive logic
+- unreachable controls after utility-bar simplification
+- shell behavior across the five required widths
+
+QA should include actual narrow viewport/browser verification, not only unit/component tests.
+
+Final target remains:
+
+**One FnB design language, two appropriate mobile surfaces: native where device interaction matters, responsive web where users enter the full platform.**
