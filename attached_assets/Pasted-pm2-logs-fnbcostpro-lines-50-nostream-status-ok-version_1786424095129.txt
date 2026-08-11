@@ -1,0 +1,56 @@
+pm2 logs fnbcostpro --lines 50 --nostream
+{"status":"ok","version":"1.15.0","timestamp":"2026-08-11T04:54:40.962Z"}[TAILING] Tailing last 50 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 50 lines:
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | [Migration] operating_units_rename error: _DrizzleQueryError: Failed query:
+13|fnbcost |         CREATE TABLE IF NOT EXISTS _migrations (
+13|fnbcost |           name TEXT PRIMARY KEY,
+13|fnbcost |           applied_at TIMESTAMPTZ DEFAULT NOW()
+13|fnbcost |         )
+13|fnbcost |
+13|fnbcost | params:
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at migrateOperatingUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:973:7) {
+13|fnbcost |   query: '\n' +
+13|fnbcost |     '        CREATE TABLE IF NOT EXISTS _migrations (\n' +
+13|fnbcost |     '          name TEXT PRIMARY KEY,\n' +
+13|fnbcost |     '          applied_at TIMESTAMPTZ DEFAULT NOW()\n' +
+13|fnbcost |     '        )\n' +
+13|fnbcost |     '      ',
+13|fnbcost |   params: [],
+13|fnbcost |   cause: error: password authentication failed for user "fnbcostpro_user"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:149:14
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at migrateOperatingUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:973:7) {
+13|fnbcost |     length: 111,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 50 lines:
+13|fnbcost | ":"error","severity":"FATAL","code":"28
