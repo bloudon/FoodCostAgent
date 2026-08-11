@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "6vJcGabn5HjgMFcpCh9UW"
+uri = "file://attached_assets/fnb-cost-pro-expo-qr.png"
+type = "image"
+title = "FnB Cost Pro Mobile — Expo QR Code"
+description = "Scan this QR code with Expo Go on Android, or with the iPhone Camera app and then open it in Expo Go."
