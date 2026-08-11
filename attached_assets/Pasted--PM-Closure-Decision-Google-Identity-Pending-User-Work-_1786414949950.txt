@@ -1,0 +1,124 @@
+## PM Closure Decision — Google Identity / Pending User Work
+
+The implementation is functionally current and the major identity, invitation, tenant-safety, pending-user, and UI synchronization work is complete.
+
+We are closing this workstream for now rather than continuing to expand the regression matrix.
+
+### Close as implemented
+
+The following are accepted as complete for this lifecycle:
+
+- Google invitation acceptance
+- email normalization behavior
+- pending-user administration
+- company-admin scoping
+- global-admin conflict protection
+- existing/assigned-user re-homing protection
+- pending-user notifications
+- sidebar pending count synchronization
+- pending-panel loading improvements
+- current Playwright coverage
+- green CI baseline:
+  - Typecheck
+  - Build
+  - E2E Tests
+
+Do not hold closure for additional feature work.
+
+---
+
+## Required before marking closed
+
+Perform one final focused closure pass only.
+
+### Reviewer
+
+Fresh Reviewer pass over the current implementation focused on:
+
+- no cross-company user reassignment
+- no silent company/role/store changes to established users
+- company-admin tenant boundaries
+- global-admin conflict protection
+- Google linking preserving existing password access
+- no obvious notification duplication/data-integrity regression
+
+Reviewer may BLOCK only for a material identity, authorization, tenant-isolation, or data-integrity defect.
+
+Do not create new architecture or expand scope during review.
+
+### QA
+
+Fresh QA pass covering the existing happy paths and the most important safety paths:
+
+1. Existing email/password login works.
+2. Existing Google-linked user can still use password login.
+3. Invited Google user can complete onboarding.
+4. Wrong Google identity cannot consume another user's invitation.
+5. Existing assigned user is not re-homed.
+6. Company admin cannot manage another company's pending user.
+7. Global admin conflict path behaves safely.
+8. Store/company assignments survive onboarding.
+9. Pending-user badge/count updates correctly.
+10. CI remains green.
+
+Use existing automated coverage where it already proves the behavior. Do not create duplicate tests simply to satisfy checklist wording.
+
+---
+
+## Deferred regression coverage
+
+The following may remain as backlog hardening and should not block closure unless Reviewer/QA discovers an actual defect:
+
+- true simultaneous real-DB approval race test
+- exhaustive notification retry/failure/exactly-once testing
+- additional mixed-case permutations beyond current normalization proof
+- exhaustive direct-API tenant-isolation permutations
+- broader invitation/company/role/store matrix testing
+- additional pending-panel loading permutations
+
+Create or retain follow-up tasks for these only where they provide meaningful future value.
+
+Do not leave proposed duplicate tasks open when existing tests already satisfy their intent. Close, merge, or re-scope those board items accordingly.
+
+---
+
+## Task-board cleanup
+
+Reconcile the board with what actually shipped.
+
+For each remaining proposed verification task:
+
+- mark complete if current automated/manual evidence already covers it
+- re-scope it as future hardening if useful
+- close it if redundant
+
+The board should not imply unfinished implementation that has already landed.
+
+---
+
+## Release/versioning
+
+Do not make a version bump or release tag solely to close this workstream.
+
+Version `1.15.0` can be created with the next intentional release bundle.
+
+This closure is about engineering lifecycle completion, not forcing a release event.
+
+---
+
+## Final status
+
+Once Reviewer and QA pass:
+
+**CLOSED — IMPLEMENTATION APPROVED WITH NON-BLOCKING REGRESSION HARDENING DEFERRED**
+
+Record:
+
+- final implementation SHA
+- Reviewer result
+- QA result
+- CI status
+- deferred hardening items
+- confirmation that no material auth/tenant-safety defects remain
+
+Then close the related lifecycle/tasks and move on.
