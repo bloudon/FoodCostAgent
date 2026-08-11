@@ -1,0 +1,136 @@
+This is in good shape for PM review. I would **approve the implementation direction but keep the lifecycle formally open** until the remaining regression/security cases are proven.
+
+The most important thing is that the work now appears to enforce the right invariant at multiple layers, not just in the UI:
+
+> **Authentication may establish identity; invitations and approvals may grant access; neither may silently change the tenant ownership of an already-established user.**
+
+That is the correct permanent rule for FnB.
+
+A few parts of this batch are especially important. `8956991b` is more meaningful than it may look because the already-assigned-user conflict is now backed by a real-database integration test rather than only front-end or mocked behavior. `d1b210bc` and `c2ff80ed` together address both the action side and information-disclosure side of company-admin tenant isolation. And `848eef2e` closes the architectural hole we had between legacy invitation state and the newer Google authentication flow.
+
+### One thing I would strengthen before closure
+
+The **concurrent approval test** should verify database behavior, not just two API requests producing the expected UI result.
+
+The acceptance criterion should be something like:
+
+> Two administrators attempting to assign the same pending user concurrently must result in exactly one successful assignment. The losing operation must receive a controlled conflict response, and the final user/company/store state must reflect only the winning transaction.
+
+That guards against a classic check-then-write race:
+
+```text
+Request A: user is unassigned ✓
+Request B: user is unassigned ✓
+Request A: assign company X
+Request B: assign company Y
+```
+
+The existing 409 check is excellent, but we want proof that the database/update semantics make that race impossible rather than merely unlikely.
+
+### Notification coverage deserves similar precision
+
+For `7298862b`, I would define "exactly once" carefully. We don't necessarily need a sophisticated message queue/idempotency platform for MVP, but regression coverage should at minimum establish:
+
+* only admins for the intended company are recipients;
+* unrelated-company admins never receive it;
+* retrying or revisiting the callback doesn't create obvious duplicate notifications;
+* notification failure does **not** roll back or corrupt the user's authentication/invitation state.
+
+Email is a side effect. It should never become authoritative to account assignment.
+
+### Closure gate I would give Replit
+
+I would send this back:
+
+```md
+## PM Review — Google Invitation / Pending Approval Lifecycle
+
+Implementation direction is APPROVED.
+
+The tenant-safety invariant is also approved as a permanent authentication rule:
+
+> Invitation and approval flows may assign access, but must never silently re-home an already-established user into another company or overwrite existing tenant ownership.
+
+Do not consider this lifecycle CLOSED yet.
+
+### Required closure regression gate
+
+Prove the following:
+
+1. Email normalization
+   - invitation creation
+   - invitation lookup
+   - Google callback
+   - mixed-case existing-user email
+
+2. Wrong Google identity
+   - invitation for A + verified Google account B
+   - controlled explanation
+   - no user/company/store mutation
+   - invitation remains safely unresolved
+
+3. Already-established user
+   - invitation cannot re-home an existing assigned user
+   - existing company/role/store/permissions remain unchanged
+
+4. Company-admin isolation
+   - sees only eligible pending users for own company
+   - pending badge reflects only own company
+   - cannot fetch or assign another company's pending user even through direct API access
+
+5. Global-admin conflict protection
+   - can assign a genuinely unassigned user
+   - cannot overwrite a user who has already been assigned
+
+6. Concurrent assignment
+   - use real database behavior
+   - two simultaneous assignment attempts
+   - exactly one succeeds
+   - loser receives controlled conflict
+   - final tenant/store state reflects only one assignment
+
+7. Notifications
+   - sent only to appropriate target-company administrators
+   - no cross-company recipients
+   - duplicate callback/retry does not cause obvious duplicate notification
+   - notification failure does not corrupt or roll back account/invitation state
+
+8. Pending UI
+   - assignment removes user immediately
+   - sidebar count synchronizes immediately
+   - refresh reflects authoritative server state
+   - no loading flash regression
+
+9. Store access
+   - invited store assignments survive Google onboarding
+   - assignments remain correct when pending approval is part of the flow
+
+10. Password compatibility
+   - where an existing account already has password access, Google linking/onboarding does not invalidate that existing authentication method
+
+### Reviewer / QA
+
+Because this work touches:
+
+- authentication
+- tenant ownership
+- permissions
+- invitations
+- user assignment
+- cross-company information visibility
+
+the final regression batch remains Significant.
+
+Run fresh Reviewer and QA passes after the closure tests land.
+
+Reviewer should specifically inspect server-side tenant enforcement rather than relying on UI filtering.
+
+### PM status
+
+APPROVED IMPLEMENTATION
+CLOSURE PENDING REGRESSION GATE
+```
+
+I would **not add more features** to this work now. No invitation redesign, no generalized identity-provider framework, no new approval workflow. Get those remaining cases green, run the independent review, and close this thread.
+
+The product flow itself now sounds substantially more coherent than where we started: an invitation is becoming an actual durable access grant rather than a fragile link that happens to precede authentication.
