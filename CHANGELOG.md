@@ -2,6 +2,16 @@
 
 All notable changes to FnB Cost Pro are documented here.
 
+## [1.15.0] — 2026-08-11
+
+### Responsive Web / Mobile UX
+- Reworked the authenticated responsive shell for phone widths from 320px through 430px.
+- Removed the mobile blank gutter and document-level horizontal overflow.
+- Added compact mobile utility-bar behavior while preserving access to search, store, account, theme, language, and logout controls.
+- Confirmed mobile navigation opens as an overlay without shifting page content.
+- Added safe-area-aware viewport and footer behavior.
+- Updated the Menus mobile empty state so Create Menu is the primary action and Catalog / Scan remain secondary without duplicate header actions.
+
 ## [1.14.0] — 2026-08-08
 
 ### Authentication

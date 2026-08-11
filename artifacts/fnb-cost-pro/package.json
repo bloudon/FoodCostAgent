@@ -1,6 +1,6 @@
 {
   "name": "@workspace/fnb-cost-pro",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "private": true,
   "type": "module",
   "//zod-resolvers-constraint": "IMPORTANT: zod and @hookform/resolvers must stay on compatible majors. resolvers v5.x requires zod v4.x; resolvers v3.x/v4.x requires zod v3.x. A major bump to either without bumping the other will break all form schema types silently. Run 'node scripts/check-zod-resolvers-compat.mjs' to verify after any upgrade.",
