@@ -1,0 +1,245 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 logs fnbcostpro --lines 120
+[TAILING] Tailing last 120 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 120 lines:
+13|fnbcost | {"level":30,"time":1786405728700,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 98ms :: []"}
+13|fnbcost | {"level":30,"time":1786405728722,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/stores/accessible 200 in 127ms :: [{\"id\":\"2c9272ed-8ccc-45f7-ab81-4550…"}
+13|fnbcost | {"level":30,"time":1786405728752,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/dashboard/stale-vendor-prices 200 in 130ms :: {\"staleCount\":5,\"thresho…"}
+13|fnbcost | {"level":30,"time":1786405728764,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/purchase-orders 200 in 157ms :: [{\"id\":\"a1ed9b5c-fc97-4141-9864-cea22e…"}
+13|fnbcost | {"level":30,"time":1786405728767,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/receipts 200 in 133ms :: [{\"id\":\"03cc399a-2af4-4380-92d4-d8daccdd2601\"…"}
+13|fnbcost | {"level":30,"time":1786405728784,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies/ad95ecda-74a9-49d7-833b-6d7d2f48efd1 200 in 22ms :: {\"id\":\"a…"}
+13|fnbcost | {"level":30,"time":1786405728785,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/recipes/missing-ingredients 200 in 157ms :: [{\"id\":\"29f12c04-ad36-4828…"}
+13|fnbcost | {"level":30,"time":1786405728800,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/onboarding/milestones 200 in 21ms :: {\"milestones\":[{\"id\":\"menu_scan\",…"}
+13|fnbcost | {"level":30,"time":1786405728831,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/inventory-counts 200 in 35ms :: [{\"id\":\"56270783-2c05-4e1a-a18f-b6fe1b…"}
+13|fnbcost | {"level":30,"time":1786405728843,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/purchase-orders/deadlines 200 in 39ms :: [{\"purchaseOrderId\":\"9fc4503a…"}
+13|fnbcost | {"level":30,"time":1786405728861,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/tfc/variance/top-item 200 in 64ms :: {\"inventoryItemId\":\"2f6a215f-e34c…"}
+13|fnbcost | {"level":30,"time":1786405728880,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/dashboard/reorder-list 200 in 71ms :: {\"items\":[{\"id\":\"817072b6-fde9-4…"}
+13|fnbcost | {"level":30,"time":1786405728882,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/tfc/variance/summaries 200 in 82ms :: [{\"currentCountId\":\"5c9c493e-9e7…"}
+13|fnbcost | {"level":30,"time":1786405728908,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/inventory-count-lines/e29c229e-b4ad-45da-bf2d-cfba27a64c32 200 in 23ms…"}
+13|fnbcost | {"level":30,"time":1786405734567,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/users 200 in 28ms :: [{\"id\":\"148de5c6-4955-499e-9224-5384a12f9a61\",\"em…"}
+13|fnbcost | {"level":30,"time":1786405734568,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/invitations 200 in 27ms :: [{\"id\":\"ee59f5f0-fed5-4fdd-88ea-cf600cb4f23…"}
+13|fnbcost | {"level":30,"time":1786405734569,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/onboarding/milestones 200 in 25ms :: {\"milestones\":[{\"id\":\"menu_scan\",…"}
+13|fnbcost | [revokeInvitation] Attempting to delete invitation ee59f5f0-fed5-4fdd-88ea-cf600cb4f23d for company null
+13|fnbcost | [revokeInvitation] Deleted 1 invitations
+13|fnbcost | {"level":30,"time":1786405738557,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"DELETE /api/invitations/ee59f5f0-fed5-4fdd-88ea-cf600cb4f23d 204 in 12ms"}
+13|fnbcost | {"level":30,"time":1786405738619,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/invitations 200 in 12ms :: []"}
+13|fnbcost | {"level":30,"time":1786405747027,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/users/07e99c34-563a-455c-9958-e28c720e3165/stores 200 in 11ms :: [{\"id…"}
+13|fnbcost | {"level":30,"time":1786405761802,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"PATCH /api/users/07e99c34-563a-455c-9958-e28c720e3165 200 in 44ms :: {\"id\":\"07e…"}
+13|fnbcost | {"level":30,"time":1786405761866,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/users 200 in 11ms :: [{\"id\":\"07e99c34-563a-455c-9958-e28c720e3165\",\"em…"}
+13|fnbcost | {"level":30,"time":1786405766436,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 10ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405768765,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/logout 302 in 10ms"}
+13|fnbcost | {"level":30,"time":1786405768900,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 10ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+13|fnbcost | {"level":30,"time":1786405768912,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/provider 200 in 19ms :: {\"provider\":\"google\"}"}
+13|fnbcost | [Google SSO] Starting Google login
+13|fnbcost | {"level":30,"time":1786405770687,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/login 302 in 10ms"}
+13|fnbcost | [Google SSO] Authenticated: stacyloudon@gmail.com companyId: null
+13|fnbcost | {"level":30,"time":1786405776210,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/callback 302 in 242ms"}
+13|fnbcost | {"level":30,"time":1786405776913,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 10ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405776971,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 9ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"em…"}
+13|fnbcost | {"level":30,"time":1786405777034,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 14ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405779872,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 58ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405779929,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 9ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"em…"}
+13|fnbcost | {"level":30,"time":1786405780054,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 10ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405790087,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 25ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"e…"}
+13|fnbcost | {"level":30,"time":1786405793752,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/logout 302 in 8ms"}
+13|fnbcost | {"level":30,"time":1786405793826,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/provider 200 in 3ms :: {\"provider\":\"google\"}"}
+13|fnbcost | {"level":30,"time":1786405793829,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 10ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+13|fnbcost | [Google SSO] Starting Google login
+13|fnbcost | {"level":30,"time":1786406032667,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/login 302 in 102ms"}
+13|fnbcost | [Google SSO] Authenticated: stacyloudon@gmail.com companyId: null
+13|fnbcost | {"level":30,"time":1786406044686,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/callback 302 in 6557ms"}
+13|fnbcost | {"level":30,"time":1786406045705,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 520ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"…"}
+13|fnbcost | {"level":30,"time":1786406046613,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 860ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"…"}
+13|fnbcost | {"level":30,"time":1786406047303,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 520ms :: {\"id\":\"62e730cd-6263-48d0-9839-23326e067390\",\"…"}
+13|fnbcost | {"level":30,"time":1786406048579,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 5ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786406055067,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 3846ms :: []"}
+13|fnbcost | {"level":30,"time":1786406055580,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 5ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786406366490,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 18ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786406372010,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786406475138,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 18ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786406476009,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786406731287,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 67ms :: []"}
+13|fnbcost | {"level":30,"time":1786406818983,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 26ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786406819688,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 3ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786407372848,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 23ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786407372898,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786408253703,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 19ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786408255239,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 6ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786408485989,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 18ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786408492125,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786408518032,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 5ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786408519396,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 4ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | {"level":30,"time":1786412683011,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 18ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786413768680,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mcp 404 in 7ms"}
+13|fnbcost | {"level":30,"time":1786415516592,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 3ms :: {\"error\":\"Not authenticated\"}"}
+13|fnbcost | {"level":30,"time":1786415516612,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 27ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+13|fnbcost | {"level":30,"time":1786415516660,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+13|fnbcost | {"level":30,"time":1786418673322,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 21ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786418713156,"pid":3348738,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 17ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcost | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcost | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcost | 🌱 Seeding database with pizza restaurant data...
+13|fnbcost | 📏 Seeding comprehensive kitchen units...
+13|fnbcost | ✅ All 41 comprehensive kitchen units already seeded
+13|fnbcost | ✅ Database already seeded
+13|fnbcost | ✅ All unit conversions already present
+13|fnbcost | 🏢 Creating Brian's Pizza company and stores...
+13|fnbcost | 🔗 Migrating vendors to store assignments...
+13|fnbcost |    All vendors already assigned to stores
+13|fnbcost | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Migration] Already applied (menu_item_recipes)
+13|fnbcost | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcost | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcost | [Migration] Already applied (voice_interpret_logs)
+13|fnbcost | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcost | [Migration] Already applied (operating_units_rename)
+13|fnbcost | [Migration] qb_reconciliations table ready
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | {"level":30,"time":1786421975959,"pid":3430169,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] Applied invitation_notification_sent_at
+13|fnbcost | {"level":30,"time":1786422571919,"pid":3430169,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 37ms :: {\"images\":[{\"id\":\"274c6f1e-5aa…"}
+13|fnbcost | {"level":30,"time":1786422579756,"pid":3430169,"hostname":"vps-BLOUD-Soft","msg":"GET /api/mobile/background-images 200 in 8ms :: {\"images\":[{\"id\":\"274c6f1e-5aa3…"}
+13|fnbcost | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcost | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcost | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcost | 🌱 Seeding database with pizza restaurant data...
+13|fnbcost | 📏 Seeding comprehensive kitchen units...
+13|fnbcost | {"level":40,"time":1786422961708,"pid":3433333,"hostname":"vps-BLOUD-Soft","err":{"type":"_DrizzleQueryError","message":"Failed query: select \"id\", \"name\", \"abbreviation\", \"kind\", \"to_base_ratio\", \"system\" from \"units\"\nparams: : password authentication failed for user \"fnbcostpro_user\"","stack":"Error: Failed query: select \"id\", \"name\", \"abbreviation\", \"kind\", \"to_base_ratio\", \"system\" from \"units\"\nparams: \n    at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19\n    at seedKitchenUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/seed.ts:75:25)\n    at seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/seed.ts:657:3)\n    at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/index.ts:32:5\ncaused by: error: password authentication failed for user \"fnbcostpro_user\"\n    at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13\n    at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)\n    at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19\n    at seedKitchenUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/seed.ts:75:25)\n    at seedDatabase (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/seed.ts:657:3)\n    at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/index.ts:32:5","query":"select \"id\", \"name\", \"abbreviation\", \"kind\", \"to_base_ratio\", \"system\" from \"units\"","params":[]},"msg":"seed skipped"}
+13|fnbcost | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | {"level":30,"time":1786422964513,"pid":3433333,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 120 lines:
+13|fnbcost |           ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR
+13|fnbcost |
+13|fnbcost | params:
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at migrateOrderlyCountSessionColumns (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:781:7) {
+13|fnbcost |   query: '\n' +
+13|fnbcost |     '        ALTER TABLE inventory_import_rows\n' +
+13|fnbcost |     '          ADD COLUMN IF NOT EXISTS resolved_inventory_item_id VARCHAR\n' +
+13|fnbcost |     '      ',
+13|fnbcost |   params: [],
+13|fnbcost |   cause: error: password authentication failed for user "fnbcostpro_user"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:149:14
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at migrateOrderlyCountSessionColumns (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:781:7) {
+13|fnbcost |     length: 111,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | [Migration] orderly_count_session_metadata error: _DrizzleQueryError: Failed query:
+13|fnbcost |         CREATE TABLE IF NOT EXISTS _migrations (
+13|fnbcost |           name TEXT PRIMARY KEY,
+13|fnbcost |           applied_at TIMESTAMPTZ DEFAULT NOW()
+13|fnbcost |         )
+13|fnbcost |
+13|fnbcost | params:
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at migrateOrderlyCountSession (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:846:7) {
+13|fnbcost |   query: '\n' +
+13|fnbcost |     '        CREATE TABLE IF NOT EXISTS _migrations (\n' +
+13|fnbcost |     '          name TEXT PRIMARY KEY,\n' +
+13|fnbcost |     '          applied_at TIMESTAMPTZ DEFAULT NOW()\n' +
+13|fnbcost |     '        )\n' +
+13|fnbcost |     '      ',
+13|fnbcost |   params: [],
+13|fnbcost |   cause: error: password authentication failed for user "fnbcostpro_user"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:149:14
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at migrateOrderlyCountSession (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:846:7) {
+13|fnbcost |     length: 111,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | [Migration] operating_units_rename error: _DrizzleQueryError: Failed query:
+13|fnbcost |         CREATE TABLE IF NOT EXISTS _migrations (
+13|fnbcost |           name TEXT PRIMARY KEY,
+13|fnbcost |           applied_at TIMESTAMPTZ DEFAULT NOW()
+13|fnbcost |         )
+13|fnbcost |
+13|fnbcost | params:
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at migrateOperatingUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:973:7) {
+13|fnbcost |   query: '\n' +
+13|fnbcost |     '        CREATE TABLE IF NOT EXISTS _migrations (\n' +
+13|fnbcost |     '          name TEXT PRIMARY KEY,\n' +
+13|fnbcost |     '          applied_at TIMESTAMPTZ DEFAULT NOW()\n' +
+13|fnbcost |     '        )\n' +
+13|fnbcost |     '      ',
+13|fnbcost |   params: [],
+13|fnbcost |   cause: error: password authentication failed for user "fnbcostpro_user"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:149:14
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at migrateOperatingUnits (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:973:7) {
+13|fnbcost |     length: 111,
+13|fnbcost |     severity: 'FATAL',
+13|fnbcost |     code: '28P01',
+13|fnbcost |     detail: undefined,
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: undefined,
+13|fnbcost |     table: undefined,
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: undefined,
+13|fnbcost |     file: 'auth.c',
+13|fnbcost |     line: '331',
+13|fnbcost |     routine: 'auth_failed'
+13|fnbcost |   }
+13|fnbcost | }
