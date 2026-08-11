@@ -8,6 +8,7 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import crypto from "crypto";
 import { isGoogleConfigured, setupGoogleSsoRoutes, getGoogleOidcConfig } from "./googleAuth";
+import { notifyInvitingAdmin } from "./ssoNotify";
 
 // Temporary store for invitation tokens during SSO flow
 // Maps nonce -> invitation token
@@ -111,10 +112,16 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
+type UpsertSsoResult = {
+  user: NonNullable<Awaited<ReturnType<typeof storage.getUser>>>;
+  /** The invitation that was matched but left unresolved for admin action (existing-user path). */
+  pendingInvitation?: Awaited<ReturnType<typeof storage.getInvitationByToken>>;
+};
+
 async function upsertSsoUser(
   claims: any,
   invitationToken?: string,
-) {
+): Promise<UpsertSsoResult | null> {
   // Check if user exists by SSO ID
   const ssoId = claims["sub"];
   const email = claims["email"];
@@ -134,7 +141,7 @@ async function upsertSsoUser(
   }
   
   // Check for pending invitation token
-  let invitation;
+  let invitation: Awaited<ReturnType<typeof storage.getInvitationByToken>> | undefined;
   
   if (invitationToken) {
     // Use token to get the specific invitation
@@ -166,6 +173,8 @@ async function upsertSsoUser(
     }
 
     await storage.updateUser(user.id, updates);
+    // Return the matched invitation so the caller can notify the inviting admin.
+    return { user: user as any, pendingInvitation: invitation };
   } else {
     // No existing user - create new one
     if (invitation) {
@@ -197,14 +206,14 @@ async function upsertSsoUser(
           await storage.assignUserToStore(user.id, storeId);
         }
       }
+      // Invitation was accepted immediately — no pending state, no notification needed.
+      return { user: user as any };
     } else {
       // No valid invitation - SSO access requires an invitation
       // Return null to signal access denied
       return null;
     }
   }
-  
-  return user;
 }
 
 export async function setupSsoAuth(app: Express) {
@@ -319,14 +328,16 @@ export async function setupSsoAuth(app: Express) {
       const claims = sessionData.claims;
       
       // Create or update user with invitation if applicable
-      const user = await upsertSsoUser(claims, invitationToken || undefined);
+      const ssoResult = await upsertSsoUser(claims, invitationToken || undefined);
       
       // Check if user creation was denied (no valid invitation)
-      if (!user) {
+      if (!ssoResult) {
         console.log("SSO access denied - no valid invitation for:", claims["email"]);
         return res.redirect("/sso-access-denied");
       }
       
+      const { user, pendingInvitation } = ssoResult;
+
       // Store user ID in session data
       sessionData.userId = user.id;
       
@@ -358,7 +369,14 @@ export async function setupSsoAuth(app: Express) {
               return res.redirect("/");
             }
           } else {
-            // No company assignment - redirect to pending approval page
+            // No company assignment - redirect to pending approval page.
+            // Fire-and-forget: notify the inviting admin (if any) that this
+            // user is now waiting for approval. Pass the specific invitation
+            // from the SSO flow (if one was presented) to avoid cross-company
+            // lookup and to ensure idempotency per invitation.
+            notifyInvitingAdmin(user, pendingInvitation).catch((err) =>
+              console.error("[SSO] Failed to send pending-approval notification:", err)
+            );
             return res.redirect("/pending-approval");
           }
         });

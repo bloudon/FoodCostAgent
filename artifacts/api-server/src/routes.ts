@@ -495,6 +495,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  (async function migrateInvitationNotificationSentAt() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS _migrations (
+          name TEXT PRIMARY KEY,
+          applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+      const existingRows = await db.execute(
+        sql`SELECT name FROM _migrations WHERE name = 'invitation_notification_sent_at'`
+      );
+      const existing = Array.isArray(existingRows) ? existingRows[0] : (existingRows as any).rows?.[0];
+      if (!existing) {
+        await db.execute(sql`
+          ALTER TABLE invitations ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ;
+        `);
+        await db.execute(
+          sql`INSERT INTO _migrations (name) VALUES ('invitation_notification_sent_at')`
+        );
+        console.log("[Migration] Applied invitation_notification_sent_at");
+      } else {
+        console.log("[Migration] Already applied (invitation_notification_sent_at)");
+      }
+    } catch (err) {
+      console.error("[Migration] invitation_notification_sent_at error:", err);
+    }
+  })();
+
   (async function migrateMenuDescriptions() {
     try {
       await db.execute(sql`

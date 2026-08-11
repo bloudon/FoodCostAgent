@@ -102,6 +102,19 @@ export interface IStorage {
   getInvitationByToken(token: string): Promise<Invitation | undefined>;
   getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined>;
   getPendingInvitations(companyId: string): Promise<Invitation[]>;
+  getPendingInvitationsByEmail(email: string): Promise<Invitation[]>;
+  /**
+   * Atomically claim the notification slot for an invitation.
+   * Sets notification_sent_at = NOW() only when it is currently NULL.
+   * Returns true if this caller won the claim (safe to send); false if another
+   * concurrent process already claimed it (skip).
+   */
+  claimInvitationForNotification(id: string): Promise<boolean>;
+  /**
+   * Release a previously claimed notification slot after a delivery failure.
+   * Resets notification_sent_at to NULL so the next SSO login can retry.
+   */
+  releaseInvitationNotificationClaim(id: string): Promise<void>;
   acceptInvitation(token: string): Promise<Invitation | undefined>;
   revokeInvitation(id: string, companyId: string | null): Promise<void>;
   cleanExpiredInvitations(): Promise<void>;
@@ -921,6 +934,60 @@ export class DatabaseStorage implements IStorage {
         gte(invitations.expiresAt, new Date())
       ));
     return invitation || undefined;
+  }
+
+  /**
+   * Find all pending (unaccepted, unexpired) invitations matching an email
+   * address across any company. Used by the pending-approval notification flow
+   * to notify every inviting admin independently.
+   */
+  async getPendingInvitationsByEmail(email: string): Promise<Invitation[]> {
+    return await db
+      .select()
+      .from(invitations)
+      .where(and(
+        // @ts-ignore
+        sql`lower(${invitations.email}) = lower(${email})`,
+        // @ts-ignore
+        isNull(invitations.acceptedAt),
+        // @ts-ignore
+        gte(invitations.expiresAt, new Date())
+      ))
+      .orderBy(invitations.createdAt);
+  }
+
+  /**
+   * Atomically claim the notification slot for an invitation by setting
+   * notification_sent_at = NOW() only when it is currently NULL.
+   * Returns true if this caller won the exclusive claim; false if another
+   * concurrent process already claimed it.
+   */
+  async claimInvitationForNotification(id: string): Promise<boolean> {
+    const rows = await db
+      .update(invitations)
+      // @ts-ignore
+      .set({ notificationSentAt: new Date() })
+      .where(and(
+        // @ts-ignore
+        eq(invitations.id, id),
+        // @ts-ignore
+        isNull(invitations.notificationSentAt),
+      ))
+      .returning({ id: invitations.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Release a claimed notification slot after a delivery failure so the next
+   * SSO login can retry.
+   */
+  async releaseInvitationNotificationClaim(id: string): Promise<void> {
+    await db
+      .update(invitations)
+      // @ts-ignore
+      .set({ notificationSentAt: null })
+      // @ts-ignore
+      .where(eq(invitations.id, id));
   }
 
   async getInvitationByEmail(email: string, companyId: string): Promise<Invitation | undefined> {

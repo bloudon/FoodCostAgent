@@ -489,6 +489,113 @@ export async function sendReportEmail(opts: {
   }
 }
 
+/** Escape a string for safe interpolation into an HTML context. */
+function escHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+/**
+ * Send a notification email to the admin who invited an SSO user that is now
+ * waiting for approval.
+ *
+ * Returns `true` when the email was delivered successfully.
+ * Returns `false` when SMTP is not configured (so callers can decide whether to
+ * retain or release their notification claim).
+ * Throws on SMTP delivery failures so callers can release the claim and allow
+ * a retry on the next SSO login.
+ */
+export async function sendPendingApprovalNotification(opts: {
+  adminTo: string;
+  adminFirstName: string;
+  userName: string;
+  userEmail: string;
+  settingsUrl: string;
+}): Promise<boolean> {
+  const transport = createTransport();
+  if (!transport) {
+    console.warn("[Email] Skipping pending-approval notification — no transport configured");
+    return false;
+  }
+
+  const adminFirstName = escHtml(opts.adminFirstName);
+  const userName = escHtml(opts.userName);
+  const userEmail = escHtml(opts.userEmail);
+  // settingsUrl comes from APP_BASE_URL (server-controlled), not SSO claims — safe to use directly.
+  const { adminTo, settingsUrl } = opts;
+
+  try {
+    await transport.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to: adminTo,
+      subject: "A user you invited has signed up and is waiting for approval",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #1e293b; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">
+              <span style="color: #ffffff;">FNB</span>
+              <span style="color: #22c55e; font-size: 16px;"> cost pro</span>
+            </h1>
+          </div>
+          <div style="padding: 32px; background: #ffffff;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${adminFirstName},</h2>
+            <p style="color: #475569; line-height: 1.6;">
+              A user you invited has signed up via SSO and is <strong>waiting for your approval</strong>
+              before they can access your account.
+            </p>
+            <div style="margin: 24px 0; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b; width: 80px;">Name</td>
+                  <td style="padding: 6px 0; color: #1e293b; font-weight: 500;">${userName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #64748b;">Email</td>
+                  <td style="padding: 6px 0; color: #1e293b;">${userEmail}</td>
+                </tr>
+              </table>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Visit Settings &rsaquo; Users to review and approve this user.
+            </p>
+            <div style="margin: 32px 0; text-align: center;">
+              <a href="${settingsUrl}"
+                 style="background: #f2690d; color: #ffffff; padding: 14px 32px;
+                        border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;">
+                Review Pending Users
+              </a>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              Or copy this link into your browser:<br/>
+              <a href="${settingsUrl}" style="color: #f2690d; word-break: break-all;">${settingsUrl}</a>
+            </p>
+            <p style="color: #94a3b8; font-size: 13px;">
+              If you did not send an invitation to this email address, you can ignore this notification.
+            </p>
+          </div>
+          <div style="background: #f1f5f9; padding: 16px; text-align: center;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+              &copy; ${new Date().getFullYear()} FNB Cost Pro. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${adminFirstName},\n\nA user you invited has signed up and is waiting for your approval.\n\nName: ${userName}\nEmail: ${userEmail}\n\nVisit Settings > Users to review and approve this user:\n${settingsUrl}\n\nIf you did not send this invitation, you can ignore this notification.`,
+    });
+    console.log(`[Email] Pending-approval notification sent to ${adminTo} for user ${userEmail}`);
+    return true;
+  } catch (err) {
+    // Re-throw so callers can release their atomic claim and allow a retry on
+    // the next SSO login rather than silently suppressing all future notifications.
+    console.error("[Email] Failed to send pending-approval notification:", err);
+    throw err;
+  }
+}
+
 // Single source of truth for the contact/support address.
 // Override via the CONTACT_EMAIL env var (e.g. in .env.example).
 export const CONTACT_DISPLAY_EMAIL =

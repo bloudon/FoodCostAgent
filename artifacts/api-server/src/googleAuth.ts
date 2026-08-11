@@ -26,6 +26,7 @@ import { Strategy, type VerifyFunction } from "openid-client/passport";
 import passport from "passport";
 import type { Express, Request } from "express";
 import { storage } from "./storage";
+import { notifyInvitingAdmin } from "./ssoNotify";
 
 export const GOOGLE_STRATEGY_NAME = "google-oidc";
 // Google supports refresh-token issuance through the Google-specific
@@ -107,7 +108,16 @@ function normalizeEmail(raw: unknown): string | null {
 // ── User upsert ───────────────────────────────────────────────────────────────
 
 export type UpsertGoogleResult =
-  | { ok: true; user: any }
+  | {
+      ok: true;
+      user: any;
+      /**
+       * When an existing unassigned user (companyId=null) presents a valid
+       * invitation token, the invitation is left unresolved for admin action but
+       * is returned here so the caller can notify the inviting admin.
+       */
+      pendingInvitation?: any;
+    }
   | {
       ok: false;
       reason:
@@ -168,11 +178,15 @@ export async function upsertGoogleUser(
 
   // ── 5. Existing user branch ────────────────────────────────────────────────
   if (user) {
-    // Existing user + conflicting pending invitation: block, leave unresolved.
-    // Per approved spec: return controlled result, require admin action.
-    if (invitation) {
+    // A truly conflicting invitation is one where the user is already assigned
+    // to a company — a second company trying to claim them via an invitation
+    // token must be blocked. An unassigned user (companyId=null) presenting an
+    // invitation is not a conflict: they are simply waiting for admin approval,
+    // which is the intended flow. The invitation is left unresolved for admin
+    // action and returned so the caller can notify the inviting admin.
+    if (invitation && user.companyId) {
       console.warn(
-        "[Google SSO] Existing user has a conflicting pending invitation — leaving unresolved for admin action",
+        "[Google SSO] Existing assigned user has a conflicting pending invitation — leaving unresolved for admin action",
       );
       return {
         ok: false,
@@ -204,7 +218,9 @@ export async function upsertGoogleUser(
 
     await storage.updateUser(user.id, updates);
     const refreshed = await storage.getUser(user.id);
-    return { ok: true, user: refreshed ?? user };
+    // For unassigned users, surface the matched invitation so the callback can
+    // notify the inviting admin with proper company scoping.
+    return { ok: true, user: refreshed ?? user, pendingInvitation: invitation };
   }
 
   // ── 6. New user branch ────────────────────────────────────────────────────
@@ -401,6 +417,15 @@ export async function setupGoogleSsoRoutes(app: Express): Promise<void> {
 
             if (user.role === "global_admin") return res.redirect("/companies");
             if (user.companyId) return res.redirect("/");
+            // Fire-and-forget: notify the inviting admin that this user is now
+            // waiting for approval. When a specific invitation was presented via
+            // token, pass it directly for correct company scoping. When no token
+            // was presented, notifyInvitingAdmin falls back to querying all
+            // pending invitations for the email and notifies each admin
+            // independently.
+            notifyInvitingAdmin(user, result.pendingInvitation).catch((err) =>
+              console.error("[Google SSO] Failed to send pending-approval notification:", err)
+            );
             return res.redirect("/pending-approval");
           });
         });

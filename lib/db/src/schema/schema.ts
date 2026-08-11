@@ -153,6 +153,7 @@ export const invitations = pgTable("invitations", {
   invitedBy: varchar("invited_by"), // User ID who sent the invitation
   expiresAt: timestamp("expires_at").notNull(), // Invitation expiration (default: 7 days)
   acceptedAt: timestamp("accepted_at"), // When invitation was accepted (null = pending)
+  notificationSentAt: timestamp("notification_sent_at"), // When the pending-approval admin notification was sent (null = not yet sent)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   // Index for fast lookups by email and token
