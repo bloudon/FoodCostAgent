@@ -3,3 +3,4 @@
 - [gitsafe-backup remote divergence](git-backup-remote.md) — backup remote holds unrelated legacy history; never pull/push it, a rebase against it once wiped the workspace.
 - [Approved navigation direction](navigation-direction.md) — keep the current rail interaction; make Settings the setup/admin home and route reporting through Analyze.
 - [GitHub push rejection diagnosis](git-push-rejection-diagnosis.md) — PUSH_REJECTED banner misreports cause; workflow scope needed for .github/workflows; verify remote with ls-remote before retrying.
+- [VPS database authentication diagnosis](vps-database-auth.md) — distinguish PostgreSQL role login failures from stale or different PM2 connection environments.
