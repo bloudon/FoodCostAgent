@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -249,6 +250,15 @@ export function AppSidebar() {
   const role = user?.role ?? "store_user";
   const isGlobalAdmin = role === "global_admin";
 
+  // Pending-users badge — only fetched for global admins
+  const { data: adminStats } = useQuery<{ pendingUsersCount: number }>({
+    queryKey: ["/api/admin/stats"],
+    enabled: isGlobalAdmin,
+    refetchInterval: 30_000,
+    staleTime: 20_000,
+  });
+  const pendingUsersCount = adminStats?.pendingUsersCount ?? 0;
+
   const closeMobile = () => { if (isMobile) setOpenMobile(false); };
 
   const activeSection = getActiveSection(location);
@@ -378,7 +388,54 @@ export function AppSidebar() {
       {/* ── Footer: Settings shortcut + pin-expanded control ─────────────── */}
       <SidebarFooter className="border-t p-2">
         <SidebarMenu className="gap-0.5">
-          {renderRailItem(SETTINGS_ITEM)}
+          <SidebarMenuItem key={SETTINGS_ITEM.id}>
+            {/* Wrap in a relative container so the badge can be absolutely positioned */}
+            <div className="relative">
+              {(() => {
+                const active = activeSection === SETTINGS_ITEM.id;
+                const linkEl = (
+                  <Link
+                    href={SETTINGS_ITEM.href}
+                    onClick={closeMobile}
+                    data-testid={isMobile ? `${SETTINGS_ITEM.testId}-mobile` : SETTINGS_ITEM.testId}
+                    className={cn(
+                      "flex items-center rounded-md transition-colors w-full",
+                      "text-sidebar-foreground",
+                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                      active && "bg-sidebar-accent text-sidebar-accent-foreground",
+                      isExpanded ? "gap-3 px-3 py-2" : "justify-center py-3 px-0"
+                    )}
+                  >
+                    <SETTINGS_ITEM.icon className="h-7 w-7 shrink-0" />
+                    {isExpanded ? (
+                      <span className={cn("text-sm font-medium", active && "font-semibold")}>
+                        {SETTINGS_ITEM.label}
+                      </span>
+                    ) : (
+                      <span className="sr-only">{SETTINGS_ITEM.label}</span>
+                    )}
+                  </Link>
+                );
+                return !isExpanded && isLockedMinimized ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+                    <TooltipContent side="right">{SETTINGS_ITEM.label}</TooltipContent>
+                  </Tooltip>
+                ) : linkEl;
+              })()}
+              {/* Pending-users badge — visible to global admins only */}
+              {isGlobalAdmin && pendingUsersCount > 0 && (
+                <span
+                  className="pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-semibold text-white leading-none"
+                  data-testid="badge-pending-users-sidebar"
+                  aria-label={`${pendingUsersCount} pending user${pendingUsersCount !== 1 ? "s" : ""} awaiting approval`}
+                >
+                  {pendingUsersCount}
+                </span>
+              )}
+            </div>
+          </SidebarMenuItem>
         </SidebarMenu>
         {!isMobile && (
           <div className="flex justify-center">

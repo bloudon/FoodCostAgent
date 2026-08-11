@@ -384,6 +384,18 @@ export function PendingUsersPanel({
         };
       }
     );
+    // Optimistically decrement the sidebar badge count so it stays in sync
+    // with the panel row that disappears immediately above.
+    queryClient.setQueryData<{ pendingUsersCount: number }>(
+      ["/api/admin/stats"],
+      (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pendingUsersCount: Math.max(0, (old.pendingUsersCount ?? 0) - 1),
+        };
+      }
+    );
     // Invalidate in background so next refetch is fresh.
     queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });

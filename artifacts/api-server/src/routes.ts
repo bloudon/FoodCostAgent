@@ -17824,6 +17824,13 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           isNull(authSessions.revokedAt)
         ));
 
+      // Count users who signed up but haven't been assigned to a company yet
+      const [pendingUsersRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        // @ts-ignore
+        .where(and(isNull(users.companyId), not(eq(users.role, "global_admin"))));
+
       const { getActiveUserCount } = await import("./auth");
       const inMemoryCount = getActiveUserCount();
       const dbSessionCount = Number(activeSessionsRow?.count || 0);
@@ -17834,6 +17841,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         activeUsers: Number(activeUsersRow?.count || 0),
         activeSessions: Math.max(dbSessionCount, inMemoryCount),
         mobileUsers: Number(mobileUsersRow?.count || 0),
+        pendingUsersCount: Number(pendingUsersRow?.count || 0),
       });
     } catch (error) {
       console.error("Admin stats error:", error);

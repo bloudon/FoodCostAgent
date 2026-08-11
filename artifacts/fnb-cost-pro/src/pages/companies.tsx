@@ -49,6 +49,7 @@ type AdminStats = {
   activeUsers: number;
   activeSessions: number;
   mobileUsers: number;
+  pendingUsersCount: number;
 };
 
 type BackupStatus = {
