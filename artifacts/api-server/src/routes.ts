@@ -39,6 +39,7 @@ import { registerPendingUserAssignRoutes } from "./routes/pendingUserAssignRoute
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
 import { normalizeImageForStorage, normalizeImageForVision, UnsupportedImageError } from "./lib/imageNormalization";
+import { createFinalizeHandler } from "./lib/finalizeHandler";
 // @ts-ignore
 import type { EnrichedInventoryItem } from "./types";
 import { z } from "zod";
@@ -4393,105 +4394,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * scanner-compatible, then writes the ACL policy naming the caller as owner.
    * Only unclaimed objects (no ACL policy yet) can be finalized, so one user
    * cannot take ownership of another user's object.
+   *
+   * Handler logic lives in lib/finalizeHandler.ts (injectable deps) so it can
+   * be integration-tested without importing the full routes module.
    */
-  // @ts-ignore
-  app.post("/api/objects/finalize", requireAuth, async (req, res) => {
-    try {
-      const { uploadUrl, visibility: visibilityRaw } = z.object({
-        uploadUrl: z.string().min(1),
-        visibility: z.enum(["public", "private"]).optional(),
-      }).parse(req.body);
-
-      if (useLocalStorage) {
-        return res.status(400).json({ error: "Finalize is not used in local storage mode" });
-      }
-
-      const user = (req as any).user;
-      const companyId = (req as any).companyId;
-      const visibility: "public" | "private" = visibilityRaw === "public" ? "public" : "private";
-
-      if (!companyId) {
-        return res.status(400).json({ error: "Company context required to finalize upload" });
-      }
-
-      const objectStorageService = new replitObjectStorage.ObjectStorageService();
-      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadUrl);
-      if (!objectPath.startsWith("/objects/")) {
-        return res.status(400).json({ error: "Invalid upload URL" });
-      }
-
-      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
-      // Read metadata once: check for existing ACL and capture the baseline
-      // metageneration for the precondition write below.
-      const [initialMetadata] = await objectFile.getMetadata();
-      const existingPolicyStr =
-        initialMetadata?.metadata?.[replitObjectAcl.ACL_POLICY_METADATA_KEY];
-
-      // Finalize is a one-shot claim. Any existing ACL means the object has
-      // already been claimed — reject unconditionally. Allowing re-finalization
-      // would let a user stamp a new companyId onto the object and re-home it
-      // in a different tenant, defeating company isolation.
-      if (existingPolicyStr) {
-        return res.status(409).json({ error: "Object has already been finalized" });
-      }
-
-      const declaredMimeType: string = initialMetadata.contentType || "application/octet-stream";
-      // Metageneration is used as a precondition on the ACL write so two
-      // concurrent finalize requests cannot both succeed.
-      let currentMetageneration: string | number = initialMetadata.metageneration as string | number;
-
-      const chunks: Buffer[] = [];
-      const stream = objectFile.createReadStream();
-      await new Promise<void>((resolve, reject) => {
-        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-        stream.on("end", resolve);
-        stream.on("error", reject);
-      });
-      const originalBuffer = Buffer.concat(chunks);
-
-      const normalized = await normalizeImageForStorage(originalBuffer, declaredMimeType);
-      if (normalized.buffer !== originalBuffer || normalized.mimeType !== declaredMimeType) {
-        await objectFile.save(normalized.buffer, {
-          contentType: normalized.mimeType,
-          resumable: false,
-        });
-        // save() changes the metageneration; re-read so our precondition stays valid.
-        const [savedMetadata] = await objectFile.getMetadata();
-        currentMetageneration = savedMetadata.metageneration as string | number;
-      }
-
-      try {
-        await replitObjectAcl.setObjectAclPolicy(
-          objectFile,
-          { owner: user.id, companyId, visibility },
-          { ifMetagenerationMatch: currentMetageneration },
-        );
-      } catch (preconditionErr: any) {
-        // GCS returns HTTP 412 when ifMetagenerationMatch fails — a concurrent
-        // finalize already wrote the ACL while we were working.
-        const errCode =
-          preconditionErr?.code ??
-          preconditionErr?.response?.status ??
-          preconditionErr?.statusCode;
-        if (errCode === 412) {
-          return res.status(409).json({ error: "Object has already been finalized" });
-        }
-        throw preconditionErr;
-      }
-
-      res.json({ objectPath, contentType: normalized.mimeType });
-    } catch (error: any) {
-      if (error instanceof UnsupportedImageError) {
-        return res.status(415).json({ error: error.message });
-      }
-      if (replitObjectStorage && error instanceof replitObjectStorage.ObjectNotFoundError) {
-        return res.status(404).json({ error: "Uploaded object not found" });
-      }
-      console.error("Error finalizing upload:", error);
-      res.status(500).json({ error: "Failed to finalize upload", details: error.message });
-    }
-  });
+  if (useLocalStorage) {
+    app.post("/api/objects/finalize", requireAuth, (_req, res) => {
+      res.status(400).json({ error: "Finalize is not used in local storage mode" });
+    });
+  } else {
+    app.post(
+      "/api/objects/finalize",
+      requireAuth,
+      createFinalizeHandler({
+        normalizeObjectPath: (uploadUrl) => {
+          const svc = new replitObjectStorage.ObjectStorageService();
+          return svc.normalizeObjectEntityPath(uploadUrl);
+        },
+        getObjectFile: async (objectPath) => {
+          const svc = new replitObjectStorage.ObjectStorageService();
+          return svc.getObjectEntityFile(objectPath);
+        },
+        readMetadata: async (file: any) => {
+          const [metadata] = await file.getMetadata();
+          return {
+            aclPolicyJson: metadata?.metadata?.[replitObjectAcl.ACL_POLICY_METADATA_KEY] ?? null,
+            contentType: (metadata.contentType as string) || "application/octet-stream",
+            metageneration: metadata.metageneration as string | number,
+          };
+        },
+        readBytes: async (file: any) => {
+          const chunks: Buffer[] = [];
+          const stream = file.createReadStream();
+          await new Promise<void>((resolve, reject) => {
+            stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+            stream.on("end", resolve);
+            stream.on("error", reject);
+          });
+          return Buffer.concat(chunks);
+        },
+        writeFile: async (file: any, bytes, contentType) => {
+          await file.save(bytes, { contentType, resumable: false });
+          const [savedMetadata] = await file.getMetadata();
+          return { metageneration: savedMetadata.metageneration as string | number };
+        },
+        setAclPolicy: (file, policy, options) =>
+          replitObjectAcl.setObjectAclPolicy(file, policy, options),
+        isObjectNotFoundError: (err) =>
+          replitObjectStorage && err instanceof replitObjectStorage.ObjectNotFoundError,
+        isPreconditionFailedError: (err: any) => {
+          const code = err?.code ?? err?.response?.status ?? err?.statusCode;
+          return code === 412;
+        },
+      }),
+    );
+  }
 
   // @ts-ignore
   app.get("/objects/*objectPath", optionalAuth, async (req, res) => {
