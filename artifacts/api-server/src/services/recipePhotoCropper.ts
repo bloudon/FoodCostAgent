@@ -24,7 +24,12 @@ function splitObjectPath(path: string): { bucketName: string; objectName: string
   return { bucketName: parts[1], objectName: parts.slice(2).join('/') };
 }
 
-async function writeObjectBuffer(buffer: Buffer, contentType: string, ownerId: string): Promise<string> {
+async function writeObjectBuffer(
+  buffer: Buffer,
+  contentType: string,
+  ownerId: string,
+  companyId: string,
+): Promise<string> {
   const privateObjectDir = (process.env.PRIVATE_OBJECT_DIR || '').replace(/\/$/, '');
   const objectId = randomUUID();
   const entityId = `uploads/${objectId}`;
@@ -34,7 +39,10 @@ async function writeObjectBuffer(buffer: Buffer, contentType: string, ownerId: s
   const file = objectStorageClient.bucket(bucketName).file(objectName);
 
   await file.save(buffer, { contentType, resumable: false });
-  await setObjectAclPolicy(file, { owner: ownerId, visibility: 'private' });
+  // companyId is required so the new object is scoped to the uploading tenant.
+  // Without it, a user who later moves companies would retain access via the
+  // owner-only check in canAccessObject.
+  await setObjectAclPolicy(file, { owner: ownerId, companyId, visibility: 'private' });
 
   return `/objects/${entityId}`;
 }
@@ -59,6 +67,7 @@ export interface SourceImage {
  *
  * @param sourceImage   Already-authorized, already-normalized scan bytes
  * @param ownerId       User ID to set as ACL owner on the new cropped object
+ * @param meter         AI usage meter — must include companyId for tenant isolation
  * @returns             croppedPath = new object path, or null on fallback
  */
 export async function cropFoodPhotoFromScan(
@@ -68,6 +77,11 @@ export async function cropFoodPhotoFromScan(
 ): Promise<CropResult> {
   if (!process.env.OPENAI_API_KEY) {
     console.warn('[RecipePhotoCropper] OPENAI_API_KEY not set — skipping crop');
+    return { croppedPath: null, photoCropped: false };
+  }
+
+  if (!meter?.companyId) {
+    console.warn('[RecipePhotoCropper] companyId not provided — skipping crop to preserve tenant isolation');
     return { croppedPath: null, photoCropped: false };
   }
 
@@ -150,7 +164,7 @@ Example: {"found":true,"confidence":0.92,"x":0.55,"y":0.05,"width":0.42,"height"
       .jpeg({ quality: 90 })
       .toBuffer();
 
-    const croppedPath = await writeObjectBuffer(croppedBuffer, 'image/jpeg', ownerId);
+    const croppedPath = await writeObjectBuffer(croppedBuffer, 'image/jpeg', ownerId, meter.companyId);
     console.log(`[RecipePhotoCropper] Cropped food photo saved → ${croppedPath}`);
     return { croppedPath, photoCropped: true };
 

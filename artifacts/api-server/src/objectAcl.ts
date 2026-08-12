@@ -1,6 +1,6 @@
 import { File } from "@google-cloud/storage";
 
-const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
+export const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 
 // The type of the access group.
 //
@@ -52,6 +52,13 @@ export interface ObjectAclRule {
 export interface ObjectAclPolicy {
   owner: string;
   visibility: "public" | "private";
+  // The company that owns this object. Required for tenant isolation: a user
+  // who moves to a different company must not retain access to objects they
+  // uploaded at their previous company. Legacy objects uploaded before this
+  // field was introduced will not have companyId set; those are grandfathered
+  // (access allowed) rather than silently denied, so existing data keeps
+  // working. New uploads must always set companyId.
+  companyId?: string;
   aclRules?: Array<ObjectAclRule>;
 }
 
@@ -103,20 +110,34 @@ function createObjectAccessGroup(
 }
 
 // Sets the ACL policy to the object metadata.
+//
+// Pass ifMetagenerationMatch to make the write atomic: GCS will reject the
+// write with a 412 if the object's metageneration has changed since the caller
+// last read it (e.g. because a concurrent request already wrote the ACL).
+// The error surfaced by the GCS client has code 412 on the error or its cause.
 export async function setObjectAclPolicy(
   objectFile: File,
   aclPolicy: ObjectAclPolicy,
+  options?: { ifMetagenerationMatch?: string | number },
 ): Promise<void> {
   const [exists] = await objectFile.exists();
   if (!exists) {
     throw new Error(`Object not found: ${objectFile.name}`);
   }
 
-  await objectFile.setMetadata({
-    metadata: {
-      [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy),
+  const setMetadataOptions: Record<string, unknown> = {};
+  if (options?.ifMetagenerationMatch !== undefined) {
+    setMetadataOptions.ifMetagenerationMatch = options.ifMetagenerationMatch;
+  }
+
+  await objectFile.setMetadata(
+    {
+      metadata: {
+        [ACL_POLICY_METADATA_KEY]: JSON.stringify(aclPolicy),
+      },
     },
-  });
+    setMetadataOptions,
+  );
 }
 
 // Gets the ACL policy from the object metadata.
@@ -132,12 +153,38 @@ export async function getObjectAclPolicy(
 }
 
 // Checks if the user can access the object.
+//
+// ## Visibility semantics
+//
+// "public" objects are truly anonymous: any request — authenticated or not, from
+// any company — can read them. This matches the local-filesystem storage mode
+// which gates public files on path prefix only, with no company/user check.
+// Company logos and inventory item photos are stored as public because they must
+// be reachable by image tags in the browser without extra auth headers.
+//
+// "private" objects enforce tenant isolation: the requester must be authenticated
+// and belong to the same company that originally uploaded the object. This covers
+// invoice scans, recipe card photos, and cropped food images.
+//
+// ## companyId on the ACL
+//
+// Both public and private objects now carry companyId in their ACL for audit and
+// future backfill purposes. For public objects this field is informational only;
+// for private objects it is enforced.
+//
+// ## Legacy objects
+//
+// Objects uploaded before companyId was introduced have no companyId in their
+// ACL. Those are grandfathered (access allowed) rather than silently denied, so
+// existing data keeps working. A warning is logged to aid backfill tracking.
 export async function canAccessObject({
   userId,
+  companyId,
   objectFile,
   requestedPermission,
 }: {
   userId?: string;
+  companyId?: string;
   objectFile: File;
   requestedPermission: ObjectPermission;
 }): Promise<boolean> {
@@ -147,7 +194,9 @@ export async function canAccessObject({
     return false;
   }
 
-  // Public objects are always accessible for read.
+  // Public objects are intentionally world-readable (no company or user check).
+  // This is consistent with local-filesystem storage mode and is the correct
+  // behavior for company logos and inventory item photos served via <img> tags.
   if (
     aclPolicy.visibility === "public" &&
     requestedPermission === ObjectPermission.READ
@@ -155,12 +204,41 @@ export async function canAccessObject({
     return true;
   }
 
-  // Access control requires the user id.
+  // Everything below applies to private objects only.
+
+  // Private access requires a logged-in user.
   if (!userId) {
     return false;
   }
 
-  // The owner of the object can always access it.
+  // Tenant isolation: for private objects the requester must belong to the same
+  // company that uploaded the object. This prevents a user who moves to a
+  // different company from retaining access to invoice scans and recipe photos
+  // uploaded at their previous company.
+  //
+  // Objects without a stored companyId (legacy uploads) are grandfathered so
+  // existing data keeps working. Log a warning so operators can track backfill
+  // progress (see task: Stamp existing uploaded photos with their company).
+  if (aclPolicy.companyId) {
+    if (!companyId || aclPolicy.companyId !== companyId) {
+      console.warn(
+        `[ACL] Cross-company private object access denied: ` +
+          `object company=${aclPolicy.companyId}, ` +
+          `requester company=${companyId ?? "(none)"}, userId=${userId}`,
+      );
+      return false;
+    }
+  } else {
+    // Legacy object — no companyId recorded. Grandfather access but log so we
+    // know how many objects still need backfilling.
+    console.warn(
+      `[ACL] Legacy private object accessed without company isolation (no companyId on ACL), ` +
+        `userId=${userId}, requester company=${companyId ?? "(none)"}`,
+    );
+  }
+
+  // The owner of the object can access it (company match already confirmed above
+  // for objects with a stored companyId).
   if (aclPolicy.owner === userId) {
     return true;
   }

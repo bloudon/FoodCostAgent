@@ -207,6 +207,9 @@ export class ObjectStorageService {
   }
 
   // Tries to set the ACL policy for the object entity and return the normalized path.
+  // companyId must be provided so the stored ACL carries tenant context; omitting
+  // it is allowed only for callers that deliberately set a legacy-compatible policy
+  // (e.g. public brand assets with no per-tenant restriction needed).
   async trySetObjectEntityAclPolicy(
     rawPath: string,
     aclPolicy: ObjectAclPolicy
@@ -222,17 +225,22 @@ export class ObjectStorageService {
   }
 
   // Checks if the user can access the object entity.
+  // companyId is the requester's current company and is required for
+  // tenant-isolation enforcement in canAccessObject.
   async canAccessObjectEntity({
     userId,
+    companyId,
     objectFile,
     requestedPermission,
   }: {
     userId?: string;
+    companyId?: string;
     objectFile: File;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
     return canAccessObject({
       userId,
+      companyId,
       objectFile,
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });

@@ -4407,7 +4407,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = (req as any).user;
+      const companyId = (req as any).companyId;
       const visibility: "public" | "private" = visibilityRaw === "public" ? "public" : "private";
+
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required to finalize upload" });
+      }
 
       const objectStorageService = new replitObjectStorage.ObjectStorageService();
       const objectPath = objectStorageService.normalizeObjectEntityPath(uploadUrl);
@@ -4417,13 +4422,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-      const existingPolicy = await replitObjectAcl.getObjectAclPolicy(objectFile);
-      if (existingPolicy && existingPolicy.owner !== user.id) {
-        return res.sendStatus(403);
+      // Read metadata once: check for existing ACL and capture the baseline
+      // metageneration for the precondition write below.
+      const [initialMetadata] = await objectFile.getMetadata();
+      const existingPolicyStr =
+        initialMetadata?.metadata?.[replitObjectAcl.ACL_POLICY_METADATA_KEY];
+
+      // Finalize is a one-shot claim. Any existing ACL means the object has
+      // already been claimed — reject unconditionally. Allowing re-finalization
+      // would let a user stamp a new companyId onto the object and re-home it
+      // in a different tenant, defeating company isolation.
+      if (existingPolicyStr) {
+        return res.status(409).json({ error: "Object has already been finalized" });
       }
 
-      const [metadata] = await objectFile.getMetadata();
-      const declaredMimeType: string = metadata.contentType || "application/octet-stream";
+      const declaredMimeType: string = initialMetadata.contentType || "application/octet-stream";
+      // Metageneration is used as a precondition on the ACL write so two
+      // concurrent finalize requests cannot both succeed.
+      let currentMetageneration: string | number = initialMetadata.metageneration as string | number;
 
       const chunks: Buffer[] = [];
       const stream = objectFile.createReadStream();
@@ -4440,9 +4456,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           contentType: normalized.mimeType,
           resumable: false,
         });
+        // save() changes the metageneration; re-read so our precondition stays valid.
+        const [savedMetadata] = await objectFile.getMetadata();
+        currentMetageneration = savedMetadata.metageneration as string | number;
       }
 
-      await replitObjectAcl.setObjectAclPolicy(objectFile, { owner: user.id, visibility });
+      try {
+        await replitObjectAcl.setObjectAclPolicy(
+          objectFile,
+          { owner: user.id, companyId, visibility },
+          { ifMetagenerationMatch: currentMetageneration },
+        );
+      } catch (preconditionErr: any) {
+        // GCS returns HTTP 412 when ifMetagenerationMatch fails — a concurrent
+        // finalize already wrote the ACL while we were working.
+        const errCode =
+          preconditionErr?.code ??
+          preconditionErr?.response?.status ??
+          preconditionErr?.statusCode;
+        if (errCode === 412) {
+          return res.status(409).json({ error: "Object has already been finalized" });
+        }
+        throw preconditionErr;
+      }
 
       res.json({ objectPath, contentType: normalized.mimeType });
     } catch (error: any) {
@@ -4499,9 +4535,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const objectFile = await objectStorageService.getObjectEntityFile(req.path);
         const user = (req as any).user;
         const userId = user?.id;
+        const companyIdForAccess = (req as any).companyId;
         const canAccess = await objectStorageService.canAccessObjectEntity({
           objectFile,
           userId,
+          companyId: companyIdForAccess,
           requestedPermission: replitObjectAcl.ObjectPermission.READ,
         });
         if (!canAccess) {
@@ -4540,10 +4578,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const companyId = (req as any).companyId;
       let objectPath: string;
 
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required" });
+      }
       if (useLocalStorage) {
-        if (!companyId) {
-          return res.status(400).json({ error: "Company context required" });
-        }
         objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
@@ -4552,7 +4590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const objectStorageService = new replitObjectStorage.ObjectStorageService();
         objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
           imageUrl,
-          { owner: user.id, visibility: "public" }
+          { owner: user.id, companyId, visibility: "public" }
         );
       }
 
@@ -7044,6 +7082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const canAccess = await svc.canAccessObjectEntity({
         objectFile: file,
         userId,
+        companyId,
         requestedPermission: replitObjectAcl.ObjectPermission.READ,
       });
       if (!canAccess) {
@@ -19150,10 +19189,10 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       const companyId = (req as any).companyId;
       let objectPath: string;
 
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required" });
+      }
       if (useLocalStorage) {
-        if (!companyId) {
-          return res.status(400).json({ error: "Company context required" });
-        }
         objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
@@ -19162,7 +19201,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         const objectStorageService = new replitObjectStorage.ObjectStorageService();
         objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
           imageUrl,
-          { owner: user.id, visibility: "public" }
+          { owner: user.id, companyId, visibility: "public" }
         );
       }
 
@@ -19376,10 +19415,10 @@ Return format: ["ingredient1", "ingredient2", ...]`;
       const companyId = (req as any).companyId;
       let objectPath: string;
 
+      if (!companyId) {
+        return res.status(400).json({ error: "Company context required" });
+      }
       if (useLocalStorage) {
-        if (!companyId) {
-          return res.status(400).json({ error: "Company context required" });
-        }
         objectPath = await localStorageService.setAclPolicy(imageUrl, companyId, {
           owner: user.id,
           visibility: "public",
@@ -19388,7 +19427,7 @@ Return format: ["ingredient1", "ingredient2", ...]`;
         const objectStorageService = new replitObjectStorage.ObjectStorageService();
         objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
           imageUrl,
-          { owner: user.id, visibility: "public" }
+          { owner: user.id, companyId, visibility: "public" }
         );
       }
 
