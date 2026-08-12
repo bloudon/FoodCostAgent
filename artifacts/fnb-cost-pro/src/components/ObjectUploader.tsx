@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, Loader2 } from "lucide-react";
+import { isHeicFile, normalizeImageUpload } from "@/lib/normalizeImageUpload";
 
 interface SimpleObjectUploaderProps {
   onUploadComplete: (url: string, file?: File) => void;
@@ -32,19 +33,27 @@ export function ObjectUploader({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadSingleFile = async (file: File): Promise<string> => {
+  const uploadSingleFile = async (file: File): Promise<{ path: string; file: File }> => {
     if (file.size > maxFileSize) {
       throw new Error(`File "${file.name}" is too large. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
     }
 
     const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    const isImage = file.type.startsWith("image/");
+    // Browsers often report an empty or generic MIME type for HEIC/HEIF, so
+    // recognize those by name too — otherwise an iPhone photo would be refused
+    // here before it ever reached conversion.
+    const isImage = file.type.startsWith("image/") || isHeicFile(file);
     if (!isPdf && !isImage) {
       throw new Error(`"${file.name}" is not a supported file type. Please upload an image or PDF.`);
     }
 
+    const uploadFile = isPdf ? file : await normalizeImageUpload(file);
+    if (uploadFile.size > maxFileSize) {
+      throw new Error(`File "${uploadFile.name}" is too large after conversion. Maximum size is ${Math.round(maxFileSize / 1024 / 1024)}MB.`);
+    }
+
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", uploadFile);
     formData.append("visibility", visibility);
 
     const response = await fetch("/api/objects/upload", {
@@ -54,24 +63,47 @@ export function ObjectUploader({
     });
 
     if (!response.ok) {
-      throw new Error("Upload failed");
+      const message = await response
+        .json()
+        .then((body) => body?.error)
+        .catch(() => null);
+      throw new Error(message || "Upload failed");
     }
 
     const data = await response.json();
 
     if (data.objectPath) {
-      return data.objectPath;
+      return { path: data.objectPath, file: uploadFile };
     } else if (data.uploadUrl) {
       const putResponse = await fetch(data.uploadUrl, {
         method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
+        body: uploadFile,
+        headers: { "Content-Type": uploadFile.type },
       });
       if (!putResponse.ok) {
         throw new Error("Failed to upload to storage");
       }
-      const url = new URL(data.uploadUrl);
-      return url.pathname;
+
+      // Claim the object: sets the current user as ACL owner and normalizes
+      // any format the browser could not convert before it is used anywhere.
+      const finalizeResponse = await fetch("/api/objects/finalize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadUrl: data.uploadUrl, visibility }),
+      });
+      if (!finalizeResponse.ok) {
+        const message = await finalizeResponse
+          .json()
+          .then((body) => body?.error)
+          .catch(() => null);
+        throw new Error(message || "Failed to finalize upload");
+      }
+      const finalized = await finalizeResponse.json();
+      if (!finalized.objectPath) {
+        throw new Error("No object path returned from upload");
+      }
+      return { path: finalized.objectPath, file: uploadFile };
     }
 
     throw new Error("No object path returned from upload");
@@ -87,14 +119,14 @@ export function ObjectUploader({
         const paths: string[] = [];
         const fileList: File[] = [];
         for (let i = 0; i < files.length; i++) {
-          const path = await uploadSingleFile(files[i]);
-          paths.push(path);
-          fileList.push(files[i]);
+          const upload = await uploadSingleFile(files[i]);
+          paths.push(upload.path);
+          fileList.push(upload.file);
         }
         onMultipleUploadsComplete(paths, fileList);
       } else {
-        const path = await uploadSingleFile(files[0]);
-        onUploadComplete(path, files[0]);
+        const upload = await uploadSingleFile(files[0]);
+        onUploadComplete(upload.path, upload.file);
       }
     } catch (error: any) {
       console.error("Upload error:", error);

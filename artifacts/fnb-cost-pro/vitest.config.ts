@@ -16,8 +16,16 @@ import type { UserConfig } from "vite";
  *
  * JSX note
  * --------
- * vitest 4's built-in OXC transform handles JSX without @vitejs/plugin-react.
- * The `oxc` top-level option overrides tsconfig's `"jsx": "preserve"`.
+ * JSX is handled by the bundled transform, without @vitejs/plugin-react, and
+ * the options below override tsconfig's `"jsx": "preserve"`.
+ *
+ * BOTH declarations are required. Which transform actually runs depends on the
+ * resolved Vite version: `oxc` applies to vitest 4's OXC transform, `esbuild`
+ * applies when Vite transforms with esbuild — and each silently ignores the
+ * other's option. If only one is set and the other transform is the one in use,
+ * JSX compiles to the *classic* `React.createElement` runtime and every
+ * component test that doesn't import the React namespace fails at render with
+ * `ReferenceError: React is not defined`.
  */
 
 // vitest 4 exposes an `oxc` top-level option not yet in upstream Vite types.
@@ -30,6 +38,7 @@ const root = path.resolve(import.meta.dirname); // artifacts/fnb-cost-pro
 const config: VitestUserConfig = {
   root,
   oxc: { jsx: { runtime: "automatic", importSource: "react" } },
+  esbuild: { jsx: "automatic", jsxImportSource: "react" },
   test: {
     root,
     environment: "node",

@@ -41,6 +41,7 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "fast-xml-parser": "^5.10.1",
+    "heic-convert": "^2.1.0",
     "intuit-oauth": "^4.2.5",
     "ioredis": "^6.0.0",
     "ipaddr.js": "^2.5.0",

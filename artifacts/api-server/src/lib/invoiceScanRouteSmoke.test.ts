@@ -15,6 +15,7 @@
 
 import express from "express";
 import request from "supertest";
+import sharp from "sharp";
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import type { Server } from "http";
 
@@ -45,7 +46,16 @@ function authMiddleware(companyId: string) {
   };
 }
 
-const JPEG_BUFFER = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
+/**
+ * A real, fully decodable JPEG. The scan handler decodes every image it accepts
+ * so damaged uploads are rejected up front, so a bare signature stub would be
+ * (correctly) refused with a 415 here.
+ */
+const JPEG_BUFFER = await sharp({
+  create: { width: 32, height: 32, channels: 3, background: { r: 240, g: 240, b: 240 } },
+})
+  .jpeg()
+  .toBuffer();
 
 const scanDeps: ScanHandlerDeps = {
   readBuffer: async () => ({ buffer: JPEG_BUFFER, mimeType: "image/jpeg" }),

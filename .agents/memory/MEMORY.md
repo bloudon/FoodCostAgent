@@ -4,3 +4,5 @@
 - [Approved navigation direction](navigation-direction.md) — keep the current rail interaction; make Settings the setup/admin home and route reporting through Analyze.
 - [GitHub push rejection diagnosis](git-push-rejection-diagnosis.md) — PUSH_REJECTED banner misreports cause; workflow scope needed for .github/workflows; verify remote with ls-remote before retrying.
 - [VPS database authentication diagnosis](vps-database-auth.md) — distinguish PostgreSQL role login failures from stale or different PM2 connection environments.
+- [Image upload validation](heic-image-normalization.md) — decode images instead of sniffing bytes, never trust declared MIME, keep one normalization boundary.
+- [Web test JSX transform](web-test-jsx-transform.md) — suite-wide "React is not defined" in component tests is one config gap, not a broken environment.

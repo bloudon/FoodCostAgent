@@ -184,6 +184,11 @@ export default function CameraScreen() {
       allowsEditing: false,
       allowsMultipleSelection: true,
       selectionLimit: maxAdd,
+      // Expo's iOS default preserves the original HEIC. Request the compatible
+      // representation so uploads are JPEG where iOS can provide one; the API
+      // still validates and normalizes by file bytes as a safety net.
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Automatic,
     });
     if (!result.canceled && result.assets.length > 0) {
       setFrames((prev) =>

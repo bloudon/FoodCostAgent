@@ -11,6 +11,7 @@ import {
   resolveScannedItemUnitPrice,
   resolveApplyLineUnitPrice,
 } from "./invoiceScanUtils";
+import { normalizeImageForVision, UnsupportedImageError } from "./imageNormalization";
 
 // ---------------------------------------------------------------------------
 // Scan handler
@@ -33,8 +34,6 @@ export interface ScanHandlerDeps {
     companyId: string,
   ) => Promise<Array<{ id: string; name: string; pricePerUnit: number }>>;
 }
-
-const SUPPORTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 function normalizeForMatch(s: string): string {
   return s
@@ -98,19 +97,23 @@ export function createScanHandler(deps: ScanHandlerDeps): RequestHandler {
       }
 
       const { imageObjectPath } = parsed.data;
-      const { buffer, mimeType } = await deps.readBuffer(
+      const { buffer } = await deps.readBuffer(
         imageObjectPath,
         companyId,
         userId,
       );
 
-      if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
-        return res.status(415).json({
-          error: "Unsupported image type. Please upload JPG, PNG, or WebP.",
-        });
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) {
+          return res.status(415).json({ error: error.message });
+        }
+        throw error;
       }
 
-      const scanResult = await deps.scanReceipt(buffer, mimeType);
+      const scanResult = await deps.scanReceipt(image.buffer, image.mimeType);
       if (scanResult.items.length === 0) {
         return res.status(422).json({
           error:

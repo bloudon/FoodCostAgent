@@ -38,6 +38,7 @@ import { registerChatLogsRoutes } from "./routes/chatLogsRoutes";
 import { registerPendingUserAssignRoutes } from "./routes/pendingUserAssignRoute";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
+import { normalizeImageForStorage, normalizeImageForVision, UnsupportedImageError } from "./lib/imageNormalization";
 // @ts-ignore
 import type { EnrichedInventoryItem } from "./types";
 import { z } from "zod";
@@ -2687,25 +2688,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
-
-      function detectMimeFromBuffer(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-        if (buf.length >= 8 &&
-          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
-          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
-        if (buf.length >= 12 &&
-          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-        return null;
-      }
-
-      const detectedMime = detectMimeFromBuffer(buffer);
-      if (!detectedMime) {
-        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
 
       const { scanMenuImage } = await import('./services/menuScanner');
-      const result = await scanMenuImage(buffer, detectedMime, { companyId, userId: userId ?? null });
+      const result = await scanMenuImage(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       const [session] = await db.insert(menuImportSessions).values({
         companyId,
@@ -3037,22 +3029,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { imageObjectPath } = parsed.data;
 
-      const { buffer, mimeType: storageMime } = await readImageBuffer(imageObjectPath, companyId, userId);
-
-      function detectMime(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-        if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-        if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-        return null;
-      }
-      const mimeType = detectMime(buffer) || storageMime || "image/jpeg";
-      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
 
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
+      const scanResult = await scanVendorReceipt(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -4372,10 +4359,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const userId = (req as any).user?.id;
         const visibilityRaw = req.body?.visibility;
         const visibility: "public" | "private" = visibilityRaw === "public" ? "public" : "private";
-        const objectPath = await localStorageService.uploadFile(
-          companyId,
+        const normalizedUpload = await normalizeImageForStorage(
           req.file.buffer,
           req.file.mimetype,
+          req.file.originalname,
+        );
+        const objectPath = await localStorageService.uploadFile(
+          companyId,
+          normalizedUpload.buffer,
+          normalizedUpload.mimeType,
           visibility,
           userId
         );
@@ -4383,11 +4375,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         const objectStorageService = new replitObjectStorage.ObjectStorageService();
         const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-        res.json({ uploadUrl: uploadURL });
+        res.json({ uploadUrl: uploadURL, requiresFinalize: true });
       }
     } catch (error: any) {
+      if (error instanceof UnsupportedImageError) {
+        return res.status(415).json({ error: error.message });
+      }
       console.error("Error handling upload:", error);
       res.status(500).json({ error: "Failed to handle upload", details: error.message });
+    }
+  });
+
+  /**
+   * POST /api/objects/finalize
+   * Claims an object that was uploaded through a signed PUT URL.
+   * Normalizes HEIC/HEIF bytes to JPEG so every stored object is browser- and
+   * scanner-compatible, then writes the ACL policy naming the caller as owner.
+   * Only unclaimed objects (no ACL policy yet) can be finalized, so one user
+   * cannot take ownership of another user's object.
+   */
+  // @ts-ignore
+  app.post("/api/objects/finalize", requireAuth, async (req, res) => {
+    try {
+      const { uploadUrl, visibility: visibilityRaw } = z.object({
+        uploadUrl: z.string().min(1),
+        visibility: z.enum(["public", "private"]).optional(),
+      }).parse(req.body);
+
+      if (useLocalStorage) {
+        return res.status(400).json({ error: "Finalize is not used in local storage mode" });
+      }
+
+      const user = (req as any).user;
+      const visibility: "public" | "private" = visibilityRaw === "public" ? "public" : "private";
+
+      const objectStorageService = new replitObjectStorage.ObjectStorageService();
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadUrl);
+      if (!objectPath.startsWith("/objects/")) {
+        return res.status(400).json({ error: "Invalid upload URL" });
+      }
+
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+      const existingPolicy = await replitObjectAcl.getObjectAclPolicy(objectFile);
+      if (existingPolicy && existingPolicy.owner !== user.id) {
+        return res.sendStatus(403);
+      }
+
+      const [metadata] = await objectFile.getMetadata();
+      const declaredMimeType: string = metadata.contentType || "application/octet-stream";
+
+      const chunks: Buffer[] = [];
+      const stream = objectFile.createReadStream();
+      await new Promise<void>((resolve, reject) => {
+        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+        stream.on("end", resolve);
+        stream.on("error", reject);
+      });
+      const originalBuffer = Buffer.concat(chunks);
+
+      const normalized = await normalizeImageForStorage(originalBuffer, declaredMimeType);
+      if (normalized.buffer !== originalBuffer || normalized.mimeType !== declaredMimeType) {
+        await objectFile.save(normalized.buffer, {
+          contentType: normalized.mimeType,
+          resumable: false,
+        });
+      }
+
+      await replitObjectAcl.setObjectAclPolicy(objectFile, { owner: user.id, visibility });
+
+      res.json({ objectPath, contentType: normalized.mimeType });
+    } catch (error: any) {
+      if (error instanceof UnsupportedImageError) {
+        return res.status(415).json({ error: error.message });
+      }
+      if (replitObjectStorage && error instanceof replitObjectStorage.ObjectNotFoundError) {
+        return res.status(404).json({ error: "Uploaded object not found" });
+      }
+      console.error("Error finalizing upload:", error);
+      res.status(500).json({ error: "Failed to finalize upload", details: error.message });
     }
   });
 
@@ -5770,29 +5836,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         validatedStoreIds = [storeId];
       }
 
-      // Read image from storage
-      const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
-
-      // Detect MIME from buffer magic bytes for reliability
-      function detectMimeFromBuffer(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-        if (buf.length >= 8 &&
-          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
-          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
-        if (buf.length >= 12 &&
-          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-        return null;
-      }
-      const mimeType = detectMimeFromBuffer(buffer) || storageMime || "image/jpeg";
-
-      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      // Read image from storage only after vendor/store authorization, then
+      // normalize iPhone HEIC/HEIF files before passing them to vision.
+      const { buffer } = await readImageBuffer(objectPath, companyId, userId);
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
 
       // Run GPT-4o Vision extraction
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
+      const scanResult = await scanVendorReceipt(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -6155,28 +6212,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // @ts-ignore
       const existingLines = await storage.getOrderGuideLines(orderGuideId);
 
-      // Read image from storage
-      const { buffer, mimeType: storageMime } = await readImageBuffer(objectPath, companyId, userId);
-
-      function detectMimeFromBuffer(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-        if (buf.length >= 8 &&
-          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
-          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return "image/png";
-        if (buf.length >= 12 &&
-          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-        return null;
-      }
-      const mimeType = detectMimeFromBuffer(buffer) || storageMime || "image/jpeg";
-
-      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      const { buffer } = await readImageBuffer(objectPath, companyId, userId);
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
 
       // Run GPT-4o Vision extraction
       const { scanVendorReceipt } = await import('./services/vendorReceiptScanner');
-      const scanResult = await scanVendorReceipt(buffer, mimeType, { companyId, userId: userId ?? null });
+      const scanResult = await scanVendorReceipt(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       if (scanResult.items.length === 0) {
         return res.status(422).json({ error: "No product line items could be extracted from this image. Try a clearer photo." });
@@ -7013,7 +7060,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         stream.on("error", reject);
       });
       const buffer = Buffer.concat(chunks);
-      // Infer mime from path extension
+      // Infer mime from path extension. Defaulting to image/jpeg is correct even
+      // for a ".heic" object path: /api/objects/finalize converts HEIC bytes to
+      // JPEG before the object is claimed, so stored bytes are already JPEG by
+      // the time anything reads them. Every vision call site also re-detects the
+      // format from the bytes, so this value is only a hint — don't "fix" it by
+      // fetching stored metadata, which costs an extra round trip per read.
       const pathModule = await import("path");
       const ext = pathModule.extname(objectPath).toLowerCase().replace(".", "");
       const mimeMap: Record<string, string> = {
@@ -7075,35 +7127,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Read the image buffer using the storage service (enforces company/user ownership)
       const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
-
-      // Detect MIME type from magic bytes (authoritative — not path extension or stored metadata)
-      function detectMimeFromBuffer(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-          return "image/jpeg";
-        }
-        if (buf.length >= 8 &&
-          buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
-          buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) {
-          return "image/png";
-        }
-        if (buf.length >= 12 &&
-          buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-          buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
-          return "image/webp";
-        }
-        return null;
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
-
-      const detectedMime = detectMimeFromBuffer(buffer);
-      if (!detectedMime) {
-        return res.status(415).json({
-          error: "Unsupported image type. Please upload JPG, PNG, or WebP.",
-        });
-      }
-      const mimeType = detectedMime;
 
       const { scanMenuImage } = await import('./services/menuScanner');
-      const result = await scanMenuImage(buffer, mimeType, {
+      const result = await scanMenuImage(image.buffer, image.mimeType, {
         companyId: (req as any).companyId,
         userId: (req as any).user?.id ?? null,
       });
@@ -7591,25 +7624,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { imageObjectPath } = parsed.data;
 
-      // Read the image buffer (reuses the readImageBuffer helper defined earlier in this file)
+      // Read only after authorization, then normalize iPhone HEIC/HEIF for the vision service.
       const { buffer } = await readImageBuffer(imageObjectPath, companyId, userId);
-
-      // Detect MIME from magic bytes
-      function detectMime(buf: Buffer): string | null {
-        if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-        if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-        if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-            buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-        return null;
-      }
-      const mimeType = detectMime(buffer);
-      if (!mimeType) {
-        return res.status(415).json({ error: "Unsupported image type. Please upload JPG, PNG, or WebP." });
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
       }
 
       // Run AI extraction
       const { scanRecipeImage } = await import('./services/recipeScanner');
-      const scan = await scanRecipeImage(buffer, mimeType, { companyId, userId: userId ?? null });
+      const scan = await scanRecipeImage(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       // Fuzzy-match ingredients: preload inventory + categories once, then match in-process (O(1) DB round-trips)
       const { ItemMatcher } = await import('./services/itemMatcher');
@@ -7926,7 +7953,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const { cropFoodPhotoFromScan } = await import("./services/recipePhotoCropper");
           const userId = (req as any).user?.id ?? "server";
-          const cropResult = await cropFoodPhotoFromScan(session.rawImagePath, userId, {
+          // Read through the authorized helper and normalize (HEIC/HEIF -> JPEG)
+          // before the cropper sends anything to vision.
+          const rawScan = await readImageBuffer(
+            session.rawImagePath,
+            (req as any).companyId,
+            (req as any).user?.id,
+          );
+          const normalizedScan = await normalizeImageForVision(rawScan.buffer);
+          const cropResult = await cropFoodPhotoFromScan(normalizedScan, userId, {
             companyId: (req as any).companyId,
             userId: (req as any).user?.id ?? null,
           });
@@ -10050,10 +10085,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "objectPath is required" });
       }
 
-      const { buffer, mimeType } = await readImageBuffer(parsed.data.objectPath, companyId, userId);
+      const { buffer } = await readImageBuffer(parsed.data.objectPath, companyId, userId);
+      let image;
+      try {
+        image = await normalizeImageForVision(buffer);
+      } catch (error) {
+        if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+        throw error;
+      }
 
       const { extractRecipeInstructions } = await import('./services/recipeScanner');
-      const instructions = await extractRecipeInstructions(buffer, mimeType, { companyId, userId: userId ?? null });
+      const instructions = await extractRecipeInstructions(image.buffer, image.mimeType, { companyId, userId: userId ?? null });
 
       res.json({ instructions });
     } catch (error: any) {
@@ -23064,27 +23106,22 @@ Human Handoff:
           }
         }
 
-        function detectMime(buf: Buffer): string | null {
-          if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-          if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-          if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-              buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return "image/webp";
-          return null;
-        }
-
         const { scanShelfImage, mergeShelfScanResults } = await import('./services/shelfScanner');
 
         // Process all frames in parallel, passing context hint to each
         const scanPromises = files.map(async (file, idx) => {
-          const mime = detectMime(file.buffer) || file.mimetype;
-          if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
-            console.warn(`[SweepScan] Frame ${idx + 1} has unsupported mime type ${mime}, skipping`);
-            return { items: [], notes: `Frame ${idx + 1} skipped: unsupported image type` };
+          try {
+            const image = await normalizeImageForVision(file.buffer);
+            return scanShelfImage(image.buffer, image.mimeType, contextHint, {
+              companyId: (req as any).companyId,
+              userId,
+            });
+          } catch (error) {
+            const message = error instanceof UnsupportedImageError
+              ? error.message
+              : "Unable to process this image.";
+            return { items: [], notes: `Frame ${idx + 1} skipped: ${message}` };
           }
-          return scanShelfImage(file.buffer, mime, contextHint, {
-            companyId: (req as any).companyId,
-            userId,
-          });
         });
 
         const frameResults = await Promise.all(scanPromises);
@@ -23184,16 +23221,12 @@ Human Handoff:
         }
         const file = files[0];
 
-        function detectMime(buf: Buffer): string | null {
-          if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
-          if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50) return "image/png";
-          if (buf.length >= 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46) return "image/webp";
-          return null;
-        }
-
-        const mime = detectMime(file.buffer) || file.mimetype;
-        if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
-          return res.status(400).json({ error: "Unsupported image type. Use JPEG, PNG, or WebP." });
+        let image;
+        try {
+          image = await normalizeImageForVision(file.buffer);
+        } catch (error) {
+          if (error instanceof UnsupportedImageError) return res.status(415).json({ error: error.message });
+          throw error;
         }
 
         // Resolve optional context
@@ -23213,7 +23246,7 @@ Human Handoff:
         }
 
         const { scanCatchWeightLabel } = await import('./services/shelfScanner');
-        const result = await scanCatchWeightLabel(file.buffer, mime, expectedName, { companyId, userId });
+        const result = await scanCatchWeightLabel(image.buffer, image.mimeType, expectedName, { companyId, userId });
 
         // Optionally apply the extracted weight directly to the count line
         let lineUpdated = false;

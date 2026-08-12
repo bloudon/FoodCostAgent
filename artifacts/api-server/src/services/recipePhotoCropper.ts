@@ -24,32 +24,6 @@ function splitObjectPath(path: string): { bucketName: string; objectName: string
   return { bucketName: parts[1], objectName: parts.slice(2).join('/') };
 }
 
-async function readObjectBuffer(objectPath: string): Promise<{ buffer: Buffer; mimeType: string }> {
-  // objectPath looks like /objects/uploads/<uuid>
-  // PRIVATE_OBJECT_DIR looks like /<bucket>/<prefix>
-  const privateObjectDir = (process.env.PRIVATE_OBJECT_DIR || '').replace(/\/$/, '');
-  const entityId = objectPath.replace(/^\/objects\//, ''); // "uploads/<uuid>"
-  const fullPath = `${privateObjectDir}/${entityId}`;
-
-  const { bucketName, objectName } = splitObjectPath(fullPath);
-  const file = objectStorageClient.bucket(bucketName).file(objectName);
-
-  const stream = file.createReadStream();
-  const chunks: Buffer[] = [];
-  await new Promise<void>((resolve, reject) => {
-    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-    stream.on('end', resolve);
-    stream.on('error', reject);
-  });
-
-  const buffer = Buffer.concat(chunks);
-  const ext = objectPath.split('.').pop()?.toLowerCase() || 'jpg';
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
-  };
-  return { buffer, mimeType: mimeMap[ext] || 'image/jpeg' };
-}
-
 async function writeObjectBuffer(buffer: Buffer, contentType: string, ownerId: string): Promise<string> {
   const privateObjectDir = (process.env.PRIVATE_OBJECT_DIR || '').replace(/\/$/, '');
   const objectId = randomUUID();
@@ -70,15 +44,25 @@ export interface CropResult {
   photoCropped: boolean;
 }
 
+export interface SourceImage {
+  buffer: Buffer;
+  mimeType: string;
+}
+
 /**
  * Detect and crop the food dish photo from a scanned recipe card image.
  *
- * @param rawImagePath  Object storage path of the original scan (/objects/...)
+ * The caller is responsible for reading the source image through the
+ * authorized object-read path and normalizing it (HEIC/HEIF becomes JPEG),
+ * so this service never bypasses access checks or hands an undecodable
+ * format to the vision model.
+ *
+ * @param sourceImage   Already-authorized, already-normalized scan bytes
  * @param ownerId       User ID to set as ACL owner on the new cropped object
  * @returns             croppedPath = new object path, or null on fallback
  */
 export async function cropFoodPhotoFromScan(
-  rawImagePath: string,
+  sourceImage: SourceImage,
   ownerId: string,
   meter?: AiMeter,
 ): Promise<CropResult> {
@@ -88,7 +72,7 @@ export async function cropFoodPhotoFromScan(
   }
 
   try {
-    const { buffer, mimeType } = await readObjectBuffer(rawImagePath);
+    const { buffer, mimeType } = sourceImage;
     const base64 = buffer.toString('base64');
 
     const response = await openai.chat.completions.create({
