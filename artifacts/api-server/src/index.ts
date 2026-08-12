@@ -4,6 +4,7 @@ import { registerRoutes, setupWebSocket } from "./routes";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
+import { initObjectStorageCleanup } from "./objectStorageCleanup";
 
 const rawPort = process.env["PORT"];
 
@@ -51,4 +52,7 @@ if (Number.isNaN(port) || port <= 0) {
   }, () => {
     logger.info({ port }, "Server listening");
   });
+
+  // Start periodic cleanup of abandoned (unclaimed) object-storage uploads.
+  initObjectStorageCleanup();
 })();
