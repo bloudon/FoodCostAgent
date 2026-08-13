@@ -1,0 +1,129 @@
+I would **not blindly start all three**. Two are core migration-integrity checks; one risks turning into premature UI work.
+
+My PM call:
+
+### 1. Duplicate invoice IDs in one upload — **DO NOW**
+
+This is directly tied to #1098’s idempotency contract.
+
+We already said:
+
+> identical source identity → no duplicate
+> changed record with same source identity → conflict
+> never silently overwrite
+
+So this should be proven before we rely on historical invoice import.
+
+Direction:
+
+* duplicate source invoice IDs in the same batch must not inflate history/completeness counts
+* exact duplicates should collapse/no-op safely
+* conflicting duplicates with the same source identity should be surfaced as conflicts
+* DB uniqueness remains the final protection
+
+### 2. Missing historical months before cutover — **KEEP, BUT REFRAME**
+
+The capability is necessary, but I would not make this a “manager UI” project yet.
+
+Rename it conceptually to:
+
+> **Report invoice-history month coverage before cutover**
+
+The migration completeness report should tell us:
+
+```text
+Required window: Aug 2025 – Jul 2026
+
+Aug 2025   Complete
+Sep 2025   Complete
+Oct 2025   Missing
+Nov 2025   Complete
+...
+Jul 2026   Complete
+
+11 / 12 required months complete
+CUTOVER NOT READY
+```
+
+That belongs with the **adapter/dry-run completeness gate**.
+
+A fancy manager-facing screen can wait. We need the evidence first.
+
+### 3. Year and cutover boundaries — **DO NOW**
+
+This is also core #1098 correctness.
+
+I want automated proof around:
+
+* Dec 31 → Jan 1
+* cutover on first day of month
+* cutover mid-month
+* “12 complete calendar months immediately before cutover”
+* leap-year February where applicable
+* no accidental inclusion of the partial cutover month
+* date-only semantics not shifting because of timezone conversion
+
+For example, if cutover is August 15, 2026:
+
+> Required beta history = August 1, 2025 through July 31, 2026.
+
+Not:
+
+> August 15, 2025 through August 14, 2026.
+
+That distinction matters.
+
+### What I’d tell Replit
+
+```md
+## PM Direction — #1098 Follow-Ups
+
+Do not automatically start all suggested tasks.
+
+First check whether existing #1098 tests already prove these conditions. Do not create duplicate work.
+
+### Required pre-migration hardening
+
+Proceed with targeted coverage for:
+
+1. Duplicate source invoice identities within a single staged dataset
+   - exact duplicate = no duplicate history/count inflation
+   - materially conflicting duplicate = surfaced conflict
+   - DB uniqueness remains authoritative
+
+2. Historical date-window boundaries
+   - 12 complete calendar months immediately preceding cutover
+   - year boundaries
+   - first/mid/last-month cutover cases
+   - leap-year handling
+   - no timezone/date shifting
+   - partial cutover month excluded
+
+These are migration-integrity requirements and should be completed before the Orderly adapter/dry run.
+
+### Defer/reframe the missing-month task
+
+Do not build a new manager-facing UI yet.
+
+Add required-month coverage to the migration completeness contract:
+
+- expected months
+- months represented
+- missing months
+- invoice count per month
+- readiness status
+
+This can be surfaced through the later migration review/dry-run UI.
+
+The requirement is:
+
+> Bay Hill cannot reach cutover readiness if any required historical month is missing or unexplained.
+
+Avoid standalone UI work until the thin adapter provides real Bay Hill data to evaluate.
+```
+
+So in shorthand:
+
+**Start #1 and #3. Reframe #2 into the migration completeness/dry-run work.**
+
+And if #1098 already has equivalent duplicate and boundary tests, close those suggestions as redundant rather than generating more tasks.
