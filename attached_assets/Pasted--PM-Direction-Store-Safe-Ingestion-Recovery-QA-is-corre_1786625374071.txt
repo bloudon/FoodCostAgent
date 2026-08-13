@@ -1,0 +1,126 @@
+## PM Direction — Store-Safe Ingestion Recovery
+
+QA is correctly BLOCKED.
+
+Do not close the active recovery task yet.
+
+The current route-level protections are useful, but they do not satisfy the approved shared-ingestion contract.
+
+### Required to unblock
+
+#### 1. Move authorization into the shared approval service
+
+`applyBatchApproval(...)` must enforce the acting user's authorization itself.
+
+The service must verify, before any writes:
+
+- batch belongs to the supplied company
+- acting user belongs to / is authorized for that company
+- acting user has access to the approved target store
+- destination store belongs to the same company
+- request cannot redirect an already-bound batch to another store
+
+Do not rely on the route as the only enforcement layer.
+
+The route may perform early validation for UX, but the service must be authoritative.
+
+---
+
+#### 2. Bind the source property explicitly
+
+The batch needs a durable source-property identity for migrations/imports where the source system has property-level scoping.
+
+For Bay Hill Orderly this means preserving the source restaurant/property identity used during extraction.
+
+The contract should be generic, not an Orderly-only column if an existing generic source metadata/source identity pattern can support it.
+
+At approval time, verify:
+
+- the batch's stored source property is the one expected for this import
+- the approved FnB destination mapping corresponds to that source property
+- the mapping cannot be silently changed during approval
+
+For the Bay Hill cutover:
+
+`Orderly restaurant 24472 → approved Bay Hill FnB company/store`
+
+must be explicit and auditable.
+
+Latrobe must not be able to enter the Bay Hill batch path accidentally.
+
+---
+
+#### 3. Add authorization-boundary regression tests
+
+Before writes occur, automated coverage must prove at minimum:
+
+1. valid authorized user + correct company/store succeeds
+2. wrong company is rejected
+3. user without target-store access is rejected
+4. different store cannot replace an already-bound target
+5. source-property mismatch is rejected
+6. cross-company source/destination attempt is rejected
+7. failed authorization results in zero writes
+8. valid retry does not duplicate data
+
+Where practical, test through the shared service rather than only the HTTP route.
+
+---
+
+#### 4. Preserve existing route protection
+
+Do not remove the route-level checks merely because the service is hardened.
+
+Use defense in depth:
+
+`Route validation → Shared service authorization → DB constraints / transaction`
+
+But the shared service must remain safe when invoked independently.
+
+---
+
+#### 5. No broad auth redesign
+
+This task is not permission-system refactoring.
+
+Do not redesign:
+
+- roles
+- company membership
+- store-access architecture
+- authentication
+- tenant model
+
+Reuse the existing authorization primitives and make the ingestion boundary enforce them correctly.
+
+If current authorization helpers cannot safely answer the required company/store question, stop and return that specific gap for PM review.
+
+---
+
+## QA / Review Gate
+
+Once implemented:
+
+- rerun targeted service-level authorization tests
+- run existing Orderly importer tests
+- run API typecheck
+- perform fresh Reviewer pass
+- perform fresh QA pass
+
+QA should explicitly verify that unauthorized/mismatched attempts fail **before any persistent write occurs**.
+
+If independent sessions cannot be verified, report:
+
+`PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED`
+
+---
+
+## Completion condition
+
+This prerequisite is complete only when:
+
+> A staged import batch has an explicit source property and approved FnB destination, and the shared ingestion service itself proves that the acting user is authorized for that company/store before any data is written.
+
+Until then:
+
+**STATUS: BLOCKED / IN PROGRESS**
