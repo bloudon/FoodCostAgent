@@ -2613,6 +2613,7 @@ export const historicalInvoiceImportBatches = pgTable("historical_invoice_import
   windowStart: text("window_start").notNull(),
   windowEnd: text("window_end").notNull(),
   payloadHash: text("payload_hash").notNull(),
+  explainedZeroMonths: jsonb("explained_zero_months").notNull().default(sql`'[]'::jsonb`),
   status: text("status").notNull().default("staged"), // staged | completed | completed_with_conflicts | rejected
   importedBy: varchar("imported_by").notNull(),
   importedAt: timestamp("imported_at").notNull().defaultNow(),

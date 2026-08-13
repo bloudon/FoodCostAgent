@@ -35,6 +35,7 @@ import {
 import { db } from '../../db';
 import {
   BAY_HILL_ORDERLY_PROPERTY_ID,
+  deriveHistoricalInvoiceWindow,
   HistoricalInvoiceImportError,
   getHistoricalInvoiceCompleteness,
   listHistoricalInvoices,
@@ -80,6 +81,7 @@ function payload(overrides: Record<string, unknown> = {}) {
     sourceSystem: 'ORDERLY',
     sourcePropertyId: BAY_HILL_ORDERLY_PROPERTY_ID,
     cutoverDate: CUTOVER,
+    explainedZeroMonths: (overrides.explainedZeroMonths as string[] | undefined) ?? [],
     invoices: [
       {
         sourceInvoiceId,
@@ -302,6 +304,86 @@ describe.skipIf(SKIP)('historical invoice retention — persistence contract', (
 });
 
 describe.skipIf(SKIP)('historical invoice retention — idempotency and conflicts', () => {
+  it('deduplicates an exact repeated invoice identity in one payload without inflating evidence or completeness', async () => {
+    const body = payload();
+    const sourceInvoiceId = body.invoices[0].sourceInvoiceId;
+    body.invoices.push(structuredClone(body.invoices[0]));
+
+    const result = await stageHistoricalInvoiceImport(body, AUTH_A);
+    expect(result.invoices).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.conflicts).toBe(0);
+
+    const { lines } = await linesFor(sourceInvoiceId);
+    expect(lines).toHaveLength(2);
+    const retained = await db.select({ id: historicalInvoices.id }).from(historicalInvoices).where(and(
+      eq(historicalInvoices.companyId, ID.companyA),
+      eq(historicalInvoices.sourceInvoiceId, sourceInvoiceId),
+    ));
+    expect(retained).toHaveLength(1);
+  });
+
+  it('records a conflicting repeated invoice identity without persisting a second header or line version', async () => {
+    const body = payload();
+    const sourceInvoiceId = body.invoices[0].sourceInvoiceId;
+    const conflicting = structuredClone(body.invoices[0]);
+    conflicting.totalAmount = 999;
+    conflicting.lines[0].quantity = 99;
+    body.invoices.push(conflicting);
+
+    const result = await stageHistoricalInvoiceImport(body, AUTH_A);
+    expect(result.invoices).toBe(1);
+    expect(result.conflicts).toBeGreaterThanOrEqual(2);
+
+    const { invoice, lines } = await linesFor(sourceInvoiceId);
+    expect(invoice?.totalAmount).toBe(105);
+    expect(lines).toHaveLength(2);
+    expect(lines.find(line => line.sourceLineId === 'L1')?.quantity).toBe(2);
+  });
+
+  it('defines material differences through the explicit financial, vendor, and line evidence fields', async () => {
+    const changes: Array<{ label: string; change: (value: any) => void }> = [
+      { label: 'invoice date', change: invoice => { invoice.invoiceDate = '2026-03-05'; } },
+      { label: 'vendor identity', change: invoice => { invoice.vendorExternalId = 'ORD-VEND-CHANGED'; } },
+      { label: 'invoice charge', change: invoice => { invoice.chargeAmount = 4; } },
+      { label: 'invoice credit', change: invoice => { invoice.creditAmount = 4; } },
+      { label: 'line quantity', change: invoice => { invoice.lines[0].quantity = 3; } },
+      { label: 'line amount', change: invoice => { invoice.lines[0].lineTotal = 51; } },
+      { label: 'line credit', change: invoice => { invoice.lines[0].creditAmount = 1; } },
+      { label: 'line pack/uom', change: invoice => { invoice.lines[0].pack = { packSize: '6/64 OZ', caseQty: 6 }; } },
+      { label: 'line catch weight', change: invoice => { invoice.lines[0].catchWeight = { isCatchWeight: true, weight: 20 }; } },
+      { label: 'line GL classification', change: invoice => { invoice.lines[0].gl = { glCode: '5099', glName: 'Other Food' }; } },
+      { label: 'line financial classification', change: invoice => { invoice.lines[0].financial = { extendedPrice: 50, allowance: 2 }; } },
+    ];
+    for (const { label, change } of changes) {
+      const original = payload();
+      const sourceInvoiceId = original.invoices[0].sourceInvoiceId;
+      await stageHistoricalInvoiceImport(original, AUTH_A);
+      const changed = payload({ sourceInvoiceId });
+      change(changed.invoices[0]);
+      const result = await stageHistoricalInvoiceImport(changed, AUTH_A);
+      expect(result.conflicts, label).toBeGreaterThan(0);
+      const retained = await db.select({ id: historicalInvoices.id }).from(historicalInvoices).where(and(
+        eq(historicalInvoices.companyId, ID.companyA),
+        eq(historicalInvoices.sourceInvoiceId, sourceInvoiceId),
+      ));
+      expect(retained, label).toHaveLength(1);
+    }
+  });
+
+  it('rejects duplicate source line identities before any header or line evidence is persisted', async () => {
+    const body = payload();
+    const sourceInvoiceId = body.invoices[0].sourceInvoiceId;
+    body.invoices[0].lines.push({ ...body.invoices[0].lines[0] });
+
+    await expect(stageHistoricalInvoiceImport(body, AUTH_A)).rejects.toThrow(/duplicate source line identity/i);
+    const retained = await db.select({ id: historicalInvoices.id }).from(historicalInvoices).where(and(
+      eq(historicalInvoices.companyId, ID.companyA),
+      eq(historicalInvoices.sourceInvoiceId, sourceInvoiceId),
+    ));
+    expect(retained).toHaveLength(0);
+  });
+
   it('treats an identical re-import as a no-op', async () => {
     const body = payload();
     const sourceInvoiceId = body.invoices[0].sourceInvoiceId;
@@ -417,6 +499,44 @@ describe.skipIf(SKIP)('historical invoice retention — idempotency and conflict
 });
 
 describe.skipIf(SKIP)('historical invoice retention — date window', () => {
+  it('derives twelve complete calendar months from date-only cutovers without timezone shifts', () => {
+    expect(deriveHistoricalInvoiceWindow('2026-08-01')).toEqual({ start: '2025-08-01', end: '2026-07-31' });
+    expect(deriveHistoricalInvoiceWindow('2026-08-13')).toEqual({ start: '2025-08-01', end: '2026-07-31' });
+    expect(deriveHistoricalInvoiceWindow('2026-08-31')).toEqual({ start: '2025-08-01', end: '2026-07-31' });
+    expect(deriveHistoricalInvoiceWindow('2026-01-01')).toEqual({ start: '2025-01-01', end: '2025-12-31' });
+    expect(deriveHistoricalInvoiceWindow('2024-03-15')).toEqual({ start: '2023-03-01', end: '2024-02-29' });
+    expect(() => deriveHistoricalInvoiceWindow('2026-02-29')).toThrow(/invalid cutover date/i);
+  });
+
+  it('accepts exact boundaries and rejects the adjoining dates for varied cutovers', async () => {
+    const cases = [
+      { cutoverDate: '2026-08-01', start: '2025-08-01', end: '2026-07-31' },
+      { cutoverDate: '2026-01-31', start: '2025-01-01', end: '2025-12-31' },
+      { cutoverDate: '2024-03-15', start: '2023-03-01', end: '2024-02-29' },
+    ];
+    for (const boundary of cases) {
+      await expect(stageHistoricalInvoiceImport(payload({
+        cutoverDate: boundary.cutoverDate,
+        invoiceDate: boundary.start,
+      }), AUTH_A)).resolves.toBeTruthy();
+      await expect(stageHistoricalInvoiceImport(payload({
+        cutoverDate: boundary.cutoverDate,
+        invoiceDate: boundary.end,
+      }), AUTH_A)).resolves.toBeTruthy();
+
+      const beforeStart = new Date(`${boundary.start}T00:00:00.000Z`);
+      beforeStart.setUTCDate(beforeStart.getUTCDate() - 1);
+      await expect(stageHistoricalInvoiceImport(payload({
+        cutoverDate: boundary.cutoverDate,
+        invoiceDate: beforeStart.toISOString().slice(0, 10),
+      }), AUTH_A)).rejects.toThrow(/outside the required 12-month window/i);
+      await expect(stageHistoricalInvoiceImport(payload({
+        cutoverDate: boundary.cutoverDate,
+        invoiceDate: boundary.cutoverDate.slice(0, 8) + '01',
+      }), AUTH_A)).rejects.toThrow(/outside the required 12-month window/i);
+    }
+  });
+
   it('rejects an invoice older than the 12 complete calendar months', async () => {
     await expect(
       stageHistoricalInvoiceImport(payload({ invoiceDate: '2025-07-31' }), AUTH_A),
@@ -564,12 +684,30 @@ describe.skipIf(SKIP)('historical invoice retention — authorization and scopin
 });
 
 describe.skipIf(SKIP)('historical invoice retention — completeness evidence', () => {
-  it('reports months, totals, resolution, vendor coverage, and missing GL mappings', async () => {
-    await stageHistoricalInvoiceImport(payload(), AUTH_A);
+  it('reports expected months with represented, missing, and source-explained zero status', async () => {
+    await stageHistoricalInvoiceImport(payload({ explainedZeroMonths: ['2025-09'] }), AUTH_A);
 
     const report = await getHistoricalInvoiceCompleteness(AUTH_A);
+    expect(report.cutoverDate).toBe(CUTOVER);
+    expect(report.window).toEqual({ start: '2025-08-01', end: '2026-07-31' });
+    expect(report.expectedMonths).toHaveLength(12);
+    expect(report.months).toHaveLength(12);
+    expect(report.months.find(month => month.month === '2026-03')).toMatchObject({
+      status: 'represented',
+      invoiceCount: expect.any(Number),
+    });
+    expect(report.months.find(month => month.month === '2025-09')).toEqual({
+      month: '2025-09',
+      status: 'explained_zero',
+      invoiceCount: 0,
+    });
+    expect(report.months.find(month => month.month === '2025-10')).toEqual({
+      month: '2025-10',
+      status: 'missing',
+      invoiceCount: 0,
+    });
+    expect(report.readiness).toMatchObject({ ready: false, reason: 'missing_months' });
     expect(report.invoiceCount).toBeGreaterThan(0);
-    expect(report.months).toContain('2026-03');
     expect(report.lineCount).toBe(report.resolvedLines + report.unresolvedLines);
     expect(report.resolvedLines).toBeGreaterThan(0);
     expect(report.unresolvedLines).toBeGreaterThan(0);
@@ -577,5 +715,35 @@ describe.skipIf(SKIP)('historical invoice retention — completeness evidence', 
     expect(report.vendorCoverage.resolved).toBeGreaterThan(0);
     expect(report.missingGlMappings).toBeGreaterThan(0);
     expect(report.totalAmount).toBeGreaterThan(0);
+  });
+
+  it('treats source-explained quiet months as complete coverage, not missing evidence', async () => {
+    await stageHistoricalInvoiceImport(payload({
+      explainedZeroMonths: [
+        '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01',
+        '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07',
+      ],
+    }), AUTH_A);
+    const report = await getHistoricalInvoiceCompleteness(AUTH_A);
+    expect(report.readiness).toEqual({
+      ready: true,
+      status: 'ready',
+      reason: 'all_months_represented_or_explained',
+    });
+    expect(report.months.some(month => month.status === 'explained_zero')).toBe(true);
+    expect(report.missingMonths).toEqual([]);
+  });
+
+  it('becomes ready when every expected month is represented', async () => {
+    for (const month of [
+      '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01',
+      '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07',
+    ]) {
+      await stageHistoricalInvoiceImport(payload({ invoiceDate: `${month}-15` }), AUTH_A);
+    }
+    const report = await getHistoricalInvoiceCompleteness(AUTH_A);
+    expect(report.readiness).toMatchObject({ ready: true, status: 'ready' });
+    expect(report.missingMonths).toEqual([]);
+    expect(report.months.every(month => month.status === 'represented')).toBe(true);
   });
 });

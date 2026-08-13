@@ -839,6 +839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           window_start TEXT NOT NULL,
           window_end TEXT NOT NULL,
           payload_hash TEXT NOT NULL,
+          explained_zero_months JSONB NOT NULL DEFAULT '[]'::jsonb,
           status TEXT NOT NULL DEFAULT 'staged',
           imported_by VARCHAR NOT NULL,
           imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -849,6 +850,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           conflict_count INTEGER NOT NULL DEFAULT 0,
           skipped_count INTEGER NOT NULL DEFAULT 0
         );
+        ALTER TABLE historical_invoice_import_batches
+          ADD COLUMN IF NOT EXISTS explained_zero_months JSONB NOT NULL DEFAULT '[]'::jsonb;
         CREATE INDEX IF NOT EXISTS historical_invoice_batches_company_idx ON historical_invoice_import_batches(company_id, imported_at);
         CREATE INDEX IF NOT EXISTS historical_invoice_batches_source_idx ON historical_invoice_import_batches(company_id, source_system, source_property_id);
 
