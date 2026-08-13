@@ -255,6 +255,24 @@ describe("runObjectStorageCleanup", () => {
     expect(mockGetFiles).not.toHaveBeenCalled();
   });
 
+  it("returns 0 gracefully and logs when bucket.getFiles() rejects (full run failure)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    mockGetFiles.mockRejectedValue(new Error("GCS auth failure"));
+
+    const deleted = await runObjectStorageCleanup();
+
+    expect(deleted).toBe(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Full run failed"),
+      expect.any(Error)
+    );
+    // No individual file operations should have been attempted.
+    expect(mockGetObjectAclPolicy).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
   it("continues processing remaining files when one file throws an error", async () => {
     const badFile = {
       name: "uploads/bad.jpg",

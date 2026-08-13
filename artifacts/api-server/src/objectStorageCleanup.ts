@@ -15,6 +15,7 @@
  * Call initObjectStorageCleanup() once at server startup.
  */
 
+import type { File as GCSFile } from "@google-cloud/storage";
 import { objectStorageClient } from "./objectStorage";
 import { getObjectAclPolicy } from "./objectAcl";
 
@@ -135,7 +136,16 @@ export async function runObjectStorageCleanup(): Promise<number> {
   const cutoff = new Date(Date.now() - UNCLAIMED_THRESHOLD_MS);
 
   // List every object under the uploads prefix.
-  const [files] = await bucket.getFiles({ prefix: uploadsPrefix });
+  let files: GCSFile[];
+  try {
+    [files] = await bucket.getFiles({ prefix: uploadsPrefix });
+  } catch (err) {
+    console.error(
+      "[ObjectStorageCleanup] Full run failed — could not list bucket objects:",
+      err
+    );
+    return 0;
+  }
 
   let deleted = 0;
   let skippedClaimed = 0;
