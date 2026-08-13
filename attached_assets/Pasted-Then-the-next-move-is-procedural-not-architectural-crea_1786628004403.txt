@@ -1,0 +1,40 @@
+Then the next move is procedural, not architectural: **create a fresh Significant remediation task and do not let any Bay Hill migration task proceed until it passes.**
+
+I would not revive canceled #1094 unless your board/process prefers reopening canceled tasks. Cleaner is a new task, e.g.:
+
+### #1095 — Enforce Authoritative Import Approval Boundaries
+
+Scope should be exactly:
+
+* move acting-user/company/store authorization into `applyBatchApproval(...)`
+* make authorization fail-closed; null/omitted context can never bypass it
+* persist generic source-system + source-property identity
+* persist approved source-property → FnB destination binding
+* prevent destination substitution after binding
+* ensure all validation occurs before mutation
+* prove failed approvals produce zero writes
+* add real shared-service tests for cross-company, cross-store, source mismatch, unauthorized user, target substitution, idempotent retry
+* preferably use DB-backed tests where necessary to prove zero-write/idempotency
+* fresh Reviewer and QA passes
+
+Explicit non-goals:
+
+* no auth redesign
+* no role redesign
+* no Bay Hill-specific permission model
+* no invoice-history work
+* no accounting work
+* no extractor work
+* no bulk migration
+
+The task’s completion sentence should be:
+
+> **The shared ingestion service can be called independently of the route and cannot approve or mutate a batch unless the persisted source property, company, destination store, and acting-user authorization all agree.**
+
+Until that task is merged and independently reviewed:
+
+> **Bay Hill migration gate: BLOCKED.**
+
+Once it passes, we immediately resume the sequence with #1086 historical invoices/vendor-product identity, then #1087 accounting classification, then the thin Orderly extraction adapter and dry run.
+
+I would not spend any more PM time discussing this boundary now—the defect is well defined. Create the replacement task, let Replit implement it, and bring back the implementation + Reviewer/QA evidence.
