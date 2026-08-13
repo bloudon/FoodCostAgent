@@ -54,6 +54,7 @@ Food and beverage teams can manage ingredients, vendors, recipes, sales, invento
 ## User preferences
 
 - Preserve working behavior and approved shared contracts unless replacement is explicitly approved.
+- Replit workflows are for development and verification only; production is hosted on a VPS and must never be republished to Replit.
 
 ## Gotchas
 
