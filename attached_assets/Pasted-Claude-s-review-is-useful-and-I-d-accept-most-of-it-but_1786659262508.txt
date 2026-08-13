@@ -1,0 +1,262 @@
+Claude’s review is useful and I’d accept most of it, but there is **one important correction** before we send #1098 back to Replit:
+
+Claude slightly regressed the #1095 security decision when it said to reuse `requireAuth + requireTier + getAccessibleStores(...)` as the authorization boundary. Those route checks are fine as defense in depth, but **the authoritative boundary remains the shared approval/service contract established in #1095**. We should not drift back toward route-owned authorization.
+
+Everything else largely reinforces the plan.
+
+The evidence confirms there is no persisted invoice model today, so dedicated historical invoice headers/lines are justified rather than architectural duplication.  It also confirms the current Orderly subsystem is really an XLSX physical-inventory importer, not an invoice/API pipeline, so invoice staging should not be forced through those count-shaped tables. 
+
+Claude also found exactly the kind of existing pattern we hoped for: `inventoryItemExternalMappings` already proves the generic external-identity idiom, but it targets inventory items, not vendor items. A small sibling mapping for `vendor_items` is therefore the right minimal extension. 
+
+## PM decisions from Claude’s two questions
+
+**Bay Hill only. Latrobe is out of scope.**
+
+For #1098 and the first migration:
+
+> `Orderly restaurant 24472 → Bay Hill FnB destination`
+
+Latrobe `27417` should not be imported, matched, or used to drive schema requirements.
+
+The source identity should still include the source property because that is part of making the mapping safe and reusable:
+
+```text
+sourceSystem = ORDERLY
+sourcePropertyId = 24472
+sourceExternalId = packSize.id
+```
+
+So even though only Bay Hill is in scope, we do **not** drop property scoping from the identity.
+
+On naming, I’d prefer **`vendorItemExternalMappings`** if it fits the actual schema conventions. It is the clearest sibling to `inventoryItemExternalMappings`, and Claude’s evidence supports that pattern. Engineering can adjust the exact name if the repository has a stronger convention, but it should remain a small purpose-built sibling mapping—not a giant polymorphic external-identity framework. 
+
+## One more important refinement: do not fix `vendorItems` uniqueness inside #1098
+
+Claude found that `vendorItems` itself has no DB unique constraint. That is useful risk evidence, but I would **not expand #1098 into redesigning vendor-item uniqueness globally**. 
+
+Instead:
+
+> #1098 must achieve idempotency through the new external mapping/source identity and historical invoice uniqueness constraints.
+
+If Replit discovers that safe linking is impossible without a core `vendorItems` uniqueness change, that becomes a **stop condition**, not an invitation to broaden the task.
+
+## I also agree with moving live Orderly acquisition out of #1098
+
+This is probably Claude’s best simplification.
+
+The task currently says:
+
+> “Fetch the required date range...”
+
+I would change that.
+
+#1098 should prove the **target data contract and import behavior using fixtures/sample source payloads**.
+
+The later thin adapter task should own:
+
+```text
+authenticated Orderly API
+→ date-bounded acquisition
+→ source payload
+```
+
+Then #1098 owns:
+
+```text
+source payload
+→ staging
+→ matching
+→ historical invoice storage
+→ completeness/conflict evidence
+```
+
+Claude specifically found that authenticated JSON acquisition is genuinely new code and cleanly separable from the storage contract. 
+
+That keeps us from accidentally building the connector before the receiving architecture is stable.
+
+## Historical source data vs review metadata
+
+I also agree with sharpening this.
+
+We should not call the historical invoice itself `pending_review`, `approved`, etc. in the same sense as an import batch.
+
+Instead:
+
+```text
+Import Batch
+    mutable review state
+
+Historical Invoice
+    immutable source snapshot
+
+Historical Invoice Line
+    immutable source snapshot
+
+Matching / Resolution
+    mutable migration metadata
+```
+
+So an invoice’s original Orderly values never change just because somebody later resolves an unmatched vendor item.
+
+That is the cleanest form of the immutability contract Claude highlighted. 
+
+## Replit direction before build
+
+I would send back this short amendment to #1098:
+
+```md
+## PM / Independent Review Amendments — #1098
+
+Architecture remains approved, with the following required tightening before build.
+
+### 1. Bay Hill scope
+
+This migration is Bay Hill only.
+
+Approved source property:
+
+`ORDERLY restaurantId 24472`
+
+Latrobe (`27417`) is explicitly out of scope.
+
+Retain source-property identity in all relevant source keys even though only Bay Hill is being migrated.
+
+### 2. Vendor-item external identity
+
+Use a small generic sibling mapping to the existing `inventoryItemExternalMappings` pattern.
+
+Preferred concept:
+
+`vendorItemExternalMappings`
+
+Mapping:
+
+`company + sourceSystem + sourcePropertyId + sourceExternalId → vendorItemId`
+
+For Orderly:
+
+`ORDERLY + 24472 + packSize.id → vendor_item`
+
+Do not use SKU or unproven `productId` as authoritative identity.
+
+Do not introduce a broad polymorphic integration framework unless the existing schema requires it.
+
+### 3. Authorization remains service-authoritative
+
+Do not regress #1095.
+
+Route middleware remains defense in depth only.
+
+Any staged approval/mutation path used by #1098 must rely on the authoritative shared approval/service contract established by #1095 for:
+
+- acting-user authorization
+- company
+- destination store
+- source property
+- persisted binding
+
+Do not move authorization responsibility back into route-only checks.
+
+### 4. Separate immutable history from mutable import review state
+
+Historical invoice headers and lines are immutable source snapshots after persistence.
+
+Mutable state belongs to:
+
+- import batch
+- matching/resolution
+- completeness/conflict handling
+
+Do not reuse physical-count `inventoryImportBatches` / `inventoryImportRows` as invoice-history records.
+
+Reuse patterns/services where appropriate, not the count-shaped tables themselves.
+
+### 5. Actual Orderly API acquisition moves out of #1098
+
+Remove authenticated live Orderly fetching from this task.
+
+#1098 should consume representative source payloads/fixtures and prove:
+
+- normalization
+- source identity
+- staging
+- matching
+- immutable persistence
+- conflict behavior
+- idempotency
+- completeness reporting
+
+The later thin Orderly adapter task will own:
+
+`Orderly API → source payload`
+
+This task owns:
+
+`source payload → FnB historical contracts`
+
+### 6. DB-level idempotency
+
+Follow existing repository convention for DB-enforced uniqueness.
+
+At minimum:
+
+- historical invoice source identity unique
+- historical line source identity unique
+- vendor-item external source identity unique
+
+Expected behavior:
+
+- identical repeat → no-op
+- same source identity with materially changed source data → conflict/review
+- never silently overwrite historical evidence
+
+### 7. Unresolved lines remain first-class history
+
+A historical invoice line must be stored even if no confident FnB vendor-item or inventory-item match exists.
+
+Matching references may be nullable.
+
+Source values and source identity may not be nullable merely because matching failed.
+
+### 8. Vendor-item uniqueness gap
+
+The existing lack of a global DB uniqueness constraint on `vendorItems` is noted as a risk.
+
+Do not broaden #1098 into a general vendor-item uniqueness redesign.
+
+Use authoritative external mapping/idempotency for this migration.
+
+If the current vendor-item model makes safe linking impossible without a global uniqueness change, STOP and return that as a PM decision.
+
+### 9. Price provenance
+
+Do not update current `vendorItems.price`, `priceSource`, or `pricedAt` as part of #1098 unless specifically required to prove the historical contract.
+
+Historical invoice pricing remains source history.
+
+Feeding imported history into current vendor price history belongs downstream.
+
+### 10. Read surface
+
+Provide only the minimum authorized read/API surface necessary to prove retained historical headers/lines are accessible and correctly scoped.
+
+Do not turn #1098 into a reporting/UI project.
+
+## Final status
+
+APPROVED TO BUILD after these amendments.
+
+Significant task:
+
+Builder → fresh Reviewer → fresh QA.
+
+The actual Orderly adapter and Bay Hill production import remain blocked until #1098 passes.
+```
+
+With that, I think we can release #1098 to Builder.
+
+Claude did exactly what we wanted here: it **validated the genuinely new contracts, identified existing patterns we should reuse, and removed one piece of premature work—the live API acquisition—from this task.** 
+
+So my status becomes:
+
+> **#1098 APPROVED TO BUILD WITH AMENDMENTS.**
