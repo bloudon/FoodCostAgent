@@ -1,0 +1,102 @@
+## PM Decision — #1094 Required Before Bay Hill Migration Work Continues
+
+Reviewer and QA blocks are valid.
+
+Bulk Bay Hill migration remains BLOCKED.
+
+Task #1094 should correct the shared ingestion contract itself, not add more route-level checks.
+
+### Required contract
+
+`applyBatchApproval(...)` must be authoritative.
+
+It must independently establish and verify:
+
+- acting user identity
+- company authorization
+- target-store authorization
+- batch company ownership
+- durable source property
+- approved source-property → FnB destination mapping
+- immutable/already-bound destination behavior
+
+No caller-supplied optional store list may disable authorization.
+
+A null/omitted authorization argument must never mean "allow."
+
+### Source-property binding
+
+Add a durable, auditable source-property identity to the staged import contract.
+
+For Bay Hill:
+
+Orderly restaurant 24472
+→ approved Bay Hill FnB company/store
+
+This must be persisted before approval and validated during approval.
+
+Do not make this an Orderly-only architectural concept if a generic source-system/source-property contract can represent it cleanly.
+
+Latrobe or another source property must not be approvable into the Bay Hill destination.
+
+### Zero-write guarantee
+
+All authorization and source/destination checks must occur before persistent mutation.
+
+A failed approval attempt must result in:
+
+- no target-store change
+- no batch-state change
+- no created domain records
+- no partial writes
+
+If the current route can persist `targetStoreId` before shared-service approval, refactor that behavior so destination binding is part of the authoritative transaction/contract.
+
+### Required regression tests
+
+Test the real shared service boundary, not only a helper.
+
+At minimum:
+
+1. authorized user + correct company/store/source succeeds
+2. wrong company rejected
+3. user without target-store permission rejected
+4. source-property mismatch rejected
+5. target substitution rejected
+6. cross-company destination rejected
+7. null/omitted authorization context cannot bypass enforcement
+8. failed authorization produces zero writes
+9. valid retry remains idempotent
+10. already-bound valid destination cannot be changed by the request
+
+Prefer database-backed tests where required to prove zero-write behavior and uniqueness.
+
+### Scope
+
+Do not redesign:
+
+- authentication
+- role model
+- company/store permission architecture
+- general importer architecture
+
+Reuse existing auth/store-access primitives.
+
+If those primitives cannot support authoritative service-layer validation, STOP and return that exact gap for PM review.
+
+### Completion gate
+
+#1094 is complete only when:
+
+> The shared ingestion service can be invoked independently of the route and still cannot approve or mutate a batch unless the acting user, source property, company, and destination store all satisfy the persisted approved contract.
+
+Then run:
+
+- targeted tests
+- API typecheck
+- fresh Reviewer
+- fresh QA
+
+Until both pass:
+
+**BAY HILL BULK MIGRATION REMAINS BLOCKED.**
