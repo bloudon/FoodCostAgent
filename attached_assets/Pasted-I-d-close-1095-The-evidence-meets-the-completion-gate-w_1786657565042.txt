@@ -1,0 +1,203 @@
+I’d close **#1095**.
+
+The evidence meets the completion gate we set: the shared service is now authoritative and fail-closed, source-property/destination binding is durable, destination substitution is prevented, authorization happens before mutation, and the important failure paths are backed by real DB-boundary tests rather than only route/helper tests.
+
+## PM Closure — #1095
+
+**Status: CLOSED — PASS WITH NON-BLOCKING FOLLOW-UP**
+
+Commit accepted:
+
+`1915f39df5775f4258074abef3cdafc0b8d0f435`
+
+### Why I’m accepting it
+
+The original blocker was:
+
+> `applyBatchApproval(...)` could not independently protect the import boundary.
+
+That has been corrected.
+
+The important architectural contract is now:
+
+```text
+Persisted staged batch
+        +
+Persisted source-property binding
+        +
+Acting user from database
+        +
+Company authorization
+        +
+Store authorization
+        ↓
+Authoritative approval service
+        ↓
+All validation succeeds
+        ↓
+Atomic mutation
+```
+
+And not:
+
+```text
+Route tells service what stores are okay
+        ↓
+Service trusts caller
+```
+
+That is the substantive recovery we required.
+
+I specifically accept:
+
+* removal of the nullable `approvedStoreIds` bypass
+* DB re-resolution of the acting user
+* active-user verification
+* company authorization
+* company-scoped batch verification
+* durable generic `import_source_property_bindings`
+* source-system + source-property verification
+* destination-store ownership/active/access checks
+* immutable destination behavior
+* transactionally grouped approval writes
+* corrected `req.user?.id`
+* DB-backed zero-write tests
+* DB-backed source/destination boundary tests
+* rejected already-approved retry behavior
+* clean API typecheck
+* Reviewer PASS
+* QA PASS WITH FOLLOW-UP
+
+### Source-property design
+
+I also approve the generic binding architecture:
+
+```text
+sourceSystem
+sourcePropertyId
+        ↓
+companyId
+destinationStoreId
+```
+
+That is exactly what we wanted.
+
+For Bay Hill it can represent:
+
+```text
+ORDERLY
+restaurant 24472
+        ↓
+Bay Hill FnB company/store
+```
+
+without contaminating the core schema with Bay-Hill- or Orderly-specific columns.
+
+Good architectural restraint.
+
+## Accepted follow-up
+
+The untested:
+
+> company with zero active stores → catalog-only `targetStoreId: null`
+
+case is **non-blocking for #1095 closure**.
+
+Keep a small regression follow-up for it if useful, but do not hold Bay Hill work for that case. It is not material to the Bay Hill migration path we're about to exercise.
+
+## Independence
+
+Record the review formally as:
+
+> **Reviewer: PASS**
+> **QA: PASS WITH FOLLOW-UP**
+> **PROCEDURAL REVIEW — INDEPENDENCE UNVERIFIED**
+
+I do not see a reason to repeat the entire review solely because the platform could not prove session separation. The limitation has been disclosed correctly.
+
+## The four unrelated suite failures
+
+Also **not a #1095 blocker**, but don't lose them.
+
+The principle we've already established still applies: we don't want persistent red test failures becoming normal background noise.
+
+Those four should be individually tracked/reconciled:
+
+* missing `menuInsightsService`
+* missing `shared/orderGuideUtils`
+* `pdf-parse` export issue
+* missing sales-by-item fixture
+
+But they should not keep this security-boundary remediation open when its targeted 118-test suite and typecheck pass.
+
+---
+
+# Bay Hill Gate Status
+
+There is an important distinction now:
+
+### #1095 gate
+
+**OPENED.**
+
+The shared import authorization prerequisite is satisfied.
+
+### Bay Hill bulk migration gate
+
+**STILL BLOCKED.**
+
+Not because of #1095 anymore.
+
+The remaining pre-migration sequence is now:
+
+```text
+✅ #1095
+Authoritative Import Approval Boundaries
+        ↓
+▶ #1086
+Historical Invoice Retention
++ Generic Vendor-Product Source Identity
+        ↓
+#1087
+Minimal Accounting Classification
+        ↓
+Migration Staging / Completeness Evidence
+        ↓
+Thin Orderly Adapter
+        ↓
+Bay Hill Dry Run
+        ↓
+APPROVED FOR BULK MIGRATION
+```
+
+## Next move: #1086
+
+I would move directly into **#1086 now**.
+
+That task needs to establish two things we know are genuinely missing:
+
+### A. Durable read-only historical invoices
+
+```text
+Historical Invoice
+    ↓
+Historical Invoice Lines
+```
+
+with source identity, 12-month configurable beta floor, original financial/pack/catch-weight/GL snapshots, and database idempotency.
+
+### B. Generic vendor-product external identity
+
+The already-confirmed Orderly relationship:
+
+```text
+restaurantId + packSize.id
+```
+
+must survive migration and resolve to the appropriate FnB `vendor_item`.
+
+That gives invoice lines a durable connection back to the proper ingredient/vendor/SKU/pack relationship.
+
+I would **not pause for another architecture cycle before #1086**. #1085 already established its architecture, and #1095 has now removed the security prerequisite that was blocking us.
+
+**PM decision: Close #1095 and proceed to #1086. Bay Hill bulk migration remains blocked until the remaining pre-migration gates pass.**

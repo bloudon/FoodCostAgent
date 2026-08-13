@@ -54,3 +54,17 @@ one test that mounts the real route module with an auth stub that mirrors
 production middleware exactly — setting only the properties auth actually sets,
 and deliberately NOT the one the handler is suspected of reading. Assert the
 persisted actor id, not just the status code.
+
+# Completion-gate interpretation
+
+Passing the authoritative approval-boundary gate opens the prerequisite for
+the migration sequence, but does not authorize bulk migration by itself.
+
+**Why:** The PM review accepted #1095 with the catalog-only zero-active-store
+test gap as non-blocking, while explicitly keeping historical invoice
+retention, accounting classification, adapter, dry-run, and reconciliation
+gates ahead of Bay Hill bulk migration.
+
+**How to apply:** Record #1095 as closed with Reviewer PASS, QA PASS WITH
+FOLLOW-UP, and procedural independence unverified. Keep bulk Bay Hill work
+blocked until the remaining pre-migration gates pass.
