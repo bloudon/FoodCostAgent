@@ -2350,6 +2350,47 @@ export const insertPosSyncJobSchema = createInsertSchema(posSyncJobs).omit({ id:
 export type InsertPosSyncJob = z.infer<typeof insertPosSyncJobSchema>;
 export type PosSyncJob = typeof posSyncJobs.$inferSelect;
 
+// ─── Staged import source-property bindings ───────────────────────────────────
+
+/**
+ * import_source_property_bindings
+ *
+ * Generic, reusable contract that binds an external source system's *property*
+ * (a restaurant / location / site in the source system) to exactly one FnB
+ * company + destination store.
+ *
+ * This is deliberately NOT Orderly-specific: `sourceSystem` + `sourcePropertyId`
+ * can represent any migration source (e.g. ORDERLY restaurant "24472").
+ *
+ * Authorization contract:
+ *  - A staged import batch records which binding it was staged against.
+ *  - Approval re-validates the binding independently of the caller, so a
+ *    client-supplied destination can never redirect an approved batch and a
+ *    source property from another site can never be approved into this store.
+ *  - `sourceSystem + sourcePropertyId` is globally unique, so two companies
+ *    cannot both claim the same source property.
+ */
+export const importSourcePropertyBindings = pgTable("import_source_property_bindings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourceSystem: text("source_system").notNull(),          // e.g. "ORDERLY"
+  sourcePropertyId: text("source_property_id").notNull(), // e.g. "24472"
+  sourcePropertyLabel: text("source_property_label"),     // human label, e.g. "Bay Hill"
+  destinationStoreId: varchar("destination_store_id").notNull(), // company_stores.id
+  active: integer("active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: varchar("created_by"),
+}, (t) => ({
+  // One FnB destination per source property, globally — prevents a second
+  // company (or a second store) from claiming the same source property.
+  uniqueSourceProperty: unique("import_source_property_unique").on(t.sourceSystem, t.sourcePropertyId),
+  companyIdx: index("import_source_property_company_idx").on(t.companyId, t.sourceSystem),
+}));
+
+export const insertImportSourcePropertyBindingSchema = createInsertSchema(importSourcePropertyBindings).omit({ id: true, createdAt: true });
+export type InsertImportSourcePropertyBinding = z.infer<typeof insertImportSourcePropertyBindingSchema>;
+export type ImportSourcePropertyBinding = typeof importSourcePropertyBindings.$inferSelect;
+
 // ─── Orderly Inventory Import ─────────────────────────────────────────────────
 
 /**
@@ -2378,6 +2419,13 @@ export const inventoryImportBatches = pgTable("inventory_import_batches", {
   approvedBy: varchar("approved_by"),
   forceNewBatchReason: text("force_new_batch_reason"), // set when admin forces duplicate
   targetStoreId: varchar("target_store_id"), // company_stores.id — store this batch is imported into
+  // ── Source-property binding (durable authorization contract) ──────────────
+  // Which approved import_source_property_bindings row this batch was staged
+  // against, plus a snapshot of the source property it claims. Approval
+  // re-validates all three against the live binding so a client cannot
+  // redirect an approved batch to a different destination.
+  sourcePropertyBindingId: varchar("source_property_binding_id"),
+  sourcePropertyId: text("source_property_id"),
 }, (t) => ({
   companySystemIdx: index("inv_import_batches_company_system_idx").on(t.companyId, t.sourceSystem),
   hashIdx: index("inv_import_batches_hash_idx").on(t.companyId, t.fileHash),

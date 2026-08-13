@@ -41,6 +41,7 @@ import { sql, eq, and, isNull, ne } from 'drizzle-orm';
 import {
   inventoryImportBatches,
   inventoryImportRows,
+  importSourcePropertyBindings,
   companyStores,
 } from '@workspace/db';
 import {
@@ -53,6 +54,7 @@ import {
 import {
   runResolutionPreview,
   applyBatchApproval,
+  ImportApprovalError,
   type RowDecision,
 } from '../services/orderly/orderlyDomain';
 import {
@@ -139,9 +141,14 @@ async function stageBatchInTransaction(
     parseResult: OrderlyParseResult;
     forceNewBatchReason?: string | null;
     targetStoreId?: string | null;
+    sourcePropertyBindingId?: string | null;
+    sourcePropertyId?: string | null;
   },
 ) {
-  const { companyId, userId, fileHash, filename, parseResult, forceNewBatchReason, targetStoreId } = params;
+  const {
+    companyId, userId, fileHash, filename, parseResult, forceNewBatchReason, targetStoreId,
+    sourcePropertyBindingId, sourcePropertyId,
+  } = params;
 
   const [batch] = await tx
     // @ts-ignore
@@ -162,6 +169,8 @@ async function stageBatchInTransaction(
       snapshotTotal: parseResult.snapshotTotal,
       forceNewBatchReason: forceNewBatchReason ?? null,
       targetStoreId: targetStoreId ?? null,
+      sourcePropertyBindingId: sourcePropertyBindingId ?? null,
+      sourcePropertyId: sourcePropertyId ?? null,
     })
     .returning();
 
@@ -176,6 +185,20 @@ async function stageBatchInTransaction(
   }
 
   return batch;
+}
+
+/** Map an authoritative approval failure onto an HTTP status code. */
+function approvalErrorStatus(err: unknown): number {
+  if (err instanceof ImportApprovalError) {
+    switch (err.code) {
+      case 'UNAUTHENTICATED': return 401;
+      case 'FORBIDDEN':       return 403;
+      case 'NOT_FOUND':       return 404;
+      case 'CONFLICT':        return 409;
+      case 'INVALID_REQUEST': return 400;
+    }
+  }
+  return 500;
 }
 
 /** Build the unified preview response shape. */
@@ -249,7 +272,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const companyId = (req as any).companyId as string;
-        const userId = (req as any).userId as string | null ?? null;
+        const userId = (req as any).user?.id as string | null ?? null;
 
         if (!req.file) {
           return res.status(400).json({
@@ -330,6 +353,60 @@ export function registerOrderlyImportRoutes(app: Express): void {
           targetStoreId = match.id;
         }
 
+        // ── Resolve the approved source-property binding ─────────────────
+        // When a company has adopted the source-property contract (migration
+        // customers such as Bay Hill), the destination is governed by an
+        // approved binding rather than by whatever store the client picked.
+        // Companies with no bindings keep the existing behavior.
+        const companyBindings = await db
+          .select({
+            id: importSourcePropertyBindings.id,
+            sourcePropertyId: importSourcePropertyBindings.sourcePropertyId,
+            destinationStoreId: importSourcePropertyBindings.destinationStoreId,
+          })
+          .from(importSourcePropertyBindings)
+          .where(
+            and(
+              // @ts-ignore
+              eq(importSourcePropertyBindings.companyId, companyId),
+              // @ts-ignore
+              eq(importSourcePropertyBindings.sourceSystem, 'ORDERLY'),
+              // @ts-ignore
+              eq(importSourcePropertyBindings.active, 1),
+            ),
+          );
+
+        let sourcePropertyBindingId: string | null = null;
+        let sourcePropertyId: string | null = null;
+
+        if (companyBindings.length > 0) {
+          type Binding = { id: string; sourcePropertyId: string; destinationStoreId: string };
+          const bindings = companyBindings as Binding[];
+
+          if (!targetStoreId && bindings.length === 1) {
+            // Single approved destination — bind to it rather than staging
+            // a catalog-only import.
+            targetStoreId = bindings[0].destinationStoreId;
+          }
+
+          const binding = bindings.find(b => b.destinationStoreId === targetStoreId);
+          if (!binding) {
+            return res.status(403).json({
+              error:
+                'This company imports through approved source-property bindings. The selected store is not an approved import destination.',
+            });
+          }
+          // The destination must still be one the acting user may write to.
+          if (!accessibleStoreIds.includes(binding.destinationStoreId)) {
+            return res.status(403).json({
+              error: 'You do not have access to the approved destination store for this import.',
+            });
+          }
+          sourcePropertyBindingId = binding.id;
+          sourcePropertyId = binding.sourcePropertyId;
+          targetStoreId = binding.destinationStoreId;
+        }
+
         // ── force_new ────────────────────────────────────────────────────
         if (action === 'force_new') {
           if (!reason || reason.length < 3) {
@@ -351,6 +428,8 @@ export function registerOrderlyImportRoutes(app: Express): void {
               companyId, userId, fileHash, filename, parseResult,
               forceNewBatchReason: reason,
               targetStoreId,
+              sourcePropertyBindingId,
+              sourcePropertyId,
             }),
           );
           return res.status(200).json(buildPreviewResponse(batch.id, parseResult));
@@ -409,6 +488,8 @@ export function registerOrderlyImportRoutes(app: Express): void {
               companyId, userId, fileHash, filename, parseResult,
               forceNewBatchReason: null,
               targetStoreId,
+              sourcePropertyBindingId,
+              sourcePropertyId,
             });
           });
 
@@ -487,6 +568,8 @@ export function registerOrderlyImportRoutes(app: Express): void {
           stageBatchInTransaction(tx, {
             companyId, userId, fileHash, filename, parseResult,
             targetStoreId,
+            sourcePropertyBindingId,
+            sourcePropertyId,
           }),
         );
 
@@ -576,20 +659,23 @@ export function registerOrderlyImportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const companyId = (req as any).companyId as string;
-        const userId = (req as any).userId as string | null ?? null;
+        const userId = (req as any).user?.id as string | null ?? null;
         const { batchId } = req.params;
         const rowDecisions: RowDecision[] = req.body?.rowDecisions ?? [];
         const force: boolean = req.body?.force === true;
-        // Optional: caller may supply a storeId to assign a store to a legacy batch
-        // that was created before target_store_id was persisted at upload time.
-        const overrideStoreId = (req.body?.storeId as string | undefined)?.trim() ?? null;
 
-        // Look up the current batch to get its inventoryDate and targetStoreId.
+        // Destination binding is NOT accepted from the client. The shared
+        // approval service resolves and validates the destination itself from
+        // the persisted source-property binding, so a request cannot redirect
+        // an approved batch to a different store.
+
+        // Read-only: needed for the duplicate-date guard below. All
+        // authorization and destination checks are performed authoritatively
+        // inside applyBatchApproval.
         const [currentBatch] = await db
           .select({
             id: inventoryImportBatches.id,
             inventoryDate: inventoryImportBatches.inventoryDate,
-            targetStoreId: inventoryImportBatches.targetStoreId,
           })
           .from(inventoryImportBatches)
           .where(
@@ -604,62 +690,6 @@ export function registerOrderlyImportRoutes(app: Express): void {
 
         if (!currentBatch) {
           return res.status(404).json({ error: 'Batch not found' });
-        }
-
-        // Resolve accessible stores once — used for both existing and null targetStoreId paths.
-        const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
-
-        if (currentBatch.targetStoreId) {
-          // Guard: the batch's target store must still be accessible to the approving user.
-          if (!accessibleStoreIds.includes(currentBatch.targetStoreId)) {
-            return res.status(403).json({ error: 'You do not have access to the store this batch targets.' });
-          }
-        } else {
-          // Legacy batch: target_store_id was not set at upload time.
-          // Auto-resolve for single accessible store; require selection otherwise.
-          if (accessibleStoreIds.length > 1) {
-            if (!overrideStoreId) {
-              // Return accessible stores so the UI can show a selector.
-              const storeNames = await db
-                .select({ id: companyStores.id, name: companyStores.name })
-                .from(companyStores)
-                .where(
-                  and(
-                    // @ts-ignore
-                    eq(companyStores.companyId, companyId),
-                    // @ts-ignore
-                    eq(companyStores.status, 'active'),
-                  ),
-                )
-                // @ts-ignore
-                .then(rows => rows.filter(r => accessibleStoreIds.includes(r.id)));
-              return res.status(400).json({
-                error: 'This import was created before store selection was required. Choose a store to continue.',
-                requiresStoreSelection: true,
-                stores: storeNames,
-              });
-            }
-            // Validate the supplied override store.
-            if (!accessibleStoreIds.includes(overrideStoreId)) {
-              return res.status(403).json({ error: 'The selected store is not accessible to you.' });
-            }
-            // Write the resolved storeId onto the batch so applyBatchApproval picks it up.
-            await db
-              .update(inventoryImportBatches)
-              .set({ targetStoreId: overrideStoreId })
-              // @ts-ignore
-              .where(eq(inventoryImportBatches.id, batchId));
-          }
-          // Single accessible store: persist it now so applyBatchApproval doesn't need to
-          // re-resolve from all company stores (which would throw for scoped multi-store users).
-          if (accessibleStoreIds.length === 1) {
-            await db
-              .update(inventoryImportBatches)
-              .set({ targetStoreId: accessibleStoreIds[0] })
-              // @ts-ignore
-              .where(eq(inventoryImportBatches.id, batchId));
-          }
-          // Zero accessible stores: proceed without store linkage (catalog-only).
         }
 
         // Guard: check for another already-approved batch with the same inventory date.
@@ -697,19 +727,18 @@ export function registerOrderlyImportRoutes(app: Express): void {
           }
         }
 
-        // Pass the user-scoped store allowlist so applyBatchApproval can enforce
-        // store isolation at the domain layer, independently of the route layer.
+        // The service establishes acting-user identity, company authorization,
+        // batch ownership, source property, and destination store for itself.
         // @ts-ignore
-        const result = await applyBatchApproval(batchId, companyId, userId, rowDecisions, accessibleStoreIds);
+        const result = await applyBatchApproval(
+          String(batchId),
+          { actingUserId: userId as string, companyId },
+          rowDecisions,
+        );
         res.json(result);
       } catch (err: any) {
         console.error('[OrderlyImport] approve error:', err);
-        const status =
-          err.message?.includes('not found') ? 404
-          : err.message?.includes('already been approved') ? 409
-          : err.message?.includes('multiple stores') || err.message?.includes('target store') ? 400
-          : 500;
-        res.status(status).json({ error: err.message });
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
       }
     },
   );
@@ -830,7 +859,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
     async (req, res) => {
       try {
         const companyId = (req as any).companyId as string;
-        const userId = (req as any).userId as string | null ?? null;
+        const userId = (req as any).user?.id as string | null ?? null;
         const { batchId } = req.params;
         const { storeId, acknowledgedVariance, reconciliationTolerance } = req.body as {
           storeId?: string;

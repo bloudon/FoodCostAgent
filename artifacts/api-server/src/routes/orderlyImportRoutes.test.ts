@@ -209,18 +209,22 @@ describe('assertStoreIsApproved: approved-destination guard', () => {
     ).not.toThrow();
   });
 
-  it('does not block when approvedStoreIds is null (caller opted out of user-scoped check)', () => {
-    // Passing null for approvedStoreIds disables the user-scoped guard.
-    // This is used by global-admin paths and legacy callers that pre-date the param.
+  // ── Fail-closed: a missing authorization context is never a bypass ──────
+
+  it('throws when approvedStoreIds is null and a store is requested', () => {
+    // A null allowlist used to mean "caller opted out" — that bypass is gone.
+    // An omitted authorization context must reject, never allow.
     expect(() =>
       assertStoreIsApproved('any-store', null),
-    ).not.toThrow();
+    ).toThrow(/authorization context is required/i);
   });
 
-  it('does not block when both storeId and approvedStoreIds are null', () => {
+  it('throws when both storeId and approvedStoreIds are null', () => {
+    // Even with no destination, an absent authorization context is rejected —
+    // the caller must supply the acting user's real accessible-store list.
     expect(() =>
       assertStoreIsApproved(null, null),
-    ).not.toThrow();
+    ).toThrow(/authorization context is required/i);
   });
 
   // ── Label customisation ─────────────────────────────────────────────────

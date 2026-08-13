@@ -6,3 +6,4 @@
 - [VPS database authentication diagnosis](vps-database-auth.md) — distinguish PostgreSQL role login failures from stale or different PM2 connection environments.
 - [Image upload validation](heic-image-normalization.md) — decode images instead of sniffing bytes, never trust declared MIME, keep one normalization boundary.
 - [Web test JSX transform](web-test-jsx-transform.md) — suite-wide "React is not defined" in component tests is one config gap, not a broken environment.
+- [Import approval boundary](import-approval-boundary.md) — shared approval must fail closed, destination comes from a persisted source-property binding, and direct-service tests hide broken route connectors.

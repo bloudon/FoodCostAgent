@@ -703,6 +703,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ALTER TABLE inventory_import_batches
           ADD COLUMN IF NOT EXISTS target_store_id VARCHAR;
       `);
+      // Source-property binding contract (#1095) — a staged batch records the
+      // approved binding + the source property it claims, so approval can
+      // re-validate the destination independently of the caller.
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS import_source_property_bindings (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_property_label TEXT,
+          destination_store_id VARCHAR NOT NULL,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by VARCHAR
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS import_source_property_unique
+          ON import_source_property_bindings(source_system, source_property_id);
+        CREATE INDEX IF NOT EXISTS import_source_property_company_idx
+          ON import_source_property_bindings(company_id, source_system);
+
+        ALTER TABLE inventory_import_batches
+          ADD COLUMN IF NOT EXISTS source_property_binding_id VARCHAR;
+        ALTER TABLE inventory_import_batches
+          ADD COLUMN IF NOT EXISTS source_property_id TEXT;
+      `);
       console.log("[Migration] inventory_import_batches / inventory_import_rows tables ready");
     } catch (err) {
       console.error("[Migration] orderly_import_tables error:", err);

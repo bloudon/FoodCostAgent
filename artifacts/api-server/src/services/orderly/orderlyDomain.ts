@@ -27,6 +27,7 @@ import {
   inventoryItemExternalMappings,
   inventoryImportBatches,
   inventoryImportRows,
+  importSourcePropertyBindings,
   storeInventoryItems,
   companyStores,
   units,
@@ -54,6 +55,8 @@ import {
   type LocationAssignment,
 } from './OrderlyMatcher';
 import type { InventoryImportRow } from '@workspace/db';
+import { storage } from '../../storage';
+import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -439,48 +442,139 @@ export async function runResolutionPreview(
  * cannot leave a partially-committed state.
  */
 /**
- * Validate that a resolved target store is accessible to the acting user.
+ * Validate that a resolved target store is one the acting user is approved for.
  *
- * This is the shared ingestion-layer guard that prevents a client-supplied or
- * insufficiently authorised destination from silently bypassing store isolation.
- *
- * Rules:
- *  - If `approvedStoreIds` is null the caller has not opted into user-scoped
- *    validation (e.g. legacy code path or global-admin context) — allow through.
- *  - If `resolvedStoreId` is null the import is catalog-only and has no store
- *    destination to protect — allow through.
- *  - Otherwise the resolved store MUST be in `approvedStoreIds`.
+ * Fail-closed contract: a null/omitted approved-store list is NOT a permission
+ * to proceed. Callers must pass the acting user's real accessible-store list.
+ * Only a catalog-only import (no destination store at all) passes without a
+ * store membership check.
  */
 export function assertStoreIsApproved(
   resolvedStoreId: string | null,
   approvedStoreIds: readonly string[] | null,
   label = 'destination store',
 ): void {
-  if (approvedStoreIds == null) return;   // caller did not restrict
-  if (resolvedStoreId == null) return;    // catalog-only — no store to check
+  if (approvedStoreIds == null) {
+    // Fail closed: an omitted authorization context can never mean "allow".
+    throw new ImportApprovalError(
+      'FORBIDDEN',
+      `Authorization context is required to resolve the ${label} for this import.`,
+    );
+  }
+  if (resolvedStoreId == null) return; // catalog-only — no store to protect
   if (!approvedStoreIds.includes(resolvedStoreId)) {
-    throw new Error(
+    throw new ImportApprovalError(
+      'FORBIDDEN',
       `You do not have access to the ${label} for this import.`,
     );
   }
 }
 
-export async function applyBatchApproval(
+// ─── Authoritative approval contract ──────────────────────────────────────────
+
+export type ImportApprovalErrorCode =
+  | 'UNAUTHENTICATED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'INVALID_REQUEST';
+
+/** Typed failure so callers (routes) map status codes without string matching. */
+export class ImportApprovalError extends Error {
+  constructor(public readonly code: ImportApprovalErrorCode, message: string) {
+    super(message);
+    this.name = 'ImportApprovalError';
+  }
+}
+
+/**
+ * Authorization context for an approval.
+ *
+ * `actingUserId` is the identity the service verifies for itself — it re-reads
+ * the user, its company authorization, and its store access from the database.
+ * No caller-supplied store list, destination, or role claim is trusted.
+ */
+export interface ApprovalAuthorizationContext {
+  actingUserId: string;
+  companyId: string;
+}
+
+/**
+ * Resolve and verify the approval contract for a staged batch.
+ *
+ * Runs entirely BEFORE any persistent mutation so a rejected approval leaves no
+ * target-store change, no batch-state change, and no domain records.
+ *
+ * Establishes independently of the caller:
+ *  - acting user identity (must exist, be active, and belong to the company)
+ *  - company authorization
+ *  - batch company ownership
+ *  - durable source property + its approved destination binding
+ *  - destination store authorization for the acting user
+ *  - immutable/already-bound destination behavior
+ */
+async function resolveApprovalContract(
   batchId: string,
-  companyId: string,
-  userId: string | null,
-  rowDecisions: RowDecision[] = [],
-  /** User-scoped store allowlist. Pass the result of getAccessibleStores() so
-   *  the domain layer enforces store isolation independently of the route layer.
-   *  Pass null to skip user-scoped validation (global-admin / test paths). */
-  approvedStoreIds?: readonly string[] | null,
-): Promise<ApprovalResult> {
-  // ── Guard: check batch exists and is not already approved ────────────────
+  auth: ApprovalAuthorizationContext | null | undefined,
+): Promise<{
+  batch: { id: string; status: string; targetStoreId: string | null; sourceSystem: string };
+  companyId: string;
+  actingUserId: string;
+  resolvedTargetStoreId: string | null;
+}> {
+  // ── 1. Authorization context must be present and complete ────────────────
+  // A null/omitted argument must never mean "allow".
+  if (!auth || typeof auth !== 'object') {
+    throw new ImportApprovalError(
+      'UNAUTHENTICATED',
+      'An authorization context is required to approve an import.',
+    );
+  }
+  const actingUserId = typeof auth.actingUserId === 'string' ? auth.actingUserId.trim() : '';
+  const companyId = typeof auth.companyId === 'string' ? auth.companyId.trim() : '';
+  if (!actingUserId) {
+    throw new ImportApprovalError(
+      'UNAUTHENTICATED',
+      'An acting user is required to approve an import.',
+    );
+  }
+  if (!companyId) {
+    throw new ImportApprovalError(
+      'UNAUTHENTICATED',
+      'A company context is required to approve an import.',
+    );
+  }
+
+  // ── 2. Acting user identity — re-read from the database ──────────────────
+  const actingUser = await storage.getUser(actingUserId);
+  if (!actingUser || actingUser.active !== 1) {
+    throw new ImportApprovalError(
+      'UNAUTHENTICATED',
+      'The acting user could not be verified for this import.',
+    );
+  }
+
+  // ── 3. Company authorization ─────────────────────────────────────────────
+  // Global/company admins are covered by hasCompanyAccess; scoped roles must
+  // belong to the company they are importing into.
+  const companyAuthorized =
+    hasCompanyAccess(actingUser, companyId) || actingUser.companyId === companyId;
+  if (!companyAuthorized) {
+    throw new ImportApprovalError(
+      'FORBIDDEN',
+      'You are not authorized to approve imports for this company.',
+    );
+  }
+
+  // ── 4. Batch ownership — scoped read, never trusts a caller-passed company ─
   const [batch] = await db
     .select({
       id: inventoryImportBatches.id,
       status: inventoryImportBatches.status,
       targetStoreId: inventoryImportBatches.targetStoreId,
+      sourceSystem: inventoryImportBatches.sourceSystem,
+      sourcePropertyBindingId: inventoryImportBatches.sourcePropertyBindingId,
+      sourcePropertyId: inventoryImportBatches.sourcePropertyId,
     })
     .from(inventoryImportBatches)
     .where(
@@ -493,20 +587,92 @@ export async function applyBatchApproval(
     )
     .limit(1);
 
-  if (!batch) throw new Error('Batch not found');
+  if (!batch) throw new ImportApprovalError('NOT_FOUND', 'Batch not found');
   if (batch.status === 'approved') {
-    throw new Error('Batch has already been approved — use the history view to see results.');
+    throw new ImportApprovalError(
+      'CONFLICT',
+      'Batch has already been approved — use the history view to see results.',
+    );
   }
 
-  // ── Resolve target store ──────────────────────────────────────────────────
-  // Determine which store the approved items will be linked to.
-  // Single-store companies: auto-resolve from the only store.
-  // Multi-store companies: target_store_id must already be set on the batch.
-  let resolvedTargetStoreId: string | null = batch.targetStoreId ?? null;
+  // ── 5. Source-property binding ───────────────────────────────────────────
+  // When a batch was staged against an approved source property, that binding
+  // is the authority for the destination. A client cannot redirect it.
+  let bindingDestinationStoreId: string | null = null;
+
+  if (batch.sourcePropertyBindingId || batch.sourcePropertyId) {
+    if (!batch.sourcePropertyBindingId || !batch.sourcePropertyId) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'This import has an incomplete source-property binding and cannot be approved.',
+      );
+    }
+
+    const [binding] = await db
+      .select({
+        id: importSourcePropertyBindings.id,
+        companyId: importSourcePropertyBindings.companyId,
+        sourceSystem: importSourcePropertyBindings.sourceSystem,
+        sourcePropertyId: importSourcePropertyBindings.sourcePropertyId,
+        destinationStoreId: importSourcePropertyBindings.destinationStoreId,
+        active: importSourcePropertyBindings.active,
+      })
+      .from(importSourcePropertyBindings)
+      // @ts-ignore
+      .where(eq(importSourcePropertyBindings.id, batch.sourcePropertyBindingId))
+      .limit(1);
+
+    if (!binding || binding.active !== 1) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'The approved source-property binding for this import is missing or inactive.',
+      );
+    }
+    // The binding must belong to the same company as the batch.
+    if (binding.companyId !== companyId) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'The source-property binding for this import belongs to a different company.',
+      );
+    }
+    // The staged source property must still match the binding — a different
+    // source property (e.g. another club) can never be approved into this
+    // destination.
+    if (
+      binding.sourcePropertyId !== batch.sourcePropertyId ||
+      binding.sourceSystem !== batch.sourceSystem
+    ) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'The source property recorded on this import does not match its approved binding.',
+      );
+    }
+
+    bindingDestinationStoreId = binding.destinationStoreId;
+
+    // Immutable destination: if the batch is already bound to a store, that
+    // store must be the binding's destination. Never silently re-point it.
+    if (batch.targetStoreId && batch.targetStoreId !== bindingDestinationStoreId) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'This import is bound to a destination that does not match its approved source property.',
+      );
+    }
+  }
+
+  // ── 6. Resolve the destination store ─────────────────────────────────────
+  // Priority: approved binding → already-bound target → single-store fallback.
+  // No caller-supplied destination participates in this decision.
+  let resolvedTargetStoreId: string | null =
+    bindingDestinationStoreId ?? batch.targetStoreId ?? null;
+
+  // The acting user's real store access, read from the database.
+  const accessibleStoreIds = await getAccessibleStores(actingUser, companyId);
 
   if (!resolvedTargetStoreId) {
-    // Auto-resolve for single-store companies
-    const allStores = await db
+    // Legacy batch with no persisted destination: resolve only when
+    // unambiguous, and only from stores this user may actually write to.
+    const activeStores = await db
       .select({ id: companyStores.id })
       .from(companyStores)
       .where(
@@ -517,19 +683,27 @@ export async function applyBatchApproval(
           eq(companyStores.status, 'active'),
         ),
       );
+    const candidates = (activeStores as Array<{ id: string }>)
+      .map(s => s.id)
+      .filter(id => accessibleStoreIds.includes(id));
 
-    if (allStores.length === 0) {
-      // No stores exist — proceed without store linkage (catalog-only import)
-      resolvedTargetStoreId = null;
-    } else if (allStores.length === 1) {
-      resolvedTargetStoreId = allStores[0].id;
+    if (activeStores.length === 0) {
+      resolvedTargetStoreId = null; // catalog-only import
+    } else if (candidates.length === 1) {
+      resolvedTargetStoreId = candidates[0];
+    } else if (candidates.length === 0) {
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'You do not have access to a destination store for this import.',
+      );
     } else {
-      throw new Error(
-        'This company has multiple stores. A target store must be selected before approving this import.',
+      throw new ImportApprovalError(
+        'INVALID_REQUEST',
+        'This company has multiple stores. A target store must be bound to this import before it can be approved.',
       );
     }
   } else {
-    // Validate the stored target store belongs to this company and is active
+    // Validate the resolved destination belongs to this company and is active.
     const [targetStore] = await db
       .select({ id: companyStores.id, status: companyStores.status })
       .from(companyStores)
@@ -544,20 +718,55 @@ export async function applyBatchApproval(
       .limit(1);
 
     if (!targetStore) {
-      throw new Error('Target store not found or does not belong to this company.');
+      throw new ImportApprovalError(
+        'FORBIDDEN',
+        'Target store not found or does not belong to this company.',
+      );
     }
     if (targetStore.status !== 'active') {
-      throw new Error('Target store is not active. Approval is only allowed for active stores.');
+      throw new ImportApprovalError(
+        'INVALID_REQUEST',
+        'Target store is not active. Approval is only allowed for active stores.',
+      );
     }
   }
 
-  // ── User-scoped destination guard ────────────────────────────────────────
-  // Enforce that the acting user is authorised for the resolved store.
-  // This is separate from (and runs after) the company-level check above so
-  // cross-store attempts are rejected even when the store belongs to the right
-  // company. The protection lives here in the shared ingestion layer so every
-  // caller — regardless of source system or route — inherits it automatically.
-  assertStoreIsApproved(resolvedTargetStoreId, approvedStoreIds ?? null);
+  // ── 7. Destination authorization for the acting user ─────────────────────
+  // Runs after the company check so a cross-store attempt is rejected even when
+  // the store belongs to the correct company.
+  assertStoreIsApproved(resolvedTargetStoreId, accessibleStoreIds);
+
+  return {
+    batch: {
+      id: batch.id,
+      status: batch.status,
+      targetStoreId: batch.targetStoreId ?? null,
+      sourceSystem: batch.sourceSystem,
+    },
+    companyId,
+    actingUserId,
+    resolvedTargetStoreId,
+  };
+}
+
+/**
+ * Apply a batch approval.
+ *
+ * The service is authoritative: it verifies the acting user, company, batch
+ * ownership, source property, and destination store for itself. It is safe to
+ * call directly (outside any HTTP route) and fails closed when the
+ * authorization context is missing or incomplete.
+ */
+export async function applyBatchApproval(
+  batchId: string,
+  auth: ApprovalAuthorizationContext | null | undefined,
+  rowDecisions: RowDecision[] = [],
+): Promise<ApprovalResult> {
+  // ── Authorization + destination contract (zero writes on any failure) ────
+  const contract = await resolveApprovalContract(batchId, auth);
+  const { batch, companyId, actingUserId } = contract;
+  const resolvedTargetStoreId = contract.resolvedTargetStoreId;
+  const userId: string | null = actingUserId;
 
   // ── Build decision override map ──────────────────────────────────────────
   const decisionMap = new Map<number, RowDecision>(
