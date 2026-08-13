@@ -1,0 +1,404 @@
+## PM Direction — Bay Hill Exit Readiness + Allergen Intelligence
+
+Task #1085 architecture review is approved.
+
+Do not reopen the architecture or broaden this into a permanent Orderly integration or accounting-platform project.
+
+The next work should proceed in focused layers.
+
+---
+
+# Strategic Target
+
+For Bay Hill:
+
+> Coexist with Jonas Encore. Replace Orderly.
+
+Orderly is a temporary migration/history source during beta.
+
+The primary beta milestone remains:
+
+> **Orderly Exit Readiness — Bay Hill can discontinue Orderly without losing any workflow or required historical information it currently depends on.**
+
+At the same time, FnB should exceed Orderly where there are clear culinary-product opportunities rather than merely cloning it.
+
+---
+
+# Step 1 — Shared Import Authorization Prerequisite
+
+Before historical Bay Hill records can be written, harden the shared staged-import destination contract.
+
+The approved destination must explicitly establish:
+
+- company
+- store
+- source property
+- acting user authorization
+
+The importer must verify that:
+
+1. the source batch belongs to the expected company;
+2. the approved destination store is the same destination being written;
+3. the acting user is authorized for that company/store;
+4. a client-supplied destination cannot silently redirect an approved batch.
+
+This should be solved at the shared ingestion layer rather than as Bay Hill-specific code.
+
+Treat this as Significant.
+
+---
+
+# Step 2 — #1086 Historical Invoice Retention
+
+Proceed with the focused historical-invoice contract.
+
+## Required
+
+Create durable, read-only imported invoice history consisting of:
+
+### Historical Invoice Header
+
+Preserve appropriate source values including:
+
+- source system
+- source restaurant/property ID
+- source invoice ID
+- vendor
+- vendor invoice number
+- dates
+- invoice total
+- taxes
+- delivery/other charges
+- credits
+- source status
+- source/capture metadata
+
+### Historical Invoice Lines
+
+Preserve:
+
+- source line ID
+- source invoice ID
+- vendor-item relationship
+- source vendor-product identity
+- SKU
+- description
+- quantity
+- raw pack / size / UOM
+- catch-weight values
+- actual source amount
+- source category / GL snapshot
+- source capture flags
+
+These records are historical evidence.
+
+They must not become:
+
+- purchase orders
+- receipts
+- AP records
+- payment records
+- QuickBooks bills
+- live purchasing workflow objects
+
+## Stable Vendor-Product Identity
+
+Retain the confirmed Orderly:
+
+`restaurantId + packSize.id`
+
+as the source identity for the imported vendor-item relationship.
+
+Implement this generically.
+
+Do not add Orderly-specific identity columns throughout core FnB tables.
+
+The source-identity mechanism should be reusable by future migration sources.
+
+## Idempotency
+
+Database-backed uniqueness must prevent duplicate:
+
+- source invoices
+- source invoice lines
+- source vendor-product identities
+
+Re-importing the same source data should not create duplicates.
+
+## Historical Window
+
+The beta minimum is:
+
+> **12 complete months immediately preceding cutover**
+
+This must be a configurable import boundary.
+
+Do not encode twelve months into the schema or permanent importer logic.
+
+Older history should be importable in additional controlled batches where practical and should not delay beta.
+
+## Reconciliation
+
+The import must produce visible completeness evidence including:
+
+- source invoice count
+- imported invoice count
+- source line count
+- imported line count
+- vendor coverage
+- source-key coverage
+- invoice totals
+- credits
+- taxes/charges
+- unmatched vendor products
+- skipped records
+- conflicted records
+- excluded records
+- derived price-history coverage
+
+“Import successful” alone is not sufficient.
+
+---
+
+# Step 3 — #1087 Accounting Classification Foundation
+
+Implement only the minimum accounting-classification framework required by an enterprise culinary platform.
+
+FnB is not becoming an accounting system.
+
+## Company Chart of Accounts
+
+Support company-level:
+
+- account code
+- account name
+- active/inactive
+- useful classification where justified
+
+## Assignment Model
+
+Preferred resolution:
+
+`Inventory item override → Category default → Unassigned / review required`
+
+Category default should be the normal path.
+
+Item-level overrides are exceptions.
+
+Do not require GL maintenance individually on every inventory item when category inheritance is sufficient.
+
+## Historical GL Snapshots
+
+Keep imported Orderly accounting values separate from current FnB accounting assignments.
+
+Example:
+
+Historical invoice line:
+
+- `sourceGLCode`
+- `sourceGLName`
+
+Current FnB category:
+
+- `defaultAccountId`
+
+The source value records what Orderly said historically.
+
+It must not silently redefine the company's current FnB account mapping.
+
+## Explicitly Out of Scope
+
+Do not build:
+
+- general ledger
+- accounts payable
+- journal posting
+- payment processing
+- bank reconciliation
+- accounting close
+- full QuickBooks redesign
+
+The target is:
+
+> FnB produces clean culinary/purchasing information classified for the accounting system that owns the books.
+
+---
+
+# Step 4 — Allergen Intelligence
+
+Create this as a separate Significant product capability.
+
+It is not an Orderly migration field and should not be coupled to the Bay Hill extractor.
+
+## Product Contract
+
+Calories remain under the existing model:
+
+`Menu Item → Calories`
+
+Do not redesign calorie handling as part of this work.
+
+Allergens belong to inventory ingredients:
+
+`Inventory Item → Allergens`
+
+Recipes then derive their allergen indicators from the ingredients used in the recipe:
+
+`Inventory Items → Recipe Ingredients → Derived Recipe Allergens`
+
+Menu items linked to recipes may display the derived recipe allergen information.
+
+Do not create another independent allergen source of truth on linked menu items.
+
+## Structured Inventory-Item Allergens
+
+Support structured allergen attributes for the major allergen classes rather than free-text-only storage.
+
+The model should also leave room to distinguish, where reliable source information exists:
+
+- Contains
+- May contain / cross-contact
+- Not identified
+
+Do not automatically translate absence of a known allergen into an “allergen-free” or “safe for allergy” guarantee.
+
+## Recipe Derivation
+
+Normal rule:
+
+> Recipe allergen set = union of the allergen attributes of all inventory items used by that recipe.
+
+Example:
+
+Chicken Parmesan:
+
+- Bread crumbs → Wheat
+- Parmesan → Milk
+- Egg wash → Egg
+
+Derived:
+
+`Milk • Egg • Wheat`
+
+If an ingredient allergen classification changes, affected recipes should automatically reflect the change.
+
+Do not maintain manually duplicated allergen lists on every recipe unless an explicit exception/override model is later approved.
+
+## Review / Provenance
+
+Because allergen information has food-safety consequences, distinguish between:
+
+- suggested/unreviewed data
+- source-confirmed data
+- chef-reviewed data
+
+If AI, OCR, vendor data, or package-label capture suggests allergens:
+
+`Source / AI suggestion → Review → Confirmed ingredient allergens → Recipe derivation`
+
+AI should not silently convert a suggestion into authoritative allergen information.
+
+Track review/provenance sufficiently to know why an allergen indication exists.
+
+## Menu Item Behavior
+
+For menu items tied to a recipe:
+
+`Recipe derived allergens → Menu Item display`
+
+For menu items without a sufficiently defined recipe, do not invent allergen results from unrelated menu text.
+
+A state such as:
+
+`Allergen information incomplete`
+
+is preferable to an unsupported safety conclusion.
+
+## Orderly Comparison
+
+While Bay Hill discovery continues, determine whether Orderly actually supports structured allergen data at:
+
+- ingredient level
+- recipe level
+- menu-item level
+
+If Orderly does not, classify this as FnB **NET NEW / differentiation**.
+
+If Bay Hill actively uses an Orderly allergen capability we have not yet discovered, reassess it as an Orderly Exit Readiness requirement.
+
+Do not delay #1086/#1087 while that determination is made.
+
+---
+
+# Step 5 — Orderly Extraction Adapter
+
+The extractor remains deferred until the target contracts above are established.
+
+Once approved, it should remain thin:
+
+Orderly authorized JSON endpoints
+        ↓
+Bay Hill-scoped acquisition
+        ↓
+staging
+        ↓
+normalization / matching
+        ↓
+approved FnB domain contracts
+
+Do not create:
+
+- a permanent Orderly dependency
+- a generalized Orderly subsystem
+- parallel inventory/vendor models
+- duplicate price-history models
+- Orderly-driven core semantics
+
+The migration adapter exists to help eliminate Orderly, not institutionalize it.
+
+---
+
+# Orderly Exit Readiness Evidence
+
+Continue evolving the displacement matrix to include an explicit Acceptance Evidence column.
+
+For each required Bay Hill capability record:
+
+| Orderly capability | FnB status | Gap | Exit requirement | Acceptance evidence |
+|---|---|---|---|---|
+
+Examples:
+
+- Historical invoices → 12-month source/import reconciliation
+- Vendor products → complete `packSize.id` source-key coverage
+- Physical inventory → Bay Hill completes/accepts an FnB count workflow
+- Recipe costing → representative Bay Hill recipes reconcile and are operationally accepted
+- Menu costing → representative live menu costing accepted
+- Storage locations → locations mapped and validated
+- Vendor pricing → current/historical prices reconcile sufficiently
+- Item master → migration reviewed and accepted
+
+Orderly Exit Readiness requires both:
+
+1. required data is safely migrated and reconciled; and
+2. required ongoing workflows are accepted by Bay Hill.
+
+Neither one alone is sufficient.
+
+---
+
+# Final Direction
+
+Proceed without reopening the #1085 architecture.
+
+Immediate priorities:
+
+1. Store-safe staging/import authorization
+2. #1086 historical invoices + generic vendor-product source identity
+3. #1087 accounting classification
+4. Allergen Intelligence as a separate FnB-native Significant capability
+5. Thin Orderly extraction adapter only after target contracts are established
+
+Keep the architecture aimed at:
+
+> **Legacy club system remains. Orderly leaves. FnB becomes the modern culinary operations and intelligence platform with capabilities beyond what Bay Hill has today.**
