@@ -1,0 +1,119 @@
+The click on the row didn't navigate. Let me clear the network log and click the row's chevron arrow to open the invoice detail.This detail view is richer than the "By Week" one — shows **Item Code, Description, Pack Size, Qty, Extended $, Category, GL Code, and a "Restaurant Ingredient" column** showing the matched ingredient name per line. Let me check what network call loaded this.Confirmed again — no new call. Let me try browser Performance API to see requests that fired before my network monitoring attached (since this session has been open a while).Found it: **`/data/restaurantv2/spec/allSpecsForRestaurant/24472`** — this is almost certainly the actual Bay Hill-scoped ingredient master endpoint. Let me get the rest of the truncated list, then inspect this endpoint's structure.Two more critical endpoints found: **`/data/restaurantv2/invoice/forRest/24472`** (likely full invoice header list) and **`/data/restaurantv2/invoice/explain/9502971`** (fired when I opened that Sysco invoice — internal invoice ID 9502971, distinct from the vendor's invoice number 722956868). Let me inspect both structures.This is the confirmed, unified endpoint for **both** the ingredient master and vendor-product relationships in a single payload — **3,739 Bay-Hill-specific ingredient/spec records**, each with a nested `packSizes` array (the vendor-product relationships). Now checking the invoice endpoints.Needs date parameters. Let me retry with a wide range (matching the pattern seen elsewhere) — single call, mirroring what the app itself does.This is the complete answer — invoice headers **and nested line items** in one payload. Let me get the full line-item field structure.**Critical finding — this directly addresses the PM's "especially important" question.** The line item has a nested `packSize` object with an `id` (2905156), but nearly all its enrichment fields are **null/empty** (no itemCode, description, supplier name, etc. inside that sub-object) — even though the line's own `itemCode: "7037374"` is populated directly on the line. This suggests the link between invoice lines and the vendor-product/spec catalog is **weak or unresolved for unreviewed invoices** (this one's `invoiceStatus: "ReadyForReview"`). Also found: **`invoiceIsEDI: true`** — a direct per-line source-type flag. Let me check an older, presumably-reviewed invoice to see if `packSize` populates once matched.This is very informative: **the same `packSize.id` (2905156) appears consistently across different invoices for the same vendor itemCode ("7037374")** — meaning it's a real, stable foreign key, not a broken/random reference. Also, `invoiceStatus: "ReadyForReview"` appears static/unused even on a 2-year-old invoice — consistent with the earlier finding that Approved/Paid/Exported are unused across the board. Let me verify this packSize ID actually cross-references the ingredient/spec catalog.**This is the clean, confirmed answer to the "especially important" question.** The invoice line's `packSize.id` (2905156) matches exactly against `allSpecsForRestaurant`'s nested `packSizes[].id` for spec "Water Logo" (specId 6301205, itemCode "7037374", "WATER SPRING PURE BAY HI", Sysco). **Invoice lines do carry a stable, joinable vendor-product/packSize ID back to the ingredient catalog — even though the invoice line's own embedded copy of that sub-object isn't populated with full details.** Let me check the "explain" endpoint, which likely produces the enriched view (with GL Code and "Restaurant Ingredient" name) seen in the UI.I now have comprehensive evidence across all required areas. Per the doc's stop-point instruction, I'll compile the final deliverable now and stop — no further extraction, no scripts, no architecture proposals.
+
+---
+
+# Bay Hill Orderly Extraction Path Reconnaissance — Deliverable
+
+## 1. Executive Findings
+
+- The backend lives entirely at `app.bepbackoffice.com/data/restaurantv2/...` — a clean, discoverable JSON REST API (not a black-box SPA).
+- **Ingredient master and vendor-product relationships are the same endpoint and the same payload**: `GET /data/restaurantv2/spec/allSpecsForRestaurant/{restaurantId}` returns 3,739 records for Bay Hill (restaurant ID 24472), each an ingredient/"spec" with a nested `packSizes[]` array — this nested array **is** the vendor-product relationship data (vendor ID, vendor name, SKU, pack size, price, active flag) in the same call. No separate vendor-product endpoint exists or is needed.
+- **Invoice headers and invoice line items are also the same endpoint**: `GET /data/restaurantv2/invoice/forRest/{restaurantId}?startDate=...&endDate=...` returns invoice headers with a nested `items[]` array (the line items) in one payload. A second endpoint, `GET /data/restaurantv2/invoice/explain/{internalInvoiceId}`, returns the identical structure for a single invoice (used for on-demand detail views).
+- **Confirmed, evidence-based answer to the flagged "especially important" question**: invoice line items carry a `packSize.id` foreign key (e.g., 2905156) that **does** match cleanly against `allSpecsForRestaurant`'s nested `packSizes[].id` for the correct spec/vendor-product. However, the invoice line's own embedded `packSize` sub-object is **not** hydrated with the enrichment fields (description, supplier name, itemCode, etc. all come back null/0 inside that sub-object) — the join must be done by ID against the separate ingredient-master payload, not read directly off the invoice line.
+- GL/accounting category data is fully resolved and nested per line item (`category.accountNumber`, `accountName`, `accountType`, `accountSubType`, plus a nested `incomeAccount` for the revenue side) — this is real structured GL mapping, richer than what's visible in the basic UI list views.
+- The UI's "Restaurant Ingredient" column (matched ingredient name per invoice line) is **not** a field returned by the invoice endpoint — it must be a client-side join, not a server-provided value.
+- `invoiceStatus` shows `"ReadyForReview"` on both a today's invoice and a **July 2024** invoice — this field appears static/unused for Bay Hill rather than reflecting actual review completion, consistent with Approved/Paid/Exported all showing false across the board in the UI.
+- Client-side filtering confirmed: ingredient search, invoice date-range changes, and vendor filters in the UI trigger **zero new network calls** — Angular fetches these bulk payloads once and filters everything in-browser afterward.
+
+## 2. Ingredient Master Endpoint Map
+
+- **Endpoint**: `GET /data/restaurantv2/spec/allSpecsForRestaurant/24472`
+- **Method**: GET, no body, restaurant ID in path, no pagination params — returns the full set in one call (3,739 records).
+- **Response**: flat array. Each record: `id` / `specId` (stable, restaurant-scoped ingredient ID), `name`, `packSizes[]` (nested vendor-products).
+- There is also a **separate global reference catalog**, `GET /data/restaurantv2/orderlySpec/` (12,204 records, fields: `id, name, uom, categoryName, isGraphable, defaultPrice, parentId, hasEnoughData, hasPicture, isSelectable, categoryId`) — this is Orderly's platform-wide taxonomy, not Bay Hill-specific data, and uses a **separate ID space** from the restaurant-scoped spec IDs (e.g., global "Butter - Unsalted" = id 5342; Bay Hill's actual instance ids are in the millions, e.g., 6297822).
+- GL code, category, storage location, active/inactive, and price-history detail were **not** fully visible in the truncated ingredient-level object — only the nested vendor-product (`packSizes`) records showed price/active/GL-adjacent fields directly. The ingredient-level GL/category association is confirmed instead on the invoice-line side (`category.accountNumber`).
+
+## 3. Vendor-Product Endpoint Map
+
+- **No separate endpoint** — vendor-product data is the `packSizes[]` array nested inside each `allSpecsForRestaurant` record.
+- **Fields per vendor-product** (`packSizes[]` entry): `id` / `packSizeId` (stable vendor-product ID), `productId` (a second, distinct product-level ID), `packSizeDesc`, `itemDesc`, `description`, `size`, `uom`, `pack`, `supplierId` (stable numeric vendor ID — e.g., 40 = Sysco, 6510 = Mr. Green's Produce), `supplierName`, `brand`, `itemCode` (vendor SKU), `isActive`, `price`, `globalRegion`.
+- Confirmed: multiple SKUs from the same vendor, and alternate vendors for the same ingredient, are both represented as **separate entries in the same `packSizes[]` array** — no separate alternate-vendor structure exists; it's all one flat list per spec.
+- `price` was `null` in the sample records inspected — current/latest price for a given vendor-product may live elsewhere (possibly resolved via the most-recent invoice line for that packSize ID, client-side) rather than being stored directly on the spec record. This is a genuine unknown, not confirmed either way.
+- No EDI/OCR/manual source flag found on the vendor-product record itself — that flag (`invoiceIsEDI`) lives on the **invoice line**, not the vendor-product/catalog record.
+
+## 4. Invoice Header Endpoint Map
+
+- **Bulk list endpoint**: `GET /data/restaurantv2/invoice/forRest/24472?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` — **requires** both date params (confirmed via a 400 error when omitted). Returns `{invoices: [...], uniqPackSizes: [...], uniqCategories: [...]}`.
+- **Single-invoice endpoint**: `GET /data/restaurantv2/invoice/explain/{internalInvoiceId}` — same schema, one invoice, used for on-demand detail views (fired when opening a specific invoice from certain screens).
+- **Header fields**: `id` (stable internal invoice ID, distinct from the vendor's own invoice number), `invoiceNumber`, `restaurantId`, `restaurantName`, `supplierId`, `supplierName`, `createdTimestamp`, `deliveryDate`, `paymentDueDate`, `paymentApprovalStatus`, `paymentApprovalLevel`, `paymentStatus`, `total`, `taxCharge`, `kegCreditCharge`, `kegDepositCharge`, `deliveryCharge`, `otherCharge`, `documentId`, `invoiceStatus`, `items[]`.
+- No explicit credit/negative-invoice flag field was inspected directly, but the earlier UI observation (negative `$` totals with a "-CR" suffix in the invoice number) is consistent with credits sharing the exact same schema as regular invoices — just a negative `total`.
+- No pagination parameters found or needed within a given date range; the client appears to call this once per relevant range and cache the result.
+
+## 5. Invoice Line-Item Endpoint Map
+
+- **No separate endpoint** — line items are the `items[]` array nested inside each invoice header record (from either endpoint above).
+- **Line-item fields**: `id` (stable line ID), `total`, `deliveryDate`, `supplierName`, `supplierId`, `restaurantName`, `restaurantId`, `invoiceId` (parent FK), `attachmentUrls[]`, `useTaxApplies`, `itemCode` (vendor SKU, populated directly on the line), `pack`, `size`, `uom`, `isCatchWeight`, `quantity`, `description` (was `null` in samples), `packSize` (nested object — see below), `invoiceIsEDI` (boolean, confirmed source-type flag), `invoiceIsFromDataManager` (boolean, likely marks manual/OCR-management-tool entries), `category` (fully resolved GL account object), `catchWeightUomOverride`.
+- The nested `packSize` object on the line item carries only an `id` reliably — its other fields (`itemCode`, `description`, `supplierName`, etc.) came back null/zero in every sample checked, **even on a 2-year-old invoice**, suggesting this is a consistent pattern rather than a review-status artifact.
+- **Confirmed by direct cross-reference**: that `packSize.id` value does successfully match an entry in the `allSpecsForRestaurant` payload's `packSizes[]` array (verified: invoice line itemCode "7037374" / packSize.id 2905156 matched exactly to spec "Water Logo" / specId 6301205 in the ingredient master).
+
+## 6. ID / Relationship Map (observed, not assumed)
+
+```text
+Restaurant Group (id 18351, "Bay Hill created by Ctaylor@bayhill.com")
+    ├── Restaurant: Bay Hill (id 24472)
+    └── Restaurant: Latrobe Country Club (id 27417)
+
+Spec / Ingredient (id / specId, e.g. 6301205) — scoped to one restaurantId
+    └── packSizes[] (vendor-product records)
+            ├── id / packSizeId (e.g. 2905156)  ← STABLE, joinable
+            ├── productId (separate ID, purpose not fully confirmed)
+            ├── supplierId (e.g. 40 = Sysco)     ← stable, shared with invoice supplierId
+            └── itemCode (vendor SKU)
+
+Invoice (id, e.g. 9441729) — restaurantId, supplierId
+    └── items[] (line items)
+            ├── id (line ID)
+            ├── invoiceId (FK to parent invoice)
+            ├── itemCode (vendor SKU — duplicated directly on the line)
+            ├── packSize.id  ← matches packSizes[].id above (CONFIRMED by direct lookup)
+            ├── packSize.{other fields} — NOT populated (null/0) in observed samples
+            ├── supplierId (matches spec's packSizes[].supplierId)
+            └── category (fully resolved GL account, own account-number ID space, e.g. 264687)
+```
+
+- **Stable/shared IDs across endpoints**: `restaurantId` (24472), `supplierId` (e.g., 40 for Sysco — same value in both the spec catalog and every invoice line from that vendor), and `packSize.id` (confirmed joinable between invoice lines and the ingredient/spec catalog).
+- **IDs that appear distinct/unexplained**: `productId` on the packSize record (separate from `packSizeId`, relationship to it not confirmed); the account-permission ID `31316` seen in `/accounting/permissions/31316/invoices/{pay,approve,edit}` — does not match either restaurant ID (24472, 27417) or the restaurant group ID (18351); its exact meaning (billing entity? company-level ID?) is unresolved.
+- **Relationships requiring name/SKU matching rather than ID** (as delivered by these endpoints): the "Restaurant Ingredient" name shown per invoice line in the UI is not a field in the API response — it must be resolved client-side, most likely by joining on `packSize.id` (or `itemCode` + `supplierId`) against the ingredient/spec catalog, since the raw invoice payload doesn't carry the ingredient name directly.
+
+## 7. Bay Hill Property / Location Scoping
+
+- Scoping is **explicit per request**, via restaurant ID embedded in the URL path or query param (`/forRest/24472`, `/allSpecsForRestaurant/24472`, `/listToRestaurant/24472/...`) — not inferred from session context alone.
+- The `restaurantContainer` endpoint (called once at bootstrap) returns the available scope options: a **group-level container** (id 43435, spans both Bay Hill id 24472 and Latrobe Country Club id 27417) and a **single-restaurant container** (id 43436, Bay Hill only) — this is what populates the "All Restaurants" vs. "Bay Hill" selector seen in the UI.
+- In every data call actually observed (ingredient master, invoices, transfers, pending supplier mappings), the restaurant ID in the URL was **24472 only** — I did not observe or trigger any call that returned combined multi-property data in one response, since the account context was kept on "Bay Hill" throughout this session. Whether a single call *can* return multi-property records when the group-level context is selected was not tested (would require switching the account selector to "All Restaurants," which I did not do to stay within the documented Bay Hill-only scope of this recon).
+- `supplier/assignedToRestaurant?includeChildRestaurantSuppliersIfMasterRestaurant=true` explicitly signals a master/child restaurant hierarchy concept exists at the API level, consistent with the group container structure above.
+
+## 8. Extraction Feasibility Matrix
+
+| Dataset | Grade | Recommended extraction method | Main concern |
+|---|---|---|---|
+| Ingredient master | **A** | Single GET to `spec/allSpecsForRestaurant/{restaurantId}`, no pagination needed | Global taxonomy IDs (`orderlySpec`) and restaurant-scoped spec IDs are different ID spaces — must not conflate them |
+| Vendor-product relationships | **A** | Same call as above (nested `packSizes[]`) — no separate request needed | `price` field was null in samples; current-price sourcing may need to come from invoice data instead, not confirmed as reliably present on the spec record |
+| Invoice headers | **A** | GET to `invoice/forRest/{restaurantId}?startDate&endDate`, chunked by date range (required params, no pagination beyond that) | Very large multi-year range in one call untested — unclear if there's a practical row-count ceiling per request |
+| Invoice lines | **A** | Same call as headers (nested `items[]`) | `packSize` sub-object on the line is unreliably populated — matching to the ingredient catalog requires a separate join by ID, not a self-contained payload |
+
+All four datasets graded **A** — clean, stable, ID-bearing JSON endpoints with no DOM-scraping requirement. This is a notably favorable finding.
+
+## 9. Architectural Facts Replit Needs to Know
+
+- Confirmed: ingredient master and vendor-product data are delivered by the same single endpoint/payload, not two separate resources.
+- Confirmed: invoice headers and invoice line items are likewise delivered together in one payload per date-range request.
+- Confirmed: invoice lines carry a `packSize.id` that reliably cross-references the ingredient/vendor-product catalog by ID — but the line's own embedded copy of that vendor-product's details is not populated, so a join step against the separately-fetched ingredient master is required to get ingredient names/descriptions for invoice lines.
+- Confirmed: a global taxonomy catalog (`orderlySpec`, 12,204 records) exists separately from Bay Hill's actual owned ingredient records (`allSpecsForRestaurant`, 3,739 records) and uses non-overlapping ID ranges.
+- Confirmed: `supplierId` is a stable numeric ID shared consistently between the vendor-product catalog and every invoice line from that vendor.
+- Confirmed: GL/accounting category data on invoice lines is a fully resolved nested object with its own ID space, including a linked revenue-side `incomeAccount`.
+- Confirmed: the invoice-header endpoint requires explicit `startDate`/`endDate` parameters; there is no unbounded "get everything" call for invoices.
+- Confirmed: an unexplained ID (31316) exists in the accounting-permissions path, distinct from both restaurant IDs and the restaurant-group ID.
+- Confirmed: `invoiceStatus: "ReadyForReview"` appears static across invoices spanning from 2024 to today, rather than reflecting genuine review progress.
+
+## 10. Remaining Unknowns
+
+- Exact meaning/scope of ID 31316 (accounting-permissions entity).
+- Whether the current/latest price for a vendor-product is ever populated directly on the `packSizes[]` record, or must always be derived from invoice history.
+- Relationship between `productId` and `packSizeId` on vendor-product records — appear to be two different IDs on the same record, purpose of `productId` not confirmed.
+- Whether a single API call can return combined multi-property (Bay Hill + Latrobe) data when the account-level "All Restaurants" context is selected — not tested, to stay within the Bay Hill-only scope of this recon.
+- Practical row/date-range limits (if any) on the invoice endpoint for very large multi-year single requests — not tested.
+- Whether `invoiceIsFromDataManager` and `invoiceIsEDI` are mutually exclusive or can both be relevant (only one combination — EDI true / DataManager false — was observed in samples).
+
+---
+
+**Stopping here per the doc's instructions.** No extraction scripts were built, no bulk datasets were pulled or stored, and no FnB architecture, schema, or importer design was proposed — this is evidence only, ready for Engineering's architecture-fit review.

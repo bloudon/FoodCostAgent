@@ -1,0 +1,400 @@
+# Bay Hill Orderly Architecture Fit Review
+
+## Objective
+
+Review the completed Bay Hill Orderly extraction reconnaissance against the current FnB Cost Pro architecture before any bulk extraction or importer implementation begins.
+
+This is an architecture-fit review only.
+
+Do not build the extractor yet.
+
+Do not redesign FnB around Orderly.
+
+The strategic target remains:
+
+> Coexist with Jonas Encore. Replace Orderly.
+
+Orderly is a migration/data source during the Bay Hill beta, not a desired permanent dependency.
+
+A key beta milestone is:
+
+> Orderly Exit Readiness — Bay Hill can discontinue Orderly without losing any workflow they actually depend on.
+
+---
+
+# Confirmed Source-System Facts
+
+Claude's reconnaissance confirmed:
+
+## Ingredient / Vendor Product
+
+`GET /data/restaurantv2/spec/allSpecsForRestaurant/{restaurantId}`
+
+For Bay Hill:
+
+`restaurantId = 24472`
+
+One call returns the Bay Hill ingredient/spec master.
+
+Each ingredient contains nested:
+
+`packSizes[]`
+
+These records represent the vendor-product relationships and include stable IDs such as:
+
+- spec/ingredient ID
+- packSize/vendor-product ID
+- productId
+- supplierId
+- supplier name
+- vendor SKU/itemCode
+- pack
+- size
+- UOM
+- brand
+- active state
+
+Multiple SKUs and alternate vendors are represented as separate `packSizes[]` records.
+
+---
+
+## Invoice History
+
+`GET /data/restaurantv2/invoice/forRest/{restaurantId}?startDate=...&endDate=...`
+
+Returns:
+
+- invoice headers
+- nested `items[]` invoice lines
+
+No separate line-item request is required.
+
+Invoice lines include:
+
+- stable line ID
+- invoice ID
+- supplier ID
+- vendor SKU
+- quantity
+- pack/size/UOM
+- catch-weight behavior
+- total
+- EDI/DataManager source flags
+- accounting/category information
+- `packSize.id`
+
+Most importantly:
+
+`invoice.items[].packSize.id`
+
+has been directly verified to match:
+
+`spec.packSizes[].id`
+
+Therefore invoice lines can be joined back to the correct Bay Hill ingredient/vendor-product relationship using a stable ID.
+
+Do not design matching primarily around names/descriptions when this ID relationship is available.
+
+---
+
+## Property Scoping
+
+Observed source requests explicitly scope by restaurant ID.
+
+Bay Hill:
+
+`24472`
+
+Latrobe:
+
+`27417`
+
+The reconnaissance intentionally stayed within Bay Hill.
+
+Any extraction implementation must retain explicit Bay Hill property scoping.
+
+Do not depend only on the currently logged-in UI context.
+
+---
+
+# Architecture Review Questions
+
+## 1. Ingredient Master
+
+Can the current FnB schema represent Orderly's Bay Hill spec/ingredient records using existing:
+
+- inventory_items
+- store/company ownership
+- categories
+- storage-location relationships
+
+without a parallel Orderly-specific item model?
+
+Identify exact mappings.
+
+---
+
+## 2. Vendor Products
+
+Can existing:
+
+- vendors
+- vendor_items
+- pack/UOM normalization
+- supplier SKU handling
+- alternate-vendor relationships
+
+represent each Orderly `packSizes[]` record cleanly?
+
+Specifically verify support for:
+
+- stable source external ID
+- supplier ID
+- SKU
+- raw pack description
+- normalized pack geometry
+- catch weight
+- multiple SKUs from same supplier
+- multiple suppliers for same ingredient
+
+Do not create a second vendor-item model merely because Orderly uses different terminology.
+
+---
+
+## 3. Invoice Headers / Lines
+
+Review the existing FnB invoice/receiving/purchasing schema.
+
+Can it cleanly preserve:
+
+- source invoice ID
+- vendor invoice number
+- supplier
+- date
+- charges/credits
+- invoice line IDs
+- vendor-product relationship
+- SKU
+- quantity
+- pack/UOM
+- catch weight
+- extended line cost
+- EDI/OCR source information
+
+Determine whether current structures are already sufficient.
+
+If a genuine gap exists, identify the minimum addition.
+
+Do not create an Orderly-specific permanent invoice architecture.
+
+---
+
+## 4. Price History
+
+Orderly's vendor-product `price` field was not reliably populated in observed records.
+
+Invoice history provides dated purchasing lines joined to stable vendor-product IDs.
+
+Review whether FnB's existing vendor price-history model can derive/store price history from invoice lines.
+
+Prefer reuse of existing price-history semantics.
+
+Do not create a second price-history subsystem.
+
+---
+
+## 5. External Source IDs
+
+Determine the minimum source-ID strategy necessary to support safe migration/re-import.
+
+Likely source identities include:
+
+- Orderly restaurant ID
+- spec/ingredient ID
+- packSize/vendor-product ID
+- supplier ID
+- invoice ID
+- invoice-line ID
+
+Review whether existing external/source-key fields already support this.
+
+Avoid adding Orderly columns throughout core domain tables if an existing generic external-identity mechanism can be reused.
+
+---
+
+# Accounting / GL Architecture Gap
+
+The reconnaissance confirms Orderly invoice lines contain structured accounting information.
+
+FnB currently lacks a durable enterprise GL/account-classification framework.
+
+Review this separately as a genuine enterprise architecture gap.
+
+The goal is NOT to build accounting.
+
+The goal is to allow FnB purchasing/inventory data to be classified and exported cleanly to the accounting system of record.
+
+Review the minimum design for:
+
+### Company Chart of Accounts
+- account/code
+- account name
+- active state
+- useful classification if warranted
+
+### Assignment
+Prefer inheritance such as:
+
+Category default GL
+    ↓
+Inventory item optional override
+
+rather than requiring every inventory item to carry manually maintained GL text.
+
+### Vendor Accounting Reference
+
+Determine whether vendors need a generic accounting-system reference/code for downstream export.
+
+### Store / Property Overrides
+
+Do not assume location-specific GL overrides are needed.
+
+Determine from existing architecture and enterprise requirements whether:
+
+- company-level account mapping is sufficient, or
+- a store/property override is genuinely required.
+
+### Accounting Export
+
+Review what existing PO/receiving/invoice data can support a future accounting-ready export.
+
+Do NOT design:
+
+- general ledger
+- AP
+- journal posting engine
+- bank reconciliation
+- payment processing
+- full QuickBooks integration
+
+at this stage.
+
+---
+
+# Orderly Displacement Review
+
+In addition to migration fit, evaluate current FnB capability against the Bay Hill Orderly functions confirmed in active use.
+
+Classify each as:
+
+- MUST REPLACE
+- IMPROVE
+- ALREADY EXCEED
+- OPTIONAL PARITY
+- IGNORE
+
+Current provisional MUST REPLACE areas:
+
+- invoice capture / invoice data
+- ingredient/item master
+- vendor-product relationships
+- alternate vendors/SKUs/packs/prices
+- vendor management
+- physical inventory/counts
+- storage-location inventory
+- inventory valuation
+- recipe costing
+- menu costing
+- spend/cost visibility and analytics
+
+For each active Bay Hill Orderly workflow answer:
+
+1. Does FnB already support it?
+2. Is support complete enough for Bay Hill to leave Orderly?
+3. What exact functional gap remains?
+4. Is that gap required for Orderly Exit Readiness?
+
+Orderly purchasing is currently unconfigured at Bay Hill and should be treated as differentiation/expansion rather than parity blocking.
+
+Accounting setup is also incomplete in Orderly and should not automatically become a beta parity requirement.
+
+---
+
+# Guardrails
+
+Do not propose unless clearly necessary:
+
+- a permanent Orderly connector architecture
+- parallel item/vendor models
+- parallel invoice models
+- duplicate price-history systems
+- new pack/UOM semantics
+- Bay-Hill-specific core tables
+- generalized integration infrastructure
+- Jonas integration as part of this review
+- automatic ongoing Orderly sync
+
+Orderly extraction should preferably be:
+
+Source-specific acquisition
+        ↓
+Normalization / staging
+        ↓
+Existing FnB domain contracts
+
+not:
+
+Orderly-specific architecture embedded throughout FnB.
+
+---
+
+# Required Deliverable
+
+Return:
+
+## Existing Architecture We Can Reuse
+
+Specific files/tables/services/contracts.
+
+## Source → FnB Mapping
+
+Ingredient, vendor-product, invoice header, invoice line, location, and external IDs.
+
+## Genuine Schema / Contract Gaps
+
+Only gaps supported by current code inspection.
+
+## GL / Accounting Framework Recommendation
+
+Minimum enterprise framework, clearly separated from the Orderly extractor.
+
+## Orderly Displacement Gap Matrix
+
+Used Bay Hill function → FnB equivalent → gap → beta requirement.
+
+## Proposed Minimal Changes
+
+Question every new table/field/service.
+
+## Risks
+
+Especially:
+
+- tenant/company/store scoping
+- duplicate creation
+- external-ID collision
+- pack/UOM normalization
+- invoice price semantics
+- catch-weight
+- GL inheritance
+- re-import/idempotency
+
+## Stop Conditions
+
+Identify anything requiring a new PM/Product decision.
+
+## Final Recommendation
+
+Prefer:
+
+> Reuse existing architecture with minimal extensions and keep Orderly-specific logic at the ingestion boundary.
