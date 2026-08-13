@@ -32,6 +32,7 @@ import { registerExtensionRoutes } from "./integrations/extension/extensionRoute
 import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
+import { registerHistoricalInvoiceRoutes } from "./routes/historicalInvoiceRoutes";
 import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
 import { registerChatLogsRoutes } from "./routes/chatLogsRoutes";
@@ -180,6 +181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerPosRoutes(app);
   registerMenuRoutes(app);
   registerOrderlyImportRoutes(app);
+  registerHistoricalInvoiceRoutes(app);
   registerSalesByItemRoutes(app);
   registerReportRoutes(app);
   app.use('/api/extension', extensionRouter);
@@ -799,6 +801,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready");
     } catch (err) {
       console.error("[Migration] orderly_resolution_tables error:", err);
+    }
+  })();
+
+  // ── Historical invoice retention (Orderly exit) ───────────────────────────
+  // Immutable invoice evidence is intentionally isolated from live purchasing,
+  // receiving, AP, and QuickBooks tables.
+  (async function migrateHistoricalInvoiceRetention() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS vendor_item_external_mappings (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          vendor_item_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_external_id TEXT NOT NULL,
+          source_description TEXT,
+          match_strategy TEXT,
+          confidence_score REAL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          confirmed_at TIMESTAMPTZ,
+          confirmed_by VARCHAR,
+          UNIQUE (company_id, source_system, source_property_id, source_external_id)
+        );
+        CREATE INDEX IF NOT EXISTS vendor_item_ext_mappings_vendor_item_idx ON vendor_item_external_mappings(vendor_item_id);
+        CREATE INDEX IF NOT EXISTS vendor_item_ext_mappings_source_idx ON vendor_item_external_mappings(company_id, source_system, source_property_id, source_external_id);
+
+        CREATE TABLE IF NOT EXISTS historical_invoice_import_batches (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_property_binding_id VARCHAR NOT NULL,
+          destination_store_id VARCHAR NOT NULL,
+          cutover_date TEXT NOT NULL,
+          window_start TEXT NOT NULL,
+          window_end TEXT NOT NULL,
+          payload_hash TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'staged',
+          imported_by VARCHAR NOT NULL,
+          imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          invoice_count INTEGER NOT NULL DEFAULT 0,
+          line_count INTEGER NOT NULL DEFAULT 0,
+          resolved_line_count INTEGER NOT NULL DEFAULT 0,
+          unresolved_line_count INTEGER NOT NULL DEFAULT 0,
+          conflict_count INTEGER NOT NULL DEFAULT 0,
+          skipped_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS historical_invoice_batches_company_idx ON historical_invoice_import_batches(company_id, imported_at);
+        CREATE INDEX IF NOT EXISTS historical_invoice_batches_source_idx ON historical_invoice_import_batches(company_id, source_system, source_property_id);
+
+        CREATE TABLE IF NOT EXISTS historical_invoices (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          store_id VARCHAR NOT NULL,
+          vendor_id VARCHAR,
+          import_batch_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_invoice_id TEXT NOT NULL,
+          invoice_number TEXT,
+          invoice_date TEXT NOT NULL,
+          invoice_period TEXT NOT NULL,
+          vendor_name_snapshot TEXT,
+          vendor_external_id_snapshot TEXT,
+          subtotal REAL NOT NULL DEFAULT 0,
+          tax_amount REAL NOT NULL DEFAULT 0,
+          charge_amount REAL NOT NULL DEFAULT 0,
+          credit_amount REAL NOT NULL DEFAULT 0,
+          total_amount REAL NOT NULL DEFAULT 0,
+          source_snapshot JSONB NOT NULL,
+          material_hash TEXT NOT NULL,
+          imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (company_id, source_system, source_property_id, source_invoice_id)
+        );
+        CREATE INDEX IF NOT EXISTS historical_invoices_company_date_idx ON historical_invoices(company_id, store_id, invoice_date);
+
+        CREATE TABLE IF NOT EXISTS historical_invoice_lines (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          invoice_id VARCHAR NOT NULL,
+          source_line_id TEXT NOT NULL,
+          vendor_item_id VARCHAR,
+          inventory_item_id VARCHAR,
+          resolution_status TEXT NOT NULL DEFAULT 'unresolved',
+          product_name_snapshot TEXT,
+          source_external_id TEXT,
+          quantity REAL,
+          unit_price REAL,
+          line_total REAL,
+          pack_snapshot JSONB NOT NULL,
+          catch_weight_snapshot JSONB NOT NULL,
+          gl_snapshot JSONB NOT NULL,
+          financial_snapshot JSONB NOT NULL,
+          source_snapshot JSONB NOT NULL,
+          material_hash TEXT NOT NULL,
+          imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (invoice_id, source_line_id)
+        );
+        CREATE INDEX IF NOT EXISTS historical_invoice_lines_invoice_idx ON historical_invoice_lines(invoice_id);
+        CREATE INDEX IF NOT EXISTS historical_invoice_lines_company_resolution_idx ON historical_invoice_lines(company_id, resolution_status);
+
+        CREATE TABLE IF NOT EXISTS historical_invoice_import_conflicts (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          import_batch_id VARCHAR NOT NULL,
+          company_id VARCHAR NOT NULL,
+          historical_invoice_id VARCHAR,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_invoice_id TEXT NOT NULL,
+          conflict_type TEXT NOT NULL,
+          existing_material_hash TEXT NOT NULL,
+          incoming_material_hash TEXT NOT NULL,
+          incoming_snapshot JSONB NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS historical_invoice_conflicts_batch_idx ON historical_invoice_import_conflicts(import_batch_id);
+        CREATE INDEX IF NOT EXISTS historical_invoice_conflicts_company_idx ON historical_invoice_import_conflicts(company_id, created_at);
+      `);
+
+      // Retained history is immutable source evidence. Mutable review state
+      // lives on import batches and conflict rows, so headers and lines reject
+      // UPDATE at the database level rather than by service convention alone.
+      await db.execute(sql`
+        CREATE OR REPLACE FUNCTION reject_historical_invoice_mutation()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          RAISE EXCEPTION 'historical invoice evidence is immutable: % on %', TG_OP, TG_TABLE_NAME
+            USING ERRCODE = 'restrict_violation';
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+      await db.execute(sql`
+        DROP TRIGGER IF EXISTS historical_invoices_immutable ON historical_invoices;
+        CREATE TRIGGER historical_invoices_immutable
+          BEFORE UPDATE ON historical_invoices
+          FOR EACH ROW EXECUTE FUNCTION reject_historical_invoice_mutation();
+      `);
+      await db.execute(sql`
+        DROP TRIGGER IF EXISTS historical_invoice_lines_immutable ON historical_invoice_lines;
+        CREATE TRIGGER historical_invoice_lines_immutable
+          BEFORE UPDATE ON historical_invoice_lines
+          FOR EACH ROW EXECUTE FUNCTION reject_historical_invoice_mutation();
+      `);
+      console.log('[Migration] historical invoice retention tables ready');
+    } catch (err) {
+      console.error('[Migration] historical invoice retention error:', err);
     }
   })();
 

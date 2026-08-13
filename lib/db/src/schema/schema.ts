@@ -2579,6 +2579,125 @@ export const insertInventoryItemExternalMappingSchema = createInsertSchema(inven
 export type InsertInventoryItemExternalMapping = z.infer<typeof insertInventoryItemExternalMappingSchema>;
 export type InventoryItemExternalMapping = typeof inventoryItemExternalMappings.$inferSelect;
 
+// ─── Historical vendor invoice retention ─────────────────────────────────────
+// These tables retain source evidence from migrations. They intentionally do not
+// reference purchase orders, receipts, AP, or accounting exports.
+export const vendorItemExternalMappings = pgTable("vendor_item_external_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  vendorItemId: varchar("vendor_item_id").notNull(),
+  sourceSystem: text("source_system").notNull(),
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourceExternalId: text("source_external_id").notNull(),
+  sourceDescription: text("source_description"),
+  matchStrategy: text("match_strategy"),
+  confidenceScore: real("confidence_score"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmedBy: varchar("confirmed_by"),
+}, (t) => ({
+  uniqueSourceMapping: unique().on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceExternalId),
+  vendorItemIdx: index("vendor_item_ext_mappings_vendor_item_idx").on(t.vendorItemId),
+  sourceIdx: index("vendor_item_ext_mappings_source_idx").on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceExternalId),
+}));
+export type VendorItemExternalMapping = typeof vendorItemExternalMappings.$inferSelect;
+
+export const historicalInvoiceImportBatches = pgTable("historical_invoice_import_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourceSystem: text("source_system").notNull(),
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourcePropertyBindingId: varchar("source_property_binding_id").notNull(),
+  destinationStoreId: varchar("destination_store_id").notNull(),
+  cutoverDate: text("cutover_date").notNull(),
+  windowStart: text("window_start").notNull(),
+  windowEnd: text("window_end").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  status: text("status").notNull().default("staged"), // staged | completed | completed_with_conflicts | rejected
+  importedBy: varchar("imported_by").notNull(),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+  invoiceCount: integer("invoice_count").notNull().default(0),
+  lineCount: integer("line_count").notNull().default(0),
+  resolvedLineCount: integer("resolved_line_count").notNull().default(0),
+  unresolvedLineCount: integer("unresolved_line_count").notNull().default(0),
+  conflictCount: integer("conflict_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+}, (t) => ({
+  companyIdx: index("historical_invoice_batches_company_idx").on(t.companyId, t.importedAt),
+  sourceIdx: index("historical_invoice_batches_source_idx").on(t.companyId, t.sourceSystem, t.sourcePropertyId),
+}));
+
+export const historicalInvoices = pgTable("historical_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  vendorId: varchar("vendor_id"),
+  importBatchId: varchar("import_batch_id").notNull(),
+  sourceSystem: text("source_system").notNull(),
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourceInvoiceId: text("source_invoice_id").notNull(),
+  invoiceNumber: text("invoice_number"),
+  invoiceDate: text("invoice_date").notNull(),
+  invoicePeriod: text("invoice_period").notNull(),
+  vendorNameSnapshot: text("vendor_name_snapshot"),
+  vendorExternalIdSnapshot: text("vendor_external_id_snapshot"),
+  subtotal: real("subtotal").notNull().default(0),
+  taxAmount: real("tax_amount").notNull().default(0),
+  chargeAmount: real("charge_amount").notNull().default(0),
+  creditAmount: real("credit_amount").notNull().default(0),
+  totalAmount: real("total_amount").notNull().default(0),
+  sourceSnapshot: jsonb("source_snapshot").notNull(),
+  materialHash: text("material_hash").notNull(),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+}, (t) => ({
+  uniqueSourceInvoice: unique().on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceInvoiceId),
+  companyDateIdx: index("historical_invoices_company_date_idx").on(t.companyId, t.storeId, t.invoiceDate),
+}));
+
+export const historicalInvoiceLines = pgTable("historical_invoice_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  invoiceId: varchar("invoice_id").notNull(),
+  sourceLineId: text("source_line_id").notNull(),
+  vendorItemId: varchar("vendor_item_id"),
+  inventoryItemId: varchar("inventory_item_id"),
+  resolutionStatus: text("resolution_status").notNull().default("unresolved"),
+  productNameSnapshot: text("product_name_snapshot"),
+  sourceExternalId: text("source_external_id"),
+  quantity: real("quantity"),
+  unitPrice: real("unit_price"),
+  lineTotal: real("line_total"),
+  packSnapshot: jsonb("pack_snapshot").notNull(),
+  catchWeightSnapshot: jsonb("catch_weight_snapshot").notNull(),
+  glSnapshot: jsonb("gl_snapshot").notNull(),
+  financialSnapshot: jsonb("financial_snapshot").notNull(),
+  sourceSnapshot: jsonb("source_snapshot").notNull(),
+  materialHash: text("material_hash").notNull(),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+}, (t) => ({
+  uniqueSourceLine: unique().on(t.invoiceId, t.sourceLineId),
+  invoiceIdx: index("historical_invoice_lines_invoice_idx").on(t.invoiceId),
+  companyResolutionIdx: index("historical_invoice_lines_company_resolution_idx").on(t.companyId, t.resolutionStatus),
+}));
+
+export const historicalInvoiceImportConflicts = pgTable("historical_invoice_import_conflicts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  importBatchId: varchar("import_batch_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  historicalInvoiceId: varchar("historical_invoice_id"),
+  sourceSystem: text("source_system").notNull(),
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourceInvoiceId: text("source_invoice_id").notNull(),
+  conflictType: text("conflict_type").notNull(), // invoice_changed | line_changed | line_missing
+  existingMaterialHash: text("existing_material_hash").notNull(),
+  incomingMaterialHash: text("incoming_material_hash").notNull(),
+  incomingSnapshot: jsonb("incoming_snapshot").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  batchIdx: index("historical_invoice_conflicts_batch_idx").on(t.importBatchId),
+  companyIdx: index("historical_invoice_conflicts_company_idx").on(t.companyId, t.createdAt),
+}));
+
 // ── Reporting ────────────────────────────────────────────────────────────────
 
 export const REPORT_TYPE_VALUES = ['recipe_cost', 'inventory_value', 'purchase_activity'] as const;
