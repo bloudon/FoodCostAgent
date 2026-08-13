@@ -1,0 +1,507 @@
+# Bay Hill Pre-Migration Build Plan
+
+## Objective
+
+Complete only the infrastructure required to safely migrate Bay Hill from Orderly into FnB Cost Pro.
+
+Strategic target:
+
+> **Coexist with Jonas Encore. Replace Orderly.**
+
+The migration architecture should absorb Orderly data without making Orderly a permanent dependency.
+
+The immediate question is:
+
+> What must exist before we begin the first real Bay Hill migration?
+
+---
+
+# Pre-Migration Build Sequence
+
+## 1. Complete Shared Import Authorization
+
+This remains the first blocker.
+
+The shared ingestion/approval service must enforce destination authorization before any persistent writes.
+
+Required contract:
+
+* batch belongs to the expected company
+* source property is explicitly stored
+* destination company/store is explicitly bound
+* acting user is authorized for that company/store
+* client cannot redirect an already-approved batch
+* source property cannot silently map to a different destination
+* unauthorized attempts result in zero writes
+
+For Bay Hill:
+
+`Orderly restaurant 24472 → approved Bay Hill FnB company/store`
+
+must be explicit and auditable.
+
+Latrobe must not be able to enter the Bay Hill migration path.
+
+### Required tests
+
+At minimum:
+
+* valid user + company + store succeeds
+* wrong company rejected
+* unauthorized store rejected
+* target-store substitution rejected
+* source-property mismatch rejected
+* cross-company attempt rejected
+* rejection occurs before writes
+* valid retry does not duplicate records
+
+This must be enforced in the shared service, not only the HTTP route.
+
+---
+
+# 2. Build Generic Vendor-Product Source Identity
+
+FnB already has the correct domain model:
+
+`Inventory Item → Vendor Item → Vendor`
+
+What is missing is durable migration identity on the vendor-item relationship.
+
+Use the confirmed Orderly vendor-product identity:
+
+`restaurantId + packSize.id`
+
+For Bay Hill:
+
+`24472 + packSize.id`
+
+The implementation should be generic enough to support other migration sources.
+
+Do not add `orderlyPackSizeId` throughout the core schema.
+
+Prefer a source identity concept such as:
+
+* source system
+* source scope/property
+* source entity type
+* source key
+* FnB target entity
+
+The migration must be idempotent.
+
+The same Orderly vendor-product imported twice must resolve to the same FnB vendor item.
+
+SKU remains useful for display/matching but is not the authoritative migration key.
+
+---
+
+# 3. Build #1086 — Historical Invoice Retention
+
+Create a dedicated read-only historical invoice model.
+
+Do not repurpose:
+
+* purchase orders
+* receipts
+* reconciliation records
+* accounting exports
+
+Historical Orderly invoices did not originate through those FnB workflows.
+
+## Historical invoice header
+
+Preserve appropriate source values including:
+
+* source system
+* source restaurant/property ID
+* source invoice ID
+* vendor
+* vendor invoice number
+* delivery/invoice dates
+* total
+* taxes
+* delivery charges
+* other charges
+* credits
+* source capture/status information
+
+## Historical invoice line
+
+Preserve:
+
+* source line ID
+* source invoice ID
+* `packSize.id` source identity
+* FnB vendor-item relationship where matched
+* vendor SKU
+* source description
+* quantity
+* raw pack
+* size
+* UOM
+* catch-weight fields
+* source amount
+* EDI/DataManager source flags
+* historical category/GL values
+
+## Immutability
+
+Imported historical records are evidence/reporting data.
+
+They should not become editable operational purchasing records.
+
+## Idempotency
+
+Database-backed uniqueness must prevent duplicate:
+
+* source invoices
+* source lines
+* vendor-product source identities
+
+---
+
+# 4. Build #1087 — Minimal Accounting Classification
+
+FnB needs an accounting classification/export boundary before enterprise migration, but not an accounting system.
+
+## Company Chart of Accounts
+
+Support:
+
+* account code
+* account name
+* active/inactive
+* limited classification where useful
+
+## Mapping hierarchy
+
+Preferred resolution:
+
+`Item override → Category default → Unassigned / Review`
+
+Category default should be normal.
+
+Item override should be exceptional.
+
+## Historical source GL
+
+Orderly historical GL values must be retained as source snapshots.
+
+Example:
+
+Historical invoice line:
+
+* sourceGLCode
+* sourceGLName
+
+Current FnB category:
+
+* defaultAccountId
+
+Historical Orderly GL must not silently redefine FnB's live accounting mapping.
+
+## Explicitly out of scope
+
+Do not build:
+
+* General Ledger
+* Accounts Payable
+* journal posting
+* payment processing
+* reconciliation
+* bank functions
+* full QuickBooks integration
+
+---
+
+# 5. Build Migration Staging + Completeness Reporting
+
+Before importing real Bay Hill history, the migration flow must clearly show what will happen.
+
+Use the existing staging/approval framework wherever practical.
+
+Required stages:
+
+## Catalog preview
+
+Stage:
+
+* ingredients
+* vendors
+* vendor products
+* categories
+* storage locations
+* pack/UOM data
+
+Show:
+
+* matched
+* new
+* ambiguous
+* conflicting
+* excluded
+
+## Historical invoice staging
+
+Stage:
+
+* invoice headers
+* invoice lines
+* vendor-product linkage
+* unmatched source identities
+* historical GL snapshots
+
+Do not silently discard unresolved data.
+
+## Completeness report
+
+For every import batch report:
+
+* source invoice count
+* imported invoice count
+* source line count
+* imported line count
+* vendor coverage
+* vendor-product source-key coverage
+* invoice totals
+* taxes/charges
+* credits
+* unmatched vendor products
+* skipped records
+* conflicted records
+* excluded records
+* derived price-history rows
+
+A generic `Import successful` message is not acceptable.
+
+---
+
+# 6. Build the Thin Orderly Extraction Adapter
+
+Only after the target contracts above exist.
+
+The source endpoints are already known and clean.
+
+Architecture should remain:
+
+`Orderly JSON API`
+→ `Bay Hill-scoped acquisition`
+→ `staging`
+→ `normalization/matching`
+→ `approved FnB contracts`
+
+Do not build:
+
+* permanent Orderly synchronization
+* Orderly-specific core domain models
+* parallel vendor/item tables
+* second price-history system
+* Orderly-driven business semantics
+
+The extractor exists to remove Orderly, not institutionalize it.
+
+## Initial data scope
+
+First production migration should support:
+
+1. Ingredient master
+2. Vendors
+3. Vendor-product relationships
+4. Storage/location relationships
+5. Historical invoice headers
+6. Historical invoice lines
+7. Historical vendor pricing derived from invoice lines
+8. Historical GL/category snapshots
+
+Physical inventory/count migration can continue using the existing Orderly count/import foundation where appropriate.
+
+---
+
+# 7. Historical Migration Boundary
+
+Minimum beta history:
+
+> **12 complete months immediately preceding cutover**
+
+This must be configurable.
+
+Do not hardcode twelve months into schema or permanent importer behavior.
+
+Older history should remain importable in additional controlled batches.
+
+If two+ years of history imports cleanly and cheaply, preserve it.
+
+But older history must not delay Bay Hill beta readiness.
+
+---
+
+# 8. Migration Dry Run
+
+Before the first real cutover import:
+
+Run a controlled Bay Hill dry run.
+
+Validate:
+
+* source-property scope = Bay Hill only
+* all expected vendors represented
+* vendor-product `packSize.id` linkage
+* no duplicate creation
+* pack/UOM normalization
+* catch-weight preservation
+* invoice totals reconcile
+* credits reconcile
+* GL snapshots preserved
+* no Latrobe data present
+* completeness report understandable
+* rejected/conflicted records visible
+
+No migration should be considered successful simply because the process completed without throwing an error.
+
+---
+
+# Not Required Before First Migration
+
+The following should continue on the roadmap but are **not blockers to beginning the migration**:
+
+## Allergen Intelligence
+
+Important FnB-native product capability:
+
+`Inventory Item Allergens → Recipe Derived Allergens`
+
+This should be built separately and should not contaminate the Orderly migration architecture.
+
+Unless Bay Hill is discovered to actively depend on an Orderly allergen workflow, allergen support is differentiation rather than migration parity.
+
+## Jonas Theoretical Variance
+
+The confirmed Orderly gap around item-level theoretical usage is a major Bay Hill differentiator.
+
+Target capability:
+
+`Jonas Menu Item Sales`
+→ `FnB Recipe Explosion`
+→ `Theoretical Ingredient Usage`
+→ `Actual vs Theoretical Variance`
+
+This should become a high-priority Bay Hill beta proof point, but it does not need to block importing Orderly history.
+
+## Purchasing / Predictive Ordering
+
+Orderly purchasing was never configured at Bay Hill.
+
+FnB purchasing therefore represents expansion/differentiation rather than Orderly migration parity.
+
+---
+
+# Before Orderly Can Be Removed
+
+Beginning migration and reaching **Orderly Exit Readiness** are different milestones.
+
+After data migration, Bay Hill still needs workflow acceptance.
+
+Required acceptance areas include:
+
+* item management
+* vendor management
+* vendor-product relationships
+* storage locations
+* physical inventory/counting
+* inventory valuation
+* historical invoice access
+* price history
+* recipe costing
+* menu costing
+* spend/cost reporting
+* accounting classification
+
+Each should have explicit acceptance evidence.
+
+Examples:
+
+* 12-month invoice totals reconcile
+* complete source-key coverage
+* Reiner completes an FnB inventory count
+* representative recipes reconcile
+* representative menu costs reconcile
+* historical vendor prices are usable
+* GL mapping/export classification is understandable and usable
+
+---
+
+# Recommended Task Order
+
+## Prerequisite
+
+**Shared Import Authorization Hardening**
+
+Finish and independently verify the current blocked work.
+
+## #1086
+
+**Historical Invoice Retention + Vendor-Product Source Identity**
+
+These belong together because imported invoice lines depend on stable vendor-product identity.
+
+## #1087
+
+**Accounting Classification Foundation**
+
+Keep narrowly scoped.
+
+## Next
+
+**Bay Hill Orderly Migration Adapter + Staged Dry Run**
+
+Only after #1086/#1087 contracts exist.
+
+## Then
+
+**Bay Hill Migration Execution**
+
+* catalog
+* vendor products
+* 12+ months invoices
+* price history
+* counts/inventory
+* reconciliation
+
+## Then
+
+**Orderly Exit Workflow Acceptance**
+
+Prove Bay Hill can operate without Orderly.
+
+---
+
+# Build Gate
+
+Do not begin bulk Bay Hill migration until all of these are true:
+
+* [ ] Shared service enforces source/destination authorization
+* [ ] Source property is explicitly bound
+* [ ] Generic vendor-item external identity exists
+* [ ] `packSize.id` can be preserved and resolved
+* [ ] Historical invoice headers exist
+* [ ] Historical invoice lines exist
+* [ ] Database idempotency constraints exist
+* [ ] Raw pack/catch-weight values can be preserved
+* [ ] Historical GL snapshots are supported
+* [ ] Company/category accounting mapping exists
+* [ ] Staging/completeness reporting exists
+* [ ] Targeted regression tests are green
+* [ ] Fresh Reviewer pass is complete
+* [ ] Fresh QA pass is complete
+
+Once these pass:
+
+> **APPROVED TO BEGIN BAY HILL ORDERLY DATA MIGRATION**
+
+The next milestone after migration is:
+
+> **ORDERLY EXIT READINESS**
+
+Migration proves we can absorb the data.
+
+Exit Readiness proves Bay Hill no longer needs Orderly.
