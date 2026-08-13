@@ -8,6 +8,13 @@
  *
  * The tests here verify both halves of that contract using the exported helpers
  * from orderlyImportRoutes and mocked DB collaborators.
+ *
+ * Destination authorization tests (§ "approved-store guard") verify the contract
+ * that the ingestion layer enforces:
+ *   - A valid, accessible destination succeeds.
+ *   - A destination that is not in the user's accessible-store list is rejected.
+ *   - A cross-company store is rejected.
+ *   - A catalog-only import (null storeId) is not blocked.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -137,5 +144,90 @@ describe('reprocess atomicity: single-transaction delete+insert', () => {
     expect(ops).toContain('delete_attempt');
     // Insert was never reached because delete threw first
     expect(ops).not.toContain('insert');
+  });
+});
+
+// ─── Destination authorization: assertStoreIsApproved contract ────────────────
+
+/**
+ * These tests verify the shared ingestion-layer guard that prevents a
+ * client-supplied or insufficiently authorised destination from bypassing
+ * store isolation.  The same logic runs inside applyBatchApproval and is
+ * also enforced at the create-count-session route level.
+ *
+ * The guard is exported as a pure function (assertStoreIsApproved) so it can
+ * be unit-tested without a live DB.
+ */
+import { assertStoreIsApproved } from '../services/orderly/orderlyDomain';
+
+describe('assertStoreIsApproved: approved-destination guard', () => {
+  // ── Valid destination ───────────────────────────────────────────────────
+
+  it('succeeds when the resolved store is in the approved list', () => {
+    expect(() =>
+      assertStoreIsApproved('store-a', ['store-a', 'store-b']),
+    ).not.toThrow();
+  });
+
+  it('succeeds when the resolved store is the only accessible store', () => {
+    expect(() =>
+      assertStoreIsApproved('store-only', ['store-only']),
+    ).not.toThrow();
+  });
+
+  // ── Unauthorized destination ────────────────────────────────────────────
+
+  it('throws when the resolved store is NOT in the approved list', () => {
+    expect(() =>
+      assertStoreIsApproved('store-b', ['store-a']),
+    ).toThrow(/destination store/);
+  });
+
+  it('throws on a cross-company store (not in accessible list)', () => {
+    // Store belongs to a different company; it will never appear in getAccessibleStores
+    // for the acting user's company.
+    const companyOneStores = ['store-co1-a', 'store-co1-b'];
+    const foreignStore = 'store-co2-x';
+    expect(() =>
+      assertStoreIsApproved(foreignStore, companyOneStores),
+    ).toThrow(/destination store/);
+  });
+
+  it('throws even when the accessible list is empty and a store is requested', () => {
+    // A user with zero accessible stores must not be able to target any store.
+    expect(() =>
+      assertStoreIsApproved('store-a', []),
+    ).toThrow(/destination store/);
+  });
+
+  // ── Catalog-only and opt-out paths ──────────────────────────────────────
+
+  it('does not block a catalog-only import (null storeId)', () => {
+    // Catalog-only imports have no store destination — the guard must pass through.
+    expect(() =>
+      assertStoreIsApproved(null, ['store-a']),
+    ).not.toThrow();
+  });
+
+  it('does not block when approvedStoreIds is null (caller opted out of user-scoped check)', () => {
+    // Passing null for approvedStoreIds disables the user-scoped guard.
+    // This is used by global-admin paths and legacy callers that pre-date the param.
+    expect(() =>
+      assertStoreIsApproved('any-store', null),
+    ).not.toThrow();
+  });
+
+  it('does not block when both storeId and approvedStoreIds are null', () => {
+    expect(() =>
+      assertStoreIsApproved(null, null),
+    ).not.toThrow();
+  });
+
+  // ── Label customisation ─────────────────────────────────────────────────
+
+  it('uses the provided label in the error message', () => {
+    expect(() =>
+      assertStoreIsApproved('store-b', ['store-a'], 'count-session store'),
+    ).toThrow(/count-session store/);
   });
 });

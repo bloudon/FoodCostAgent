@@ -438,11 +438,42 @@ export async function runResolutionPreview(
  * Parse-phase (matching) happens OUTSIDE the transaction so a matching error
  * cannot leave a partially-committed state.
  */
+/**
+ * Validate that a resolved target store is accessible to the acting user.
+ *
+ * This is the shared ingestion-layer guard that prevents a client-supplied or
+ * insufficiently authorised destination from silently bypassing store isolation.
+ *
+ * Rules:
+ *  - If `approvedStoreIds` is null the caller has not opted into user-scoped
+ *    validation (e.g. legacy code path or global-admin context) — allow through.
+ *  - If `resolvedStoreId` is null the import is catalog-only and has no store
+ *    destination to protect — allow through.
+ *  - Otherwise the resolved store MUST be in `approvedStoreIds`.
+ */
+export function assertStoreIsApproved(
+  resolvedStoreId: string | null,
+  approvedStoreIds: readonly string[] | null,
+  label = 'destination store',
+): void {
+  if (approvedStoreIds == null) return;   // caller did not restrict
+  if (resolvedStoreId == null) return;    // catalog-only — no store to check
+  if (!approvedStoreIds.includes(resolvedStoreId)) {
+    throw new Error(
+      `You do not have access to the ${label} for this import.`,
+    );
+  }
+}
+
 export async function applyBatchApproval(
   batchId: string,
   companyId: string,
   userId: string | null,
   rowDecisions: RowDecision[] = [],
+  /** User-scoped store allowlist. Pass the result of getAccessibleStores() so
+   *  the domain layer enforces store isolation independently of the route layer.
+   *  Pass null to skip user-scoped validation (global-admin / test paths). */
+  approvedStoreIds?: readonly string[] | null,
 ): Promise<ApprovalResult> {
   // ── Guard: check batch exists and is not already approved ────────────────
   const [batch] = await db
@@ -519,6 +550,14 @@ export async function applyBatchApproval(
       throw new Error('Target store is not active. Approval is only allowed for active stores.');
     }
   }
+
+  // ── User-scoped destination guard ────────────────────────────────────────
+  // Enforce that the acting user is authorised for the resolved store.
+  // This is separate from (and runs after) the company-level check above so
+  // cross-store attempts are rejected even when the store belongs to the right
+  // company. The protection lives here in the shared ingestion layer so every
+  // caller — regardless of source system or route — inherits it automatically.
+  assertStoreIsApproved(resolvedTargetStoreId, approvedStoreIds ?? null);
 
   // ── Build decision override map ──────────────────────────────────────────
   const decisionMap = new Map<number, RowDecision>(

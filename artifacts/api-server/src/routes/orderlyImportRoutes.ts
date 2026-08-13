@@ -697,8 +697,10 @@ export function registerOrderlyImportRoutes(app: Express): void {
           }
         }
 
+        // Pass the user-scoped store allowlist so applyBatchApproval can enforce
+        // store isolation at the domain layer, independently of the route layer.
         // @ts-ignore
-        const result = await applyBatchApproval(batchId, companyId, userId, rowDecisions);
+        const result = await applyBatchApproval(batchId, companyId, userId, rowDecisions, accessibleStoreIds);
         res.json(result);
       } catch (err: any) {
         console.error('[OrderlyImport] approve error:', err);
@@ -840,23 +842,13 @@ export function registerOrderlyImportRoutes(app: Express): void {
           return res.status(400).json({ error: 'storeId is required' });
         }
 
-        // Security: verify storeId belongs to the caller's company before insertion
-        const [store] = await db
-          .select({ id: companyStores.id })
-          .from(companyStores)
-          .where(
-            and(
-              // @ts-ignore
-              eq(companyStores.id, storeId),
-              // @ts-ignore
-              eq(companyStores.companyId, companyId),
-            ),
-          )
-          .limit(1);
-
-        if (!store) {
+        // Security: verify storeId is accessible to the acting user.
+        // getAccessibleStores already scopes by company, so this check subsumes
+        // the previous bare company-membership guard and adds user-level isolation.
+        const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+        if (!accessibleStoreIds.includes(storeId)) {
           return res.status(403).json({
-            error: 'Store not found or does not belong to your company',
+            error: 'Store not found or is not accessible to you.',
           });
         }
 
