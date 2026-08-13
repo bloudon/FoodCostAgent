@@ -20,7 +20,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { parsePositiveHours, runObjectStorageCleanup } from "./objectStorageCleanup";
+import {
+  parsePositiveHours,
+  runObjectStorageCleanup,
+  initObjectStorageCleanup,
+} from "./objectStorageCleanup";
 
 // ── Hoisted mocks (created before vi.mock factory functions execute) ──────────
 
@@ -290,5 +294,111 @@ describe("runObjectStorageCleanup", () => {
 
     expect(deleted).toBe(1);
     expect(goodFile._deleteFn).toHaveBeenCalledOnce();
+  });
+});
+
+// ── initObjectStorageCleanup suite ───────────────────────────────────────────
+
+describe("initObjectStorageCleanup", () => {
+  // Default CLEANUP_INTERVAL_MS is 6 h (INTERVAL_HOURS default = 6).
+  const DEFAULT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    // Provide an empty file list so any runObjectStorageCleanup invocations
+    // triggered by advancing time complete without side-effects.
+    mockGetFiles.mockResolvedValue([[]]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    delete process.env.PRIVATE_OBJECT_DIR;
+  });
+
+  it("does not schedule any timers when PRIVATE_OBJECT_DIR is unset", () => {
+    delete process.env.PRIVATE_OBJECT_DIR;
+
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+
+    initObjectStorageCleanup();
+
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+  });
+
+  it("schedules a 60-second delayed first run when PRIVATE_OBJECT_DIR is set", () => {
+    process.env.PRIVATE_OBJECT_DIR = "/test-bucket/private";
+
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+
+    initObjectStorageCleanup();
+
+    // A single 60-second delay must be registered immediately.
+    expect(setTimeoutSpy).toHaveBeenCalledOnce();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+    // The repeating interval must NOT be active yet — it is created inside
+    // the timeout callback.
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+  });
+
+  it("schedules the repeating interval after the 60-second startup delay elapses", async () => {
+    process.env.PRIVATE_OBJECT_DIR = "/test-bucket/private";
+
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+
+    initObjectStorageCleanup();
+
+    // Before the delay fires, no interval should exist.
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+
+    // Advance past the 60-second startup delay; await so the async cleanup
+    // promise inside the callback can settle.
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // Now the interval should be registered with the default 6-hour period.
+    expect(setIntervalSpy).toHaveBeenCalledOnce();
+    expect(setIntervalSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      DEFAULT_INTERVAL_MS
+    );
+  });
+
+  it("invokes runObjectStorageCleanup once immediately after the startup delay", async () => {
+    process.env.PRIVATE_OBJECT_DIR = "/test-bucket/private";
+
+    initObjectStorageCleanup();
+
+    // Confirm the GCS client has not been touched yet.
+    expect(mockGetFiles).not.toHaveBeenCalled();
+
+    // Advance past the startup delay.
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // The first cleanup run should have executed.
+    expect(mockGetFiles).toHaveBeenCalledOnce();
+  });
+
+  it("invokes runObjectStorageCleanup again on each subsequent interval tick", async () => {
+    process.env.PRIVATE_OBJECT_DIR = "/test-bucket/private";
+
+    initObjectStorageCleanup();
+
+    // Fire the startup delay and the first cleanup run.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockGetFiles).toHaveBeenCalledTimes(1);
+
+    // Advance one full interval — a second cleanup run should fire.
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERVAL_MS);
+    expect(mockGetFiles).toHaveBeenCalledTimes(2);
+
+    // Advance another interval — a third run.
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERVAL_MS);
+    expect(mockGetFiles).toHaveBeenCalledTimes(3);
   });
 });
