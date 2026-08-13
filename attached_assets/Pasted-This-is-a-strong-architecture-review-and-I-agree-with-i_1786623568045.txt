@@ -1,0 +1,257 @@
+This is a strong architecture review, and I agree with its core conclusion:
+
+> **FnB is not ready to remove Orderly today, but the remaining blockers are narrow and well-defined—not a reason for a broad redesign.** 
+
+The most important thing Replit did correctly is **reuse what already exists**. Inventory items, vendors, vendor items, storage locations, count staging, price history, and current inventory foundations can all be retained. The review explicitly avoids repurposing PO/receipt/accounting workflow tables for historical Orderly data, which is exactly the right call. 
+
+## PM decision
+
+I would approve this architecture direction with a few tightening points before #1086/#1087 build plans start.
+
+### 1. Historical invoices: approve the separate read-only model
+
+I agree with the finding that imported Orderly invoices **must not masquerade as FnB purchase orders or receipts**. That would invent operational history that never happened inside FnB. 
+
+The minimum model should stay narrow:
+
+```text
+Imported Historical Invoice
+    ├─ source identity
+    ├─ vendor
+    ├─ store/company
+    ├─ source dates/status
+    ├─ charges/credits/totals
+    └─ immutable lines
+           ├─ source line identity
+           ├─ vendor-item source identity
+           ├─ source quantity / pack / UOM
+           ├─ source amount
+           └─ GL/category snapshot
+```
+
+No workflow state machine. No approve/pay/export behavior. No fake receiving.
+
+### 2. Vendor-product external identity: approve, but make it generic
+
+This is probably the most architecturally important decision.
+
+Replit correctly concludes that existing item-level source mapping is not enough because one ingredient may have several suppliers and several SKUs. `packSize.id` identifies the actual Orderly vendor-product relationship. 
+
+I would explicitly tell Replit:
+
+> Implement this as a generic **external identity on the vendor-item relationship**, not an `orderlyPackSizeId` column.
+
+Conceptually:
+
+```text
+vendor_item
+    ↓
+external_source_identity
+    source_system
+    source_scope
+    source_key
+```
+
+Then Orderly becomes one migration source among future possibilities.
+
+The source key must include property context, exactly as the review recommends:
+
+```text
+orderly : restaurant 24472 : packSize 2905156
+```
+
+not merely:
+
+```text
+2905156
+```
+
+because source-ID collisions across properties are a real risk. 
+
+### 3. GL framework: approve, but do not let invoice snapshots drive the live mapping
+
+The proposed hierarchy is right:
+
+```text
+Item override
+      ↓
+Category default
+      ↓
+Unassigned / review
+```
+
+with a company-level chart of accounts. 
+
+I would add one distinction:
+
+**Historical invoice GL values are snapshots of what Orderly had at that time.**
+
+They should be preserved on imported invoice lines for historical fidelity, but they should **not automatically become our current FnB mapping authority**.
+
+So we need two concepts:
+
+```text
+Historical Invoice Line
+    sourceGLCode
+    sourceGLName
+```
+
+versus:
+
+```text
+FnB Category
+    currentDefaultAccountId
+```
+
+Those are related, but they are not the same thing.
+
+That prevents old Orderly coding decisions from silently rewriting our current accounting taxonomy.
+
+### 4. The store authorization finding should be treated as a blocker before import work
+
+This jumped out at me:
+
+> Current Orderly count conversion proves company ownership but does not sufficiently prove that the acting user has access to the selected store or that the destination matches the approved batch target. 
+
+That is not just Bay Hill cleanup. That's a shared tenant/store-safety issue.
+
+I would require this to be corrected **before #1086 can write imported historical data**.
+
+The safe contract should be:
+
+```text
+source batch
+    ↓ explicit approved destination
+company
+store
+    ↓
+acting user authorized for that destination
+    ↓
+import allowed
+```
+
+No user-supplied destination should be able to override the approved staging target.
+
+### 5. Twelve months is the beta floor, not a delete boundary
+
+The staged cutover plan gets this right: at least the 12 complete months immediately before cutover, with older data imported in controlled batches where practical. 
+
+I would preserve that rule exactly.
+
+But because Claude found at least two years of clean invoice history available, I’d architect the importer so **12 months is a parameter**, not baked into schema or logic.
+
+For beta:
+
+> minimum = 12 complete months
+
+For Bay Hill after that:
+
+> continue backward if clean and inexpensive
+
+That way we don't throw away useful competitive/migration value just because it isn't beta-blocking.
+
+## I agree with the displacement matrix
+
+The classifications are sensible:
+
+* inventory/counts/storage/vendors: largely existing foundation
+* vendor-product identity: improve
+* invoices: must replace
+* accounting classification: must replace narrowly
+* purchasing: optional parity because Bay Hill never configured Orderly ordering
+* full accounting/AP: ignore for beta 
+
+One thing I would add to this matrix going forward is a fifth column:
+
+**Acceptance Evidence**
+
+For example:
+
+| Orderly function   | FnB state | Gap                  | Exit requirement | Acceptance evidence         |
+| ------------------ | --------- | -------------------- | ---------------- | --------------------------- |
+| Physical inventory | Supports  | Workflow validation  | Required         | Reiner completes live count |
+| Recipe costing     | Supports  | BH validation        | Required         | Sample recipes reconcile    |
+| Invoice history    | Missing   | New historical model | Required         | 12-month reconciliation     |
+| Vendor products    | Partial   | Source identity      | Required         | 100% source-key coverage    |
+
+That will eventually become our actual **Orderly Exit Readiness checklist**.
+
+## Task sequencing
+
+I would now separate this into three Significant tasks rather than one large build:
+
+### #1086 — Historical Invoice Retention
+
+Scope:
+
+* immutable historical invoice headers
+* immutable lines
+* external invoice/line identities
+* vendor-item source linkage
+* 12-month staged import
+* reconciliation/completeness report
+* no live PO/receipt/AP behaviors
+
+### #1087 — Accounting Classification Foundation
+
+Scope:
+
+* company chart of accounts
+* category default
+* optional item override
+* resolution logic
+* missing/unmapped review
+* historical source GL snapshot kept separate
+
+No accounting workflow beyond classification/export readiness.
+
+### One small prerequisite / shared fix
+
+I would either prepend to #1086 or create a small Significant prerequisite:
+
+> **Harden staged import destination authorization**
+
+Because the review explicitly identifies that as a cross-store risk. I would rather fix that once at the shared ingestion layer than bury a Bay Hill-specific check inside #1086.
+
+## One thing I would NOT start yet
+
+I would **not build the actual browser/API extractor yet**.
+
+We now know extraction is easy. That's not the risky part.
+
+First establish:
+
+* historical invoice target contract
+* vendor-item external identity
+* store-safe staging/import contract
+
+Then the Orderly extractor can be a thin adapter:
+
+```text
+Orderly JSON
+     ↓
+Bay Hill scoped acquisition
+     ↓
+staging
+     ↓
+normalization / matching
+     ↓
+approved FnB contracts
+```
+
+That keeps the architecture from being driven backward by the source system.
+
+## Final PM status
+
+I’d record #1085 as:
+
+> **ARCHITECTURE REVIEW APPROVED — ORDERLY EXIT READINESS REMAINS BLOCKED PENDING FOCUSED BUILD**
+
+And I agree with Replit’s final four build boundaries:
+
+1. read-only historical invoices,
+2. generic vendor-product source identity,
+3. minimal accounting classification,
+4. Bay Hill-only staging/reconciliation/authorization evidence. 
+
+The architecture has stayed disciplined. I don't see architectural creep here; I see three legitimate missing contracts uncovered by real Bay Hill evidence.
