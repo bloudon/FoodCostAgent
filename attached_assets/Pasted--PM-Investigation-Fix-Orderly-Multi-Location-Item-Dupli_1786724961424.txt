@@ -1,0 +1,256 @@
+# PM Investigation / Fix — Orderly Multi-Location Item Duplication
+
+## Why this is blocking
+
+Before importing the additional 10 months of Bay Hill Orderly inventory history, we found evidence that the existing XLSX importer can create multiple FnB inventory-item records for a single Orderly item when that item is counted in multiple physical locations.
+
+Do not import the additional months until this is understood and regression-tested.
+
+This is a source-to-FnB identity problem, not a source-data duplicate problem.
+
+## Confirmed source examples
+
+### Chambord
+
+Orderly source identity:
+
+- Item Code: `9684722`
+- Supplier: Breakthru Beverage
+- Item: Chambord
+
+The raw Orderly exports show the same item counted in multiple legitimate locations:
+
+- Liquor Cage
+- Bay Window Bar
+- Mens Locker Room
+- Member Lounge
+- Pool Cafe
+
+This should represent:
+
+**ONE FnB inventory item + multiple location-specific inventory/count records.**
+
+### Sweet n Low
+
+Orderly source identity:
+
+- Item Code: `6115315`
+- Supplier: Sysco
+- Item: Sweet n Low
+
+Legitimate source locations include:
+
+- Mens Locker Room
+- Halfway House
+- Bay Window
+- Dry Storeroom
+
+Again:
+
+**ONE FnB inventory item + multiple location-specific records.**
+
+Claude confirmed that these duplicated FnB rows are not duplicated source items in the Orderly exports.
+
+---
+
+# Required investigation
+
+Trace the existing Orderly XLSX import path end-to-end and determine exactly how one source item can become more than one `inventory_item`.
+
+Specifically inspect:
+
+- parsing
+- preview normalization
+- item matching
+- external mapping lookup
+- create-new-item path
+- approval path
+- store inventory item creation/upsert
+- inventory location assignment
+- count-session generation
+
+Determine whether any match/create key incorrectly includes:
+
+- inventory location
+- row number
+- pack description
+- source month/file
+- vendor text
+- another location-specific attribute
+
+when deciding the underlying FnB inventory-item identity.
+
+Also determine whether multiple rows for the same source item inside a single workbook are independently reaching the create-item path before the first-created identity becomes visible to subsequent rows.
+
+That race/order-of-processing scenario must be explicitly checked.
+
+---
+
+# Identity rule
+
+For source rows with a reliable Orderly Item Code, inventory-item identity must not depend on physical inventory location.
+
+For this existing XLSX pipeline, the same source item code within the same authorized Bay Hill/company import should resolve consistently to the same FnB inventory item.
+
+Location belongs to:
+
+- store inventory/location assignment
+- physical count detail
+
+not to core inventory-item identity.
+
+Do not silently change the existing approved external-identity architecture while fixing this.
+
+If the current source identity contract is insufficient, STOP and return the evidence to PM rather than inventing a broader identity model.
+
+---
+
+# Expected behavior
+
+Given:
+
+| Item Code | Item | Location | Qty |
+|---|---|---|---:|
+| 9684722 | Chambord | Liquor Cage | A |
+| 9684722 | Chambord | Bay Window Bar | B |
+| 9684722 | Chambord | Pool Cafe | C |
+
+FnB should create/resolve:
+
+**Inventory Item**
+`Chambord` → one ID
+
+with separate location/count evidence for:
+
+- Liquor Cage → A
+- Bay Window Bar → B
+- Pool Cafe → C
+
+An aggregate report may later show:
+
+`A + B + C`
+
+but the importer must preserve location-level quantities.
+
+---
+
+# Conflicting source rows
+
+Do not blindly collapse every repeated Item Code.
+
+If two rows present the same authoritative source identity but materially incompatible source metadata, such as conflicting product identity/pack semantics that cannot safely represent one item:
+
+- do not create two items silently
+- do not arbitrarily choose one
+- surface the condition for review
+
+The fix must distinguish:
+
+**same item, different location**
+from
+**actual conflicting source evidence**.
+
+---
+
+# Blank Item Code behavior
+
+Do not treat missing Item Code as an import error.
+
+Across the 12 Orderly monthly files, approximately 19–21% of rows lack Item Code/Supplier, heavily concentrated in Wine/Liquor.
+
+These are legitimate Bay Hill inventory records.
+
+For this task:
+
+1. inspect how the existing importer identities/matches these rows across locations and across months;
+2. verify it does not generate obvious duplicate inventory items merely because Item Code is blank;
+3. do not invent a new global identity architecture unless required to correct an observed defect.
+
+If safe deterministic identity for blank-code rows cannot be established from the existing source fields, leave them reviewable/unresolved rather than creating uncertain duplicate records.
+
+Blank code is an expected state, not a reason to reject the inventory period.
+
+---
+
+# Required regression tests
+
+Add DB-backed coverage proving:
+
+### Same source item, multiple locations, one workbook
+
+Several rows with:
+
+- same source item identity
+- different inventory locations
+
+must produce:
+
+- one FnB inventory item
+- correct separate location/count records
+
+### Same item across sequential months
+
+Import May, then June using the same source item.
+
+The second month must resolve to the same FnB inventory-item ID.
+
+### Existing known examples
+
+Use fixtures equivalent to:
+
+- Chambord `9684722`
+- Sweet n Low `6115315`
+
+or sanitized equivalents reproducing the exact multi-location pattern.
+
+### Idempotent re-import
+
+Reprocessing equivalent source data must not create another inventory item.
+
+### Conflicting source identity
+
+Same authoritative source ID with materially conflicting product data must return an explicit conflict/review outcome rather than silently creating another item.
+
+### Blank-code multi-location case
+
+At least one representative blank-code Wine/Liquor item appearing at multiple locations should be tested for stable behavior.
+
+Do not assert an unsafe automatic match merely to make the test green.
+
+---
+
+# Existing production/test data
+
+Also inspect the current Bay Hill FnB records for Chambord and Sweet n Low.
+
+Report:
+
+- how many FnB inventory-item records currently exist for each
+- which May/June import row created/matched each
+- existing external mappings
+- location assignments
+- whether any downstream count/history references each duplicate
+
+Do NOT merge/delete existing duplicate records as part of diagnosis.
+
+Return the remediation plan first if cleanup would affect historical references.
+
+---
+
+# Validation gate before additional imports
+
+Before the additional 10 monthly files are loaded, prove:
+
+1. multi-location source items resolve to one inventory identity;
+2. location-level quantities remain intact;
+3. May → June matching remains stable;
+4. re-import is idempotent;
+5. blank Item Code rows remain valid and do not cause uncontrolled duplication;
+6. focused importer DB tests pass;
+7. existing historical-invoice/accounting tests remain unaffected.
+
+Then run a **dry/preview pass** against at least one of the newly obtained months before approving the full 10-month load.
+
+## Stop condition
+
+Do not import August 2025–July 2026 history until this gate is green.

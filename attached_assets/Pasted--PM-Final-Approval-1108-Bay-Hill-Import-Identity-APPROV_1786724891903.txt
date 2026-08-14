@@ -1,0 +1,146 @@
+## PM Final Approval — #1108 Bay Hill Import Identity
+
+APPROVED TO BUILD — Significant.
+
+The task correctly targets the existing XLSX identity defect and blocks additional historical loading until the importer is proven safe.
+
+Add the following implementation clarifications.
+
+### 1. Batch identity must be resolved once
+
+For rows with a reliable Orderly Item Code:
+
+> Resolve/create the FnB inventory-item identity once per source identity per authorized import batch, then reuse that same resolved inventoryItemId for every row in that identity group.
+
+Do not allow multiple unmatched rows carrying the same reliable Item Code to independently enter the create-new-item path.
+
+This invariant must hold inside the authoritative approval/mutation transaction, not only in preview state.
+
+Location-specific processing happens only after the shared core item identity has been resolved.
+
+Expected flow:
+
+source rows
+→ group/resolve authoritative Item Code
+→ ONE inventoryItemId
+→ individual location assignments/count evidence
+
+### 2. Location is never part of reliable-code core identity
+
+The following may vary while still representing the same inventory item:
+
+- inventory location
+- source quantity/count fields
+- source month/file
+- par/target values
+- current/previous cost
+- ordinary price changes
+
+Those differences must not cause another core inventory item to be created.
+
+### 3. Define incompatible evidence narrowly
+
+Do not make normal historical or sourcing variation a source-identity conflict.
+
+In particular, supplier/vendor changes or prices alone should not automatically imply a different core inventory item.
+
+Conflict handling is for evidence that the same authoritative source Item Code appears to represent materially different physical products, such as genuinely incompatible product identity or pack/UOM geometry.
+
+Normalize harmless text differences before evaluating conflict.
+
+If Engineering cannot define a safe deterministic compatibility rule from the actual workbook fields, STOP and return the evidence to PM rather than broadening the identity architecture.
+
+### 4. Blank Item Code remains a separate matching case
+
+Do not manufacture a synthetic authoritative identity for blank-code rows simply to deduplicate them.
+
+Safe existing matching may still be used where confidence is established.
+
+Otherwise:
+
+- retain source evidence
+- leave reviewable/unresolved
+- do not create multiple uncertain core items automatically
+
+Wine/Liquor blank-code volume is expected source behavior.
+
+### 5. Forensics remains read-only
+
+For Chambord and Sweet n Low, report:
+
+- existing FnB inventoryItem IDs
+- existing external mappings
+- May/June source rows
+- locations tied to each duplicate
+- count/history references
+- downstream dependencies
+
+Do not merge, delete, repoint, or clean up the existing duplicates in #1108.
+
+If remediation is needed, return a separate proposed cleanup plan with impact analysis.
+
+### 6. New-month dry-preview gate
+
+The dry preview of an untouched newly exported month must report at minimum:
+
+- source row count
+- reliable Item Code row count
+- unique reliable Item Code count
+- existing-item resolutions
+- proposed new-item creations
+- reliable codes that would create more than one core item: MUST = 0
+- conflicting reliable-code groups
+- blank-code rows
+- blank-code safely matched
+- blank-code unresolved/reviewable
+- unique physical locations
+- location/count rows preserved
+- source valuation total where available
+
+No production/history load occurs during this preview.
+
+### 7. Required regression invariant
+
+For a source group such as:
+
+9684722 / Chambord
+- Liquor Cage
+- Bay Window Bar
+- Mens Locker Room
+- Member Lounge
+- Pool Cafe
+
+the test must prove:
+
+- one core inventory item
+- one authoritative external mapping
+- five independently preserved location/count records
+- no loss or aggregation of location quantities during import
+
+Aggregation belongs to reporting/valuation, not source ingestion.
+
+### Validation
+
+Run:
+
+- focused Orderly XLSX importer DB tests
+- historical invoice regression suite
+- accounting classification regression suite
+- API typecheck
+- fresh Reviewer
+- fresh QA
+
+Reviewer should specifically inspect for:
+
+- same-batch create visibility
+- location leaking into identity
+- price/vendor changes incorrectly causing conflicts
+- blank-code overmatching
+- cross-company/store/source-property regression
+- any accidental mutation of existing duplicate records
+
+## Gate
+
+The remaining Bay Hill historical workbooks stay blocked until #1108 is green and one untouched new month passes the dry-preview metrics above.
+
+Status: APPROVED TO BUILD.

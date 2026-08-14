@@ -1,0 +1,86 @@
+# Bay Hill Initial Import Duplicate Remediation
+
+## What & Why
+
+Repair duplicate FnB inventory-item identities created by the original Bay Hill May/June Orderly imports after #1108 has fixed the importer.
+
+The goal is to consolidate accidental core-item splits while preserving all historical count/location evidence and source provenance.
+
+## Preconditions
+
+- #1108 is complete and green.
+- Forensics has identified affected duplicate groups and downstream references.
+- No additional historical months have been loaded.
+
+## Done looks like
+
+- Every confirmed accidental duplicate group resolves to one canonical FnB inventory item.
+- All safe downstream references are repointed to the canonical item.
+- May/June location-level count evidence and quantities remain intact.
+- External mappings resolve to the canonical item only.
+- No duplicate valuation remains from the accidentally split core records.
+- Ambiguous groups remain unresolved/reviewable and are not auto-merged.
+- No historical source evidence is deleted or rewritten.
+- May and June preview/re-import behavior resolves consistently through the corrected #1108 logic.
+- Reconciled monthly inventory totals remain unchanged except for removal of duplicate identity effects.
+
+## Required remediation rules
+
+### Canonical item selection
+
+Choose the canonical record based on evidence, including:
+
+- authoritative external mapping
+- downstream historical references
+- completeness of item metadata
+- existing store/location usage
+
+Do not choose by display name alone.
+
+### Safe merge behavior
+
+For a confirmed same-item split:
+
+- repoint dependent foreign keys to the canonical inventoryItemId
+- consolidate external mappings
+- preserve separate location assignments
+- preserve separate count-session/source rows
+- prevent duplicate store-inventory rows
+- deactivate or mark the duplicate item as merged if hard deletion is unsafe
+
+### Do not merge automatically when
+
+- source identity is ambiguous
+- pack/UOM evidence suggests genuinely different physical products
+- conflicting external mappings exist
+- downstream references cannot be safely repointed
+
+Return those cases for review.
+
+## Known first checks
+
+Start with:
+
+- Chambord — Orderly Item Code 9684722
+- Sweet n Low — Orderly Item Code 6115315
+
+Then identify all additional May/June duplicate groups caused by the same importer defect.
+
+## Validation
+
+After remediation:
+
+1. one authoritative inventory item per reliable source Item Code
+2. no orphaned mappings/references
+3. no location-count evidence lost
+4. May and June resolve to the same canonical IDs
+5. monthly valuation totals reconcile to the source exports
+6. DB-backed remediation tests pass
+7. historical invoice/accounting regressions remain green
+
+## Out of scope
+
+- importing the remaining 10 months
+- broad inventory deduplication unrelated to the confirmed Orderly importer defect
+- rewriting source workbooks
+- changing the external identity architecture
