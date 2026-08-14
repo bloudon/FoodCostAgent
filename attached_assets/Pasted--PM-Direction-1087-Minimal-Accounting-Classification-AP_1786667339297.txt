@@ -1,0 +1,114 @@
+## PM Direction — #1087 Minimal Accounting Classification
+
+APPROVED TO BUILD.
+
+No additional Bay Hill accounting policy is being imposed at this stage.
+
+Build the minimum reversible accounting-classification foundation using the existing FnB model and retained source GL evidence.
+
+### Company chart of accounts
+
+Support company-scoped accounts with:
+
+- account code
+- account name
+- active/inactive
+- limited classification/type only where it provides clear utility
+
+Do not assume a specific Bay Hill chart of accounts during schema design.
+
+### Mapping hierarchy
+
+Use:
+
+Item override
+→ Category default
+→ Unassigned / review required
+
+Category default is the normal path.
+
+Item-level overrides are optional exceptions and must not be required simply because Orderly historically carried item-level GL information.
+
+### Historical Orderly GL evidence
+
+Preserve imported historical GL/account values as source snapshots.
+
+Do not automatically convert those historical values into authoritative current FnB account mappings.
+
+The system should be able to use those values later to:
+
+- suggest mappings
+- compare historical classifications
+- identify missing mappings
+
+but an explicit FnB mapping remains authoritative for current/export behavior.
+
+### Reversibility
+
+Mapping changes should not rewrite historical invoice snapshots.
+
+Changing a category default should affect current account resolution, not mutate what an imported historical invoice originally said.
+
+### Resolution contract
+
+Provide one authoritative resolver for current accounting classification:
+
+1. item override, if present and active
+2. category default, if present and active
+3. otherwise unresolved
+
+Avoid duplicating GL-resolution logic across reports/export paths.
+
+### Missing mapping behavior
+
+Unmapped records must remain valid operational FnB data.
+
+Accounting readiness should report them as:
+
+`Unassigned / review required`
+
+Do not block inventory, recipe, vendor, or other culinary workflows because accounting classification is incomplete.
+
+### Scope
+
+This task establishes classification and future export readiness.
+
+Do not build:
+
+- general ledger
+- AP
+- payments
+- journal entries
+- reconciliation
+- bank functions
+- QuickBooks synchronization
+- Jonas accounting integration
+- Bay Hill-specific export formats
+
+### Bay Hill policy remains later
+
+Specific Bay Hill decisions such as:
+
+- exact chart of accounts
+- category mappings
+- controller-required account codes
+- Jonas/accounting export format
+- store/property overrides
+
+should be established with Bay Hill management/controller evidence later.
+
+Do not guess them now.
+
+### Tests
+
+Include focused coverage for:
+
+- company isolation
+- category default resolution
+- item override precedence
+- inactive account behavior
+- unresolved mapping behavior
+- historical source GL remaining unchanged after current mappings change
+- no accounting classification mutation affecting historical invoice evidence
+
+Treat as Significant and complete fresh Reviewer + QA passes.
