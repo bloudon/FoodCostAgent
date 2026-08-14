@@ -1,0 +1,122 @@
+## PM / Independent Review Amendments — #1108
+
+Claude’s review agrees with the task direction and adds four evidence-backed clarifications before build.
+
+### 1. Explicitly scope XLSX identity vs Orderly API identity
+
+The XLSX inventory export does NOT contain Orderly `packSize.id`.
+
+Therefore, for this XLSX import path only:
+
+- reliable Orderly Item Code is the authoritative source identity available to the importer
+- Item Code must remain scoped to the authorized Bay Hill/company import context
+- location is never part of that core identity
+
+This is intentionally different from the historical/API vendor-product identity established elsewhere:
+
+`ORDERLY + sourcePropertyId + packSize.id`
+
+Do not assume an XLSX Item Code identity is automatically equivalent to a later `packSize.id` identity.
+
+Any future API-derived vendor-product linkage must explicitly reconcile:
+
+`XLSX Item Code ↔ Orderly packSize.id ↔ FnB vendor/inventory identity`
+
+Do not silently treat the two source-key systems as interchangeable.
+
+This is a scoped limitation of the workbook format, not a change to the approved external-identity architecture.
+
+---
+
+### 2. Add same-location duplicate detection
+
+The dry-preview/report must separately identify:
+
+- normal same-item / different-location fan-out
+- same-item / same-location duplicate rows
+
+These are not the same condition.
+
+Claude found at least one real same-location source duplicate in the 12-month dataset:
+
+`Beef - Ground Cheney Brothers`
+at
+`Main freezer`
+in the August 2025 workbook.
+
+Add preview metrics for:
+
+- same reliable code + different locations
+- same reliable code + same location repeated
+- count of same-location duplicate source rows
+- valuation exposure from those rows if measurable
+
+Do not silently aggregate a same-location duplicate row unless source semantics prove that behavior is correct.
+
+Treat it as source-data review/anomaly evidence.
+
+---
+
+### 3. Pack compatibility must understand Orderly partial-count notation
+
+Do not compare pack strings naively when determining whether same-code rows contain incompatible product evidence.
+
+Confirmed example:
+
+Chambord `9684722` appears with values such as:
+
+- `6/6 ML`
+- `6/0.3 ML`
+- `6/0 ML`
+
+across different locations.
+
+These may represent the same underlying case/product with location-specific remaining quantity notation, not different pack geometry.
+
+Therefore:
+
+- raw pack text differences alone must not trigger a product-identity conflict
+- separate underlying product/pack geometry from count/remaining-quantity notation before compatibility evaluation
+- include this exact pattern or a sanitized equivalent in the regression fixtures
+
+If the parser cannot deterministically distinguish structural pack geometry from count notation, STOP and report the ambiguity rather than splitting the item.
+
+---
+
+### 4. Existing May/June duplicates remain a separate remediation requirement
+
+Shipping #1108 prevents/rejects new duplicate identity creation.
+
+It does NOT correct the duplicate FnB inventory records already created by the original May/June imports.
+
+Therefore, any currently distorted downstream numbers remain distorted until the separate remediation task runs.
+
+Specifically, do not represent #1108 completion as fixing existing variance/reporting results.
+
+Sequence remains:
+
+1. #1108 fix importer
+2. prove untouched new-month dry preview
+3. complete read-only May/June duplicate forensics
+4. execute separately approved duplicate remediation
+5. reconcile May/June valuation/history
+6. only then load remaining historical months
+
+Do not open the remaining 10-month load merely because the new importer test is green if known existing duplicate identities still contaminate the baseline validation.
+
+---
+
+## Additional dry-preview metrics
+
+Add to the previously approved preview output:
+
+- same-code cross-location groups
+- same-code same-location duplicate groups
+- same-location duplicate row count
+- pack-notation compatibility warnings
+- reliable codes with incompatible identity evidence
+- XLSX Item Codes lacking any future packSize reconciliation evidence, where known
+
+## Status
+
+APPROVED TO BUILD with these amendments.
