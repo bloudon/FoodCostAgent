@@ -5,6 +5,7 @@ import { logger } from "./lib/logger";
 import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { initObjectStorageCleanup } from "./objectStorageCleanup";
+import { ensureAccountingClassificationSchema } from "./services/accountingClassificationMigration";
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +30,7 @@ if (Number.isNaN(port) || port <= 0) {
   }
 
   try {
+    await ensureAccountingClassificationSchema();
     // seedDatabase is optional; skip if it throws
     await seedDatabase().catch((e) => logger.warn({ err: e }, "seed skipped"));
   } catch (_) {}

@@ -265,6 +265,33 @@ export const insertStorageLocationSchema = createInsertSchema(storageLocations).
 export type InsertStorageLocation = z.infer<typeof insertStorageLocationSchema>;
 export type StorageLocation = typeof storageLocations.$inferSelect;
 
+// Company-scoped accounting accounts used for current classification and
+// future export readiness. Historical source GL values remain separate evidence.
+export const accountingAccounts = pgTable("accounting_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  accountType: text("account_type"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueCompanyAccountCode: unique().on(table.companyId, table.code),
+  companyActiveIdx: index("accounting_accounts_company_active_idx").on(table.companyId, table.isActive),
+}));
+
+export const insertAccountingAccountSchema = createInsertSchema(accountingAccounts)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    code: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    accountType: z.string().trim().min(1).nullable().optional(),
+    isActive: z.union([z.literal(0), z.literal(1)]).default(1),
+  });
+export type InsertAccountingAccount = z.infer<typeof insertAccountingAccountSchema>;
+export type AccountingAccount = typeof accountingAccounts.$inferSelect;
+
 // Categories
 export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -274,11 +301,12 @@ export const categories = pgTable("categories", {
   showAsIngredient: integer("show_as_ingredient").notNull().default(1), // 1 if items in this category can be used as ingredients
   isCatchWeightCategory: integer("is_catch_weight_category").notNull().default(0), // 1 if this is a catch weight category (proteins sold/tracked by actual per-package weight)
   isActive: integer("is_active").notNull().default(1), // 1 = active, 0 = deactivated (soft delete)
+  accountingAccountId: varchar("accounting_account_id"),
 }, (table) => ({
   uniqueCompanyCategory: unique().on(table.companyId, table.name),
 }));
 
-export const insertCategorySchema = createInsertSchema(categories).omit({ id: true });
+export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, accountingAccountId: true });
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 
@@ -315,6 +343,7 @@ export const inventoryItems = pgTable("inventory_items", {
   name: text("name").notNull(),
   manufacturer: text("manufacturer"), // optional product manufacturer/brand
   categoryId: varchar("category_id"), // Reference to categories table
+  accountingAccountId: varchar("accounting_account_id"), // Optional current-account exception; managed by accounting service
   pluSku: text("plu_sku"),
   /** Canonical inventory unit — the stable, vendor-independent unit for all
    *  cost calculations (e.g. LB, FL OZ, EA). Never changes because a vendor
@@ -356,7 +385,7 @@ export const inventoryItems = pgTable("inventory_items", {
   companyNameIdx: index("inventory_items_company_name_idx").on(table.companyId, table.name),
 }));
 
-export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true }).extend({
+export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true, accountingAccountId: true }).extend({
   categoryId: z.string().nullable().optional(),
   unitId: z.string().min(1, "Unit is required"),
   yieldPercent: z.number().min(1).max(100).default(100),

@@ -33,6 +33,7 @@ import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
 import { registerHistoricalInvoiceRoutes } from "./routes/historicalInvoiceRoutes";
+import { registerAccountingRoutes } from "./routes/accountingRoutes";
 import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
 import { registerChatLogsRoutes } from "./routes/chatLogsRoutes";
@@ -182,6 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMenuRoutes(app);
   registerOrderlyImportRoutes(app);
   registerHistoricalInvoiceRoutes(app);
+  registerAccountingRoutes(app);
   registerSalesByItemRoutes(app);
   registerReportRoutes(app);
   app.use('/api/extension', extensionRouter);
