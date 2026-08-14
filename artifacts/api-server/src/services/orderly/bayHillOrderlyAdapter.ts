@@ -45,6 +45,11 @@ export interface FetchBayHillHistoricalInvoicesOptions {
   fetchImplementation?: typeof fetch;
 }
 
+export interface BayHillOrderlyInvoiceRange {
+  start: string;
+  end: string;
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -219,12 +224,17 @@ function normalizeInvoice(rawInvoice: unknown, specsByPackSizeId: Map<string, Un
 }
 
 export function normalizeBayHillOrderlyHistoricalInvoices(
-  input: { cutoverDate: string; specs: unknown; invoices: unknown },
+  input: {
+    cutoverDate: string;
+    specs: unknown;
+    invoices: unknown;
+    invoiceRange?: BayHillOrderlyInvoiceRange;
+  },
 ): HistoricalInvoicePayload {
   const specsByPackSizeId = specPackSizes(sourceArray(input.specs, 'specs response'));
   const invoices = sourceArray(input.invoices, 'invoice-history response')
     .map(invoice => normalizeInvoice(invoice, specsByPackSizeId));
-  const window = deriveHistoricalInvoiceWindow(input.cutoverDate);
+  const window = input.invoiceRange ?? deriveHistoricalInvoiceWindow(input.cutoverDate);
   for (const invoice of invoices) {
     if (invoice.invoiceDate < window.start || invoice.invoiceDate > window.end) {
       throw new BayHillOrderlyAdapterError(
@@ -247,6 +257,23 @@ export function normalizeBayHillOrderlyHistoricalInvoices(
     );
   }
   return parsed.data;
+}
+
+function assertDateOnly(value: string, description: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    throw new BayHillOrderlyAdapterError('SOURCE_RESPONSE_INVALID', `${description} must be YYYY-MM-DD.`);
+  }
+  const [, yearText, monthText, dayText] = match;
+  const date = new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText)));
+  if (
+    date.getUTCFullYear() !== Number(yearText)
+    || date.getUTCMonth() !== Number(monthText) - 1
+    || date.getUTCDate() !== Number(dayText)
+  ) {
+    throw new BayHillOrderlyAdapterError('SOURCE_RESPONSE_INVALID', `${description} must be a valid calendar date.`);
+  }
+  return value;
 }
 
 async function fetchJson(
@@ -275,19 +302,67 @@ async function fetchJson(
   }
 }
 
-export async function fetchBayHillOrderlyHistoricalInvoicePayload(
-  options: FetchBayHillHistoricalInvoicesOptions,
+async function fetchBayHillOrderlyInvoiceRange(
+  options: {
+    cutoverDate: string;
+    invoiceRange: BayHillOrderlyInvoiceRange;
+    session: BayHillOrderlySession;
+    fetchImplementation?: typeof fetch;
+  },
 ): Promise<HistoricalInvoicePayload> {
-  const window = deriveHistoricalInvoiceWindow(options.cutoverDate);
+  const start = assertDateOnly(options.invoiceRange.start, 'Invoice range start');
+  const end = assertDateOnly(options.invoiceRange.end, 'Invoice range end');
+  if (start > end) {
+    throw new BayHillOrderlyAdapterError('SOURCE_RESPONSE_INVALID', 'Invoice range start must not be after its end.');
+  }
   const fetchImplementation = options.fetchImplementation ?? fetch;
   const specsUrl = new URL(SPECS_PATH, ORDERLY_ORIGIN);
   const invoicesUrl = new URL(INVOICES_PATH, ORDERLY_ORIGIN);
-  invoicesUrl.searchParams.set('startDate', window.start);
-  invoicesUrl.searchParams.set('endDate', window.end);
+  invoicesUrl.searchParams.set('startDate', start);
+  invoicesUrl.searchParams.set('endDate', end);
 
   const [specs, invoices] = await Promise.all([
     fetchJson(fetchImplementation, specsUrl, options.session, 'specs'),
     fetchJson(fetchImplementation, invoicesUrl, options.session, 'invoice-history'),
   ]);
-  return normalizeBayHillOrderlyHistoricalInvoices({ cutoverDate: options.cutoverDate, specs, invoices });
+  return normalizeBayHillOrderlyHistoricalInvoices({
+    cutoverDate: options.cutoverDate,
+    invoiceRange: { start, end },
+    specs,
+    invoices,
+  });
+}
+
+/**
+ * Read-only limited-range probe for a controlled dry run. This is separate
+ * from the twelve-month historical helper so a small range can be checked
+ * before any historical staging is attempted.
+ */
+export async function fetchBayHillOrderlyInvoiceRangePayload(
+  options: {
+    cutoverDate: string;
+    startDate: string;
+    endDate: string;
+    session: BayHillOrderlySession;
+    fetchImplementation?: typeof fetch;
+  },
+): Promise<HistoricalInvoicePayload> {
+  return fetchBayHillOrderlyInvoiceRange({
+    cutoverDate: options.cutoverDate,
+    invoiceRange: { start: options.startDate, end: options.endDate },
+    session: options.session,
+    fetchImplementation: options.fetchImplementation,
+  });
+}
+
+export async function fetchBayHillOrderlyHistoricalInvoicePayload(
+  options: FetchBayHillHistoricalInvoicesOptions,
+): Promise<HistoricalInvoicePayload> {
+  const window = deriveHistoricalInvoiceWindow(options.cutoverDate);
+  return fetchBayHillOrderlyInvoiceRange({
+    cutoverDate: options.cutoverDate,
+    invoiceRange: window,
+    session: options.session,
+    fetchImplementation: options.fetchImplementation,
+  });
 }

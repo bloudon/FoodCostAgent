@@ -3,6 +3,7 @@ import { historicalInvoicePayloadSchema } from './historicalInvoiceImport';
 import {
   BayHillOrderlyAdapterError,
   fetchBayHillOrderlyHistoricalInvoicePayload,
+  fetchBayHillOrderlyInvoiceRangePayload,
   normalizeBayHillOrderlyHistoricalInvoices,
 } from './bayHillOrderlyAdapter';
 
@@ -103,6 +104,25 @@ describe('Bay Hill Orderly thin acquisition adapter', () => {
       method: 'GET',
       headers: { cookie: '<runtime-only>' },
     });
+  });
+
+  it('supports a bounded read-only probe range without changing the source identity contract', async () => {
+    const fetchImplementation = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(specsFixture), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(invoicesFixture), { status: 200 }));
+
+    const payload = await fetchBayHillOrderlyInvoiceRangePayload({
+      cutoverDate: '2026-08-01',
+      startDate: '2026-03-01',
+      endDate: '2026-03-31',
+      session: { headers: { cookie: '<runtime-only>' } },
+      fetchImplementation,
+    });
+
+    expect(payload.invoices).toHaveLength(1);
+    expect(String(fetchImplementation.mock.calls[1][0])).toContain(
+      'startDate=2026-03-01&endDate=2026-03-31',
+    );
   });
 
   it('fails closed for unverified response envelopes, non-Bay-Hill invoices, and missing line identities', () => {
