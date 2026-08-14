@@ -1,0 +1,145 @@
+# Bay Hill Production Data Verification — Read Only
+
+## Objective
+
+Verify what Bay Hill data actually exists in the production FnB environment before rerunning the recipe-costing validation.
+
+Important context:
+
+The prior Replit validation appears to have queried the Replit Dev DB, not the production VPS.
+
+Some Bay Hill imports and setup were performed on the production VPS, so production may contain a different and more complete data set.
+
+This is evidence only.
+
+Do not create, edit, import, approve, merge, or delete anything.
+
+---
+
+## 1. Confirm environment
+
+Verify that you are inspecting the production FnB application / production Bay Hill company.
+
+Record:
+
+- company name
+- company/store context
+- any visible company identifier if exposed
+- production URL/context
+
+Do not assume it is the same companyId reported by Replit Dev.
+
+---
+
+## 2. Inventory/catalog presence
+
+For Bay Hill production, determine whether the following exist:
+
+- inventory items
+- vendors
+- vendor items
+- storage/inventory locations
+- Orderly import history
+- inventory counts/sessions
+
+Approximate counts are sufficient where exact counts are not exposed.
+
+---
+
+## 3. Recipe/menu presence
+
+Determine whether production currently contains:
+
+- Veal Stock recipe
+- any other recipes
+- menu items
+- menu/menu-item scaffolding created from the supplied menu image
+- any sub-recipes/prep items
+
+Record exact names where useful.
+
+---
+
+## 4. May/June import evidence
+
+Determine whether the original May and/or June Orderly inventory imports are visible in production.
+
+For each visible period, record:
+
+- month/date
+- import/count session if visible
+- source filename if visible
+- row/item count if exposed
+- valuation total if exposed
+- number of locations if exposed
+
+Do not rerun or approve anything.
+
+---
+
+## 5. Recipe fixture match potential
+
+Using the harvested Bay Hill recipe sample only as a reference, check whether any source ingredients already exist in production FnB.
+
+Look specifically for examples such as:
+
+- Heavy Cream
+- Chicken Breast
+- Onions - Yellow
+- Garlic Fresh
+- Buttermilk
+- Mayonnaise - Extra Heavy
+- Beef - Brisket
+- Apples - Granny Smith
+- Baguettes
+- Sauce - Tabasco
+- MONIN ORANGE SYRUP 750 ML
+
+Do not create matches.
+
+Classify each as:
+
+- exact-looking existing item
+- possible/ambiguous match
+- not found
+
+The goal is to estimate whether the harvested recipe sample can exercise FnB costing against existing production data.
+
+---
+
+## 6. Environment discrepancy conclusion
+
+Answer:
+
+1. Was the prior Replit recipe validation clearly run against a different/empty Dev dataset?
+2. How much Bay Hill data exists in production?
+3. Is production populated enough to rerun the 7-record recipe validation meaningfully?
+4. If not, what minimum additional data must be loaded first?
+
+Do not recommend product changes yet.
+
+---
+
+## Deliverable
+
+Return:
+
+### Production Environment Confirmed
+YES / NO
+
+### Bay Hill Production Data Summary
+
+### May/June Import Presence
+
+### Recipe/Menu Presence
+
+### Harvested Ingredient Match Coverage
+
+### Can Recipe Validation Run Against Production?
+YES / PARTIAL / NO
+
+### Minimum Missing Data
+
+### Environment Discrepancy Conclusion
+
+Then STOP.

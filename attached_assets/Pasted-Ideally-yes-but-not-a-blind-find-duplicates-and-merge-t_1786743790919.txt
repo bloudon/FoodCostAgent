@@ -1,0 +1,113 @@
+Ideally, yes — but **not a blind “find duplicates and merge them” script**.
+
+I’d want Replit to build a **two-phase remediation tool**:
+
+1. **Discovery/report mode first**
+
+   * scan the Bay Hill production dataset
+   * identify duplicate groups that match the specific #1108 defect signature
+   * show proposed canonical item + duplicate IDs + references + affected locations/counts
+   * make **no changes**
+
+2. **Apply mode second**
+
+   * only after the discovery output is reviewed/approved
+   * repair only the confirmed groups
+   * run atomically where practical
+   * produce a before/after audit report
+
+The script should find candidates using **reliable Orderly Item Code/external mapping evidence**, not just duplicate names. That is critical. “Heavy Cream ×3” is a clue, but name duplication alone is not enough to auto-merge.
+
+The safe shape is something like:
+
+```text
+remediate-bay-hill-orderly-duplicates
+  --company 43abaf82-44ce-4231-9570-7a01e7c85ced
+  --mode report
+```
+
+Output:
+
+```text
+Source Item Code: 1234567
+Candidate FnB items:
+  id A
+  id B
+  id C
+
+Evidence:
+  same Orderly source identity
+  created from May/June import rows
+  same product metadata
+  different location rows
+  no incompatible pack evidence
+
+Proposed canonical:
+  id A
+
+References to repoint:
+  store inventory: 3
+  location assignments: 7
+  count rows: 11
+  external mappings: 2
+
+Status:
+  SAFE_CANDIDATE
+```
+
+Then only approved groups get applied.
+
+I would actually tighten the Replit direction with this:
+
+```md
+## Remediation implementation requirement
+
+Do not perform production cleanup manually row-by-row.
+
+Build a bounded, repeatable remediation script/service with two modes:
+
+### REPORT MODE — default
+
+- read-only
+- scoped only to Bay Hill production company/store
+- identify duplicate groups caused by the confirmed Orderly XLSX identity defect
+- use source Item Code / external mapping / import provenance as primary evidence
+- do not treat duplicate names alone as proof
+- show proposed canonical item and every downstream reference that would move
+- classify each group:
+  - SAFE_CANDIDATE
+  - AMBIGUOUS
+  - CONFLICT
+  - NOT_DEFECT_RELATED
+
+No writes in report mode.
+
+### APPLY MODE
+
+Apply only explicitly approved SAFE_CANDIDATE groups.
+
+For each group:
+- repoint downstream references atomically where practical
+- preserve location/count evidence
+- consolidate authoritative external mappings
+- deactivate/mark superseded items rather than hard-delete unless deletion is proven safe
+- write an audit record/output showing before/after IDs and references
+
+If any unexpected reference or conflict appears during apply:
+STOP that group without partial mutation.
+
+### Safety
+
+The script must be:
+- company-scoped
+- source-system scoped
+- rerunnable/idempotent
+- dry-run by default
+- incapable of broad fuzzy/name-based catalog deduplication
+
+Do not load additional historical months until:
+report → review → apply → valuation reconciliation
+is complete.
+```
+
+So yes: **scripted discovery and remediation is the right approach**, because we now know this is systemic across thousands of imported records. Manual cleanup would be slower, harder to audit, and much easier to get wrong.
