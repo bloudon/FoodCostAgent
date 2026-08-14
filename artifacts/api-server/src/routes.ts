@@ -786,6 +786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           company_id VARCHAR NOT NULL,
           inventory_item_id VARCHAR NOT NULL,
           source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL DEFAULT '',
           source_external_id TEXT NOT NULL,
           source_description TEXT,
           match_strategy TEXT,
@@ -793,12 +794,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           confirmed_at TIMESTAMPTZ,
           confirmed_by VARCHAR,
-          UNIQUE (company_id, source_system, source_external_id)
+          UNIQUE (company_id, source_system, source_property_id, source_external_id)
         );
         CREATE INDEX IF NOT EXISTS inv_item_ext_mappings_item_idx
           ON inventory_item_external_mappings(inventory_item_id);
+      `);
+      // Source-property scoping. A source item code is only unique within one
+      // source property, so identity must include it. Existing rows keep "" —
+      // they are legacy company-wide mappings and are never re-pointed here.
+      await db.execute(sql`
+        ALTER TABLE inventory_item_external_mappings
+          ADD COLUMN IF NOT EXISTS source_property_id TEXT NOT NULL DEFAULT '';
+        DROP INDEX IF EXISTS inv_item_ext_mappings_source_idx;
         CREATE INDEX IF NOT EXISTS inv_item_ext_mappings_source_idx
-          ON inventory_item_external_mappings(company_id, source_system, source_external_id);
+          ON inventory_item_external_mappings(company_id, source_system, source_property_id, source_external_id);
+      `);
+      // Replace the company-wide uniqueness with property-scoped uniqueness.
+      await db.execute(sql`
+        DO $$
+        DECLARE
+          old_constraint TEXT;
+        BEGIN
+          SELECT conname INTO old_constraint
+          FROM pg_constraint
+          WHERE conrelid = 'inventory_item_external_mappings'::regclass
+            AND contype = 'u'
+            AND pg_get_constraintdef(oid) = 'UNIQUE (company_id, source_system, source_external_id)';
+          IF old_constraint IS NOT NULL THEN
+            EXECUTE format(
+              'ALTER TABLE inventory_item_external_mappings DROP CONSTRAINT %I',
+              old_constraint
+            );
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'inventory_item_external_mappings'::regclass
+              AND contype = 'u'
+              AND pg_get_constraintdef(oid) =
+                'UNIQUE (company_id, source_system, source_property_id, source_external_id)'
+          ) THEN
+            ALTER TABLE inventory_item_external_mappings
+              ADD CONSTRAINT inv_item_ext_mappings_company_system_property_code_key
+              UNIQUE (company_id, source_system, source_property_id, source_external_id);
+          END IF;
+        END
+        $$;
       `);
       console.log("[Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready");
     } catch (err) {

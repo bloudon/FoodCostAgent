@@ -606,6 +606,7 @@ function computeEffectiveQty(row: InventoryImportRow): number {
 async function resolveItemIdsForBatch(
   rows: InventoryImportRow[],
   companyId: string,
+  sourcePropertyId: string,
 ): Promise<Map<number, string>> {
   const rowToItemId = new Map<number, string>();
 
@@ -633,6 +634,10 @@ async function resolveItemIdsForBatch(
           eq(inventoryItemExternalMappings.companyId, companyId),
           // @ts-ignore
           eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
+          // Identity is scoped to the batch's source property — another club's
+          // mapping for the same Item Code must never resolve these rows.
+          // @ts-ignore
+          eq(inventoryItemExternalMappings.sourcePropertyId, sourcePropertyId),
           // @ts-ignore
           inArray(inventoryItemExternalMappings.sourceExternalId, codes),
         ),
@@ -691,7 +696,11 @@ export async function previewCountSession(
   }
 
   // Resolve item IDs
-  const rowToItemId = await resolveItemIdsForBatch(batchRows, companyId);
+  const rowToItemId = await resolveItemIdsForBatch(
+    batchRows,
+    companyId,
+    batch.sourcePropertyId ?? '',
+  );
 
   // Load item names
   const allItemIds = Array.from(rowToItemId.values());

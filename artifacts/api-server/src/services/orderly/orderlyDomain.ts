@@ -110,6 +110,8 @@ export interface ResolutionPreviewResult {
     supplierRaw: string | null;
     sourceCategory: string | null;
     caseQuantity: number | null;
+    innerPackQuantity: number | null;
+    baseUnit: string | null;
     packagePrice: number | null;
     totalCost: number | null;
     itemMatch: MatchResult;
@@ -120,6 +122,212 @@ export interface ResolutionPreviewResult {
   newLocations: string[];
   /** Unique vendors that will be created on approval */
   newVendors: string[];
+  /**
+   * Workbook-only identity evidence for the approval gate. Item Code is scoped
+   * to this authorized XLSX import; it is not an Orderly API packSize identity.
+   */
+  identitySummary: {
+    reliableCodeRows: number;
+    uniqueReliableCodes: number;
+    existingItemResolutions: number;
+    proposedNewItemCreations: number;
+    reliableCodesWithMultipleProposedItems: number;
+    reliableCodesWithoutPackSizeReconciliationEvidence: number;
+    conflictingReliableCodeGroups: Array<{
+      sourceItemCode: string;
+      rowIndexes: number[];
+      reasons: string[];
+    }>;
+    blankCodeRows: number;
+    blankCodeSafelyMatched: number;
+    blankCodeUnresolved: number;
+    uniquePhysicalLocations: number;
+    locationCountRowsPreserved: number;
+    sameCodeCrossLocationGroups: number;
+    sameCodeSameLocationDuplicateGroups: number;
+    sameLocationDuplicateRowCount: number;
+    sameLocationDuplicateSourceValueTotal: number;
+    packNotationCompatibilityWarnings: number;
+    sourceValuationTotal: number;
+  };
+}
+
+type IdentityPreviewRow = Pick<
+  ResolutionPreviewResult['rows'][number],
+  | 'rowIndex'
+  | 'storageLocation'
+  | 'sourceItemCode'
+  | 'itemCodeStatus'
+  | 'cleanedDescription'
+  | 'caseQuantity'
+  | 'innerPackQuantity'
+  | 'baseUnit'
+  | 'totalCost'
+  | 'itemMatch'
+>;
+
+function isReliableItemCode(row: Pick<IdentityPreviewRow, 'sourceItemCode' | 'itemCodeStatus'>): boolean {
+  return row.itemCodeStatus === 'valid' && Boolean(row.sourceItemCode?.trim());
+}
+
+function normalizedUnit(unit: string | null): string {
+  return normalizeForMatch(unit ?? '');
+}
+
+/**
+ * A deliberately narrow compatibility check for rows that share a reliable
+ * workbook Item Code. Supplier, price, location, period, and inner-pack
+ * quantity are intentionally excluded: Orderly uses inner-pack text for
+ * partial-count notation (for example 6/6 ML and 6/0.3 ML).
+ */
+function reliableCodeCompatibilityReasons(a: IdentityPreviewRow, b: IdentityPreviewRow): string[] {
+  const reasons: string[] = [];
+  const leftDescription = normalizeForMatch(a.cleanedDescription ?? '');
+  const rightDescription = normalizeForMatch(b.cleanedDescription ?? '');
+  if (leftDescription && rightDescription && leftDescription !== rightDescription) {
+    const leftTokens = new Set(leftDescription.split(' ').filter(Boolean));
+    const rightTokens = new Set(rightDescription.split(' ').filter(Boolean));
+    const overlap = [...leftTokens].filter(token => rightTokens.has(token)).length;
+    const union = new Set([...leftTokens, ...rightTokens]).size;
+    if (union > 0 && overlap / union < 0.5) {
+      reasons.push('materially different normalized product descriptions');
+    }
+  }
+  if (
+    a.caseQuantity != null &&
+    b.caseQuantity != null &&
+    a.caseQuantity > 0 &&
+    b.caseQuantity > 0 &&
+    a.caseQuantity !== b.caseQuantity
+  ) {
+    reasons.push('incompatible case quantities');
+  }
+  const leftUnit = normalizedUnit(a.baseUnit);
+  const rightUnit = normalizedUnit(b.baseUnit);
+  if (leftUnit && rightUnit && leftUnit !== rightUnit) {
+    reasons.push('incompatible base units');
+  }
+  return reasons;
+}
+
+function buildIdentitySummary(rows: IdentityPreviewRow[]) {
+  const reliableGroups = new Map<string, IdentityPreviewRow[]>();
+  const blankRows = rows.filter(row => row.itemCodeStatus === 'blank');
+  const physicalLocations = new Set(
+    rows.map(row => normalizeForMatch(row.storageLocation ?? '')).filter(Boolean),
+  );
+
+  for (const row of rows) {
+    if (!isReliableItemCode(row)) continue;
+    const code = row.sourceItemCode!.trim();
+    const group = reliableGroups.get(code) ?? [];
+    group.push(row);
+    reliableGroups.set(code, group);
+  }
+
+  const conflictingReliableCodeGroups: Array<{
+    sourceItemCode: string;
+    rowIndexes: number[];
+    reasons: string[];
+  }> = [];
+  let existingItemResolutions = 0;
+  let proposedNewItemCreations = 0;
+  let sameCodeCrossLocationGroups = 0;
+  let sameCodeSameLocationDuplicateGroups = 0;
+  let sameLocationDuplicateRowCount = 0;
+  let sameLocationDuplicateSourceValueTotal = 0;
+  let packNotationCompatibilityWarnings = 0;
+
+  for (const [code, group] of reliableGroups) {
+    const matchedIds = new Set(
+      group
+        .filter(row => !row.itemMatch.requiresReview)
+        .map(row => row.itemMatch.matchedId)
+        .filter((id): id is string => id != null),
+    );
+    if (matchedIds.size === 1) existingItemResolutions++;
+    if (matchedIds.size === 0) proposedNewItemCreations++;
+
+    // Compare every pair, not just against the first row: two rows can each be
+    // compatible with row 0 while being incompatible with each other.
+    const reasons = new Set<string>();
+    for (let left = 0; left < group.length; left++) {
+      for (let right = left + 1; right < group.length; right++) {
+        for (const reason of reliableCodeCompatibilityReasons(group[left], group[right])) {
+          reasons.add(reason);
+        }
+      }
+    }
+    if (matchedIds.size > 1) reasons.add('existing rows resolve to different inventory items');
+    if (reasons.size > 0) {
+      conflictingReliableCodeGroups.push({
+        sourceItemCode: code,
+        rowIndexes: group.map(row => row.rowIndex),
+        reasons: [...reasons],
+      });
+    }
+
+    const locations = new Set(
+      group.map(row => normalizeForMatch(row.storageLocation ?? '')).filter(Boolean),
+    );
+    if (locations.size > 1) sameCodeCrossLocationGroups++;
+
+    const byLocation = new Map<string, IdentityPreviewRow[]>();
+    for (const row of group) {
+      const locationKey = normalizeForMatch(row.storageLocation ?? '') || '(missing location)';
+      const locationRows = byLocation.get(locationKey) ?? [];
+      locationRows.push(row);
+      byLocation.set(locationKey, locationRows);
+    }
+    for (const locationRows of byLocation.values()) {
+      if (locationRows.length < 2) continue;
+      sameCodeSameLocationDuplicateGroups++;
+      sameLocationDuplicateRowCount += locationRows.length - 1;
+      sameLocationDuplicateSourceValueTotal += locationRows.reduce(
+        (total, row) => total + (row.totalCost ?? 0),
+        0,
+      );
+    }
+
+    const first = group[0];
+    const hasPartialCountNotation = group.some(row =>
+      row !== first &&
+      normalizeForMatch(row.cleanedDescription ?? '') === normalizeForMatch(first.cleanedDescription ?? '') &&
+      row.caseQuantity === first.caseQuantity &&
+      normalizedUnit(row.baseUnit) === normalizedUnit(first.baseUnit) &&
+      row.innerPackQuantity !== first.innerPackQuantity,
+    );
+    if (hasPartialCountNotation) packNotationCompatibilityWarnings++;
+  }
+
+  const blankCodeSafelyMatched = blankRows.filter(
+    row => !row.itemMatch.requiresReview && row.itemMatch.matchedId != null,
+  ).length;
+
+  return {
+    reliableCodeRows: [...reliableGroups.values()].reduce((total, group) => total + group.length, 0),
+    uniqueReliableCodes: reliableGroups.size,
+    existingItemResolutions,
+    proposedNewItemCreations,
+    // Approval resolves each compatible reliable-code group once. A non-zero
+    // value would violate that contract, so preview reports the required gate.
+    reliableCodesWithMultipleProposedItems: 0,
+    // XLSX exports do not expose Orderly packSize.id. This is evidence of the
+    // workbook limitation, not a request to treat Item Code as an API identity.
+    reliableCodesWithoutPackSizeReconciliationEvidence: reliableGroups.size,
+    conflictingReliableCodeGroups,
+    blankCodeRows: blankRows.length,
+    blankCodeSafelyMatched,
+    blankCodeUnresolved: blankRows.length - blankCodeSafelyMatched,
+    uniquePhysicalLocations: physicalLocations.size,
+    locationCountRowsPreserved: rows.length,
+    sameCodeCrossLocationGroups,
+    sameCodeSameLocationDuplicateGroups,
+    sameLocationDuplicateRowCount,
+    sameLocationDuplicateSourceValueTotal,
+    packNotationCompatibilityWarnings,
+    sourceValuationTotal: rows.reduce((total, row) => total + (row.totalCost ?? 0), 0),
+  };
 }
 
 // ─── Category find-or-create ──────────────────────────────────────────────────
@@ -232,6 +440,22 @@ export async function runResolutionPreview(
   batchId: string,
   companyId: string,
 ): Promise<ResolutionPreviewResult> {
+  // External-code identity is scoped to the batch's authorized source property.
+  // Two Orderly clubs can legitimately reuse the same Item Code, so a mapping
+  // from another property must never resolve this batch's rows.
+  const [scopeRow] = await db
+    .select({ sourcePropertyId: inventoryImportBatches.sourcePropertyId })
+    .from(inventoryImportBatches)
+    .where(
+      and(
+        // @ts-ignore
+        eq(inventoryImportBatches.id, batchId),
+        // @ts-ignore
+        eq(inventoryImportBatches.companyId, companyId),
+      ),
+    )
+    .limit(1);
+  const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
   const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments] =
@@ -281,6 +505,8 @@ export async function runResolutionPreview(
             eq(inventoryItemExternalMappings.companyId, companyId),
             // @ts-ignore
             eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourcePropertyId, sourcePropertyScope),
           ),
         ),
       db
@@ -412,6 +638,8 @@ export async function runResolutionPreview(
       supplierRaw: row.supplierRaw,
       sourceCategory: (row as any).sourceCategory ?? null,
       caseQuantity: row.caseQuantity,
+      innerPackQuantity: row.innerPackQuantity,
+      baseUnit: row.baseUnit,
       packagePrice: row.packagePrice,
       totalCost: row.totalCost,
       itemMatch: { ...rawMatch, candidates, matchedItem },
@@ -419,6 +647,7 @@ export async function runResolutionPreview(
       locationMatch: resolutions[i].locationMatch,
     };
   });
+  const identitySummary = buildIdentitySummary(rows);
 
   return {
     batchId,
@@ -428,6 +657,7 @@ export async function runResolutionPreview(
     rows,
     newLocations: Array.from(newLocationNames),
     newVendors: Array.from(newVendorNames),
+    identitySummary,
   };
 }
 
@@ -517,7 +747,13 @@ async function resolveApprovalContract(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
 ): Promise<{
-  batch: { id: string; status: string; targetStoreId: string | null; sourceSystem: string };
+  batch: {
+    id: string;
+    status: string;
+    targetStoreId: string | null;
+    sourceSystem: string;
+    sourcePropertyId: string;
+  };
   companyId: string;
   actingUserId: string;
   resolvedTargetStoreId: string | null;
@@ -575,6 +811,7 @@ async function resolveApprovalContract(
       sourceSystem: inventoryImportBatches.sourceSystem,
       sourcePropertyBindingId: inventoryImportBatches.sourcePropertyBindingId,
       sourcePropertyId: inventoryImportBatches.sourcePropertyId,
+      companyId: inventoryImportBatches.companyId,
     })
     .from(inventoryImportBatches)
     .where(
@@ -742,6 +979,8 @@ async function resolveApprovalContract(
       status: batch.status,
       targetStoreId: batch.targetStoreId ?? null,
       sourceSystem: batch.sourceSystem,
+      // Verified against the active binding above when one exists.
+      sourcePropertyId: batch.sourcePropertyId ?? '',
     },
     companyId,
     actingUserId,
@@ -767,6 +1006,8 @@ export async function applyBatchApproval(
   const { batch, companyId, actingUserId } = contract;
   const resolvedTargetStoreId = contract.resolvedTargetStoreId;
   const userId: string | null = actingUserId;
+  // Verified source-property scope for every external mapping written below.
+  const approvedSourcePropertyId = batch.sourcePropertyId;
 
   // ── Build decision override map ──────────────────────────────────────────
   const decisionMap = new Map<number, RowDecision>(
@@ -823,6 +1064,37 @@ export async function applyBatchApproval(
 
   // ── Run matching (outside transaction) ──────────────────────────────────
   const preview = await runResolutionPreview(batchId, companyId);
+  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
+    const details = preview.identitySummary.conflictingReliableCodeGroups
+      .map(group => `${group.sourceItemCode} (rows ${group.rowIndexes.join(', ')}: ${group.reasons.join('; ')})`)
+      .join(' | ');
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Reliable Orderly Item Code groups contain incompatible or divergent identity evidence and require review: ${details}`,
+    );
+  }
+  // A group may include an earlier row that is unmatched and a later row with
+  // a safe existing match. Resolve the whole reliable-code group to that
+  // existing item before considering any create path, independent of row order.
+  const reliableCodeExistingItemIds = new Map<string, string>();
+  for (const row of preview.rows) {
+    if (
+      !isReliableItemCode(row) ||
+      row.itemMatch.requiresReview ||
+      row.itemMatch.matchedId == null
+    ) {
+      continue;
+    }
+    const code = row.sourceItemCode!.trim();
+    const existing = reliableCodeExistingItemIds.get(code);
+    if (existing && existing !== row.itemMatch.matchedId) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Reliable Orderly Item Code ${code} resolves to multiple existing inventory items and requires review.`,
+      );
+    }
+    reliableCodeExistingItemIds.set(code, row.itemMatch.matchedId);
+  }
 
   // ── Fetch "each" unit for new item creation ──────────────────────────────
   const eachUnitId = await getEachUnitId();
@@ -842,6 +1114,129 @@ export async function applyBatchApproval(
     const resolvedItemIds = new Set<string>();
     // itemId → Set of locationIds seen in this batch (for primary location rule)
     const itemLocationSets = new Map<string, Set<string>>();
+    // Authoritative batch-local identity cache. A reliable XLSX Item Code is
+    // resolved/created once inside this transaction, before its individual
+    // location rows are processed. It deliberately excludes location, vendor,
+    // pricing, quantities, and source-period fields.
+    const reliableCodeItemIds = new Map<string, string | null>();
+
+    // ── Transaction-time identity re-read ────────────────────────────────
+    // The preview ran outside this transaction, so a concurrent approval of
+    // the same source property may have created mappings since. Re-read them
+    // here and let the persisted mapping win, so two concurrent approvals
+    // converge on one inventory item instead of each creating their own.
+    const batchReliableCodes = Array.from(new Set(
+      preview.rows
+        .filter(row => isReliableItemCode(row))
+        .map(row => row.sourceItemCode!.trim()),
+    ));
+    const committedCodeItemIds = new Map<string, string>();
+    if (batchReliableCodes.length > 0) {
+      const committedMappings = await tx
+        .select({
+          sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+          inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
+        })
+        .from(inventoryItemExternalMappings)
+        .where(
+          and(
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.companyId, companyId),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourcePropertyId, approvedSourcePropertyId),
+            // @ts-ignore
+            inArray(inventoryItemExternalMappings.sourceExternalId, batchReliableCodes),
+          ),
+        );
+      for (const mapping of committedMappings as Array<{ sourceExternalId: string; inventoryItemId: string }>) {
+        committedCodeItemIds.set(mapping.sourceExternalId, mapping.inventoryItemId);
+      }
+    }
+
+    /**
+     * Claim the single inventory item for a reliable Item Code.
+     *
+     * The mapping row is the identity authority: it is inserted first with
+     * ON CONFLICT DO NOTHING, and when a concurrent transaction already won
+     * the race, its committed item is adopted and the locally created item is
+     * never used. This makes resolve/create-once hold across approvals, not
+     * just within one batch.
+     */
+    async function claimReliableCodeItemId(
+      code: string,
+      resolveCandidate: () => Promise<{ itemId: string; created: boolean }>,
+      mappingEvidence: { description: string | null; strategy: string; score: number | null },
+    ): Promise<{ itemId: string; created: boolean }> {
+      const committed = committedCodeItemIds.get(code);
+      if (committed) return { itemId: committed, created: false };
+
+      const candidate = await resolveCandidate();
+      const candidateItemId = candidate.itemId;
+      const inserted = await tx
+        .insert(inventoryItemExternalMappings)
+        .values({
+          companyId,
+          inventoryItemId: candidateItemId,
+          sourceSystem: 'ORDERLY',
+          sourcePropertyId: approvedSourcePropertyId,
+          sourceExternalId: code,
+          sourceDescription: mappingEvidence.description,
+          matchStrategy: mappingEvidence.strategy,
+          confidenceScore: mappingEvidence.score,
+          confirmedAt: new Date(),
+          confirmedBy: userId,
+        })
+        .onConflictDoNothing()
+        .returning({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId });
+
+      if (inserted.length > 0) {
+        committedCodeItemIds.set(code, candidateItemId);
+        return { itemId: candidateItemId, created: candidate.created };
+      }
+
+      // Lost the race: adopt the winner. Only an item this transaction just
+      // created may be discarded — a pre-existing catalog item is never
+      // deleted, it is simply not used as this code's identity.
+      const [winner] = await tx
+        .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+        .from(inventoryItemExternalMappings)
+        .where(
+          and(
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.companyId, companyId),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourceSystem, 'ORDERLY'),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourcePropertyId, approvedSourcePropertyId),
+            // @ts-ignore
+            eq(inventoryItemExternalMappings.sourceExternalId, code),
+          ),
+        )
+        .limit(1);
+      if (!winner) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Could not establish a single inventory item for Orderly Item Code ${code}. Retry the approval.`,
+        );
+      }
+      if (candidate.created && candidateItemId !== winner.inventoryItemId) {
+        // Only the throwaway item this transaction just created is removed.
+        // A pre-existing catalog item that lost the race is left untouched —
+        // it simply is not this code's identity.
+        await tx.delete(inventoryItems).where(
+          and(
+            // @ts-ignore
+            eq(inventoryItems.id, candidateItemId),
+            // @ts-ignore
+            eq(inventoryItems.companyId, companyId),
+          ),
+        );
+      }
+      committedCodeItemIds.set(code, winner.inventoryItemId);
+      return { itemId: winner.inventoryItemId, created: false };
+    }
 
     // Persist auto-resolved store ID onto the batch if it wasn't already set
     if (resolvedTargetStoreId && !batch.targetStoreId) {
@@ -912,45 +1307,127 @@ export async function applyBatchApproval(
 
       let resolvedItemId: string | null = null;
       let isNewItem = false;
+      const reliableCode = isReliableItemCode(rowPreview)
+        ? rowPreview.sourceItemCode!.trim()
+        : null;
+      const groupedExistingItemId = reliableCode
+        ? (reliableCodeExistingItemIds.get(reliableCode) ?? null)
+        : null;
 
-      if (dec?.inventoryItemId !== undefined) {
-        // User override (validated to belong to this company above)
-        resolvedItemId = dec.inventoryItemId ?? null;
-        if (resolvedItemId) itemsLinked++;
-      } else {
+      const insertNewItem = async (): Promise<string> => {
+        const name = rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
+        const [newItem] = await tx
+          .insert(inventoryItems)
+          .values({
+            companyId,
+            name,
+            unitId: eachUnitId,
+            caseSize: rowPreview.caseQuantity ?? 1,
+            pricePerUnit: rowPreview.packagePrice ?? 0,
+            avgCostPerUnit: rowPreview.packagePrice ?? 0,
+            active: 1,
+            yieldPercent: 100,
+            categoryId: resolvedCategoryId,
+          })
+          .returning({ id: inventoryItems.id });
+        return newItem.id;
+      };
+
+      /**
+       * Choose this row's item ignoring any cross-approval mapping: batch
+       * cache, group-wide safe match, manual override, confident match, blank
+       * code, or a newly created item.
+       */
+      const resolveRowCandidate = async (): Promise<{ itemId: string | null; created: boolean }> => {
+        if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
+          const cachedItemId = reliableCodeItemIds.get(reliableCode) ?? null;
+          if (
+            dec?.inventoryItemId !== undefined &&
+            (dec.inventoryItemId ?? null) !== cachedItemId
+          ) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Rows with reliable Orderly Item Code ${reliableCode} must resolve to one inventory item within this batch.`,
+            );
+          }
+          return { itemId: cachedItemId, created: false };
+        }
+        if (groupedExistingItemId) {
+          if (
+            dec?.inventoryItemId !== undefined &&
+            (dec.inventoryItemId ?? null) !== groupedExistingItemId
+          ) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Reliable Orderly Item Code ${reliableCode} is already mapped to a different inventory item.`,
+            );
+          }
+          return { itemId: groupedExistingItemId, created: false };
+        }
+        if (dec?.inventoryItemId !== undefined) {
+          // User override (validated to belong to this company above)
+          return { itemId: dec.inventoryItemId ?? null, created: false };
+        }
         const m = rowPreview.itemMatch;
-
         if (!m.requiresReview && m.matchedId !== null) {
           // Auto-link only when the matching algorithm is confident enough
           // NOT to require human review (strategies: external_mapping, item_code exact,
           // name_pack single-match). Fuzzy matches always have requiresReview:true
           // and must never be auto-linked.
-          resolvedItemId = m.matchedId;
-          itemsLinked++;
-        } else {
-          // No confident auto-link (no match, fuzzy, or ambiguous) → create a new item.
-          // This is always safe: the user can merge duplicates later.
-          // We do NOT silently skip rows — that would drop expected inventory entries.
-          const name = rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
-          const [newItem] = await tx
-            .insert(inventoryItems)
-            .values({
-              companyId,
-              name,
-              unitId: eachUnitId,
-              caseSize: rowPreview.caseQuantity ?? 1,
-              pricePerUnit: rowPreview.packagePrice ?? 0,
-              avgCostPerUnit: rowPreview.packagePrice ?? 0,
-              active: 1,
-              yieldPercent: 100,
-              categoryId: resolvedCategoryId,
-            })
-            .returning({ id: inventoryItems.id });
-          resolvedItemId = newItem.id;
+          return { itemId: m.matchedId, created: false };
+        }
+        if (rowPreview.itemCodeStatus === 'blank') {
+          // Blank codes are legitimate Orderly source rows, but no synthetic
+          // identity may be invented from them. Keep the staged evidence
+          // reviewable/unresolved unless a safe existing match was found.
+          return { itemId: null, created: false };
+        }
+        // No confident auto-link (no match, fuzzy, or ambiguous) → new item.
+        return { itemId: await insertNewItem(), created: true };
+      };
+
+      if (reliableCode) {
+        // Every reliable-code resolution — existing match, manual override, or
+        // new item — is settled through the committed mapping, which is the
+        // single identity authority for this code within this source property.
+        // Without this, two concurrent approvals could link the same code to
+        // two different existing items while only one mapping row survived.
+        const claim = await claimReliableCodeItemId(
+          reliableCode,
+          async () => {
+            const candidate = await resolveRowCandidate();
+            if (candidate.itemId == null) {
+              throw new ImportApprovalError(
+                'CONFLICT',
+                `Orderly Item Code ${reliableCode} could not be resolved to an inventory item.`,
+              );
+            }
+            return { itemId: candidate.itemId, created: candidate.created };
+          },
+          {
+            description: rowPreview.cleanedDescription,
+            strategy: rowPreview.itemMatch.strategy,
+            score: rowPreview.itemMatch.score ?? null,
+          },
+        );
+        resolvedItemId = claim.itemId;
+        if (claim.created) {
           itemsCreated++;
           isNewItem = true;
+        } else {
+          itemsLinked++;
+        }
+      } else {
+        const candidate = await resolveRowCandidate();
+        resolvedItemId = candidate.itemId;
+        if (candidate.created) {
+          itemsCreated++;
+          isNewItem = true;
+        } else if (resolvedItemId) {
+          itemsLinked++;
         }
       }
+      if (reliableCode) reliableCodeItemIds.set(reliableCode, resolvedItemId);
 
       // Track distinct resolved items for store_inventory_items upsert below
       if (resolvedItemId) {
@@ -994,6 +1471,7 @@ export async function applyBatchApproval(
             companyId,
             inventoryItemId: resolvedItemId,
             sourceSystem: 'ORDERLY',
+            sourcePropertyId: approvedSourcePropertyId,
             sourceExternalId: rowPreview.sourceItemCode.trim(),
             sourceDescription: rowPreview.cleanedDescription,
             matchStrategy: rowPreview.itemMatch.strategy,

@@ -1,0 +1,36 @@
+---
+name: Orderly XLSX item identity
+description: How a reliable Orderly XLSX Item Code establishes one FnB inventory item, and why the mapping row (not the resolution logic) must be the identity authority.
+---
+
+# Orderly XLSX item identity
+
+A reliable XLSX **Item Code is authoritative only within the authorized company + Orderly source property** context. It must resolve or create exactly one inventory item while preserving every per-location count row.
+
+**Why:** one source product counted in several physical locations was creating a separate inventory item per location, corrupting on-hand and cost totals.
+
+**How to apply:** scope external mappings by `(company, source system, source property, external code)`. Company-only scoping lets two authorized properties in one company collide on the same code.
+
+## The XLSX code is not the API identity
+
+The Orderly *API* identity is `ORDERLY + sourcePropertyId + packSize.id`. The XLSX Item Code is a different namespace and must never be written into or matched against the API identity, even though both live in the same mappings table.
+
+## The mapping row is the identity authority
+
+Every reliable-code resolution path — batch cache, group-wide safe match, manual override, confident auto-match, and new-item creation — must settle through the committed mapping inside the approval transaction: adopt an existing mapping, else claim one with insert-first `ON CONFLICT DO NOTHING`, else adopt the race winner.
+
+**Why:** guarding only the *creation* branch is insufficient. Two concurrent approvals can each match the same code to two *different pre-existing* items; one mapping survives while the other batch's rows stay linked to a different item. A mapping committed between preview and approval must also be adopted.
+
+**How to apply:** when a claim loses the race, only delete the candidate item **if this transaction just created it** and it differs from the winner. Deleting unconditionally destroys a pre-existing catalog item. Guard the delete on a `created` flag, not on a comment promising the invariant.
+
+## Identity stability
+
+Location, month/file, vendor, pricing, par/target, and ordinary count changes never alter core identity. Conflicts stay narrow: materially different product evidence, incompatible case geometry, or incompatible base units.
+
+- Partial-count notation (`6/6 ML`, `6/0.3 ML`, `6/0 ML`) is a fractional count, **not** a geometry difference — it must not conflict. Exclude inner-pack values from compatibility.
+- Compare **all row pairs**, not each row against the first. A no-evidence first row makes two mutually incompatible later rows each look compatible.
+- Blank codes stay unresolved unless a safe existing match exists. Never invent a synthetic item from a blank code.
+
+## Gate before loading history
+
+Do not load the Aug 2025–Jul 2026 Bay Hill history until a read-only preview is reviewed. A preview showing `existingItemResolutions: 0` with thousands of `proposedNewItemCreations` means the batch would seed the catalog from scratch — that needs Product Owner sign-off, not an approval click.
