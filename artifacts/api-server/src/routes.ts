@@ -24,8 +24,9 @@ import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
-import { getEffectiveUnitCost, type CostingMethodCarrier } from "./lib/costing";
+import { getEffectiveUnitCost, type CostingMethodCarrier, type RecipeCostResult } from "./lib/costing";
 import { convertToInventoryUnits, autoSeedRecipeUnitsForItem } from "./lib/recipeUnits";
+import { assessRecipeCostResult } from "./lib/recipeCostCalculator";
 import { resolvePriceSource, resolveScannedItemUnitPrice, resolveApplyLineUnitPrice } from "./lib/invoiceScanUtils";
 import { Router } from "express";
 import { registerExtensionRoutes } from "./integrations/extension/extensionRoutes";
@@ -10127,14 +10128,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       inventoryItemUnits: inventoryItemUnitsMap,
     };
     
-    // Calculate all recipe costs with shared memo
-    const memo = new Map<string, number>();
+    // Calculate all recipe costs with shared memo (detailed = includes unresolved reason codes)
+    const memo = new Map<string, RecipeCostResult>();
     const recipesWithCosts = await Promise.all(
       recipes.map(async (recipe) => {
-        const cost = await calculateRecipeCost(recipe.id, preloadedData, memo);
+        const costResult = await calculateRecipeCostDetailed(recipe.id, preloadedData, memo);
         return {
           ...recipe,
-          computedCost: cost,  // Overwrite computedCost with fresh calculated value
+          computedCost: costResult.cost,  // Overwrite computedCost with fresh calculated value
+          isResolved: costResult.isResolved,
+          unresolvedReasons: costResult.unresolvedReasons,
           componentCount: (allComponents.get(recipe.id) ?? []).length, // # of ingredients — used for costed checks
         };
       })
@@ -10221,11 +10224,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       })
     );
 
-    const computedCost = await calculateRecipeCost(recipe.id);
+    const costResult = await calculateRecipeCostDetailed(recipe.id);
     
     res.json({
       ...recipe,
-      computedCost,
+      computedCost: costResult.cost,
+      isResolved: costResult.isResolved,
+      unresolvedReasons: costResult.unresolvedReasons,
       components: expandedComponents,
     });
   });
@@ -26087,6 +26092,119 @@ async function calculateRecipeCost(
   }
 
   return totalCost;
+}
+
+/**
+ * Like `calculateRecipeCost` but returns a full `RecipeCostResult` that
+ * distinguishes an incomplete/unresolved recipe from a genuinely zero-cost
+ * one. Uses the same preloaded-data and memo patterns for efficiency.
+ *
+ * The memo stores `RecipeCostResult` objects so that sub-recipe results are
+ * reused without re-traversal.
+ */
+async function calculateRecipeCostDetailed(
+  recipeId: string,
+  preloadedData?: {
+    // @ts-ignore
+    recipes?: Map<string, Recipe>;
+    components?: Map<string, RecipeComponent[]>;
+    units?: Unit[];
+    // @ts-ignore
+    inventoryItems?: InventoryItem[];
+    inventoryItemUnits?: Map<string, InventoryItemUnit[]>;
+    company?: CostingMethodCarrier | null;
+  },
+  memo?: Map<string, RecipeCostResult>
+): Promise<RecipeCostResult> {
+  // Check memo first
+  if (memo?.has(recipeId)) {
+    return memo.get(recipeId)!;
+  }
+
+  const recipe = preloadedData?.recipes?.get(recipeId) || await storage.getRecipe(recipeId);
+  if (!recipe) {
+    // Recipe not found — treat as missing
+    const result: RecipeCostResult = {
+      cost: 0,
+      isResolved: false,
+      unresolvedReasons: ["MISSING_CHILD_RECIPE"],
+    };
+    memo?.set(recipeId, result);
+    return result;
+  }
+
+  const units = preloadedData?.units || await storage.getUnits();
+  const inventoryItems = preloadedData?.inventoryItems || await storage.getInventoryItems(undefined, undefined, recipe.companyId);
+  const components = preloadedData?.components?.get(recipeId) || await storage.getRecipeComponents(recipeId);
+  const company = preloadedData?.company !== undefined
+    ? preloadedData.company
+    : await storage.getCompany(recipe.companyId);
+  const nestedPreload = { ...(preloadedData || {}), company };
+
+  // Build Maps for the pure assessment function
+  const itemsMap = new Map(inventoryItems.map((i: any) => [i.id, i]));
+
+  // Recursively resolve sub-recipe costs before calling the pure assessor.
+  // Also collect each sub-recipe object so the pure assessor can read its
+  // yieldQty/yieldUnitId for cost-per-unit division. Without this the
+  // non-preloaded path (e.g. GET /api/recipes/:id) would only have the root
+  // recipe in the map, causing assessRecipeCostResult to classify every valid
+  // child as MISSING_CHILD_RECIPE.
+  const subCostsMap = new Map<string, RecipeCostResult>();
+  const fetchedSubRecipes = new Map<string, any>();
+  for (const comp of components) {
+    if (comp.componentType === "recipe") {
+      // Fetch the sub-recipe object for the map (preloaded path reuses cache)
+      const subRecipe =
+        preloadedData?.recipes?.get(comp.componentId) ||
+        await storage.getRecipe(comp.componentId);
+      if (subRecipe) {
+        fetchedSubRecipes.set(comp.componentId, subRecipe);
+      }
+      const subResult = await calculateRecipeCostDetailed(comp.componentId, nestedPreload, memo);
+      subCostsMap.set(comp.componentId, subResult);
+    }
+  }
+
+  // recipesMap: prefer the fully-populated preloaded map; otherwise build one
+  // from the root recipe + every sub-recipe fetched above.
+  const recipesMap: Map<string, any> = preloadedData?.recipes
+    ? preloadedData.recipes
+    : (() => {
+        const m = new Map<string, any>([[recipe.id, recipe]]);
+        for (const [id, r] of fetchedSubRecipes) m.set(id, r);
+        return m;
+      })();
+
+  // Per-item recipe-unit overrides
+  const perItemUnitsMap = new Map<string, InventoryItemUnit[]>();
+  if (preloadedData?.inventoryItemUnits) {
+    for (const [itemId, units_] of preloadedData.inventoryItemUnits) {
+      perItemUnitsMap.set(itemId, units_);
+    }
+  } else {
+    // Fetch lazily only for items actually referenced in this recipe
+    for (const comp of components) {
+      if (comp.componentType === "inventory_item" && !perItemUnitsMap.has(comp.componentId)) {
+        const piu = await storage.getInventoryItemUnits(comp.componentId);
+        perItemUnitsMap.set(comp.componentId, piu);
+      }
+    }
+  }
+
+  const result = assessRecipeCostResult(
+    recipe,
+    components as any,
+    units,
+    itemsMap,
+    recipesMap,
+    subCostsMap,
+    perItemUnitsMap,
+    company
+  );
+
+  memo?.set(recipeId, result);
+  return result;
 }
 
 async function calculateInventoryItemImpactInRecipe(recipeId: string, targetItemId: string, companyId?: string): Promise<{ usesItem: boolean, qty: number, costContribution: number }> {
