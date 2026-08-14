@@ -1,0 +1,134 @@
+## PM Final Approval — #1113 Recipe UOM Yield Readiness
+
+APPROVED TO PROCEED.
+
+This is an evidence/report task only. No schema, API, UI, costing, conversion, yield, or migration behavior should change.
+
+Add the following clarifications to the report.
+
+### 1. Distinguish stored values from calculated/runtime values
+
+For every relevant quantity, yield, conversion, and cost field, explicitly state whether it is:
+
+- persisted source/domain data
+- persisted cached/derived data
+- calculated dynamically at runtime
+- UI-only presentation
+
+This is especially important for:
+
+- recipe total cost
+- recipe cost per yield unit
+- ingredient/component cost
+- normalized quantity
+- conversion result
+- yield-adjusted quantity
+
+The future migration spreadsheet should preserve source evidence, but must not precompute values that FnB is supposed to derive itself.
+
+---
+
+### 2. Trace actual UOM failure semantics
+
+Do not only document the happy path.
+
+For each relevant calculation path, report the exact current behavior when:
+
+- source quantity unit equals inventory costing unit
+- a global conversion exists
+- an item-specific conversion exists
+- pack/case geometry is required
+- weight-to-volume is attempted
+- no compatible conversion exists
+- an inventory item has no usable cost
+- a sub-recipe has unresolved components
+
+For each case, state whether FnB:
+
+- resolves successfully
+- returns unresolved/warning
+- produces zero
+- throws/errors
+- silently falls back
+- uses another precedence path
+
+If multiple services currently behave differently, report the divergence rather than choosing one as canonical without evidence.
+
+---
+
+### 3. Pay special attention to yield scope
+
+Claude has observed Orderly ingredient-line Yield %, while FnB is believed to already have multiple yield concepts.
+
+The report must answer explicitly:
+
+> Can FnB currently represent a yield adjustment that differs for the same inventory item depending on which recipe/component uses it?
+
+Example:
+
+The same raw ingredient might have:
+
+- 90% usable yield in Recipe A
+- 80% usable yield in Recipe B
+
+If FnB's usable yield is only inventory-item-global, that is materially different from an Orderly per-recipe-line yield.
+
+Do not treat those models as equivalent merely because both are called "yield."
+
+Classify the result as:
+
+- directly supported
+- supported through an existing component-level override
+- migration mapping issue
+- small schema gap
+- significant architecture decision
+
+Do not implement a solution in #1113.
+
+---
+
+## Spreadsheet recommendation requirement
+
+The final proposed spreadsheet contract should be expressed as actual proposed column names grouped into:
+
+### A. Raw Orderly source
+Values Claude should transcribe exactly.
+
+### B. FnB matching aids
+Values used to resolve existing FnB entities but not authoritative source calculations.
+
+### C. FnB-calculated / validation output
+Values that should be absent from the source spreadsheet or populated only after FnB performs the calculation.
+
+Also identify any fields that should be included solely as reconciliation evidence, such as Orderly's displayed recipe cost.
+
+---
+
+## Go / No-Go
+
+The final recommendation should not simply say whether harvesting is technically possible.
+
+Use one of:
+
+- **GO — schema can be locked now**
+- **GO WITH SOURCE FIELDS ONLY — one or more FnB mappings remain unresolved**
+- **NO-GO — architecture gap must be decided first**
+
+If GO, provide the exact recommended 10–20 recipe sampling criteria, including:
+
+- simple flat recipe
+- recipe-level yield
+- non-100% ingredient yield
+- global conversion
+- item-specific conversion
+- case/pack conversion
+- weight conversion
+- volume conversion
+- sub-recipe
+- Menu Item → Recipe → Sub-recipe chain
+- incomplete/$0 source recipe
+- missing conversion or missing price case if available
+
+## Status
+
+APPROVED.
