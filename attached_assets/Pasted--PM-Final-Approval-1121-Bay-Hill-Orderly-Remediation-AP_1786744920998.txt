@@ -1,0 +1,251 @@
+## PM Final Approval — #1121 Bay Hill Orderly Remediation
+
+APPROVED TO BUILD — Significant / Production-Write-Capable.
+
+The task direction is correct. Add the following constraints before implementation.
+
+### 1. Production execution must be a separate explicit step
+
+Building and testing #1121 does NOT authorize an automatic production apply.
+
+Sequence must be:
+
+1. build tool
+2. DB-backed tests
+3. Reviewer
+4. QA
+5. run REPORT MODE against production
+6. return the production report to PM/Product Owner
+7. obtain explicit approval of the exact SAFE_CANDIDATE group manifest
+8. only then run APPLY MODE against production
+9. run post-apply reconciliation
+
+No production mutation may occur during development, test, review, QA, or initial production discovery.
+
+There must be no code path that converts a report run into an apply run implicitly.
+
+---
+
+### 2. Canonical-item selection must be deterministic and reported
+
+For every SAFE_CANDIDATE, the tool must explain why one inventoryItemId is proposed as canonical.
+
+Use evidence such as:
+
+- existing authoritative external mapping
+- earliest valid import-created identity
+- downstream references
+- metadata completeness
+- store/location linkage
+- existing historical use
+
+Do not select:
+
+- lowest UUID/string order
+- first query result
+- display-name preference
+- arbitrary row order
+
+If more than one candidate remains equally valid, classify:
+
+`AMBIGUOUS`
+
+Do not manufacture a winner.
+
+The report must include:
+
+- proposedCanonicalItemId
+- canonicalSelectionReason
+- alternativeCandidateIds
+
+---
+
+### 3. Count-history evidence should normally be repointed, not rewritten
+
+The core remediation concept is:
+
+> multiple accidental inventory identities become one canonical identity
+
+It is NOT:
+
+> rebuild May/June inventory history.
+
+Preserve:
+
+- source quantities
+- source row provenance
+- physical locations
+- count dates
+- source workbook/batch identity
+
+Where historical count rows reference a duplicate inventoryItemId, repoint that FK to the canonical item only if the schema allows this without altering the original source/count facts.
+
+Do not recalculate or replace historical quantities during remediation.
+
+If a uniqueness constraint prevents several legitimate location/count rows from pointing to the same canonical item, STOP that group and report the exact constraint/evidence instead of deleting or aggregating rows to make the merge succeed.
+
+---
+
+### 4. Valuation reconciliation needs two levels
+
+Post-apply reconciliation must prove both:
+
+#### Period-level
+
+May 2026 expected applied valuation:
+`$254,286.67`
+
+June 2026 expected applied valuation:
+`$261,007.67`
+
+The repaired data must reconcile to those existing applied baselines unless a discrepancy is explicitly explained and approved.
+
+#### Group-level
+
+For every repaired duplicate group, report:
+
+- valuation contribution before
+- valuation contribution after
+- delta
+- affected locations/count rows
+
+Expected delta should normally be `$0.00`.
+
+This lets us catch a case where the monthly grand total happens to remain correct while value moved incorrectly between items/locations.
+
+---
+
+## Production scope lock
+
+The first production execution is limited to:
+
+Company:
+`Bay Hill CC`
+
+companyId:
+`43abaf82-44ce-4231-9570-7a01e7c85ced`
+
+Store:
+`ee9e1530-50db-45f4-ae61-2c45e86827f0`
+
+Source:
+`ORDERLY`
+
+Approved source property:
+Bay Hill only.
+
+Do not allow a CLI/operator argument to broaden this first production execution to another company/property.
+
+The underlying implementation may remain reusable, but the Bay Hill production run is explicitly bounded.
+
+---
+
+## Supersession behavior
+
+Prefer traceable deactivation/supersession over deletion.
+
+If the existing schema already supports a safe merge/superseded relationship, reuse it.
+
+If no durable way exists to record:
+
+`duplicateItemId → canonicalItemId`
+
+do not invent an elaborate merge framework inside this task.
+
+Return the smallest proposed durable audit/supersession mechanism for PM review if schema work is required.
+
+Historical source evidence must remain understandable after remediation.
+
+---
+
+## Audit requirements
+
+Audit output must include per group:
+
+- source Item Code
+- company/store/source property
+- canonical inventoryItemId
+- superseded inventoryItemIds
+- classification
+- classification evidence
+- canonical-selection reason
+- mappings changed
+- references moved by table/type
+- references left unchanged
+- location/count row counts
+- before/after valuation contribution
+- operator
+- execution timestamp
+- report/manifest identifier
+- result
+- failure reason if skipped/rolled back
+
+Do not log secrets or connection strings.
+
+---
+
+## Manifest freshness
+
+Apply mode must bind to the reviewed discovery output.
+
+The manifest should include a report/version/hash or equivalent evidence token.
+
+Before mutation, re-run the material checks.
+
+If the live state differs materially from the reviewed report:
+
+`STALE_REPORT`
+
+and do not mutate that group.
+
+Do not automatically regenerate and apply against the new state.
+
+---
+
+## Known-production examples
+
+Use Chambord and Sweet n Low as traceable known examples.
+
+Also verify that the systemic duplicate signature can identify confirmed production groups such as:
+
+- Heavy Cream
+- Chicken - Breast
+- Onions - Yellow
+- Buttermilk
+- Mayonnaise - Extra Heavy
+- Beef - Brisket
+- Apples - Granny Smith
+- Sauce - Tabasco
+
+These names are verification aids only.
+
+They are NOT merge keys.
+
+A name match without the required Orderly identity/provenance evidence is insufficient.
+
+---
+
+## Validation gate
+
+Before production REPORT MODE:
+
+- focused #1121 DB tests PASS
+- #1108 Orderly identity regressions PASS
+- historical invoice regressions PASS
+- accounting regressions PASS
+- API typecheck PASS
+- fresh Reviewer PASS
+- fresh QA PASS
+
+Then:
+
+PRODUCTION REPORT MODE
+→ PM review of exact proposed manifest
+→ explicit Product Owner approval
+→ PRODUCTION APPLY MODE
+→ May/June reconciliation
+→ post-remediation duplicate report
+
+The remaining historical months stay blocked until this complete gate is green.
+
+Status: APPROVED TO BUILD.
