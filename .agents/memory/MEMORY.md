@@ -8,4 +8,5 @@
 - [Web test JSX transform](web-test-jsx-transform.md) — suite-wide "React is not defined" in component tests is one config gap, not a broken environment.
 - [Historical evidence retention](historical-evidence-retention.md) — retained source documents need DB-level immutability, three-way conflict granularity, and ownership-verified identity mapping.
 - [Import approval boundary](import-approval-boundary.md) — shared approval must fail closed, destination comes from a persisted source-property binding, and direct-service tests hide broken route connectors.
+- [Orderly costing validation](orderly-costing-validation.md) — source appendices lack conversion factors, so matching totals prove nothing; the two FnB conversion engines differ ~4% cross-kind.
 - [Orderly XLSX item identity](orderly-xlsx-item-identity.md) — XLSX code is property-scoped and not the API identity; the mapping row is the claim authority for every path, not just creation.

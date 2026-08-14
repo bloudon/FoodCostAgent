@@ -1,0 +1,198 @@
+# Recipe Costing Validation — Bay Hill Sample
+
+## Objective
+
+Use the corrected Bay Hill recipe-harvest workbook as a controlled validation fixture against FnB's existing recipe, yield, UOM, pricing, and recursive costing architecture.
+
+This is a validation/mapping task first.
+
+Do not bulk-import the Orderly recipe catalog.
+Do not normalize or "repair" the source workbook.
+Do not change costing behavior merely to make Orderly totals match.
+
+## Source fixture
+
+Use:
+
+- Recipes sheet
+- Recipe Ingredients sheet
+- Orderly Conversions appendix
+
+Preserve all raw Orderly values exactly as harvested.
+
+## Required mapping output
+
+For every recipe/component row, report:
+
+- source recipe/menu-item identity
+- FnB target identity if matched
+- source ingredient/component name
+- FnB inventory item or sub-recipe match
+- source quantity
+- source UOM
+- source line yield %
+- FnB effective yield
+- FnB conversion path actually used
+- FnB costing unit
+- FnB unit cost source
+- FnB calculated line cost
+- Orderly displayed line cost
+- difference
+- resolution status
+- explicit failure reason where unresolved
+
+Do not treat name-only matching as authoritative where ambiguity exists.
+
+## Required failure taxonomy
+
+Do not collapse unresolved cost into generic `$0`.
+
+Classify at minimum:
+
+- resolved
+- missing inventory match
+- missing price
+- stale/unusable price
+- missing conversion
+- dimensionally incompatible conversion
+- unresolved sub-recipe
+- source zero-cost line
+- incomplete/empty source recipe
+- source-data ambiguity
+- other explicit reason
+
+### Known source cases
+
+#### Sauce - Tabasco
+
+Source:
+- recipe usage: 0.5 OZ
+- current vendor pricing exists
+- source vendor pack is 144 Each
+- no Orderly OZ↔Each conversion observed
+
+Expected validation classification:
+`dimensionally incompatible / missing item-specific conversion`
+
+Do not call this "missing price."
+
+#### MONIN ORANGE SYRUP 750 ML
+
+Source:
+- recipe usage: 1 Cup
+- vendor product: 750ML
+- last observed price: 07/28/2023
+- Orderly flags "No Recent Purchase"
+
+Expected source evidence:
+dimensionally compatible volume units, but source price appears stale/unusable.
+
+Do not infer Orderly's exact staleness rule.
+
+#### Crab Cakes
+
+Zero ingredient lines.
+
+Represent as incomplete/empty source recipe, not as a successfully costed $0 recipe.
+
+## UOM battle test
+
+Specifically compare the behavior of FnB's currently divergent conversion paths identified in #1113.
+
+Pay special attention to:
+
+- Chicken Pot Pie Mix
+- Baked Camembert
+- Bay Hill Chips → Palmer Blue Cheese Dressing - Batch
+- Onions - Yellow
+- Garlic Fresh
+- any weight↔volume conversion
+- fractional EACH usage
+
+Report which existing FnB conversion mechanism actually resolves each row.
+
+Do not hide disagreements between current conversion services.
+
+## Weight ↔ volume
+
+If FnB reaches a result using the current water-density fallback for a non-water ingredient, flag it explicitly.
+
+Do not call that a validated conversion merely because a numeric result was produced.
+
+Return:
+
+`CALCULATED — WATER-DENSITY FALLBACK`
+
+so PM can review whether the result is acceptable.
+
+## Yield
+
+Preserve separately:
+
+- recipe output yield
+- recipe-component yield override
+- inventory-item yield
+
+All harvested component Yield % values are currently 100%.
+
+Do not invent non-100% yield behavior from this sample.
+
+For Coconut Flan, surface the source conflict:
+
+- structured yield: 80 Cup
+- Notes: 40 portions
+
+Do not silently choose one as authoritative.
+
+## Base Cost
+
+Preserve `orderly_displayed_base_cost` as reconciliation evidence.
+
+For Coconut Flan, report:
+
+ingredient-line sum
++ source Base Cost
+vs
+source Food Cost
+
+Do not implement a generalized Base Cost rule yet.
+
+## Validation report
+
+For each sampled recipe return:
+
+- source Food Cost
+- FnB calculated ingredient/component sum
+- source Base Cost
+- FnB total before any source Base Cost treatment
+- variance to Orderly
+- number of resolved lines
+- number of unresolved lines
+- failure reasons
+- whether the comparison is valid enough to judge FnB costing
+
+Use statuses:
+
+- PASS
+- PASS WITH EXPLAINED SOURCE DIFFERENCE
+- UNRESOLVED — FNB DATA/MAPPING
+- UNRESOLVED — UOM
+- UNRESOLVED — SOURCE DATA
+- FAIL — COSTING DIFFERENCE
+
+Do not call a recipe PASS if any ingredient silently contributes $0 because FnB could not resolve it.
+
+## Stop condition
+
+Return the evidence report before changing:
+
+- UOM architecture
+- water-density behavior
+- stale-price policy
+- recipe importer
+- Base Cost behavior
+- recursive costing
+
+The purpose is to learn exactly what breaks first.
+
+STOP after the validation report.
