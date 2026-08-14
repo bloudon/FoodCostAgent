@@ -1,0 +1,390 @@
+# PM Architecture Check — Recipe / UOM / Yield Migration Readiness
+
+## Objective
+
+Before we define the Orderly recipe-harvest spreadsheet, document the existing FnB recipe, yield, conversion, and sub-recipe architecture so the migration artifact maps into current FnB terminology rather than inventing a second model.
+
+This is an evidence/report task only.
+
+Do not change schema or behavior yet.
+
+---
+
+## Context
+
+We are preparing to manually harvest a representative set of Orderly recipes into a spreadsheet for migration testing.
+
+The goal is:
+
+Orderly source recipe data
+→ spreadsheet source artifact
+→ existing FnB recipe/UOM architecture
+→ recomputed FnB recipe cost
+→ comparison against Orderly source cost
+
+We specifically want to battle-test FnB’s current UOM and yield logic.
+
+Claude has confirmed that Orderly exposes at least two distinct yield concepts:
+
+1. Recipe-level yield
+   Example:
+   `Yield: 1 Units produced`
+
+2. Ingredient-line Yield %
+   Example:
+   `100.00%`
+
+The second appears to represent ingredient trim/loss or usable-yield behavior and must not be conflated with recipe-level output yield.
+
+Claude also observed:
+
+- Recipes / prep or batch recipes
+- separate Menu Items
+- sub-recipes used as ingredients
+- Menu Item → Recipe → Sub-recipe → base ingredient chains
+- an Orderly Conversions page with ingredient-specific unit conversions
+- some incomplete/broken recipe/menu-item records with $0 cost
+
+Before Claude extracts anything, we need the FnB-side contract.
+
+---
+
+# 1. Existing Recipe Model
+
+Document the actual current FnB entities/tables/services for:
+
+- recipe
+- recipe ingredient
+- prep/sub-recipe
+- menu item
+- menu-item-to-recipe relationship
+
+For each, report:
+
+- exact table/entity name
+- primary key
+- company/store scope
+- relevant foreign keys
+- quantity fields
+- UOM fields
+- yield fields
+- cost fields
+- active/status fields
+
+Explain the current relationship for:
+
+`Menu Item → Recipe`
+
+and:
+
+`Recipe → Sub-recipe`
+
+Do not infer from UI labels if the underlying model differs.
+
+---
+
+# 2. Recipe-Level Yield
+
+FnB already has yield support.
+
+Document exactly how recipe-level yield works today.
+
+Report:
+
+- field names
+- quantity type
+- associated UOM/unit reference
+- whether yield is required or optional
+- whether cost is stored as:
+  - total batch cost
+  - cost per yield unit
+  - cost per serving
+  - derived dynamically
+- how yield affects costing
+
+Give one concrete existing calculation path from code.
+
+Example question:
+
+If a recipe costs $20 and yields 10 portions, where/how does FnB derive $2 per portion?
+
+---
+
+# 3. Inventory/Product Yield
+
+FnB also already has yield concepts for products/items.
+
+Document those separately from recipe yield.
+
+Specifically identify any existing support for:
+
+- usable yield %
+- trim loss
+- prep loss
+- cooked yield
+- conversion yield
+- purchase-to-usable quantity
+- item-specific yield factors
+
+Explain:
+
+- where it is stored
+- whether it is an inventory-item property, conversion property, recipe-line property, or another construct
+- how it affects recipe cost
+- whether it can vary by recipe/usage or is global to the inventory item
+
+This is important because Orderly’s ingredient-line `Yield %` may map to an existing FnB concept rather than requiring a new field.
+
+Do not assume they are equivalent until the code proves it.
+
+---
+
+# 4. Recipe Ingredient Model
+
+For one recipe ingredient line, document exactly what FnB stores.
+
+Include:
+
+- inventory item ID or sub-recipe ID
+- quantity
+- unit/UOM
+- yield adjustment if any
+- normalized quantity if stored
+- conversion reference if stored
+- calculated cost if stored
+- historical/source cost if any
+- sort/order position
+- optional/required fields
+
+Answer:
+
+> Does FnB preserve the quantity/UOM as entered by the chef and normalize during calculation, or does it rewrite/store the normalized value?
+
+This will determine what should be source data versus calculated data in the migration spreadsheet.
+
+---
+
+# 5. UOM / Conversion Architecture
+
+Document the current approved FnB conversion model.
+
+We previously established a case/purchase-unit anchored conversion architecture.
+
+Confirm current implementation and terminology.
+
+Report:
+
+- units/UOM tables
+- conversion-definition tables
+- canonical/purchase unit fields
+- case/pack geometry fields
+- unit dimension/type handling
+- item-specific conversions
+- global conversions
+- conversion precedence
+- conversion service/function names
+- error behavior when no valid conversion exists
+
+Specifically explain how FnB currently handles examples such as:
+
+- case → each
+- lb → oz
+- gallon → fl oz
+- bunch → each
+- bottle → oz
+- recipe-specific or item-specific conversions
+- weight ↔ volume
+
+Confirm whether dimensionally incompatible conversion is rejected unless an explicit item-specific conversion exists.
+
+---
+
+# 6. Existing Conversion Definitions vs Orderly Conversions
+
+Claude found an Orderly:
+
+`Recipe Costing → Conversions`
+
+area containing ingredient-specific mappings such as:
+
+- Asparagus → Bunch
+- Baguettes → Each
+
+Determine whether FnB already has a direct conceptual home for these.
+
+Do NOT create a new conversion construct.
+
+Instead answer:
+
+- Which existing FnB table/entity should receive equivalent source conversion evidence?
+- Is FnB’s model richer, equivalent, or structurally different?
+- Would an Orderly conversion be authoritative data, migration suggestion, or validation evidence?
+
+---
+
+# 7. Sub-Recipe Architecture
+
+Document how a recipe can consume another recipe/prep item today.
+
+Report:
+
+- exact FK/entity path
+- quantity/UOM behavior
+- how sub-recipe cost is derived
+- how sub-recipe yield affects parent recipe cost
+- cycle protection if any
+
+We need to support a validation chain like:
+
+`Menu Item`
+→ `Recipe`
+→ `Batch/Sub-recipe`
+→ `Inventory Ingredient`
+
+without flattening the source structure unnecessarily.
+
+---
+
+# 8. Menu Item vs Recipe Terminology
+
+Clarify current FnB terminology and architecture for:
+
+- Menu Item
+- Recipe
+- Prep Item / Sub-recipe
+
+We do not want the migration spreadsheet to call an Orderly Menu Item a Recipe if FnB treats those as different entities.
+
+Return a proposed terminology mapping:
+
+| Orderly concept | FnB concept | Notes |
+|---|---|---|
+| Menu Item | ? | |
+| Recipe | ? | |
+| Sub-recipe / Batch Recipe | ? | |
+| Ingredient | ? | |
+| Recipe Yield | ? | |
+| Ingredient Yield % | ? | |
+| Conversion | ? | |
+
+---
+
+# 9. Cost Calculation Path
+
+Trace the current authoritative FnB recipe-cost calculation.
+
+Report the actual service/functions used and the calculation order.
+
+At minimum show conceptually:
+
+source ingredient quantity/UOM
+→ conversion
+→ yield adjustment
+→ canonical quantity
+→ current inventory/vendor unit cost
+→ ingredient line cost
+→ recipe total cost
+→ yield/portion cost
+
+If the actual order differs, document the real order.
+
+Identify where:
+
+- rounding occurs
+- missing conversion causes failure
+- missing price causes failure
+- sub-recipe cost enters the calculation
+- variable/catch-weight behavior enters
+
+---
+
+# 10. Migration-Safe Source Fields
+
+Based on the actual architecture, propose the smallest spreadsheet contract Claude should harvest.
+
+Separate:
+
+## Raw Orderly source fields
+
+Fields we must preserve exactly as observed.
+
+## FnB lookup/matching fields
+
+Fields used to link source records into FnB.
+
+## FnB-calculated fields
+
+Fields that should NOT be precomputed in Excel because they are part of what we are testing.
+
+Do not create columns merely because they seem useful.
+
+---
+
+# 11. Known-Broken Source Recipe Handling
+
+Claude has observed at least one Orderly menu item/recipe with warning/$0 cost.
+
+Confirm how FnB currently represents:
+
+- incomplete recipe
+- missing ingredient mapping
+- missing UOM conversion
+- missing item cost
+- $0-cost recipe
+
+The migration must retain incomplete source evidence without inventing a successful cost.
+
+Recommend the correct review/unresolved state using existing FnB concepts.
+
+---
+
+# 12. Questions / Architecture Gaps
+
+Identify only genuine gaps that would prevent us from importing and costing representative Orderly recipes.
+
+Do not propose enhancements merely because Orderly uses different terminology.
+
+For each gap classify:
+
+- Existing capability — reuse
+- Mapping/adapter issue only
+- Small schema gap
+- Significant product/architecture decision
+
+---
+
+# Required Deliverable
+
+Return:
+
+## Existing FnB Architecture
+Exact tables/services/functions and terminology.
+
+## Yield Model
+Clearly separate:
+- recipe output yield
+- inventory/product yield
+- recipe-line yield if it exists
+
+## UOM / Conversion Model
+Actual precedence and calculation behavior.
+
+## Sub-Recipe Model
+
+## Menu Item / Recipe Relationship
+
+## Recommended Orderly → FnB Terminology Mapping
+
+## Recommended Spreadsheet Contract
+No new architecture yet.
+
+## Existing Components to Reuse
+
+## Potential Gaps
+
+## Final Recommendation
+Can Claude begin harvesting the 10–20 recipe validation sample using the existing architecture?
+
+Do not implement anything.
+
+STOP after the architecture report.
