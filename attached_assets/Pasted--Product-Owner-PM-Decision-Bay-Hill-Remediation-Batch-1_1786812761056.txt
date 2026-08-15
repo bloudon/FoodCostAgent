@@ -1,0 +1,142 @@
+# Product Owner / PM Decision — Bay Hill Remediation Batch 1
+
+Claude independently reviewed the sanitized 893-group SAFE_CANDIDATE population.
+
+Decision:
+
+**APPROVE IN BATCHES**
+
+Do NOT generate a manifest for all 893 SAFE_CANDIDATE groups.
+
+## Batch 1 approval
+
+Generate the first remediation manifest for exactly:
+
+**848 SAFE_CANDIDATE groups**
+
+This means:
+
+893 current SAFE_CANDIDATE
+- 44 independently flagged groups
+- 1 additional Stella Artois outlier
+= 848 approved Batch 1 groups
+
+The manifest must be derived from the accepted production report and must exclude the groups described below.
+
+## Hold from Batch 1 — 44 independently flagged groups
+
+Exclude all groups falling into either of these sets:
+
+### A. Free-text source identity
+
+39 groups where the field presented as `Source Item Code` is actually free-text product/description content rather than a reliable source code/SKU.
+
+These are not approved for automatic remediation in Batch 1.
+
+Examples include the two Snapper descriptions identified by Claude.
+
+### B. Noncanonical sibling mapping evidence
+
+Exclude these 7 groups:
+
+- 09-71510
+- 2434371
+- 430016
+- 7200946
+- 7915166
+- both Snapper free-text groups identified in Claude's review
+
+The two Snapper groups overlap with the 39 free-text set.
+
+Total distinct exclusions from A+B:
+
+**44 groups**
+
+Do not manually reconstruct this list from prose if the independent-review artifact contains the exact 44 source identities. Use the exact reviewed list.
+
+## Additional hold — Stella Artois
+
+Also exclude:
+
+`99682 — Stella Artois - Bottled`
+
+Reason:
+
+- highest count-line impact in the population: 13 lines
+- canonical margin only 10 vs 8
+- May presence but not June
+- outlier across multiple dimensions
+
+This group requires manual review before remediation.
+
+## Existing AMBIGUOUS groups remain excluded
+
+Continue to exclude:
+
+- 10149134 — Gatorade ORANGE
+- 7468556 — Gatorade ORANGE
+- 7023177 — GINGER BEER
+- 9021845 — GINGER BEER
+
+These are not part of either production remediation batch until separately resolved.
+
+## Batch 1 safety evidence
+
+Independent review confirmed:
+
+- all individual expected valuation deltas = $0.00
+- aggregate May expected delta = $0.00
+- aggregate June expected delta = $0.00
+- source quantities remain unchanged
+- physical-location evidence remains distinct
+- the known examples are strongly supported:
+  - Chambord
+  - Sweet n Low
+  - Sauce - Tabasco
+  - Heavy Cream
+  - Chicken - Breast
+  - Mayonnaise - Extra Heavy
+
+## Pack/UOM terminology
+
+283 SAFE_CANDIDATE groups have no supplied source UOM/case-quantity evidence.
+
+Do not treat that as verified pack/UOM compatibility.
+
+For reporting purposes distinguish:
+
+- `VERIFIED_COMPATIBLE`
+from
+- `NO_CONTRADICTING_PACK_UOM_EVIDENCE`
+
+This terminology correction does not by itself exclude those groups from Batch 1.
+
+Do not introduce a new blocking rule solely because pack/UOM data is absent if the remaining source identity/provenance evidence supports the group.
+
+## Manifest generation authorization
+
+This authorizes MANIFEST GENERATION ONLY for the exact 848 Batch 1 source identities.
+
+Return:
+
+- manifest ID
+- source report hash
+- manifest hash if available
+- approved group/code count = 848
+- canonical item count
+- superseded item count
+- count-line repoint count
+- May expected valuation delta
+- June expected valuation delta
+- confirmation all 45 held SAFE groups are absent
+- confirmation all 4 AMBIGUOUS groups are absent
+- confirmation production scope remains:
+  - Bay Hill CC
+  - companyId `43abaf82-44ce-4231-9570-7a01e7c85ced`
+  - storeId `ee9e1530-50db-45f4-ae61-2c45e86827f0`
+  - sourceSystem `ORDERLY`
+  - sourcePropertyId `24472`
+
+Do NOT APPLY.
+
+STOP after manifest generation for final Product Owner approval.
