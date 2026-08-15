@@ -26,6 +26,53 @@ if (!process.env.DATABASE_URL) {
 
 const isLocalDb = process.env.STORAGE_MODE === 'local' || process.env.AUTH_MODE === 'local';
 
+/**
+ * Which driver this process selected. Exported for diagnostics only.
+ *
+ * The selection is environment-driven, so a process that loads a different
+ * environment than the API (for example a standalone CLI that forgot
+ * `dotenv/config`) silently picks the OTHER driver and fails on its first
+ * query against a database the API talks to happily. Surfacing the mode makes
+ * that class of mismatch visible instead of appearing as an opaque query error.
+ */
+export const dbDriverMode: 'node-postgres' | 'neon-serverless' = isLocalDb
+  ? 'node-postgres'
+  : 'neon-serverless';
+
+/**
+ * Connection target with all credentials stripped. Never returns the user,
+ * the password, or the raw DATABASE_URL.
+ */
+export function describeDatabaseTarget(): {
+  driver: string;
+  host: string;
+  port: string;
+  database: string;
+  sslmode: string;
+} {
+  const fallback = {
+    driver: dbDriverMode,
+    host: '(unparseable)',
+    port: '(unparseable)',
+    database: '(unparseable)',
+    sslmode: '(unset)',
+  };
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return fallback;
+  try {
+    const url = new URL(raw);
+    return {
+      driver: dbDriverMode,
+      host: url.hostname || '(none)',
+      port: url.port || '5432',
+      database: url.pathname.replace(/^\//, '') || '(none)',
+      sslmode: url.searchParams.get('sslmode') ?? '(unset)',
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 let pool: any;
 let db: any;
 

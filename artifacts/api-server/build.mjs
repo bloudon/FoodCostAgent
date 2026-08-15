@@ -15,7 +15,16 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    // The remediation CLI is built with the SAME options as the server so it
+    // runs on the identical production DB path. It was previously built by a
+    // separate inline esbuild command with different flags, which produced a
+    // subtly different runtime (externalized pg/ws/neon, no CJS-interop
+    // banner) than the server bundle. Deployment does not run either CLI mode;
+    // building it here only produces the artifact an operator invokes manually.
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/services/orderly/bayHillDuplicateRemediationCli.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",

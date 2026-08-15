@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "orderly:dry-run": "esbuild src/services/orderly/bayHillOrderlyDryRun.ts --bundle --platform=node --format=esm --outfile=dist/orderly-dry-run.mjs && node --enable-source-maps dist/orderly-dry-run.mjs",
-    "orderly:remediate": "esbuild src/services/orderly/bayHillDuplicateRemediationCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-remediate.mjs && node --enable-source-maps dist/orderly-remediate.mjs"
+    "orderly:remediate": "node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",

@@ -34,6 +34,14 @@
  * operator must confirm a current production PostgreSQL recovery point.
  */
 
+// MUST be first: the API entrypoint (src/index.ts) loads dotenv before it
+// imports ./db, and ./db chooses its driver from STORAGE_MODE/AUTH_MODE at
+// import time. A standalone entry point that skips this loads an EMPTY
+// environment, silently selects the other driver, and then fails on its first
+// query against a database the API talks to fine. Keep this import above the
+// remediation imports — they pull in ./db transitively.
+import 'dotenv/config';
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   applyRemediationManifest,
@@ -42,16 +50,26 @@ import {
   buildRemediationReport,
   reconcilePeriods,
   resolveScope,
+  RemediationScopeError,
   REMEDIATION_REPORT_VERSION,
   type ApplyManifest,
   type RemediationGroup,
   type RemediationReport,
 } from './orderlyDuplicateRemediation';
 import {
+  describeDatabaseTargetLine,
+  formatRemediationDbError,
+  isDatabaseError,
+} from './remediationDbErrors';
+import {
   assertBayHillProductionScope,
   BAY_HILL_PRODUCTION_SCOPE,
 } from './bayHillDuplicateRemediationGuard';
-import { preflightRemediationDatabase, type RemediationPreflightResult } from './orderlyDuplicateRemediationPreflight';
+import {
+  preflightRemediationDatabase,
+  RemediationPreconditionError,
+  type RemediationPreflightResult,
+} from './orderlyDuplicateRemediationPreflight';
 
 type Mode = 'preflight' | 'report' | 'manifest' | 'apply' | 'reconcile';
 
@@ -317,6 +335,21 @@ async function main(): Promise<void> {
 main()
   .then(() => process.exit(process.exitCode ?? 0))
   .catch(error => {
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+    // Scope/precondition refusals are already operator-readable and carry no
+    // database detail; anything else may be a connection or driver failure, so
+    // report the sanitized PostgreSQL cause and connection target.
+    if (
+      error instanceof RemediationScopeError ||
+      error instanceof RemediationPreconditionError ||
+      (error instanceof Error && !isDatabaseError(error))
+    ) {
+      console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);
+      // A "row not found" refusal and a wrong-environment connection look
+      // identical to an operator, which is how a driver mismatch once got
+      // read as a bad scope. Always show which database answered.
+      console.error(describeDatabaseTargetLine());
+    } else {
+      console.error(formatRemediationDbError('Remediation database operation', error));
+    }
     process.exit(1);
   });

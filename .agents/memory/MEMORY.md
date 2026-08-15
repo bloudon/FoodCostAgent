@@ -10,4 +10,5 @@
 - [Import approval boundary](import-approval-boundary.md) — shared approval must fail closed, destination comes from a persisted source-property binding, and direct-service tests hide broken route connectors.
 - [Orderly costing validation](orderly-costing-validation.md) — source appendices lack conversion factors, so matching totals prove nothing; the two FnB conversion engines differ ~4% cross-kind.
 - [Orderly XLSX item identity](orderly-xlsx-item-identity.md) — XLSX code is property-scoped and not the API identity; the mapping row is the claim authority for every path, not just creation.
+- [Standalone entrypoint DB divergence](standalone-entrypoint-db-divergence.md) — a CLI that skips env loading picks the other driver and fails queries the API and psql run fine.
 - [Evidence-led data remediation](remediation-manifest-binding.md) — bind approval per-item plus an unapproved remainder; a unique key is not a merge key; audit rows are the idempotency mechanism.
