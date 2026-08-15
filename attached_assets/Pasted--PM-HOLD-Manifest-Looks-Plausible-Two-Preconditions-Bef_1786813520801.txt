@@ -1,0 +1,92 @@
+## PM HOLD — Manifest Looks Plausible, Two Preconditions Before APPLY Approval
+
+Clarification accepted:
+
+- Manifest generation did NOT use the Replit Dev/local database.
+- It used the production report JSON copied from the VPS and uploaded to the repl.
+- Manifest mode is file-based and performed no DB query or production mutation.
+
+That is acceptable.
+
+We do NOT need a fresh VPS report solely because Replit cannot access production, assuming the uploaded JSON is the exact successful production report supplied by the Product Owner.
+
+However, APPLY is still NOT approved.
+
+There are two remaining verification items.
+
+### 1. Exact 44-group exclusion set
+
+The 44 held SAFE groups were reconstructed using:
+
+- 39 source identities containing whitespace
+- plus the 5 explicitly named non-Snapper sibling-mapping codes
+
+The arithmetic reproduces Claude's 44-group result, but this is still a derivation.
+
+Do not treat that heuristic as Product Owner confirmation.
+
+We need the exact 44 identities from Claude's independent review and must compare them by set equality against:
+
+`reports/bay-hill-batch1/batch1-held-safe-codes.txt`
+
+Required result:
+
+- Claude hold set count = 44
+- Replit hold set count = 44
+- Claude minus Replit = 0
+- Replit minus Claude = 0
+
+If the sets are identical, this issue is closed.
+
+Do not change the manifest population until that comparison is complete.
+
+### 2. Explain the report hash difference
+
+The production VPS report displayed internal report hash:
+
+`4672f3bd98629f82604b2f5cf1622888d644c3973ce777bf70256b1738cfb9ee`
+
+The generated manifest summary now reports:
+
+`4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e`
+
+as the "Source report hash."
+
+Determine exactly what each hash represents.
+
+For example, if one is:
+
+- the remediation report's canonical/internal report hash
+
+and the other is:
+
+- the SHA-256 of the physical JSON file
+
+then document both explicitly.
+
+The manifest must remain cryptographically bound to the exact accepted production report snapshot.
+
+Return:
+
+- internal production report hash
+- uploaded report-file SHA-256
+- manifest's stored report-binding field(s)
+- proof that the uploaded JSON contains the accepted 897 / 893 / 4 / 0 production population
+
+Do not regenerate unless the current binding is actually wrong.
+
+### Current manifest remains staged
+
+Expected Batch 1:
+
+- 848 approved groups
+- 45 held SAFE groups
+- 4 AMBIGUOUS excluded
+- 1,901 proposed superseded identities
+- 1,259 count-line repoints
+- May expected valuation delta $0.00
+- June expected valuation delta $0.00
+
+No APPLY.
+
+STOP after resolving the exact exclusion-set comparison and hash semantics.

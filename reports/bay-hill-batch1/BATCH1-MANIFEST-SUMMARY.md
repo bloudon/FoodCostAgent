@@ -7,8 +7,8 @@
 | Manifest ID | `bay-hill-batch1-2026-08-15` |
 | Manifest file | `reports/bay-hill-batch1/bay-hill-batch1-manifest.json` |
 | Manifest file SHA-256 | `64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756` |
-| Source report hash | `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e` |
-| Unapproved-remainder hash | `a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a` |
+| Source report hash (`reportHash`) | `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e` |
+| Unapproved remainder (`unapprovedReportHash`) | `a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a` |
 | Report version | `1.0.0` |
 | Per-group hashes present | 848 of 848 |
 
@@ -64,7 +64,74 @@ Approved list: `reports/bay-hill-batch1/batch1-approved-codes.txt`
 The manifest carries the report's own scope object and passed the CLI's
 Bay Hill production-scope guard.
 
-## How the 44-group exclusion set was determined — REQUIRES PO CONFIRMATION
+## Hash semantics — RESOLVED
+
+The two hashes are **the same kind of hash over two different report
+populations**, not an internal-vs-file-hash difference. Both are the service's
+internal canonical report hash: SHA-256 over a material-facts object
+(report version, the four scope fields, and per group the code, classification,
+canonical proposal, sorted candidate set, reference counts, merge-sensitive
+config, count-line fingerprints, valuations, item facts, and sorted import
+evidence). Timestamps and display text are deliberately excluded.
+
+| Hash | What it is |
+| --- | --- |
+| `4672f3bd98629f82604b2f5cf1622888d644c3973ce777bf70256b1738cfb9ee` | Internal report hash of the **earlier zero-group discovery run** — the same Bay Hill scope with an **empty group list**. |
+| `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e` | Internal report hash of the **accepted 897-group production report**. This is what the manifest is bound to. |
+
+**Proof (recomputed locally, read-only, no DB):** calling the service's own
+`computeReportHash(scope, [])` with the accepted report's scope reproduces
+`4672f3bd...` exactly. That hash is therefore fully explained: it is the
+"discovery found nothing" report for this scope, from before the discovery
+defect was fixed. It is not a competing snapshot of the accepted population and
+carries no groups.
+
+Calling `computeReportHash(scope, groups)` over the accepted report's 897 groups
+reproduces `4eec609c...` exactly, matching the `reportHash` stored in the JSON —
+so the uploaded file has not been altered since production generated it, and the
+value is a genuine internal hash rather than a file digest.
+
+### Requested values
+
+| Field | Value |
+| --- | --- |
+| Internal production report hash (accepted) | `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e` |
+| Internal report hash of prior zero-group run | `4672f3bd98629f82604b2f5cf1622888d644c3973ce777bf70256b1738cfb9ee` (= scope + no groups) |
+| Uploaded report file SHA-256 (original, with CLI preamble) | `1503fe1ac6cc8ca247c4d7231d7163406569f4d66bcf98d74bdd51240bc653e3` |
+| JSON-only accepted copy SHA-256 | `bc9d4620577764dd9732c67eabd1187d2630413cfb5052f81ef25b4b604ecbe6` |
+| Manifest `reportHash` | `4eec609c...` — matches accepted report |
+| Manifest `unapprovedReportHash` | `a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a` — recomputed from the accepted report minus the 848 approved groups, matches exactly |
+| Per-group hashes | 848 of 848 present |
+
+The JSON-only copy differs from the original upload only by removal of the CLI
+build preamble; both contain byte-identical JSON, which is why both reproduce
+the same internal hash. The original upload was not modified.
+
+**Binding is correct. No regeneration required.**
+
+### Proof of the accepted 897 / 893 / 4 / 0 population
+
+Read directly from the uploaded JSON:
+
+- `reportVersion` `1.0.0`
+- `totals`: `groupsExamined` 897, `safeCandidates` 893, `ambiguous` 4,
+  `conflicts` 0, `notDefectRelated` 0, `itemsThatWouldBeSuperseded` 1,992,
+  `countLinesThatWouldRepoint` 1,314
+- Independently counted from the `groups` array (not read from `totals`):
+  897 groups — 893 `SAFE_CANDIDATE`, 4 `AMBIGUOUS`, 0 `CONFLICT`,
+  0 `NOT_DEFECT_RELATED`
+- Scope: companyId `43abaf82-44ce-4231-9570-7a01e7c85ced`, storeId
+  `ee9e1530-50db-45f4-ae61-2c45e86827f0`, sourceSystem `ORDERLY`,
+  sourcePropertyId `24472`
+
+The report-level totals of 1,992 superseded and 1,314 repoints cover all 893
+SAFE groups; Batch 1's 1,901 and 1,259 are the subset for the 848 approved
+groups, with the difference attributable to the 45 held groups.
+
+Verification script: `reports/bay-hill-batch1/verify-hash-binding.ts`
+(read-only; imports the production hash functions and touches no database).
+
+## How the 44-group exclusion set was determined — STILL REQUIRES PO CONFIRMATION
 
 The decision said to use the exact reviewed list rather than reconstructing it
 from prose. **No independent-review artifact containing the exact 44 identities

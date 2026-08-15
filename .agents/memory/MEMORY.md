@@ -13,4 +13,6 @@
 - [Standalone entrypoint DB divergence](standalone-entrypoint-db-divergence.md) — a CLI that skips env loading picks the other driver and fails queries the API and psql run fine.
 - [Evidence-led data remediation](remediation-manifest-binding.md) — bind approval per-item plus an unapproved remainder; a unique key is not a merge key; audit rows are the idempotency mechanism.
 - [Production verification evidence](production-verification-evidence.md) — sanitized structured record, never a raw VPS paste; reconcile aggregate counts against the stated scope.
+- [Report hash mismatch diagnosis](report-hash-semantics.md) — same hash fn over a different population; reproduce hash(scope, []) before believing a binding is wrong or regenerating.
+- [Derived approval lists](derived-approval-lists.md) — when the reviewed exclusion list is missing, derive structurally, prove the stated counts, and flag it as unconfirmed.
 - [Legacy scope columns hide data](legacy-scope-column-discovery.md) — exact-match predicates on later-added nullable scope columns return a clean empty result; widen by evidence, and unify the predicate across phases.
