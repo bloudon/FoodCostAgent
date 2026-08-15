@@ -1,0 +1,78 @@
+This is the right implementation shape.
+
+My PM call:
+
+> **Approve #1142 as the next step: production read-only policy preflight only.**
+>
+> **Do not APPLY yet.**
+
+The important safeguards are now where they should be:
+
+* fail-closed by default
+* no generic NULL exception
+* Class A must be independently proven
+* exact Bay Hill scope + exact manifest + exact report hashes + exact 848-group count + exact 2-batch legacy evidence all revalidated
+* manifest cannot self-authorize
+* B/C still block
+* mixed-risk groups still block
+* preflight and transaction-time APPLY recheck share the same validator
+* policy-preflight has no mutation path
+
+That is materially safer than trying to repair or backfill provenance first.
+
+For production, I’d run only the new read-only mode against the unchanged manifest and expect:
+
+```text
+manifest: bay-hill-batch1-2026-08-15
+groups evaluated: 848
+authorized: 848
+blocked: 0
+Class A: 848
+Class B: 0
+Class C: 0
+legacy batches: 2
+writes: 0
+```
+
+If any of those differ, stop.
+
+I’d send Replit this:
+
+```md
+## PM Decision — Proceed with #1142 Production Read-Only Policy Preflight
+
+The legacy-adoption implementation is accepted for production validation.
+
+Run ONLY the new read-only policy preflight on the production VPS against the unchanged Batch 1 manifest.
+
+Do not regenerate the manifest.
+Do not run APPLY.
+Do not run reconcile.
+
+Expected production result:
+
+- manifestId = `bay-hill-batch1-2026-08-15`
+- total groups = 848
+- authorized groups = 848
+- blocked groups = 0
+- A_LEGACY_MISSING_SCOPE = 848 groups / 932 mappings as applicable
+- B_DEMONSTRABLY_FOREIGN = 0
+- C_AMBIGUOUS = 0
+- scoped legacy batch count = 2
+- policy authorization binding = PASS
+- remediation writes = 0
+
+Also confirm the manifest remains byte-identical with SHA-256:
+
+`64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756`
+
+STOP after returning production policy-preflight evidence.
+
+Any blocker, binding mismatch, unexpected class B/C result, batch-count mismatch, or manifest-hash mismatch is a hard stop.
+```
+
+One nuance: #1143 sounds worthwhile, but I would treat it as **non-blocking for the read-only #1142 run**. It should be completed before another actual APPLY authorization if it’s specifically exercising every binding field and fail-closed case.
+
+So the sequence I’d use is:
+
+**#1142 production read-only proof → #1143 exhaustive binding tests → final APPLY authorization.**
