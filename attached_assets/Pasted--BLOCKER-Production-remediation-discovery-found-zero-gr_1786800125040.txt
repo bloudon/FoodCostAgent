@@ -1,0 +1,157 @@
+# BLOCKER — Production remediation discovery found zero groups
+
+The Bay Hill remediation REPORT was run successfully on the production VPS and against the correct locked scope:
+
+company:
+43abaf82-44ce-4231-9570-7a01e7c85ced
+
+store:
+ee9e1530-50db-45f4-ae61-2c45e86827f0
+
+source:
+ORDERLY
+
+property:
+24472
+
+Actual output:
+
+groupsExamined: 0
+safeCandidates: 0
+ambiguous: 0
+conflicts: 0
+notDefectRelated: 0
+itemsThatWouldBeSuperseded: 0
+countLinesThatWouldRepoint: 0
+
+Report hash:
+4672f3bd98629f82604b2f5cf1622888d644c3973ce777bf70256b1738cfb9ee
+
+The CLI clearly executed successfully and the scope is correct.
+
+Therefore this is now a discovery-logic defect.
+
+Do not generate a manifest.
+Do not apply anything.
+Do not change production data.
+
+## Known contradictory production evidence
+
+The same Bay Hill production tenant has already been inspected read-only and contains exact-looking duplicate inventory records including:
+
+- Sauce - Tabasco ×6
+- Chicken - Breast ×6
+- Mayonnaise - Extra Heavy ×5
+- Heavy Cream ×3
+- Onions - Yellow ×2
+- Buttermilk ×2
+- Beef - Brisket ×2
+- Apples - Granny Smith ×2
+
+The May and June Orderly import/count sessions are also present in this same production company.
+
+A correct discovery pass therefore cannot legitimately examine zero groups.
+
+## Required root-cause investigation
+
+Start with ONE known production case:
+
+`Sauce - Tabasco`
+
+Trace all six production inventoryItem records and report for each:
+
+- inventoryItemId
+- companyId
+- name
+- PLU/SKU/item-code fields
+- createdAt
+- vendor-item relationships
+- external mappings
+- store inventory references
+- inventory-location assignments
+- May import row links
+- June import row links
+- count-session/count-line references
+- any retained Orderly Item Code / source identity
+
+Then answer precisely:
+
+> Why did REPORT MODE fail to include these six records in groupsExamined?
+
+Do not change the finder until that question is answered from actual data.
+
+## Likely design flaw to test
+
+The current finder may be starting from `inventoryItemExternalMappings` or requiring every duplicate sibling to have authoritative mapping/provenance evidence.
+
+That requirement is appropriate for deciding whether a group is safe to repair.
+
+It is NOT appropriate for candidate discovery if the original importer defect itself caused incomplete or missing mappings.
+
+Separate the two concepts:
+
+### Candidate discovery
+
+Start from the original May/June import rows with reliable Orderly Item Codes and reconstruct which FnB inventoryItem IDs those rows ultimately resolved/created.
+
+For each reliable source Item Code:
+
+`COUNT(DISTINCT resulting inventoryItemId)`
+
+If greater than 1:
+
+the group MUST be examined.
+
+### Repair classification
+
+After the suspect group is discovered, then evaluate:
+
+- authoritative external mappings
+- compatible product/pack evidence
+- downstream references
+- canonical selection evidence
+
+and classify:
+
+- SAFE_CANDIDATE
+- AMBIGUOUS
+- CONFLICT
+- NOT_DEFECT_RELATED
+
+Missing external mapping on one duplicate sibling may make the group less safe, but it must not make the group invisible.
+
+## Required real-defect fixture
+
+Add a DB-backed regression fixture that recreates the actual defect shape:
+
+- one reliable Orderly Item Code
+- multiple source rows
+- different physical locations
+- multiple resulting FnB inventoryItemIds
+- incomplete external-mapping coverage across those duplicate IDs
+
+The report must:
+
+- examine the group
+- preserve location/count evidence
+- classify it conservatively
+- perform zero writes in report mode
+
+## Acceptance before another VPS run
+
+Before redeploying:
+
+1. explain why Tabasco ×6 produced zero discovery
+2. fix discovery at the correct evidence layer
+3. add the real-defect regression
+4. prove report mode remains zero-write
+5. run #1108 regressions
+6. run full API suite
+7. run API typecheck
+8. Reviewer + QA
+
+Then deploy and rerun REPORT MODE only.
+
+The next production report must first demonstrate that known duplicate groups such as Tabasco are at least present in `groupsExamined`.
+
+No manifest or production mutation until discovery is proven correct.
