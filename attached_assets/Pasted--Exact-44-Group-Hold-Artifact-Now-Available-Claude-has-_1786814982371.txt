@@ -1,0 +1,79 @@
+## Exact 44-Group Hold Artifact Now Available
+
+Claude has supplied the authoritative hold artifact:
+
+`bay-hill-review-hold-44.csv`
+
+Use this file as the exact Product Owner/independent-review exclusion set.
+
+Do NOT reconstruct the 44 groups using whitespace, free-text heuristics, or any other derivation.
+
+### Required validation
+
+Compare the CSV `Source Item Code` column directly against:
+
+`reports/bay-hill-batch1/batch1-held-safe-codes.txt`
+
+Required:
+
+- Claude CSV count = 44
+- Replit held count = 44
+- Claude minus Replit = 0
+- Replit minus Claude = 0
+
+If set equality passes, the existing 848-group manifest population is confirmed on this point.
+
+If it does not pass, regenerate the manifest using the exact CSV set.
+
+## Important classifier finding
+
+Claude corrected one detail from the prior review.
+
+There are two canonical-selection paths in the 893 SAFE_CANDIDATE population:
+
+- 886 groups:
+  `decided on downstream references (X vs Y)`
+
+- exactly 7 groups:
+  `decided on existing historical use (X vs Y)`
+
+Those exact 7 are also the seven groups with external-mapping records on noncanonical siblings:
+
+- 09-71510
+- 2434371
+- 430016
+- 7200946
+- 7915166
+- snapper american fillets
+- snapper american fillets use 6up sk/off pbo
+
+All seven remain excluded from Batch 1.
+
+This is stronger evidence for exclusion because the classifier's normal downstream-reference selector failed to provide the deciding signal for precisely the same seven groups that have anomalous sibling-mapping evidence.
+
+## Follow-up classifier review
+
+Do not block Batch 1 on redesigning the classifier.
+
+Create a follow-up finding/task to inspect whether:
+
+`existing historical use`
+
+should be permitted to independently break a canonical-selection tie when:
+
+- downstream-reference evidence is tied/insufficient, and
+- external mappings exist on a noncanonical sibling.
+
+For now these seven are safely excluded, so this is not a Batch 1 blocker.
+
+## Current stop condition
+
+Still NO APPLY until:
+
+1. exact 44-set equality is confirmed using Claude's CSV
+2. the production-report hash discrepancy is explained and documented
+3. Batch 1 manifest remains exactly 848 groups
+4. all 4 AMBIGUOUS groups remain absent
+
+Return those checks only.
+Do not APPLY.

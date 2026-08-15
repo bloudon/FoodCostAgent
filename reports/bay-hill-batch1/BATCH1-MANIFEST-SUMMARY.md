@@ -131,66 +131,44 @@ groups, with the difference attributable to the 45 held groups.
 Verification script: `reports/bay-hill-batch1/verify-hash-binding.ts`
 (read-only; imports the production hash functions and touches no database).
 
-## How the 44-group exclusion set was determined — STILL REQUIRES PO CONFIRMATION
+## Exact 44-group exclusion set — PASS
 
-The decision said to use the exact reviewed list rather than reconstructing it
-from prose. **No independent-review artifact containing the exact 44 identities
-exists in this workspace.** Every uploaded file and generated review file was
-searched; none contains the list.
+The authoritative independent-review artifact is now available:
+`attached_assets/bay-hill-review-hold-44_1786814988633.csv`. Its `Source Item
+Code` column is the Product Owner exclusion set. No whitespace, free-text, or
+other heuristic was used for this validation.
 
-Rather than reconstruct from prose, the set was derived deterministically from
-the accepted report, and the derivation reproduces the decision's arithmetic
-exactly:
+The CSV contains **44 rows and 44 unique Source Item Codes**. The staged held
+file contains those same 44 identities plus the separately held Stella Artois
+code `99682`. Comparing the exact CSV set to the staged held set after removing
+that separate Stella hold passes exact equality:
 
-- **A. Free-text source identity — 39 groups.** Exactly 39 of the 893 SAFE
-  source Item Codes contain whitespace, i.e. they are product/description text
-  rather than a code/SKU (e.g. `black grouper fillets`,
-  `crawfsh tail mt 150-200ct wild mediteranean caught`). The count matches the
-  decision's 39 with no tuning, and the set contains both named Snapper
-  descriptions: `snapper american fillets` and
-  `snapper american fillets use 6up sk/off pbo`.
-- **B. Noncanonical sibling mapping — 7 named, 5 distinct additions.** The
-  decision lists 5 codes plus "both Snapper free-text groups", and states the
-  Snapper pair overlaps set A. All 5 (`09-71510`, `2434371`, `430016`,
-  `7200946`, `7915166`) were confirmed present in the SAFE population.
-- 39 + 5 = **44 distinct**, matching the decision's stated total.
-- Plus `99682` (Stella Artois - Bottled) = **45 held SAFE groups**.
-- 893 − 45 = **848**, matching the authorized Batch 1 count.
-
-The arithmetic agreeing at three independent points (39, 44, 848) is strong
-evidence the derivation reproduces the reviewed list, but it is a derivation,
-not the reviewed artifact.
-
-### Set-equality status: 7 of 44 confirmed, 37 pending
-
-The Product Owner has confirmed the explicitly named members but does not yet
-have the full reviewed list. Verified by set membership against
-`batch1-held-safe-codes.txt`:
-
-| Confirmed identity | In held set |
+| Required comparison | Result |
 | --- | --- |
-| `09-71510` | present |
-| `2434371` | present |
-| `430016` | present |
-| `7200946` | present |
-| `7915166` | present |
-| `snapper american fillets` | present |
-| `snapper american fillets use 6up sk/off pbo` | present |
+| Claude CSV count | **44** |
+| Replit held count (excluding `99682`) | **44** |
+| Claude minus Replit | **0** |
+| Replit minus Claude | **0** |
 
-All 7 explicitly named identities are present in the held set — 0 discrepancies
-so far. The remaining **37 free-text identities are derived, not confirmed**,
-and are pending exact retrieval from the independent review.
+Additional verification:
 
-The required comparison is therefore **incomplete**:
+- All 44 CSV identities are `SAFE_CANDIDATE` groups in the accepted report.
+- None of the 44 identities is in the staged 848-group manifest.
+- The separately held `99682` is not in the manifest.
+- All four `AMBIGUOUS` groups remain absent from the manifest.
+- The manifest remains **848 unique groups**; regeneration is not required.
 
-- Claude hold set count — not yet available
-- Replit hold set count — 45 held SAFE (44 + Stella Artois `99682`)
-- Claude minus Replit — cannot be computed
-- Replit minus Claude — cannot be computed
+The classifier correction is also reflected in the authoritative CSV: exactly
+seven of its held groups use the `existing historical use` canonical-selection
+path, and they are the same seven groups with sibling external-mapping records:
+`09-71510`, `2434371`, `430016`, `7200946`, `7915166`, `snapper american
+fillets`, and `snapper american fillets use 6up sk/off pbo`. All seven remain
+excluded from Batch 1.
 
-**APPLY remains blocked on this comparison.** The manifest population is
-unchanged and will not be altered until the exact 44-item set is supplied and
-compared by set equality.
+Detailed comparison evidence:
+`reports/bay-hill-batch1/exact-hold-set-validation.md`.
+
+**This PM hold condition is resolved.** The manifest remains unchanged.
 
 ## Pack/UOM terminology
 
