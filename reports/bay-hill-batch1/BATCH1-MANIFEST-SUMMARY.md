@@ -159,9 +159,38 @@ exactly:
 
 The arithmetic agreeing at three independent points (39, 44, 848) is strong
 evidence the derivation reproduces the reviewed list, but it is a derivation,
-not the reviewed artifact. **Before APPLY, please either confirm the 39 free-text
-identities in `batch1-held-safe-codes.txt` match the independent review, or
-supply the original list so the manifest can be regenerated.**
+not the reviewed artifact.
+
+### Set-equality status: 7 of 44 confirmed, 37 pending
+
+The Product Owner has confirmed the explicitly named members but does not yet
+have the full reviewed list. Verified by set membership against
+`batch1-held-safe-codes.txt`:
+
+| Confirmed identity | In held set |
+| --- | --- |
+| `09-71510` | present |
+| `2434371` | present |
+| `430016` | present |
+| `7200946` | present |
+| `7915166` | present |
+| `snapper american fillets` | present |
+| `snapper american fillets use 6up sk/off pbo` | present |
+
+All 7 explicitly named identities are present in the held set — 0 discrepancies
+so far. The remaining **37 free-text identities are derived, not confirmed**,
+and are pending exact retrieval from the independent review.
+
+The required comparison is therefore **incomplete**:
+
+- Claude hold set count — not yet available
+- Replit hold set count — 45 held SAFE (44 + Stella Artois `99682`)
+- Claude minus Replit — cannot be computed
+- Replit minus Claude — cannot be computed
+
+**APPLY remains blocked on this comparison.** The manifest population is
+unchanged and will not be altered until the exact 44-item set is supplied and
+compared by set equality.
 
 ## Pack/UOM terminology
 
