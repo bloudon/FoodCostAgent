@@ -16,4 +16,5 @@
 - [Production verification evidence](production-verification-evidence.md) — sanitized structured record, never a raw VPS paste; reconcile aggregate counts against the stated scope.
 - [Report hash mismatch diagnosis](report-hash-semantics.md) — same hash fn over a different population; reproduce hash(scope, []) before believing a binding is wrong or regenerating.
 - [Derived approval lists](derived-approval-lists.md) — when the reviewed exclusion list is missing, derive structurally, prove the stated counts, and flag it as unconfirmed.
+- [Legacy scope adoption policy](legacy-scope-adoption-policy.md) — exceptions to a fail-closed validator must be code-owned, positively evidenced, and bound to one proven population.
 - [Legacy scope columns hide data](legacy-scope-column-discovery.md) — exact-match predicates on later-added nullable scope columns return a clean empty result; widen by evidence, and unify the predicate across phases.

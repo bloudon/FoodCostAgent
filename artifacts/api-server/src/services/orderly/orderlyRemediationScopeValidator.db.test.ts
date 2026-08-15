@@ -41,8 +41,11 @@ import {
 import {
   evaluateGroupScope,
   evaluateManifestScope,
+  assertGroupExclusiveToScope,
   resolveScopedBatches,
   type ManifestGroupItems,
+  type LegacyAdoptionAuthorization,
+  type LegacyAdoptionPolicy,
   type RemediationScope,
 } from './orderlyRemediationScopeValidator';
 import {
@@ -67,8 +70,10 @@ const ID = {
   propertyB: `sv-prop-b-${RUN}`,
   storageA: `sv-sloc-a-${RUN}`,
   batch: `sv-batch-${RUN}`,
+  legacyBatch: `sv-batch-legacy-${RUN}`,
   foreignBatch: `sv-batch-foreign-${RUN}`,
   count: `sv-count-${RUN}`,
+  legacyCount: `sv-count-legacy-${RUN}`,
   foreignCount: `sv-count-foreign-${RUN}`,
 };
 
@@ -78,6 +83,25 @@ const scope: RemediationScope = {
   sourceSystem: 'ORDERLY',
   sourcePropertyId: ID.property,
 };
+
+function legacyAuthorization(groupCount: number): LegacyAdoptionAuthorization {
+  const policy: LegacyAdoptionPolicy = {
+    policyId: `test-legacy-adoption-${RUN}`,
+    scope,
+    manifestId: `legacy-manifest-${RUN}`,
+    reportHash: `legacy-report-${RUN}`,
+    unapprovedReportHash: `legacy-remainder-${RUN}`,
+    expectedGroupCount: groupCount,
+    expectedScopedLegacyBatchCount: 2,
+  };
+  return {
+    policy,
+    manifestId: policy.manifestId,
+    reportHash: policy.reportHash,
+    unapprovedReportHash: policy.unapprovedReportHash,
+    groupCount,
+  };
+}
 
 let eachUnit = '';
 let createdItemIds: string[] = [];
@@ -264,9 +288,26 @@ beforeAll(async () => {
       inventoryDateConfirmed: 1,
       status: 'approved',
       approvedAt: new Date(Date.UTC(2026, 5, 1)),
-      targetStoreId: ID.store,
-      sourcePropertyBindingId: ID.binding,
-      sourcePropertyId: ID.property,
+      // Deliberately pre-binding: scope comes from its count session plus the
+      // one active store binding, not from NULL being treated as permission.
+      targetStoreId: null,
+      sourcePropertyBindingId: null,
+      sourcePropertyId: null,
+    },
+    {
+      id: ID.legacyBatch,
+      companyId: ID.company,
+      sourceSystem: 'ORDERLY',
+      fileHash: `sv-hash-legacy-${RUN}`,
+      originalFilename: 'scope-legacy.xlsx',
+      parserVersion: '1.0',
+      inventoryDate: '2026-04-30',
+      inventoryDateConfirmed: 1,
+      status: 'approved',
+      approvedAt: new Date(Date.UTC(2026, 4, 1)),
+      targetStoreId: null,
+      sourcePropertyBindingId: null,
+      sourcePropertyId: null,
     },
     {
       id: ID.foreignBatch,
@@ -307,6 +348,17 @@ beforeAll(async () => {
       sourceBatchId: ID.foreignBatch,
       sourceInventoryDate: '2026-05-30',
     },
+    {
+      id: ID.legacyCount,
+      companyId: ID.company,
+      storeId: ID.store,
+      countDate: new Date(Date.UTC(2026, 3, 30)),
+      userId: ID.admin,
+      applied: 1,
+      sourceSystem: 'ORDERLY',
+      sourceBatchId: ID.legacyBatch,
+      sourceInventoryDate: '2026-04-30',
+    },
   ]);
 });
 
@@ -314,7 +366,7 @@ async function resetFixture(): Promise<void> {
   await db.delete(inventoryItemRemediationAudit).where(eq(inventoryItemRemediationAudit.companyId, ID.company));
   await db
     .delete(inventoryImportRows)
-    .where(inArray(inventoryImportRows.batchId, [ID.batch, ID.foreignBatch]));
+    .where(inArray(inventoryImportRows.batchId, [ID.batch, ID.legacyBatch, ID.foreignBatch]));
   if (createdItemIds.length > 0) {
     await db.delete(inventoryCountLines).where(inArray(inventoryCountLines.inventoryItemId, createdItemIds));
     await db.delete(storeInventoryItems).where(inArray(storeInventoryItems.inventoryItemId, createdItemIds));
@@ -637,6 +689,147 @@ maybe('NULL and empty source-property scope', () => {
     const foreign = evaluation.mappings.find(mapping => mapping.sourceExternalId === `${code}-sysco`)!;
     expect(foreign.classification).toBe('B_DEMONSTRABLY_FOREIGN');
     expect(foreign.classificationReason).toMatch(/source system/i);
+  });
+});
+
+maybe('narrow legacy-adoption authorization', () => {
+  it('allows a positively proven Class A mapping only under the exact policy binding', async () => {
+    const code = `${RUN}-legacy-allow`;
+    const canonical = await makeItem('legacy allow canonical', { mapping: { code }, scopedImportRow: code });
+    const duplicate = await makeItem('legacy allow duplicate', {
+      mapping: { code: `${code}-legacy`, sourcePropertyId: null },
+      scopedImportRow: code,
+      scopedCountLine: true,
+    });
+    const group = { sourceExternalId: code, canonicalItemId: canonical, supersededItemIds: [duplicate] };
+
+    const evaluation = await preflightManifestScope(scope, [group], db, {
+      legacyAdoptionAuthorization: legacyAuthorization(1),
+    });
+
+    expect(evaluation.cleanGroups).toBe(1);
+    const mapping = evaluation.groups[0].mappings.find(
+      candidate => candidate.sourceExternalId === `${code}-legacy`,
+    )!;
+    expect(mapping.classification).toBe('A_LEGACY_MISSING_SCOPE');
+    expect(mapping.authorizedByLegacyAdoptionPolicy).toBe(true);
+    expect(mapping.inScope).toBe(true);
+  });
+
+  it('keeps arbitrary missing scope blocked when its binding is not exact', async () => {
+    const code = `${RUN}-legacy-binding-mismatch`;
+    const canonical = await makeItem('binding mismatch canonical', { mapping: { code }, scopedImportRow: code });
+    const duplicate = await makeItem('binding mismatch duplicate', {
+      mapping: { code: `${code}-legacy`, sourcePropertyId: null },
+      scopedImportRow: code,
+      scopedCountLine: true,
+    });
+    const authorization = legacyAuthorization(1);
+    authorization.reportHash = 'not-the-reviewed-report';
+
+    const evaluation = await evaluateManifestScope(db, scope, [
+      { sourceExternalId: code, canonicalItemId: canonical, supersededItemIds: [duplicate] },
+    ], { legacyAdoptionAuthorization: authorization });
+
+    expect(evaluation.blockedGroups).toBe(1);
+    expect(evaluation.groups[0].mappings.some(mapping => mapping.classification === 'A_LEGACY_MISSING_SCOPE')).toBe(
+      true,
+    );
+    expect(evaluation.groups[0].mappings.some(mapping => mapping.authorizedByLegacyAdoptionPolicy)).toBe(false);
+  });
+
+  it('keeps Class B foreign-property and foreign-source mappings blocked under the policy', async () => {
+    const propertyCode = `${RUN}-legacy-B-property`;
+    const propertyCanonical = await makeItem('B property canonical', {
+      mapping: { code: propertyCode },
+      scopedImportRow: propertyCode,
+    });
+    const propertyDuplicate = await makeItem('B property duplicate', {
+      mapping: { code: `${propertyCode}-foreign`, sourcePropertyId: ID.propertyB },
+      scopedImportRow: propertyCode,
+    });
+    const sourceCode = `${RUN}-legacy-B-source`;
+    const sourceCanonical = await makeItem('B source canonical', { mapping: { code: sourceCode }, scopedImportRow: sourceCode });
+    const sourceDuplicate = await makeItem('B source duplicate', {
+      mapping: { code: `${sourceCode}-foreign`, sourceSystem: 'SYSCO' },
+      scopedImportRow: sourceCode,
+    });
+    const groups = [
+      { sourceExternalId: propertyCode, canonicalItemId: propertyCanonical, supersededItemIds: [propertyDuplicate] },
+      { sourceExternalId: sourceCode, canonicalItemId: sourceCanonical, supersededItemIds: [sourceDuplicate] },
+    ];
+
+    const evaluation = await evaluateManifestScope(db, scope, groups, {
+      legacyAdoptionAuthorization: legacyAuthorization(2),
+    });
+
+    expect(evaluation.blockedGroups).toBe(2);
+    expect(evaluation.groups.flatMap(group => group.mappings).every(
+      mapping => mapping.classification !== 'B_DEMONSTRABLY_FOREIGN' || !mapping.inScope,
+    )).toBe(true);
+  });
+
+  it('keeps Class C and mixed A+B / A+C groups blocked under the policy', async () => {
+    const codeB = `${RUN}-legacy-mixed-B`;
+    const canonicalB = await makeItem('mixed B canonical', { mapping: { code: codeB }, scopedImportRow: codeB });
+    const classA = await makeItem('mixed B class A', {
+      mapping: { code: `${codeB}-legacy`, sourcePropertyId: null },
+      scopedImportRow: codeB,
+      scopedCountLine: true,
+    });
+    const classB = await makeItem('mixed B class B', {
+      mapping: { code: `${codeB}-foreign`, sourcePropertyId: ID.propertyB },
+      scopedImportRow: codeB,
+    });
+    const codeC = `${RUN}-legacy-mixed-C`;
+    const canonicalC = await makeItem('mixed C canonical', { mapping: { code: codeC }, scopedImportRow: codeC });
+    const classA2 = await makeItem('mixed C class A', {
+      mapping: { code: `${codeC}-legacy`, sourcePropertyId: null },
+      scopedImportRow: codeC,
+      scopedCountLine: true,
+    });
+    const classC = await makeItem('mixed C class C', {
+      mapping: { code: `${codeC}-unknown`, sourcePropertyId: null },
+      foreignImportRow: codeC,
+      otherStoreRow: true,
+    });
+    const groups = [
+      { sourceExternalId: codeB, canonicalItemId: canonicalB, supersededItemIds: [classA, classB] },
+      { sourceExternalId: codeC, canonicalItemId: canonicalC, supersededItemIds: [classA2, classC] },
+    ];
+
+    const evaluation = await evaluateManifestScope(db, scope, groups, {
+      legacyAdoptionAuthorization: legacyAuthorization(2),
+    });
+
+    expect(evaluation.blockedGroups).toBe(2);
+    expect(evaluation.groups[0].mappings.some(mapping => mapping.classification === 'B_DEMONSTRABLY_FOREIGN')).toBe(true);
+    expect(evaluation.groups[1].mappings.some(mapping => mapping.classification === 'C_AMBIGUOUS')).toBe(true);
+  });
+
+  it('gives preflight and the APPLY adapter the same legacy-adoption result', async () => {
+    const code = `${RUN}-legacy-parity`;
+    const canonical = await makeItem('legacy parity canonical', { mapping: { code }, scopedImportRow: code });
+    const duplicate = await makeItem('legacy parity duplicate', {
+      mapping: { code: `${code}-legacy`, sourcePropertyId: null },
+      scopedImportRow: code,
+      scopedCountLine: true,
+    });
+    const authorization = legacyAuthorization(1);
+    const manifest = await evaluateManifestScope(db, scope, [
+      { sourceExternalId: code, canonicalItemId: canonical, supersededItemIds: [duplicate] },
+    ], { legacyAdoptionAuthorization: authorization });
+
+    await expect(
+      assertGroupExclusiveToScope(
+        db,
+        scope,
+        [canonical, duplicate],
+        code,
+        authorization,
+      ),
+    ).resolves.toBeUndefined();
+    expect(manifest.groups[0].inScope).toBe(true);
   });
 });
 

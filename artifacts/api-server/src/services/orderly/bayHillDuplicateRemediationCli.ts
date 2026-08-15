@@ -73,6 +73,7 @@ import {
 } from './remediationDbErrors';
 import {
   assertBayHillProductionScope,
+  bayHillLegacyAdoptionAuthorization,
   BAY_HILL_PRODUCTION_SCOPE,
 } from './bayHillDuplicateRemediationGuard';
 import {
@@ -102,6 +103,7 @@ type Mode =
   | 'apply'
   | 'reconcile'
   | 'forensics'
+  | 'policy-preflight'
   | 'verify-suspended';
 
 const MODES: Mode[] = [
@@ -112,6 +114,7 @@ const MODES: Mode[] = [
   'apply',
   'reconcile',
   'forensics',
+  'policy-preflight',
   'verify-suspended',
 ];
 
@@ -425,6 +428,12 @@ async function main(): Promise<void> {
       );
     }
     const manifest = loadManifest(manifestPath);
+    const legacyAdoptionAuthorization = bayHillLegacyAdoptionAuthorization({
+      manifestId: manifest.manifestId,
+      reportHash: manifest.reportHash,
+      unapprovedReportHash: manifest.unapprovedReportHash,
+      groupCount: manifest.groups.length,
+    });
     if (manifest.reportVersion !== REMEDIATION_REPORT_VERSION) {
       throw new Error(
         `Manifest report version ${manifest.reportVersion} does not match this build ` +
@@ -462,13 +471,19 @@ async function main(): Promise<void> {
       `Validating all ${manifest.groups.length} approved group(s) against the scope validator ` +
         'before any mutation…',
     );
-    const gate = await preflightManifestScope(manifest.scope, manifestGroupItems(manifest), db, {
-      onProgress: (completed, total) => {
-        if (completed % 100 === 0 || completed === total) {
-          console.log(`  validated ${completed}/${total} group(s)`);
-        }
+    const gate = await preflightManifestScope(
+      manifest.scope,
+      manifestGroupItems(manifest),
+      db,
+      {
+        legacyAdoptionAuthorization,
+        onProgress: (completed, total) => {
+          if (completed % 100 === 0 || completed === total) {
+            console.log(`  validated ${completed}/${total} group(s)`);
+          }
+        },
       },
-    });
+    );
     console.log(
       `Scope gate passed: ${gate.cleanGroups}/${gate.totalGroups} group(s) clean, ` +
         `${gate.scopedBatchIds.length} in-scope batch(es).`,
@@ -478,7 +493,9 @@ async function main(): Promise<void> {
       `Applying manifest ${manifest.manifestId} (${manifest.groups.length} group(s)) against ` +
         `report hash ${manifest.reportHash}.`,
     );
-    const result = await applyRemediationManifest(manifest, operator);
+    const result = await applyRemediationManifest(manifest, operator, db, {
+      legacyAdoptionAuthorization,
+    });
     console.log('─'.repeat(78));
     for (const group of result.groups) {
       if (group.result === 'applied') {
@@ -554,6 +571,109 @@ async function main(): Promise<void> {
     } else {
       console.log(rendered);
     }
+    return;
+  }
+
+  // ── Read-only policy preflight ───────────────────────────────────────────
+  //
+  // The production stop point for the legacy-adoption policy. It runs the SAME
+  // shared validator the APPLY gate runs, with the SAME trusted authorization,
+  // over the UNCHANGED manifest — and then stops. There is deliberately no
+  // path from this mode into mutation: proving the manifest now authorizes is a
+  // separate decision from acting on it, and the Product Owner has to make that
+  // decision after seeing this evidence.
+  if (mode === 'policy-preflight') {
+    const manifestPath = args.manifest;
+    if (typeof manifestPath !== 'string') {
+      throw new Error('--mode policy-preflight requires --manifest <manifest.json> [--json]');
+    }
+    const manifest = loadManifest(manifestPath);
+    await preflightRemediationDatabase(manifest.scope);
+
+    const authorization = bayHillLegacyAdoptionAuthorization({
+      manifestId: manifest.manifestId,
+      reportHash: manifest.reportHash,
+      unapprovedReportHash: manifest.unapprovedReportHash,
+      groupCount: manifest.groups.length,
+    });
+
+    const evaluation = await preflightManifestScope(
+      manifest.scope,
+      manifestGroupItems(manifest),
+      db,
+      {
+        legacyAdoptionAuthorization: authorization,
+        // Report the full picture rather than throwing: a blocked group is
+        // evidence to return, not an error to hide.
+        doNotThrow: true,
+        onProgress: (completed, total) => {
+          if (completed % 100 === 0 || completed === total) {
+            console.error(`  evaluated ${completed}/${total} group(s)`);
+          }
+        },
+      },
+    );
+
+    const mappings = evaluation.groups.flatMap(group => group.mappings);
+    const classCounts = {
+      A_LEGACY_MISSING_SCOPE: mappings.filter(m => m.classification === 'A_LEGACY_MISSING_SCOPE').length,
+      B_DEMONSTRABLY_FOREIGN: mappings.filter(m => m.classification === 'B_DEMONSTRABLY_FOREIGN').length,
+      C_AMBIGUOUS: mappings.filter(m => m.classification === 'C_AMBIGUOUS').length,
+    };
+    const authorizedByPolicy = mappings.filter(m => m.authorizedByLegacyAdoptionPolicy).length;
+
+    const summary = {
+      mode: 'policy-preflight',
+      readOnly: true,
+      remediationWrites: 0,
+      policyId: authorization.policy.policyId,
+      manifestId: manifest.manifestId,
+      reportHash: manifest.reportHash,
+      unapprovedReportHash: manifest.unapprovedReportHash,
+      scope: manifest.scope,
+      totalGroups: evaluation.totalGroups,
+      authorizedGroups: evaluation.cleanGroups,
+      blockedGroups: evaluation.blockedGroups,
+      scopedBatchCount: evaluation.scopedBatchIds.length,
+      legacyAdoptionPermitted: evaluation.legacyAdoptionPermitted,
+      mappingClassDistribution: classCounts,
+      mappingsAuthorizedByLegacyPolicy: authorizedByPolicy,
+      blockedSourceExternalIds: evaluation.blockers.map(blocker => blocker.sourceExternalId),
+    };
+
+    if (args.json === true) {
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      console.log('─'.repeat(78));
+      console.log('Legacy-adoption POLICY PREFLIGHT (read-only, no writes performed)');
+      console.log(`policy ${summary.policyId}`);
+      console.log(`manifest ${summary.manifestId} (unchanged)`);
+      console.log(`report hash ${summary.reportHash}`);
+      console.log('─'.repeat(78));
+      console.log(`groups evaluated:        ${summary.totalGroups}`);
+      console.log(`groups authorized:       ${summary.authorizedGroups}`);
+      console.log(`groups blocked:          ${summary.blockedGroups}`);
+      console.log(`scoped batches:          ${summary.scopedBatchCount}`);
+      console.log(`legacyAdoptionPermitted: ${summary.legacyAdoptionPermitted}`);
+      console.log(
+        `mapping classes:         A=${classCounts.A_LEGACY_MISSING_SCOPE} ` +
+          `B=${classCounts.B_DEMONSTRABLY_FOREIGN} C=${classCounts.C_AMBIGUOUS}`,
+      );
+      console.log(`mappings authorized:     ${authorizedByPolicy}`);
+      if (evaluation.blockedGroups > 0) {
+        console.log(
+          `blocked codes: ${summary.blockedSourceExternalIds.slice(0, 20).join(', ')}` +
+            (summary.blockedSourceExternalIds.length > 20
+              ? `, +${summary.blockedSourceExternalIds.length - 20} more`
+              : ''),
+        );
+      }
+      console.log(
+        '\nSTOP POINT. No remediation writes were performed and no APPLY was attempted. ' +
+          'Return this evidence for a fresh Product Owner APPLY authorization.',
+      );
+    }
+    if (evaluation.blockedGroups > 0) process.exitCode = 1;
     return;
   }
 

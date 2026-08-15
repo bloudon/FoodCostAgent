@@ -5,8 +5,12 @@
  */
 import {
   RemediationScopeError,
-  type RemediationScope,
 } from './orderlyDuplicateRemediation';
+import type {
+  LegacyAdoptionAuthorization,
+  LegacyAdoptionPolicy,
+  RemediationScope,
+} from './orderlyRemediationScopeValidator';
 
 export const BAY_HILL_PRODUCTION_SCOPE = {
   companyId: '43abaf82-44ce-4231-9570-7a01e7c85ced',
@@ -14,6 +18,30 @@ export const BAY_HILL_PRODUCTION_SCOPE = {
   sourceSystem: 'ORDERLY',
   sourcePropertyId: '24472',
 } as const;
+
+/**
+ * Product Owner-approved exception for the unchanged Batch 1 population. It is
+ * intentionally code-owned rather than manifest-owned: a JSON edit must never
+ * broaden a legacy scope exception.
+ */
+export const BAY_HILL_LEGACY_ADOPTION_POLICY: LegacyAdoptionPolicy = {
+  policyId: 'bay-hill-batch1-legacy-scope-adoption',
+  scope: BAY_HILL_PRODUCTION_SCOPE,
+  manifestId: 'bay-hill-batch1-2026-08-15',
+  reportHash: '4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e',
+  unapprovedReportHash: 'a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a',
+  expectedGroupCount: 848,
+  expectedScopedLegacyBatchCount: 2,
+};
+
+export function bayHillLegacyAdoptionAuthorization(input: {
+  manifestId: string;
+  reportHash: string;
+  unapprovedReportHash: string;
+  groupCount: number;
+}): LegacyAdoptionAuthorization {
+  return { policy: BAY_HILL_LEGACY_ADOPTION_POLICY, ...input };
+}
 
 export function assertBayHillProductionScope(scope: RemediationScope): void {
   if (

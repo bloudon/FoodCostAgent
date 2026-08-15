@@ -96,6 +96,7 @@ export {
 import {
   assertGroupExclusiveToScope,
   resolveScopedBatches,
+  type LegacyAdoptionAuthorization,
   type RemediationScope,
 } from './orderlyRemediationScopeValidator';
 
@@ -1466,6 +1467,7 @@ export async function applyRemediationManifest(
   manifest: ApplyManifest,
   operatorId: string,
   runner: typeof db = db,
+  options: { legacyAdoptionAuthorization?: LegacyAdoptionAuthorization } = {},
 ): Promise<ApplyResult> {
   const report = await buildRemediationReport(manifest.scope, runner);
 
@@ -1612,7 +1614,13 @@ export async function applyRemediationManifest(
           // the audit record a `valuationBefore` from before an edit that the
           // recheck accepted, describing a repair that did not happen.
           const lockedBefore = lockedGroup!.valuationContribution;
-          const moved = await repointGroup(tx, manifest.scope, approval, lockedGroup!);
+          const moved = await repointGroup(
+            tx,
+            manifest.scope,
+            approval,
+            lockedGroup!,
+            options.legacyAdoptionAuthorization,
+          );
           const valuationAfter = await recomputeGroupValuation(tx, manifest.scope.companyId, [
             approval.canonicalItemId,
             ...approval.supersededItemIds,
@@ -1838,6 +1846,7 @@ async function repointGroup(
   scope: RemediationScope,
   approval: ManifestGroupApproval,
   group: RemediationGroup,
+  legacyAdoptionAuthorization?: LegacyAdoptionAuthorization,
 ): Promise<ReferenceCounts> {
   const { canonicalItemId, supersededItemIds } = approval;
   const duplicateIds = supersededItemIds;
@@ -1876,6 +1885,7 @@ async function repointGroup(
     scope,
     [canonicalItemId, ...duplicateIds],
     approval.sourceExternalId,
+    legacyAdoptionAuthorization,
   );
 
   // Immutable evidence must never be touched.

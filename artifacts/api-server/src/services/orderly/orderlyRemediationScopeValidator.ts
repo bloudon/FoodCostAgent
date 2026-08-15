@@ -33,7 +33,8 @@
  * `source_property_id` is neither automatically foreign nor automatically safe:
  * it is a blocker that carries a DIAGNOSTIC classification (see
  * `MappingScopeClass`) for a human to rule on. Nothing in this module can
- * authorize such a mapping.
+ * authorize such a mapping, unless a caller supplies a narrowly bounded,
+ * positively-evidenced legacy-adoption authorization (defined below).
  */
 
 import { and, eq, inArray, sql, type AnyColumn, type SQL } from 'drizzle-orm';
@@ -60,6 +61,35 @@ export interface RemediationScope {
   sourceSystem: string;
   /** Approved source property. Legacy pre-binding rows use ''. */
   sourcePropertyId: string;
+}
+
+/**
+ * A deliberately narrow policy approved for one historical remediation. This
+ * is data supplied by trusted operator code, not something read from a
+ * manifest: a hand-edited manifest must never be able to grant itself a scope
+ * exception.
+ */
+export interface LegacyAdoptionPolicy {
+  policyId: string;
+  scope: RemediationScope;
+  manifestId: string;
+  reportHash: string;
+  unapprovedReportHash: string;
+  expectedGroupCount: number;
+  expectedScopedLegacyBatchCount: number;
+}
+
+/**
+ * Binds a trusted legacy-adoption policy to the exact manifest presently being
+ * preflighted or applied. The validator checks every field again; merely
+ * providing this object is not permission.
+ */
+export interface LegacyAdoptionAuthorization {
+  policy: LegacyAdoptionPolicy;
+  manifestId: string;
+  reportHash: string;
+  unapprovedReportHash: string;
+  groupCount: number;
 }
 
 // ─── Batch scope resolution ───────────────────────────────────────────────────
@@ -322,10 +352,12 @@ export interface ExternalMappingEvidence {
   sourcePropertyId: string | null;
   sourceExternalId: string;
   inScope: boolean;
-  /** Only present when `inScope` is false. */
+  /** Present for a classified missing/foreign mapping, even if a narrow policy authorizes A. */
   classification: MappingScopeClass | null;
   /** Deterministic, human-readable justification for `classification`. */
   classificationReason: string | null;
+  /** True only for a positively-proven Class A mapping under an exact policy binding. */
+  authorizedByLegacyAdoptionPolicy: boolean;
 }
 
 export interface ItemProvenance {
@@ -609,6 +641,39 @@ export interface EvaluateGroupScopeOptions {
    * the decision — the violation counts come from the same queries regardless.
    */
   collectSamples?: boolean;
+  /**
+   * Trusted, manifest-bound authorization for an explicitly approved legacy
+   * adoption policy. Omit it for the default fail-closed behavior.
+   */
+  legacyAdoptionAuthorization?: LegacyAdoptionAuthorization;
+}
+
+function scopesMatch(left: RemediationScope, right: RemediationScope): boolean {
+  return (
+    left.companyId === right.companyId &&
+    left.storeId === right.storeId &&
+    left.sourceSystem === right.sourceSystem &&
+    left.sourcePropertyId === right.sourcePropertyId
+  );
+}
+
+function legacyAdoptionAuthorized(
+  authorization: LegacyAdoptionAuthorization | undefined,
+  scope: RemediationScope,
+  resolution: ScopedBatchResolution,
+): boolean {
+  if (!authorization) return false;
+  const { policy } = authorization;
+  return (
+    scopesMatch(policy.scope, scope) &&
+    authorization.manifestId === policy.manifestId &&
+    authorization.reportHash === policy.reportHash &&
+    authorization.unapprovedReportHash === policy.unapprovedReportHash &&
+    authorization.groupCount === policy.expectedGroupCount &&
+    resolution.legacyAdoptionPermitted &&
+    resolution.batches.length === policy.expectedScopedLegacyBatchCount &&
+    resolution.batches.every(batch => batch.attribution === 'adopted')
+  );
 }
 
 /**
@@ -629,6 +694,11 @@ export async function evaluateGroupScope(
   const resolution = options.resolution ?? (await resolveScopedBatches(scope, runner));
   const scopedBatchIds = resolution.batches.map(batch => batch.id);
   const wantSamples = options.collectSamples === true;
+  const mayAdoptLegacyMappings = legacyAdoptionAuthorized(
+    options.legacyAdoptionAuthorization,
+    scope,
+    resolution,
+  );
 
   // Every mapping on these items, not just the offending ones: the forensic
   // report has to show what the in-scope identity looks like to make sense of
@@ -657,22 +727,14 @@ export async function evaluateGroupScope(
   // query returned. Previously this was a `count(*)` with the predicate in SQL;
   // deriving it from the rows keeps the count and the evidence provably
   // consistent — they cannot disagree about which rows were counted.
-  const mappingOutOfSourceOrProperty = mappingRows.filter(
-    row =>
-      row.sourceSystem !== scope.sourceSystem ||
-      (row.sourcePropertyId ?? '') !== scope.sourcePropertyId,
-  );
-  const mappingOtherCompany = mappingRows.filter(row => row.companyId !== scope.companyId);
-
   const provenance = await collectItemProvenance(runner, scope, itemIds, scopedBatchIds);
 
-  const problematic = new Set([
-    ...mappingOutOfSourceOrProperty.map(row => row.id),
-    ...mappingOtherCompany.map(row => row.id),
-  ]);
-
   const mappings: ExternalMappingEvidence[] = mappingRows.map(row => {
-    const isProblem = problematic.has(row.id);
+    const failsSourceOrProperty =
+      row.sourceSystem !== scope.sourceSystem ||
+      (row.sourcePropertyId ?? '') !== scope.sourcePropertyId;
+    const failsCompany = row.companyId !== scope.companyId;
+    const isProblem = failsSourceOrProperty || failsCompany;
     if (!isProblem) {
       return {
         mappingId: row.id,
@@ -684,6 +746,7 @@ export async function evaluateGroupScope(
         inScope: true,
         classification: null,
         classificationReason: null,
+        authorizedByLegacyAdoptionPolicy: false,
       };
     }
     const verdict = classifyMapping(
@@ -697,6 +760,8 @@ export async function evaluateGroupScope(
       provenance,
       resolution.legacyAdoptionPermitted,
     );
+    const authorizedByLegacyAdoptionPolicy =
+      mayAdoptLegacyMappings && verdict.classification === 'A_LEGACY_MISSING_SCOPE';
     return {
       mappingId: row.id,
       ownerInventoryItemId: row.inventoryItemId,
@@ -704,11 +769,21 @@ export async function evaluateGroupScope(
       sourceSystem: row.sourceSystem,
       sourcePropertyId: row.sourcePropertyId,
       sourceExternalId: row.sourceExternalId,
-      inScope: false,
+      inScope: authorizedByLegacyAdoptionPolicy,
       classification: verdict.classification,
       classificationReason: verdict.reason,
+      authorizedByLegacyAdoptionPolicy,
     };
   });
+  const mappingOutOfSourceOrProperty = mappings.filter(
+    mapping =>
+      !mapping.inScope &&
+      (mapping.sourceSystem !== scope.sourceSystem ||
+        (mapping.sourcePropertyId ?? '') !== scope.sourcePropertyId),
+  );
+  const mappingOtherCompany = mappings.filter(
+    mapping => !mapping.inScope && mapping.companyId !== scope.companyId,
+  );
 
   // The remaining checks stay as counts in SQL. Their order here is FIXED and
   // is the order they appear in the stop reason; the previous implementation
@@ -811,13 +886,13 @@ export async function evaluateGroupScope(
     'EXTERNAL_MAPPING_OTHER_SOURCE_OR_PROPERTY',
     'external mappings for another source system or property',
     mappingOutOfSourceOrProperty.length,
-    mappingOutOfSourceOrProperty.slice(0, SAMPLE_LIMIT).map(row => row.id),
+    mappingOutOfSourceOrProperty.slice(0, SAMPLE_LIMIT).map(row => row.mappingId),
   );
   push(
     'EXTERNAL_MAPPING_OTHER_COMPANY',
     'external mappings owned by another company',
     mappingOtherCompany.length,
-    mappingOtherCompany.slice(0, SAMPLE_LIMIT).map(row => row.id),
+    mappingOtherCompany.slice(0, SAMPLE_LIMIT).map(row => row.mappingId),
   );
   push(
     'COUNT_LINES_OUTSIDE_SCOPE',
@@ -970,13 +1045,14 @@ export async function assertGroupExclusiveToScope(
   scope: RemediationScope,
   itemIds: string[],
   sourceExternalId = '',
+  legacyAdoptionAuthorization?: LegacyAdoptionAuthorization,
 ): Promise<void> {
   const [canonicalItemId, ...supersededItemIds] = itemIds;
   const evaluation = await evaluateGroupScope(tx, scope, {
     sourceExternalId,
     canonicalItemId,
     supersededItemIds,
-  });
+  }, { legacyAdoptionAuthorization });
   if (!evaluation.inScope) {
     throw new Error(evaluation.stopReason!);
   }
@@ -1027,6 +1103,7 @@ export interface EvaluateManifestScopeOptions {
   concurrency?: number;
   /** Invoked after each group so a long production scan can report progress. */
   onProgress?: (completed: number, total: number) => void;
+  legacyAdoptionAuthorization?: LegacyAdoptionAuthorization;
 }
 
 /**
@@ -1053,6 +1130,7 @@ export async function evaluateManifestScope(
     const evaluation = await evaluateGroupScope(runner, scope, group, {
       resolution,
       collectSamples: options.collectSamples,
+      legacyAdoptionAuthorization: options.legacyAdoptionAuthorization,
     });
     completed++;
     options.onProgress?.(completed, groups.length);

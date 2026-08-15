@@ -38,6 +38,7 @@ import {
   evaluateManifestScope,
   type ManifestGroupItems,
   type ManifestScopeEvaluation,
+  type LegacyAdoptionAuthorization,
   type RemediationScope,
 } from './orderlyRemediationScopeValidator';
 
@@ -225,6 +226,8 @@ export interface ManifestScopePreflightOptions {
    * never sets this.
    */
   doNotThrow?: boolean;
+  /** Trusted operator binding for a narrow legacy-adoption policy. */
+  legacyAdoptionAuthorization?: LegacyAdoptionAuthorization;
 }
 
 /**
@@ -254,6 +257,7 @@ export async function preflightManifestScope(
     collectSamples: options.collectSamples,
     concurrency: options.concurrency,
     onProgress: options.onProgress,
+    legacyAdoptionAuthorization: options.legacyAdoptionAuthorization,
   });
 
   if (evaluation.blockedGroups > 0 && options.doNotThrow !== true) {
