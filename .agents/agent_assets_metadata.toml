@@ -7,3 +7,31 @@ uri = "file://attached_assets/fnb-cost-pro-expo-qr.png"
 type = "image"
 title = "FnB Cost Pro Mobile — Expo QR Code"
 description = "Scan this QR code with Expo Go on Android, or with the iPhone Camera app and then open it in Expo Go."
+
+[[outputs]]
+id = "ZIXRd8LSLQlrzpPEkC_3F"
+uri = "file://reports/bay-hill-pm-review/bay-hill-pm-review-summary.md"
+type = "text"
+title = "Bay Hill PM Review Summary"
+description = "Concise, sanitized PM gate summary with distributions, valuation preflight, known examples, and excluded ambiguous groups."
+
+[[outputs]]
+id = "n4iNsI4Uetf2EzXeKYoM5"
+uri = "file://reports/bay-hill-pm-review/bay-hill-safe-candidate-detail.csv"
+type = "table"
+title = "Bay Hill SAFE_CANDIDATE Detail"
+description = "Detailed sanitized review population for all 893 SAFE_CANDIDATE groups."
+
+[[outputs]]
+id = "QkYEOyLTsAG0kUGVyDK9R"
+uri = "file://reports/bay-hill-pm-review/bay-hill-safe-candidate-item-codes.csv"
+type = "table"
+title = "Bay Hill Proposed Approval Item Codes"
+description = "Exact proposed Product Owner approval set of 893 SAFE_CANDIDATE source Item Codes."
+
+[[outputs]]
+id = "LDZ6v0--4GWDzjPtrHsuT"
+uri = "file://reports/bay-hill-pm-review/bay-hill-ambiguous-groups.csv"
+type = "table"
+title = "Bay Hill Excluded AMBIGUOUS Groups"
+description = "The four AMBIGUOUS groups, their candidate IDs, evidence, mappings, and exclusion reasons."
