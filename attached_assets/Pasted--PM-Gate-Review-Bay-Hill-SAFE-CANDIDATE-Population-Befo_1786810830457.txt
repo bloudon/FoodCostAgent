@@ -1,0 +1,119 @@
+# PM Gate — Review Bay Hill SAFE_CANDIDATE Population Before Manifest
+
+#1130 is accepted.
+
+Production discovery now returns:
+
+- groups examined: 897
+- SAFE_CANDIDATE: 893
+- AMBIGUOUS: 4
+- CONFLICT: 0
+- proposed superseded inventory items: 1,992
+- count lines affected: 1,314
+
+Do not APPLY anything yet.
+
+Before Product Owner approval of the exact remediation Item Codes, produce a sanitized review artifact from the successful production report.
+
+## 1. SAFE_CANDIDATE summary
+
+For all 893 SAFE_CANDIDATE groups provide:
+
+- source Item Code
+- source/product name
+- number of FnB inventory identities in group
+- proposed canonical inventoryItemId
+- canonical selection reason
+- number of superseded identities
+- May source-row presence
+- June source-row presence
+- number of physical locations represented
+- count lines that would repoint
+- external-mapping coverage
+- material pack/UOM compatibility result
+- expected valuation delta
+
+Do not include credentials, secrets, connection strings, or unnecessary production payloads.
+
+CSV/XLSX is acceptable for the detailed population if markdown would be unwieldy.
+
+## 2. Distribution / sanity summary
+
+Report aggregate distributions:
+
+- groups by candidate count: 2 IDs, 3 IDs, 4 IDs, 5+, etc.
+- total canonical items retained
+- total items superseded
+- groups appearing in May only
+- June only
+- both months
+- groups with one external mapping
+- groups with multiple mappings
+- groups with no mapping on duplicate siblings
+- groups with count lines
+- groups with zero count lines
+- groups whose expected valuation delta is nonzero
+
+Any SAFE_CANDIDATE with a nonzero expected valuation delta should be separately surfaced for PM review.
+
+## 3. Known-example verification
+
+Explicitly show:
+
+- Chambord
+- Sweet n Low
+- Sauce - Tabasco
+- Heavy Cream
+- Chicken - Breast
+- Mayonnaise - Extra Heavy
+
+For each, show why the proposed canonical selection is deterministic and why the siblings represent the same source item rather than genuinely different products.
+
+## 4. Review the 4 AMBIGUOUS groups
+
+Return the four ambiguous groups separately with:
+
+- source Item Code
+- item names
+- candidate IDs
+- conflicting/insufficient evidence
+- locations
+- pack/UOM evidence
+- mappings
+- why the classifier refused SAFE_CANDIDATE
+
+Do not repair them.
+
+They remain excluded from the first production manifest.
+
+## 5. Valuation preflight
+
+Before any manifest approval, calculate the expected remediation impact for:
+
+May 2026 baseline:
+$254,286.67
+
+June 2026 baseline:
+$261,007.67
+
+Expected result from identity consolidation should normally be:
+
+- source quantities unchanged
+- location evidence unchanged
+- monthly valuation delta = $0.00
+
+Surface any group that would violate that expectation.
+
+## 6. Exact approval list
+
+Produce the proposed exact list of source Item Codes comprising the 893 SAFE_CANDIDATE groups.
+
+This list is the candidate approval set.
+
+Do not interpret production classification as Product Owner approval.
+
+STOP after returning the review artifact and proposed Item Code list.
+
+No manifest.
+No APPLY.
+No production mutation.
