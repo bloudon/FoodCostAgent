@@ -6,6 +6,8 @@ import { seedDatabase } from "./seed";
 import { storage } from "./storage";
 import { initObjectStorageCleanup } from "./objectStorageCleanup";
 import { ensureAccountingClassificationSchema } from "./services/accountingClassificationMigration";
+import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
+import { db } from "./db";
 
 const rawPort = process.env["PORT"];
 
@@ -26,6 +28,23 @@ if (Number.isNaN(port) || port <= 0) {
     await initApp();
   } catch (err) {
     logger.error({ err }, "Fatal: SSO/auth initialization failed — refusing to start");
+    process.exit(1);
+  }
+
+  // The duplicate-remediation audit table and supersession columns are required
+  // before the remediation apply path can run at all: it writes its audit row in
+  // the SAME transaction as the repair, so a missing table would roll a repair
+  // back mid-flight. Unlike the fire-and-forget migrations in routes.ts, this is
+  // awaited and fatal — serving with this schema absent is a silent trap rather
+  // than a degraded feature.
+  try {
+    await ensureInventoryItemRemediationSchema(db);
+    logger.info("[Migration] inventory item remediation schema ready (supersession + audit)");
+  } catch (err) {
+    logger.error(
+      { err },
+      "Fatal: inventory item remediation schema initialization failed — refusing to start",
+    );
     process.exit(1);
   }
 

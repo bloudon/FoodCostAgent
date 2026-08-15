@@ -378,14 +378,31 @@ export const inventoryItems = pgTable("inventory_items", {
   imageUrl: text("image_url"),
   isPowerItem: integer("is_power_item").notNull().default(0), // 1 = high-cost power item for frequent tracking
   isVariableWeight: integer("is_variable_weight").notNull().default(0), // 1 = catch weight item (actual weight differs from ordered)
+  // ── Supersession (duplicate-identity remediation) ─────────────────────────
+  // Set when an accidental duplicate identity is retired in favour of a
+  // canonical item. The row is never deleted: it stays queryable so historical
+  // references and audits can still be traced back to the identity that was
+  // originally written. Server-only — never accepted from client payloads.
+  supersededByItemId: varchar("superseded_by_item_id"), // inventory_items.id that replaced this one
+  supersededAt: timestamp("superseded_at"),
+  supersededReason: text("superseded_reason"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   // Optimize company-scoped inventory queries
   companyActiveIdx: index("inventory_items_company_active_idx").on(table.companyId, table.active),
   companyNameIdx: index("inventory_items_company_name_idx").on(table.companyId, table.name),
+  supersededIdx: index("inventory_items_superseded_idx").on(table.supersededByItemId),
 }));
 
-export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, updatedAt: true, accountingAccountId: true }).extend({
+export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
+  id: true,
+  updatedAt: true,
+  accountingAccountId: true,
+  // Supersession is written only by the remediation service.
+  supersededByItemId: true,
+  supersededAt: true,
+  supersededReason: true,
+}).extend({
   categoryId: z.string().nullable().optional(),
   unitId: z.string().min(1, "Unit is required"),
   yieldPercent: z.number().min(1).max(100).default(100),
@@ -2807,3 +2824,46 @@ export const reportSubscriptionLogs = pgTable("report_subscription_logs", {
 }));
 
 export type ReportSubscriptionLog = typeof reportSubscriptionLogs.$inferSelect;
+
+// ─── Duplicate-identity remediation audit ────────────────────────────────────
+// One row per duplicate group an APPLY run attempted, successful or not.
+// This is the durable audit trail for repointing historical references onto a
+// canonical inventory item. Rows are append-only in practice: a rerun of an
+// already-remediated group writes a new `already_remediated` row rather than
+// editing the original.
+export const inventoryItemRemediationAudit = pgTable("inventory_item_remediation_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id"),
+  sourceSystem: text("source_system").notNull(),         // e.g. "ORDERLY"
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourceExternalId: text("source_external_id").notNull(), // the reliable source Item Code
+  /** Report identity this apply was authorized against. */
+  manifestId: text("manifest_id").notNull(),
+  reportHash: text("report_hash").notNull(),
+  reportVersion: text("report_version").notNull(),
+  canonicalItemId: varchar("canonical_item_id").notNull(),
+  canonicalSelectionReason: text("canonical_selection_reason").notNull(),
+  supersededItemIds: text("superseded_item_ids").array().notNull(),
+  classification: text("classification").notNull(),      // SAFE_CANDIDATE | AMBIGUOUS | CONFLICT | NOT_DEFECT_RELATED
+  /** applied | already_remediated | stopped */
+  result: text("result").notNull(),
+  failureReason: text("failure_reason"),
+  /** Per-table reference counts moved / left unchanged, evidence snapshots,
+   *  location + count-row totals, and before/after valuation contribution. */
+  referencesMoved: jsonb("references_moved").notNull(),
+  evidence: jsonb("evidence").notNull(),
+  valuationBefore: real("valuation_before"),
+  valuationAfter: real("valuation_after"),
+  valuationDelta: real("valuation_delta"),
+  operatorId: varchar("operator_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  companyIdx: index("inv_item_remediation_audit_company_idx").on(t.companyId, t.createdAt),
+  manifestIdx: index("inv_item_remediation_audit_manifest_idx").on(t.manifestId),
+  groupIdx: index("inv_item_remediation_audit_group_idx").on(
+    t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceExternalId,
+  ),
+}));
+
+export type InventoryItemRemediationAudit = typeof inventoryItemRemediationAudit.$inferSelect;

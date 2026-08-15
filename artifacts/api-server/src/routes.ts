@@ -58,6 +58,7 @@ import { listConnectorDefinitions } from "./integrations/connectorRegistry";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { cleanupMenuItemSKUs } from "./cleanup-skus";
+import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
 import { purgeCompanyData } from "./scripts/purge-company";
 import {
   insertUnitSchema,
@@ -1025,6 +1026,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[Migration] orderly_count_session_columns error:", err);
     }
   })();
+
+  // ── Orderly duplicate-identity remediation (supersession + audit) ──────────
+  // Duplicates created by the Orderly item-identity defect are deactivated and
+  // linked to their canonical item rather than deleted, so the columns below
+  // must exist before the remediation service runs. The audit table is not
+  // merely a log: remediation reads it back to recognize groups it has already
+  // repaired, so a rerun is a no-op instead of a second merge.
+  // NOTE: this schema is initialized in src/index.ts BEFORE the server listens,
+  // via ensureInventoryItemRemediationSchema, because the remediation apply path
+  // writes its audit row in the same transaction as the mutation — a missing
+  // audit table there would roll back a repair mid-flight. It deliberately does
+  // not use the unawaited fire-and-forget IIFE pattern above, which lets the
+  // server start serving while DDL is still running and swallows failures.
 
   (async function migrateMenuItemRecipes() {
     try {
