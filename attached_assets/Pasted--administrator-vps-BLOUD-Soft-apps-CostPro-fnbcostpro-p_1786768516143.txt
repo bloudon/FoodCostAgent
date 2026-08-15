@@ -1,0 +1,106 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 logs fnbcostpro --lines 50 --nostream
+[TAILING] Tailing last 50 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 50 lines:
+13|fnbcost |       at ClientRequest.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch/lib/index.js:1501:11)
+13|fnbcost |       at ClientRequest.emit (node:events:524:28)
+13|fnbcost |       at emitErrorEvent (node:_http_client:101:11)
+13|fnbcost |       at Socket.socketErrorListener (node:_http_client:504:5)
+13|fnbcost |       at Socket.emit (node:events:524:28)
+13|fnbcost |       at emitErrorNT (node:internal/streams/destroy:169:8)
+13|fnbcost |       at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:82:21) {
+13|fnbcost |     type: 'system',
+13|fnbcost |     errno: 'ECONNREFUSED',
+13|fnbcost |     code: 'ECONNREFUSED'
+13|fnbcost |   },
+13|fnbcost |   code: 'ECONNREFUSED',
+13|fnbcost |   [Symbol(gaxios-gaxios-error)]: '6.7.1'
+13|fnbcost | }
+13|fnbcost | [Recipe Cost] Cannot convert cup to case - incompatible unit types
+13|fnbcost | [Recipe Cost] Cannot convert teaspoon to case - incompatible unit types
+13|fnbcost | [Recipe Cost] Cannot convert each to pound - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=e3125d39-4a92-409e-a708-d4ae221be501 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=cb0d9854-6cbd-4292-9f60-6d8688779988
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=cde51a72-1448-4fa1-86f5-8126f86e0940 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=7a267ffd-0e8d-487e-8832-89b799f1865e
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=b8091582-4472-4a4e-b3db-0291e0460e31 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=afdec58b-0596-427d-81cd-bc358515567d
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=519bd6e9-827f-4c8e-92d0-83be9d38f8bc recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=ce4fbf6e-8961-44b5-8831-1bdccd2cf4d6
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=0717005b-c356-4e8c-a5b7-d2d88f0ea77e recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=c99f1e3d-ed40-4766-904a-9aec1cf58891
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=92069488-94fa-41e2-b8ee-198705bbc077 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=83a86480-273c-4c59-89a6-1be0f1b7ecbf
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=2144243a-9c43-495e-95ff-07ff2242f665 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=c5cb143c-30bf-4bc3-a370-2be695c4696b
+13|fnbcost | [Recipe Cost] Cannot convert cup to pound - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=f324acac-d320-465d-ab22-362d8d4c1328 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=046ff57d-c133-4b01-9791-a6095b76605a
+13|fnbcost | [Recipe Cost] Cannot convert cup to case - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=9a3645bd-f0ba-490c-9567-19571d92c311 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=cd747d44-ca95-4aa3-b831-557161e047de
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=71cba113-72bc-4fbc-bd30-92b5ea409620 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=cfbf750b-654e-41af-9803-0866662b172f
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=555b283c-1138-469a-b9e9-1035c3fa71cf recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=072d86af-53b7-4911-b53a-9cd7a9f1f6dc
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=544ab8d6-de46-46ae-8245-b3043b4018a0 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=59ae2f96-8ed5-4cbb-acb8-21b25707e6c7
+13|fnbcost | [Recipe Cost] Cannot convert cup to pound - incompatible unit types
+13|fnbcost | [Recipe Cost] Cannot convert cup to case - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=544ab8d6-de46-46ae-8245-b3043b4018a0 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=59ae2f96-8ed5-4cbb-acb8-21b25707e6c7
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=555b283c-1138-469a-b9e9-1035c3fa71cf recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=072d86af-53b7-4911-b53a-9cd7a9f1f6dc
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=9a3645bd-f0ba-490c-9567-19571d92c311 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=cd747d44-ca95-4aa3-b831-557161e047de
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=71cba113-72bc-4fbc-bd30-92b5ea409620 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=cfbf750b-654e-41af-9803-0866662b172f
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=f324acac-d320-465d-ab22-362d8d4c1328 recipeId=13f16dde-ca94-4622-baa2-00d01abf1ec0 componentRowId=046ff57d-c133-4b01-9791-a6095b76605a
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=cde51a72-1448-4fa1-86f5-8126f86e0940 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=7a267ffd-0e8d-487e-8832-89b799f1865e
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=e3125d39-4a92-409e-a708-d4ae221be501 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=cb0d9854-6cbd-4292-9f60-6d8688779988
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=519bd6e9-827f-4c8e-92d0-83be9d38f8bc recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=ce4fbf6e-8961-44b5-8831-1bdccd2cf4d6
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=b8091582-4472-4a4e-b3db-0291e0460e31 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=afdec58b-0596-427d-81cd-bc358515567d
+13|fnbcost | [Recipe Cost] Cannot convert cup to case - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=2144243a-9c43-495e-95ff-07ff2242f665 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=c5cb143c-30bf-4bc3-a370-2be695c4696b
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=0717005b-c356-4e8c-a5b7-d2d88f0ea77e recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=c99f1e3d-ed40-4766-904a-9aec1cf58891
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=92069488-94fa-41e2-b8ee-198705bbc077 recipeId=ee08d7c8-8c16-4628-a287-f527610ff926 componentRowId=83a86480-273c-4c59-89a6-1be0f1b7ecbf
+13|fnbcost | [Recipe Cost] Cannot convert each to pound - incompatible unit types
+13|fnbcost | [Recipe Cost] Cannot convert teaspoon to case - incompatible unit types
+13|fnbcost | [RecipeComponents] Missing inventory item: componentId=66837387-f753-4484-b1d9-ea8b617d1128 recipeId=386ec51e-9dd7-48c5-b526-c34a4e756883 componentRowId=5c2bffd4-1aaf-46ff-9e01-697a2cb320ce
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 50 lines:
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | {"level":30,"time":1786743175385,"pid":180035,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcost | {"level":30,"time":1786749136977,"pid":180035,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 1511ms :: []"}
+13|fnbcost | {"level":30,"time":1786762580391,"pid":180035,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 9ms :: {\"error\":\"Not authenticated\"}"}
+13|fnbcost | {"level":30,"time":1786762580397,"pid":180035,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 4ms :: {\"error\":\"Not authenticated\"}"}
+13|fnbcost | {"level":30,"time":1786762580418,"pid":180035,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 50ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+13|fnbcost | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcost | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcost | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcost | 🌱 Seeding database with pizza restaurant data...
+13|fnbcost | 📏 Seeding comprehensive kitchen units...
+13|fnbcost | ✅ All 41 comprehensive kitchen units already seeded
+13|fnbcost | ✅ Database already seeded
+13|fnbcost | ✅ All unit conversions already present
+13|fnbcost | 🏢 Creating Brian's Pizza company and stores...
+13|fnbcost | 🔗 Migrating vendors to store assignments...
+13|fnbcost |    All vendors already assigned to stores
+13|fnbcost | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Migration] Already applied (menu_item_recipes)
+13|fnbcost | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcost | [Migration] Already applied (voice_interpret_logs)
+13|fnbcost | [Migration] Already applied (operating_units_rename)
+13|fnbcost | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcost | [Migration] qb_reconciliations table ready
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | {"level":30,"time":1786768415432,"pid":252287,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Migration] Already applied (normalize_email_case)
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (preferred_language)
