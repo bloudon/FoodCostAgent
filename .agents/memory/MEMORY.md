@@ -12,3 +12,4 @@
 - [Orderly XLSX item identity](orderly-xlsx-item-identity.md) — XLSX code is property-scoped and not the API identity; the mapping row is the claim authority for every path, not just creation.
 - [Standalone entrypoint DB divergence](standalone-entrypoint-db-divergence.md) — a CLI that skips env loading picks the other driver and fails queries the API and psql run fine.
 - [Evidence-led data remediation](remediation-manifest-binding.md) — bind approval per-item plus an unapproved remainder; a unique key is not a merge key; audit rows are the idempotency mechanism.
+- [Legacy scope columns hide data](legacy-scope-column-discovery.md) — exact-match predicates on later-added nullable scope columns return a clean empty result; widen by evidence, and unify the predicate across phases.

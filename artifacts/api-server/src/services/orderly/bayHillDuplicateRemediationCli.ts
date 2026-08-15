@@ -7,6 +7,7 @@
  *
  *   # read-only readiness and discovery — safe to run against production
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode preflight
+ *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode diagnose --trace-name Tabasco
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode report
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode report --json > report.json
  *
@@ -70,8 +71,12 @@ import {
   RemediationPreconditionError,
   type RemediationPreflightResult,
 } from './orderlyDuplicateRemediationPreflight';
+import {
+  diagnoseDiscovery,
+  type DiscoveryDiagnostics,
+} from './orderlyDiscoveryDiagnostics';
 
-type Mode = 'preflight' | 'report' | 'manifest' | 'apply' | 'reconcile';
+type Mode = 'preflight' | 'diagnose' | 'report' | 'manifest' | 'apply' | 'reconcile';
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
   const out: Record<string, string | boolean> = {};
@@ -173,12 +178,96 @@ function printPreflight(result: RemediationPreflightResult): void {
   );
 }
 
+function printDiagnostics(d: DiscoveryDiagnostics): void {
+  console.log('─'.repeat(78));
+  console.log('Orderly discovery DIAGNOSE (read-only, no writes performed)');
+  console.log(
+    `scope company=${d.scope.companyId} store=${d.scope.storeId} ` +
+      `source=${d.scope.sourceSystem} property=${d.scope.sourcePropertyId}`,
+  );
+  console.log('─'.repeat(78));
+
+  console.log('Source-property bindings for this company/system:');
+  if (d.bindings.length === 0) console.log('  (none)');
+  for (const binding of d.bindings) {
+    console.log(
+      `  property=${binding.sourcePropertyId} → store=${binding.destinationStoreId} ` +
+        `active=${binding.active} label=${binding.label ?? 'n/a'}`,
+    );
+  }
+
+  console.log('\nDiscovery batch predicate funnel (each stage adds one condition):');
+  console.log(`  company + source system:        ${d.funnel.companyAndSystem}`);
+  console.log(`  + status = approved:            ${d.funnel.plusApproved}`);
+  console.log(`  + target_store_id = scope:      ${d.funnel.plusTargetStore}`);
+  console.log(`  + source_property_id = scope:   ${d.funnel.plusSourceProperty}`);
+  console.log(`  = batches discovery selects:    ${d.funnel.discoverySelected}`);
+
+  console.log('\nStored source_property_id values on batches:');
+  for (const row of d.distinctBatchProperties) {
+    const shown = row.value === null ? 'NULL' : row.value === '' ? '(empty string)' : row.value;
+    console.log(`  ${shown}: ${row.batches} batch(es)`);
+  }
+  console.log('Stored source_property_id values on external mappings:');
+  if (d.distinctMappingProperties.length === 0) console.log('  (none)');
+  for (const row of d.distinctMappingProperties) {
+    const shown = row.value === null ? 'NULL' : row.value === '' ? '(empty string)' : row.value;
+    console.log(`  ${shown}: ${row.mappings} mapping(s)`);
+  }
+
+  console.log('\nApproved batches and their scope columns:');
+  for (const batch of d.batches.filter(b => b.status === 'approved')) {
+    console.log(
+      `  ${batch.batchId} date=${batch.inventoryDate ?? 'n/a'} rows=${batch.rowCount} ` +
+        `store=${batch.targetStoreId ?? 'NULL'} property=${batch.sourcePropertyId ?? 'NULL'} ` +
+        `binding=${batch.sourcePropertyBindingId ?? 'NULL'}`,
+    );
+  }
+
+  console.log(`\nTraced item code: ${d.tracedCode ?? '(none found)'}`);
+  console.log(`Items matching the traced name: ${d.tracedByName.length}`);
+  if (d.tracedRows.length > 0) {
+    console.log('Import rows carrying that code:');
+    for (const row of d.tracedRows) {
+      console.log(
+        `  batch=${row.batchId} row=${row.rowIndex} codeStatus=${row.itemCodeStatus ?? 'n/a'} ` +
+          `resolved=${row.resolvedInventoryItemId ?? 'UNRESOLVED'} ` +
+          `batchStatus=${row.batchStatus} batchStore=${row.batchTargetStoreId ?? 'NULL'} ` +
+          `batchProperty=${row.batchSourcePropertyId ?? 'NULL'} date=${row.batchInventoryDate ?? 'n/a'}`,
+      );
+      console.log(
+        `      desc=${row.cleanedDescription ?? 'n/a'} location=${row.storageLocation ?? 'n/a'}`,
+      );
+    }
+  }
+  if (d.tracedItems.length > 0) {
+    console.log('Distinct inventory identities involved:');
+    for (const item of d.tracedItems) {
+      const mapped = item.mappings
+        .map(m => `${m.sourceExternalId}@${m.sourcePropertyId === '' ? '(legacy)' : m.sourcePropertyId}`)
+        .join(', ');
+      console.log(
+        `  ${item.itemId} "${item.name}" active=${item.active} ` +
+          `superseded=${item.supersededByItemId ?? 'none'} countLines=${item.countLines} ` +
+          `sessions=${item.countSessions} importRows=${item.importRows}`,
+      );
+      console.log(`      mappings: ${mapped || 'NONE'}`);
+    }
+  }
+
+  console.log('\nVerdict:');
+  console.log(`  ${d.exclusionVerdict}`);
+  console.log('\nNo changes were made.');
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const mode = (args.mode as Mode) ?? 'report';
 
-  if (!['preflight', 'report', 'manifest', 'apply', 'reconcile'].includes(mode)) {
-    throw new Error(`Unknown --mode ${String(args.mode)}. Use preflight | report | manifest | apply | reconcile.`);
+  if (!['preflight', 'diagnose', 'report', 'manifest', 'apply', 'reconcile'].includes(mode)) {
+    throw new Error(
+      `Unknown --mode ${String(args.mode)}. Use preflight | diagnose | report | manifest | apply | reconcile.`,
+    );
   }
 
   // ── Manifest generation needs no DB scope resolution ─────────────────────
@@ -294,6 +383,21 @@ async function main(): Promise<void> {
   }
 
   assertBayHillProductionScope(requestedScope);
+
+  // Diagnose deliberately runs BEFORE resolveScope and before preflight. Both
+  // of those passed while discovery still returned zero groups, so neither can
+  // be trusted to explain the exclusion; this mode reads raw columns instead.
+  if (mode === 'diagnose') {
+    const traceName = typeof args['trace-name'] === 'string' ? args['trace-name'] : 'Tabasco';
+    const diagnostics = await diagnoseDiscovery(requestedScope, traceName);
+    if (args.json === true) {
+      console.log(JSON.stringify(diagnostics, null, 2));
+    } else {
+      printDiagnostics(diagnostics);
+    }
+    return;
+  }
+
   const scope = await resolveScope(requestedScope);
   const preflight = await preflightRemediationDatabase(scope);
 
