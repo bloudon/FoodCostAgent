@@ -1,11 +1,45 @@
 /**
  * Read-only database readiness checks shared by remediation operator entry
- * points. This module deliberately has no customer, source-system, or property
- * assumptions; a production CLI owns that authorization boundary.
+ * points, plus the manifest-aware scope gate added by Task #1141.
+ *
+ * There are two layers here and they answer different questions:
+ *
+ *   - `preflightRemediationDatabase` — is this DATABASE ready? Schema objects,
+ *     audit table, and an active source-property binding. It deliberately has no
+ *     customer or manifest assumptions.
+ *
+ *   - `preflightManifestScope` — is this MANIFEST applicable? It runs THE
+ *     authoritative scope validator over every approved group and refuses the
+ *     manifest as a whole if any group anywhere would be blocked.
+ *
+ * The second exists because a production APPLY once discovered cross-property
+ * external mappings only after mutation had begun. It stopped correctly and
+ * changed nothing, but the blockers were visible to a read-only query all along
+ * — they were simply never asked for until the mutation path asked, one group at
+ * a time. The rule that follows from that incident:
+ *
+ *   APPLY must never discover a scope blocker that manifest-aware read-only
+ *   preflight could have discovered first.
+ *
+ * That is only guaranteed because both paths call the same
+ * `evaluateGroupScope` in `orderlyRemediationScopeValidator`, not two
+ * implementations intended to agree.
+ *
+ * Every statement in this module is SELECT-only. It must never call the schema
+ * migrator, open a write transaction, or mutate remediation state.
  */
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { type RemediationScope } from './orderlyDuplicateRemediation';
+import {
+  inventoryItemRemediationAudit,
+  inventoryItems,
+} from '@workspace/db';
+import {
+  evaluateManifestScope,
+  type ManifestGroupItems,
+  type ManifestScopeEvaluation,
+  type RemediationScope,
+} from './orderlyRemediationScopeValidator';
 
 export class RemediationPreconditionError extends Error {
   readonly code = 'PRECONDITION_FAILED';
@@ -13,6 +47,26 @@ export class RemediationPreconditionError extends Error {
   constructor(message: string) {
     super(`[PRECONDITION_FAILED] ${message}`);
     this.name = 'RemediationPreconditionError';
+  }
+}
+
+/**
+ * Raised when the database is ready but the MANIFEST cannot be applied: one or
+ * more approved groups would be stopped by the scope validator.
+ *
+ * Distinct from `RemediationPreconditionError` because the remedy is different.
+ * A precondition failure is fixed by deploying a migration; this one is a
+ * product/authorization decision about specific groups, and carries the full
+ * blocker set so that decision can be made once instead of per failed run.
+ */
+export class RemediationManifestBlockedError extends Error {
+  readonly code = 'MANIFEST_BLOCKED';
+  readonly evaluation: ManifestScopeEvaluation;
+
+  constructor(message: string, evaluation: ManifestScopeEvaluation) {
+    super(`[MANIFEST_BLOCKED] ${message}`);
+    this.name = 'RemediationManifestBlockedError';
+    this.evaluation = evaluation;
   }
 }
 
@@ -155,5 +209,212 @@ export async function preflightRemediationDatabase(
     verifiedTables: [...REQUIRED_TABLES],
     verifiedColumns: REQUIRED_COLUMNS.map(([table, column]) => `${table}.${column}`),
     verifiedIndexes: [...REQUIRED_INDEXES],
+  };
+}
+
+// ─── Manifest-aware scope gate ────────────────────────────────────────────────
+
+export interface ManifestScopePreflightOptions {
+  /** Collect bounded offending-row samples for the forensic report. */
+  collectSamples?: boolean;
+  concurrency?: number;
+  onProgress?: (completed: number, total: number) => void;
+  /**
+   * Return the evaluation instead of throwing on blockers. Used by the forensic
+   * report, which must show the full picture rather than fail. The APPLY gate
+   * never sets this.
+   */
+  doNotThrow?: boolean;
+}
+
+/**
+ * The all-manifest gate.
+ *
+ * Inspects EVERY group with the same validator APPLY uses, collects EVERY
+ * blocker, and refuses the manifest as a whole if even one group is blocked.
+ * This is deliberately not per-group lazy validation: a manifest with one bad
+ * group in position 800 must fail before group 1 is mutated, so that a partial
+ * application never encodes a decision nobody made.
+ *
+ * Performs zero mutation — no writes, no transaction, SELECTs only.
+ */
+export async function preflightManifestScope(
+  scope: RemediationScope,
+  groups: ManifestGroupItems[],
+  runner: typeof db = db,
+  options: ManifestScopePreflightOptions = {},
+): Promise<ManifestScopeEvaluation> {
+  if (groups.length === 0) {
+    throw new RemediationPreconditionError(
+      'Manifest contains no approved groups, so there is nothing to validate.',
+    );
+  }
+
+  const evaluation = await evaluateManifestScope(runner, scope, groups, {
+    collectSamples: options.collectSamples,
+    concurrency: options.concurrency,
+    onProgress: options.onProgress,
+  });
+
+  if (evaluation.blockedGroups > 0 && options.doNotThrow !== true) {
+    const codes = evaluation.blockers.map(blocker => blocker.sourceExternalId);
+    const shown = codes.slice(0, 10).join(', ');
+    const overflow = codes.length > 10 ? `, +${codes.length - 10} more` : '';
+    throw new RemediationManifestBlockedError(
+      `${evaluation.blockedGroups} of ${evaluation.totalGroups} approved group(s) are blocked by ` +
+        `the scope validator and would stop during APPLY: ${shown}${overflow}. No group may be ` +
+        'remediated while any blocker exists in the manifest — the approval covers one property’s ' +
+        'data and these groups reference records outside it. Run --mode forensics for the full ' +
+        'per-group evidence and A/B/C classification.',
+      evaluation,
+    );
+  }
+
+  return evaluation;
+}
+
+// ─── Suspended-run mutation verification ──────────────────────────────────────
+
+export interface SuspendedRunVerification {
+  manifestId: string;
+  scope: RemediationScope;
+  /** Audit outcome counts for THIS manifest only. */
+  auditCounts: { applied: number; alreadyRemediated: number; stopped: number };
+  /** Distinct source codes with a stopped row, sorted. */
+  stoppedSourceExternalIds: string[];
+  /** Distinct failure reasons recorded for this manifest, sorted. */
+  failureReasons: string[];
+  /**
+   * Items superseded by an APPLIED audit row of this manifest. Empty is the
+   * expected result for a run that applied nothing.
+   */
+  supersededItemIds: string[];
+  /**
+   * Items named as canonical/superseded ANYWHERE in this manifest that are now
+   * superseded in the database. This catches supersession attributable to the
+   * manifest's item population even if no audit row claims it.
+   */
+  unexpectedlySupersededItemIds: string[];
+  /** True only when every mutation-free condition holds. */
+  mutationFree: boolean;
+  /** Human-readable reasons `mutationFree` is false. */
+  findings: string[];
+}
+
+/**
+ * Verifies that a specific attempted manifest mutated nothing.
+ *
+ * Bounded to the manifest under investigation on purpose. Inferring safety from
+ * aggregate production state ("no items look superseded") would prove nothing:
+ * it cannot distinguish this run's effects from a legitimate earlier repair, and
+ * it silently passes when the population it scanned was the wrong one. So every
+ * question here is asked as "…caused by THIS manifest id", plus one broader
+ * check over exactly the item ids this manifest named.
+ *
+ * Read-only.
+ */
+export async function verifySuspendedRunMutationFree(
+  scope: RemediationScope,
+  manifestId: string,
+  manifestGroups: ManifestGroupItems[],
+  runner: typeof db = db,
+): Promise<SuspendedRunVerification> {
+  const auditRows = (await runner
+    .select({
+      result: inventoryItemRemediationAudit.result,
+      sourceExternalId: inventoryItemRemediationAudit.sourceExternalId,
+      failureReason: inventoryItemRemediationAudit.failureReason,
+      canonicalItemId: inventoryItemRemediationAudit.canonicalItemId,
+      supersededItemIds: inventoryItemRemediationAudit.supersededItemIds,
+    })
+    .from(inventoryItemRemediationAudit)
+    .where(
+      and(
+        eq(inventoryItemRemediationAudit.companyId, scope.companyId),
+        eq(inventoryItemRemediationAudit.sourceSystem, scope.sourceSystem),
+        eq(inventoryItemRemediationAudit.sourcePropertyId, scope.sourcePropertyId),
+        eq(inventoryItemRemediationAudit.manifestId, manifestId),
+      ),
+    )) as Array<{
+    result: string;
+    sourceExternalId: string;
+    failureReason: string | null;
+    canonicalItemId: string;
+    supersededItemIds: string[];
+  }>;
+
+  const auditCounts = {
+    applied: auditRows.filter(row => row.result === 'applied').length,
+    alreadyRemediated: auditRows.filter(row => row.result === 'already_remediated').length,
+    stopped: auditRows.filter(row => row.result === 'stopped').length,
+  };
+
+  const appliedItemIds = [
+    ...new Set(
+      auditRows
+        .filter(row => row.result === 'applied')
+        .flatMap(row => row.supersededItemIds ?? []),
+    ),
+  ].sort();
+
+  // Every item this manifest could possibly have touched, whether or not an
+  // audit row mentions it. A repair that committed without its audit row is
+  // exactly the failure mode an audit-only check cannot see.
+  const manifestItemIds = [
+    ...new Set(
+      manifestGroups.flatMap(group => [group.canonicalItemId, ...group.supersededItemIds]),
+    ),
+  ];
+
+  const supersededNow =
+    manifestItemIds.length === 0
+      ? []
+      : ((await runner
+          .select({ id: inventoryItems.id })
+          .from(inventoryItems)
+          .where(
+            and(
+              eq(inventoryItems.companyId, scope.companyId),
+              inArray(inventoryItems.id, manifestItemIds),
+              sql`${inventoryItems.supersededByItemId} is not null`,
+            ),
+          )
+          .orderBy(inventoryItems.id)) as Array<{ id: string }>);
+
+  const unexpectedlySupersededItemIds = supersededNow.map(row => row.id);
+
+  const findings: string[] = [];
+  if (auditCounts.applied > 0) {
+    findings.push(`${auditCounts.applied} APPLIED audit row(s) exist for this manifest`);
+  }
+  if (auditCounts.alreadyRemediated > 0) {
+    findings.push(
+      `${auditCounts.alreadyRemediated} ALREADY_REMEDIATED audit row(s) exist for this manifest`,
+    );
+  }
+  if (appliedItemIds.length > 0) {
+    findings.push(`${appliedItemIds.length} item(s) were superseded by an APPLIED row`);
+  }
+  if (unexpectedlySupersededItemIds.length > 0) {
+    findings.push(
+      `${unexpectedlySupersededItemIds.length} item(s) named by this manifest are superseded in ` +
+        'the database',
+    );
+  }
+
+  return {
+    manifestId,
+    scope,
+    auditCounts,
+    stoppedSourceExternalIds: [
+      ...new Set(auditRows.filter(row => row.result === 'stopped').map(row => row.sourceExternalId)),
+    ].sort(),
+    failureReasons: [
+      ...new Set(auditRows.map(row => row.failureReason).filter((r): r is string => r != null)),
+    ].sort(),
+    supersededItemIds: appliedItemIds,
+    unexpectedlySupersededItemIds,
+    mutationFree: findings.length === 0,
+    findings,
   };
 }

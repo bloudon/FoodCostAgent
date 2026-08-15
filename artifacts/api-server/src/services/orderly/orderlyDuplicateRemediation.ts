@@ -25,7 +25,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray, isNotNull, sql, type AnyColumn, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   companyStores,
@@ -33,7 +33,6 @@ import {
   importSourcePropertyBindings,
   inventoryCountLines,
   inventoryCounts,
-  inventoryImportBatches,
   inventoryImportRows,
   inventoryItemExternalMappings,
   inventoryItemLocationAssignments,
@@ -70,14 +69,35 @@ export type GroupClassification =
   | 'CONFLICT'
   | 'NOT_DEFECT_RELATED';
 
-export interface RemediationScope {
-  companyId: string;
-  /** Destination store bound to the source property. */
-  storeId: string;
-  sourceSystem: string;
-  /** Approved source property. Legacy pre-binding rows use ''. */
-  sourcePropertyId: string;
-}
+/**
+ * Scope and the scope decision live in `orderlyRemediationScopeValidator`, which
+ * is THE authoritative validator shared by this service's APPLY path and the
+ * manifest-aware preflight. They are re-exported here so existing importers keep
+ * working, but there is exactly one implementation — see that module's header
+ * for why a second copy is not permitted.
+ */
+export type {
+  RemediationScope,
+  ScopedBatch,
+  ScopedBatchResolution,
+  GroupScopeEvaluation,
+  ManifestScopeEvaluation,
+  MappingScopeClass,
+  ExternalMappingEvidence,
+  ScopeViolation,
+} from './orderlyRemediationScopeValidator';
+export {
+  resolveScopedBatches,
+  evaluateGroupScope,
+  evaluateManifestScope,
+  describeScopeViolations,
+} from './orderlyRemediationScopeValidator';
+
+import {
+  assertGroupExclusiveToScope,
+  resolveScopedBatches,
+  type RemediationScope,
+} from './orderlyRemediationScopeValidator';
 
 /** Downstream references, counted per table. */
 export interface ReferenceCounts {
@@ -449,211 +469,6 @@ export async function resolveScope(
   };
 }
 
-// ─── Batch scope resolution ───────────────────────────────────────────────────
-
-export interface ScopedBatch {
-  id: string;
-  inventoryDate: string | null;
-  approvedAt: Date | null;
-  uploadedAt: Date;
-  /**
-   * How this batch entered scope. `bound` batches carry the scope columns
-   * themselves; `adopted` batches are legacy pre-binding batches attributed by
-   * count-session evidence.
-   */
-  attribution: 'bound' | 'adopted';
-}
-
-/**
- * `NOT IN (...)` over a resolved batch-id set, for the fail-closed provenance
- * checks. An empty set means nothing is in scope, so everything is a violation
- * — expressed as `true` rather than an empty `NOT IN`, which SQL would
- * evaluate the wrong way round.
- */
-function batchNotInScope(column: SQL | AnyColumn, scopedBatchIds: string[]): SQL {
-  if (scopedBatchIds.length === 0) return sql`true`;
-  return sql`${column} not in (${sql.join(
-    scopedBatchIds.map(id => sql`${id}`),
-    sql`, `,
-  )})`;
-}
-
-export interface ScopedBatchResolution {
-  batches: ScopedBatch[];
-  /**
-   * True when legacy unset-scope batches may be attributed to this scope at
-   * all: this scope's property is the ONLY active source property bound to this
-   * store, so a batch proven to belong to this store has no other possible
-   * property owner.
-   */
-  legacyAdoptionPermitted: boolean;
-  /** Batches skipped despite matching company/system/approved, with a reason. */
-  rejected: Array<{ id: string; reason: string }>;
-}
-
-/**
- * Resolves which approved import batches belong to a remediation scope.
- *
- * The original implementation required `target_store_id` and
- * `source_property_id` to equal the scope exactly. Both columns were added with
- * the source-property binding contract, so batches imported BEFORE that contract
- * carry NULL in one or both. Requiring an exact match silently excluded every
- * legacy batch — the rows, and therefore every duplicate identity that only
- * legacy provenance can prove, were invisible to discovery before a single row
- * was examined.
- *
- * Widening the predicate to "NULL matches anything" would be wrong: two Orderly
- * properties can feed the same store, and two stores can exist in one company,
- * so an unset batch is genuinely ambiguous in the general case. Instead, a
- * legacy batch is adopted only when BOTH hold:
- *
- *   1. This property is the ONLY active source property bound to this store.
- *      If a second property also feeds this store, an unset batch proven to
- *      belong to the store is still ambiguous between them, and none is
- *      adopted. Bindings pointing at OTHER stores are irrelevant here —
- *      condition 2 already rules those out per batch.
- *   2. The individual batch is positively attributable — every count session
- *      sourced from it belongs to this company and store, and at least one such
- *      session exists. Absence of evidence is not evidence: a batch with no
- *      sessions is left out rather than assumed.
- *
- * Together these mean an adopted batch is provably this store's, and this store
- * has exactly one property it could have come from.
- *
- * A batch whose columns are SET to a different store or property is never
- * adopted; only unset columns are resolved this way.
- */
-export async function resolveScopedBatches(
-  scope: RemediationScope,
-  runner: typeof db = db,
-): Promise<ScopedBatchResolution> {
-  const candidates = (await runner
-    .select({
-      id: inventoryImportBatches.id,
-      inventoryDate: inventoryImportBatches.inventoryDate,
-      approvedAt: inventoryImportBatches.approvedAt,
-      uploadedAt: inventoryImportBatches.uploadedAt,
-      targetStoreId: inventoryImportBatches.targetStoreId,
-      sourcePropertyId: inventoryImportBatches.sourcePropertyId,
-    })
-    .from(inventoryImportBatches)
-    .where(
-      and(
-        eq(inventoryImportBatches.companyId, scope.companyId),
-        eq(inventoryImportBatches.sourceSystem, scope.sourceSystem),
-        eq(inventoryImportBatches.status, 'approved'),
-      ),
-    )) as Array<{
-    id: string;
-    inventoryDate: string | null;
-    approvedAt: Date | null;
-    uploadedAt: Date;
-    targetStoreId: string | null;
-    sourcePropertyId: string | null;
-  }>;
-
-  // Condition 1: is this property the only one that feeds THIS store? Bindings
-  // for other stores are deliberately not considered — a batch is only adopted
-  // once condition 2 has proven it belongs to this store, at which point the
-  // only remaining ambiguity is between properties feeding that same store.
-  const storeBindings = (await runner
-    .select({ sourcePropertyId: importSourcePropertyBindings.sourcePropertyId })
-    .from(importSourcePropertyBindings)
-    .where(
-      and(
-        eq(importSourcePropertyBindings.companyId, scope.companyId),
-        eq(importSourcePropertyBindings.sourceSystem, scope.sourceSystem),
-        eq(importSourcePropertyBindings.destinationStoreId, scope.storeId),
-        eq(importSourcePropertyBindings.active, 1),
-      ),
-    )) as Array<{ sourcePropertyId: string }>;
-
-  const legacyAdoptionPermitted =
-    storeBindings.length === 1 && storeBindings[0].sourcePropertyId === scope.sourcePropertyId;
-
-  const batches: ScopedBatch[] = [];
-  const rejected: Array<{ id: string; reason: string }> = [];
-  const needsEvidence: typeof candidates = [];
-
-  for (const batch of candidates) {
-    const storeSet = batch.targetStoreId != null && batch.targetStoreId !== '';
-    const propertySet = batch.sourcePropertyId != null && batch.sourcePropertyId !== '';
-
-    if (storeSet && batch.targetStoreId !== scope.storeId) {
-      rejected.push({ id: batch.id, reason: 'batch is bound to a different destination store' });
-      continue;
-    }
-    if (propertySet && batch.sourcePropertyId !== scope.sourcePropertyId) {
-      rejected.push({ id: batch.id, reason: 'batch is bound to a different source property' });
-      continue;
-    }
-    if (storeSet && propertySet) {
-      batches.push({ ...batch, attribution: 'bound' });
-      continue;
-    }
-    // At least one scope column is unset — legacy pre-binding batch.
-    if (!legacyAdoptionPermitted) {
-      rejected.push({
-        id: batch.id,
-        reason:
-          'legacy batch has unset scope columns and this company/source system has more than one ' +
-          'active binding, so its owner is ambiguous',
-      });
-      continue;
-    }
-    needsEvidence.push(batch);
-  }
-
-  // Condition 2: positive count-session attribution, per batch.
-  if (needsEvidence.length > 0) {
-    const evidence = (await runner
-      .select({
-        batchId: inventoryCounts.sourceBatchId,
-        total: sql<number>`count(*)`,
-        inScope: sql<number>`count(*) filter (
-          where ${inventoryCounts.companyId} = ${scope.companyId}
-            and ${inventoryCounts.storeId} = ${scope.storeId}
-        )`,
-      })
-      .from(inventoryCounts)
-      .where(
-        inArray(
-          inventoryCounts.sourceBatchId,
-          needsEvidence.map(batch => batch.id),
-        ),
-      )
-      .groupBy(inventoryCounts.sourceBatchId)) as Array<{
-      batchId: string | null;
-      total: number | string;
-      inScope: number | string;
-    }>;
-
-    const byBatch = new Map(
-      evidence.map(row => [row.batchId ?? '', { total: Number(row.total), inScope: Number(row.inScope) }]),
-    );
-
-    for (const batch of needsEvidence) {
-      const seen = byBatch.get(batch.id);
-      if (!seen || seen.total === 0) {
-        rejected.push({
-          id: batch.id,
-          reason: 'legacy batch has no count sessions, so it cannot be attributed to this store',
-        });
-        continue;
-      }
-      if (seen.inScope !== seen.total) {
-        rejected.push({
-          id: batch.id,
-          reason: 'legacy batch has count sessions at another store or company',
-        });
-        continue;
-      }
-      batches.push({ ...batch, attribution: 'adopted' });
-    }
-  }
-
-  return { batches, legacyAdoptionPermitted, rejected };
-}
 
 /**
  * Reads the configuration values a merge could silently discard, as a sorted,
@@ -2046,8 +1861,22 @@ async function repointGroup(
     );
   }
 
-  // The scope boundary must hold at mutation time, not just at discovery.
-  await assertGroupExclusiveToScope(tx, scope, [canonicalItemId, ...duplicateIds]);
+  // Defence in depth. Manifest-aware preflight has already run this exact
+  // decision over every group in the manifest and refused the whole manifest if
+  // any group failed — but preflight proved the manifest was clean when it ran,
+  // not that it is still clean now. This re-runs THE SAME shared validator
+  // inside the serializable transaction, under the evidence locks taken above,
+  // so a boundary that moved after preflight stops the group before mutation.
+  //
+  // If this ever fires for a manifest a just-completed preflight passed against
+  // unchanged data, that is a correctness defect in the shared validator, not a
+  // routine stop — the two call sites run the same code over the same evidence.
+  await assertGroupExclusiveToScope(
+    tx,
+    scope,
+    [canonicalItemId, ...duplicateIds],
+    approval.sourceExternalId,
+  );
 
   // Immutable evidence must never be touched.
   const [invoiceEvidence] = (await tx
@@ -2699,147 +2528,6 @@ async function lockGroupEvidence(
     .for('update');
 }
 
-async function assertGroupExclusiveToScope(
-  tx: typeof db,
-  scope: RemediationScope,
-  itemIds: string[],
-): Promise<void> {
-  const violations: string[] = [];
-  const countOutside = async (
-    label: string,
-    query: Promise<Array<{ n: number | string }>>,
-  ): Promise<void> => {
-    const [row] = await query;
-    const n = Number(row?.n ?? 0);
-    if (n > 0) violations.push(`${label} (${n})`);
-  };
-
-  // Resolved inside the transaction, using the SAME rule discovery used. If
-  // this check recomputed the scope from raw columns it would disagree with
-  // discovery about legacy batches, and every group found through legacy
-  // provenance would be permanently unrepairable.
-  const { batches: scopedBatches } = await resolveScopedBatches(scope, tx);
-  const scopedBatchIds = scopedBatches.map(batch => batch.id);
-
-  await Promise.all([
-    countOutside(
-      'store inventory rows for another store',
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(storeInventoryItems)
-        .where(
-          and(
-            inArray(storeInventoryItems.inventoryItemId, itemIds),
-            sql`${storeInventoryItems.storeId} <> ${scope.storeId}`,
-          ),
-        ) as any,
-    ),
-    countOutside(
-      'external mappings for another source system or property',
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(inventoryItemExternalMappings)
-        .where(
-          and(
-            inArray(inventoryItemExternalMappings.inventoryItemId, itemIds),
-            sql`(${inventoryItemExternalMappings.sourceSystem} <> ${scope.sourceSystem}
-                 or coalesce(${inventoryItemExternalMappings.sourcePropertyId}, '')
-                    <> ${scope.sourcePropertyId})`,
-          ),
-        ) as any,
-    ),
-    countOutside(
-      'count lines in a session outside the approved store or source property',
-      // Count history is the most sensitive thing this tool moves, so it is
-      // checked through the SAME provenance chain as import rows, not just by
-      // store. Two Orderly properties can legitimately feed the SAME store, so
-      // a store-only check would let a Bay Hill approval repoint another
-      // property's count lines — `repointGroup` moves them by item id, and the
-      // item is company-level, so nothing downstream would catch it.
-      //
-      // Fail closed: a session qualifies only if its source batch is one of the
-      // batches RESOLVED into this scope. A session with no batch provenance
-      // (manual count), a dangling batch id, or a batch belonging to another
-      // property cannot be attributed to the approved property, so it stops the
-      // group for a human to review rather than being assumed safe. The
-      // coalesce is what keeps a NULL source batch failing rather than
-      // evaluating to NULL and quietly passing the NOT IN test.
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(inventoryCountLines)
-        .innerJoin(
-          inventoryCounts,
-          eq(inventoryCounts.id, inventoryCountLines.inventoryCountId),
-        )
-        .where(
-          and(
-            inArray(inventoryCountLines.inventoryItemId, itemIds),
-            sql`(${inventoryCounts.storeId} <> ${scope.storeId}
-                 or ${inventoryCounts.companyId} <> ${scope.companyId}
-                 or ${batchNotInScope(
-                   sql`coalesce(${inventoryCounts.sourceBatchId}, '')`,
-                   scopedBatchIds,
-                 )})`,
-          ),
-        ) as any,
-    ),
-    countOutside(
-      'import rows from a batch outside the approved scope',
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(inventoryImportRows)
-        .where(
-          and(
-            inArray(inventoryImportRows.resolvedInventoryItemId, itemIds),
-            // Mirrors discovery exactly: a row is in scope only if its batch is
-            // one discovery resolved. Rows attached to a pending, rejected, or
-            // differently-bound batch were never reviewed under this approval,
-            // so consolidating their provenance onto the canonical is out of
-            // scope and stops the group.
-            batchNotInScope(
-              sql`coalesce(${inventoryImportRows.batchId}, '')`,
-              scopedBatchIds,
-            ),
-          ),
-        ) as any,
-    ),
-    countOutside(
-      'waste logs at another store',
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(wasteLogs)
-        .where(
-          and(
-            inArray(wasteLogs.inventoryItemId, itemIds),
-            sql`${wasteLogs.storeId} <> ${scope.storeId}`,
-          ),
-        ) as any,
-    ),
-    countOutside(
-      'transfers involving another store',
-      tx
-        .select({ n: sql<number>`count(*)` })
-        .from(transferLogs)
-        .where(
-          and(
-            inArray(transferLogs.inventoryItemId, itemIds),
-            sql`(${transferLogs.fromStoreId} <> ${scope.storeId}
-                 or ${transferLogs.toStoreId} <> ${scope.storeId})`,
-          ),
-        ) as any,
-    ),
-  ]);
-
-  if (violations.length > 0) {
-    throw new Error(
-      `OUT_OF_SCOPE_REFERENCE: this group's items are referenced outside the approved scope ` +
-        `(store ${scope.storeId}, ${scope.sourceSystem} property ` +
-        `${scope.sourcePropertyId || 'legacy'}): ${violations.join('; ')}. Approval covers one ` +
-        'property’s data, so merging would rewrite records it does not authorize — stopping ' +
-        'this group without mutation.',
-    );
-  }
-}
 
 /**
  * Recomputes `store_inventory_items.on_hand_qty` for the canonical item from the

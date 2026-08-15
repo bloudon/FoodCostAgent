@@ -23,6 +23,14 @@
  *   # post-apply verification
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode reconcile
  *
+ *   # complete read-only blocker evidence for a manifest that cannot be applied
+ *   pnpm --filter @workspace/api-server run orderly:remediate -- \
+ *     --mode forensics --manifest manifest.json --out forensics.txt
+ *
+ *   # prove a suspended run mutated nothing, bounded to its manifest id
+ *   pnpm --filter @workspace/api-server run orderly:remediate -- \
+ *     --mode verify-suspended --manifest manifest.json
+ *
  * The scope is hard-locked to Bay Hill CC — company, store, source system AND
  * the approved source property, since the property is what decides which data a
  * run touches. `--company` / `--store` / `--source-property` are accepted only
@@ -44,6 +52,7 @@
 import 'dotenv/config';
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { db } from '../../db';
 import {
   applyRemediationManifest,
   BAY_HILL_PERIOD_EXPECTATIONS,
@@ -67,16 +76,111 @@ import {
   BAY_HILL_PRODUCTION_SCOPE,
 } from './bayHillDuplicateRemediationGuard';
 import {
+  preflightManifestScope,
   preflightRemediationDatabase,
+  RemediationManifestBlockedError,
   RemediationPreconditionError,
+  verifySuspendedRunMutationFree,
   type RemediationPreflightResult,
+  type SuspendedRunVerification,
 } from './orderlyDuplicateRemediationPreflight';
+import {
+  buildForensicReport,
+  formatForensicReport,
+} from './orderlyRemediationForensics';
+import type { ManifestGroupItems } from './orderlyRemediationScopeValidator';
 import {
   diagnoseDiscovery,
   type DiscoveryDiagnostics,
 } from './orderlyDiscoveryDiagnostics';
 
-type Mode = 'preflight' | 'diagnose' | 'report' | 'manifest' | 'apply' | 'reconcile';
+type Mode =
+  | 'preflight'
+  | 'diagnose'
+  | 'report'
+  | 'manifest'
+  | 'apply'
+  | 'reconcile'
+  | 'forensics'
+  | 'verify-suspended';
+
+const MODES: Mode[] = [
+  'preflight',
+  'diagnose',
+  'report',
+  'manifest',
+  'apply',
+  'reconcile',
+  'forensics',
+  'verify-suspended',
+];
+
+/** The item population a manifest names, for the shared scope validator. */
+function manifestGroupItems(manifest: ApplyManifest): ManifestGroupItems[] {
+  return manifest.groups.map(group => ({
+    sourceExternalId: group.sourceExternalId,
+    canonicalItemId: group.canonicalItemId,
+    supersededItemIds: group.supersededItemIds,
+  }));
+}
+
+/**
+ * Loads and structurally validates a manifest WITHOUT touching it.
+ *
+ * The suspended Bay Hill Batch 1 manifest is historical evidence of the
+ * preflight/APPLY boundary failure. Every mode that reads it must leave it byte
+ * identical — no regeneration, no re-approval, no widening.
+ */
+function loadManifest(path: string): ApplyManifest {
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as ApplyManifest;
+  assertBayHillProductionScope(manifest.scope);
+  if (manifest.groups.length === 0) {
+    throw new Error('Manifest contains no approved groups.');
+  }
+  return manifest;
+}
+
+function printSuspendedVerification(result: SuspendedRunVerification): void {
+  console.log('─'.repeat(78));
+  console.log('Suspended-run mutation verification (read-only, no writes performed)');
+  console.log(`manifest ${result.manifestId}`);
+  console.log(
+    `scope company=${result.scope.companyId} store=${result.scope.storeId} ` +
+      `source=${result.scope.sourceSystem} property=${result.scope.sourcePropertyId}`,
+  );
+  console.log('─'.repeat(78));
+  console.log('Audit outcomes recorded for THIS manifest:');
+  console.log(`  applied:            ${result.auditCounts.applied}`);
+  console.log(`  already remediated: ${result.auditCounts.alreadyRemediated}`);
+  console.log(`  stopped:            ${result.auditCounts.stopped}`);
+  console.log(
+    `\nStopped Source Item Codes (${result.stoppedSourceExternalIds.length}): ` +
+      `${result.stoppedSourceExternalIds.join(', ') || '(none)'}`,
+  );
+  console.log('\nDistinct failure reasons:');
+  if (result.failureReasons.length === 0) console.log('  (none)');
+  for (const reason of result.failureReasons) console.log(`  ${reason}`);
+  console.log(
+    `\nItems superseded by an APPLIED row of this manifest: ` +
+      `${result.supersededItemIds.length === 0 ? 'none' : result.supersededItemIds.join(', ')}`,
+  );
+  console.log(
+    `Items named by this manifest that are superseded in the database: ` +
+      `${
+        result.unexpectedlySupersededItemIds.length === 0
+          ? 'none'
+          : result.unexpectedlySupersededItemIds.join(', ')
+      }`,
+  );
+  console.log('\nVerdict:');
+  if (result.mutationFree) {
+    console.log('  MUTATION-FREE — this manifest recorded no applied repair and superseded no item.');
+  } else {
+    console.log('  NOT MUTATION-FREE:');
+    for (const finding of result.findings) console.log(`    - ${finding}`);
+  }
+  console.log('\nNo changes were made.');
+}
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
   const out: Record<string, string | boolean> = {};
@@ -264,10 +368,8 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const mode = (args.mode as Mode) ?? 'report';
 
-  if (!['preflight', 'diagnose', 'report', 'manifest', 'apply', 'reconcile'].includes(mode)) {
-    throw new Error(
-      `Unknown --mode ${String(args.mode)}. Use preflight | diagnose | report | manifest | apply | reconcile.`,
-    );
+  if (!MODES.includes(mode)) {
+    throw new Error(`Unknown --mode ${String(args.mode)}. Use ${MODES.join(' | ')}.`);
   }
 
   // ── Manifest generation needs no DB scope resolution ─────────────────────
@@ -322,16 +424,12 @@ async function main(): Promise<void> {
           'explicitly confirmed step that requires prior Product Owner approval of the exact manifest.',
       );
     }
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ApplyManifest;
-    assertBayHillProductionScope(manifest.scope);
+    const manifest = loadManifest(manifestPath);
     if (manifest.reportVersion !== REMEDIATION_REPORT_VERSION) {
       throw new Error(
         `Manifest report version ${manifest.reportVersion} does not match this build ` +
           `(${REMEDIATION_REPORT_VERSION}). Regenerate and re-review the report.`,
       );
-    }
-    if (manifest.groups.length === 0) {
-      throw new Error('Manifest contains no approved groups.');
     }
     if (!manifest.reportHash || !manifest.unapprovedReportHash) {
       throw new Error(
@@ -347,6 +445,34 @@ async function main(): Promise<void> {
       );
     }
     await preflightRemediationDatabase(manifest.scope);
+
+    // ── Manifest-aware scope gate — MUST precede any mutation ────────────────
+    //
+    // The previous production run reached this point with only schema/binding
+    // preflight behind it, started mutating, and discovered cross-property
+    // external mappings group by group. It stopped correctly and changed
+    // nothing, but the blockers were answerable by a read-only query before the
+    // first transaction opened.
+    //
+    // This gate runs THE SAME validator APPLY runs, over EVERY group, and
+    // refuses the whole manifest if any group anywhere is blocked. Partial
+    // application is not offered: applying the clean subset of a manifest that
+    // was approved as a unit would silently substitute a scope nobody reviewed.
+    console.log(
+      `Validating all ${manifest.groups.length} approved group(s) against the scope validator ` +
+        'before any mutation…',
+    );
+    const gate = await preflightManifestScope(manifest.scope, manifestGroupItems(manifest), db, {
+      onProgress: (completed, total) => {
+        if (completed % 100 === 0 || completed === total) {
+          console.log(`  validated ${completed}/${total} group(s)`);
+        }
+      },
+    });
+    console.log(
+      `Scope gate passed: ${gate.cleanGroups}/${gate.totalGroups} group(s) clean, ` +
+        `${gate.scopedBatchIds.length} in-scope batch(es).`,
+    );
 
     console.log(
       `Applying manifest ${manifest.manifestId} (${manifest.groups.length} group(s)) against ` +
@@ -379,6 +505,83 @@ async function main(): Promise<void> {
       `applied=${result.applied} alreadyRemediated=${result.alreadyRemediated} stopped=${result.stopped}`,
     );
     console.log('Run --mode reconcile next to verify the May/June applied valuation baselines.');
+    return;
+  }
+
+  // ── Read-only manifest forensics ─────────────────────────────────────────
+  //
+  // Same evaluation the APPLY gate performs, but it reports instead of
+  // refusing. This is how an operator sees the COMPLETE blocker set and the
+  // per-mapping A/B/C evidence for a manifest that cannot currently be applied.
+  // It never writes, and it never modifies the manifest it reads.
+  if (mode === 'forensics') {
+    const manifestPath = args.manifest;
+    if (typeof manifestPath !== 'string') {
+      throw new Error('--mode forensics requires --manifest <manifest.json> [--json] [--out <file>]');
+    }
+    const manifest = loadManifest(manifestPath);
+    await preflightRemediationDatabase(manifest.scope);
+
+    const report = await buildForensicReport(
+      {
+        manifestId: manifest.manifestId,
+        scope: manifest.scope,
+        reportHash: manifest.reportHash,
+        unapprovedReportHash: manifest.unapprovedReportHash,
+        reportVersion: manifest.reportVersion,
+        groups: manifestGroupItems(manifest),
+      },
+      db,
+      {
+        onProgress: (completed, total) => {
+          if (completed % 100 === 0 || completed === total) {
+            console.error(`  evaluated ${completed}/${total} group(s)`);
+          }
+        },
+      },
+    );
+
+    const rendered = args.json === true
+      ? JSON.stringify(report, null, 2)
+      : formatForensicReport(report);
+    if (typeof args.out === 'string') {
+      writeFileSync(args.out, rendered);
+      console.log(`Wrote forensic report for ${report.totals.totalGroups} group(s) to ${args.out}.`);
+      console.log(
+        `blocked=${report.totals.blockedGroups} clean=${report.totals.cleanGroups} ` +
+          `problematicMappings=${report.totals.problematicMappings}`,
+      );
+    } else {
+      console.log(rendered);
+    }
+    return;
+  }
+
+  // ── Bounded verification of a suspended run ──────────────────────────────
+  //
+  // Scoped to ONE manifest id on purpose. A global "does production look
+  // clean?" sweep cannot distinguish this run's effects from an unrelated
+  // earlier repair, and passes silently when it scanned the wrong population.
+  if (mode === 'verify-suspended') {
+    const manifestPath = args.manifest;
+    if (typeof manifestPath !== 'string') {
+      throw new Error('--mode verify-suspended requires --manifest <manifest.json> [--json]');
+    }
+    const manifest = loadManifest(manifestPath);
+    await preflightRemediationDatabase(manifest.scope);
+
+    const verification = await verifySuspendedRunMutationFree(
+      manifest.scope,
+      manifest.manifestId,
+      manifestGroupItems(manifest),
+      db,
+    );
+    if (args.json === true) {
+      console.log(JSON.stringify(verification, null, 2));
+    } else {
+      printSuspendedVerification(verification);
+    }
+    if (!verification.mutationFree) process.exitCode = 1;
     return;
   }
 
@@ -445,6 +648,7 @@ main()
     if (
       error instanceof RemediationScopeError ||
       error instanceof RemediationPreconditionError ||
+      error instanceof RemediationManifestBlockedError ||
       (error instanceof Error && !isDatabaseError(error))
     ) {
       console.error(error instanceof Error ? `${error.name}: ${error.message}` : error);

@@ -1,0 +1,253 @@
+# #1141 - Expose Cleanup Blockers Before Apply
+
+## PM Decision
+
+APPROVED WITH HARDENING.
+
+The task is correctly scoped to the production failure discovered during the suspended Bay Hill Batch 1 APPLY.
+
+The central invariant is:
+
+> APPLY must never discover a scope blocker that manifest-aware read-only preflight could have discovered first.
+
+## What & Why
+
+The suspended Bay Hill duplicate-remediation run discovered cross-property/source external mappings only after production APPLY had started.
+
+The safety controls worked:
+
+- APPLY stopped
+- 13 STOPPED audit outcomes were recorded
+- 0 groups were APPLIED
+- no known supersession or count-line repoint mutation occurred
+
+However, this revealed a gap between preflight and APPLY.
+
+An approved manifest must be fully evaluated against the same scope boundaries used by APPLY before the first remediation mutation can begin.
+
+#1141 adds a deterministic read-only forensic path, verifies the suspended attempt remained mutation-free, and makes manifest-aware preflight enforce the exact same scope validation as APPLY.
+
+## Critical architecture requirement
+
+There must be ONE authoritative mapping/scope validator used by both:
+
+- manifest-aware preflight
+- APPLY
+
+Do not duplicate or approximately reproduce the scope logic.
+
+Extract/reuse a shared function that evaluates:
+
+- company
+- store
+- source system
+- source property
+- mapping ownership/provenance
+- any other scope condition capable of stopping APPLY
+
+The same input evidence must produce the same decision and reason in both paths.
+
+A future change to APPLY scope validation must therefore automatically affect preflight as well.
+
+## Done looks like
+
+### Suspended-run verification
+
+A bounded read-only verification confirms for the attempted Batch 1 manifest:
+
+- 0 APPLIED audit outcomes
+- expected STOPPED audit evidence only
+- no inventory item supersession caused by the attempted run
+- no count-line repoint caused by the attempted run
+- no other remediation state mutation attributable to that attempted manifest
+
+This verification must be tied specifically to the attempted manifest/run and must not infer safety from aggregate production state alone.
+
+### Deterministic forensic report
+
+For every manifest group, report:
+
+- Source Item Code
+- proposed canonical inventory item
+- sibling inventory items
+- every relevant external mapping
+- mapping owner inventoryItemId
+- mapping sourceSystem
+- mapping sourcePropertyId
+- company/store scope fields where applicable
+- provenance evidence used by the validator
+- exact scope decision
+- exact blocker reason
+
+The report must scan the complete manifest rather than stopping on first failure.
+
+### Diagnostic classification
+
+For problematic mappings, provide a deterministic diagnostic classification proposal:
+
+#### A — LEGACY / MISSING-SCOPE EVIDENCE
+
+Evidence suggests the mapping belongs to the authorized Bay Hill Orderly history, but newer scope metadata is NULL/missing/incomplete.
+
+#### B — DEMONSTRABLY FOREIGN
+
+Evidence establishes the mapping belongs to a different:
+
+- property
+- company
+- store where relevant
+- source system
+- or unrelated external identity
+
+#### C — AMBIGUOUS
+
+Available evidence cannot safely establish either A or B.
+
+These classifications are diagnostic only.
+
+#1141 must NOT:
+
+- automatically treat A as authorized
+- automatically repair A
+- weaken property isolation
+- interpret NULL as safe
+- interpret NULL as foreign solely because it is NULL
+
+Any policy allowing an A-class mapping to participate in remediation requires a later explicit Product Owner decision.
+
+### Complete manifest summary
+
+Return:
+
+- total manifest groups
+- clean groups
+- groups containing A evidence
+- groups containing B evidence
+- groups containing C evidence
+- total mappings inspected
+- total problematic mappings
+- affected Source Item Codes
+- blocker reason distribution
+
+A group containing multiple problem types must retain all relevant evidence; do not hide secondary blockers behind a single classification label.
+
+### Manifest-aware preflight
+
+Preflight must:
+
+1. validate manifest/report/scope binding
+2. inspect ALL manifest groups
+3. invoke the same authoritative scope validator used by APPLY
+4. collect ALL blockers
+5. perform zero remediation mutation
+6. fail the manifest as a whole if any APPLY blocker exists
+
+No group may begin remediation if preflight finds even one blocking group anywhere in the manifest.
+
+This is an all-manifest gate, not per-group lazy validation during mutation.
+
+### APPLY defense-in-depth
+
+APPLY must continue performing its own scope checks.
+
+Preflight does not replace APPLY validation.
+
+The required relationship is:
+
+> preflight catches everything first;
+> APPLY revalidates before mutation.
+
+If APPLY ever finds a scope blocker that a just-completed preflight did not report against the same manifest and database state, treat that as a correctness defect.
+
+## Required tests
+
+Add database-backed regression coverage for at least:
+
+1. one clearly in-scope mapping
+2. one clearly foreign property mapping
+3. one foreign source-system mapping
+4. NULL/missing sourcePropertyId with legacy evidence
+5. NULL/missing sourcePropertyId without sufficient legacy evidence
+6. multiple external mappings on one candidate
+7. mappings across multiple siblings
+8. multiple blocked groups in one manifest
+9. mixed clean + blocked manifest
+10. preflight returns the complete blocker set
+11. blocked manifest results in zero remediation writes
+12. APPLY and preflight use the same validator/result semantics
+
+Add a regression specifically proving:
+
+> a blocker detectable by APPLY cannot be omitted from preflight.
+
+## Suspended Batch 1 evidence
+
+Use the existing suspended run as a forensic validation case where appropriate:
+
+- 13 STOPPED audit rows
+- 0 APPLIED
+- controlled stop
+- external mapping scope blocker
+
+Do not encode production-specific IDs or sensitive production payloads into fixtures or repository evidence.
+
+Use sanitized representations.
+
+## Manifest integrity
+
+#1141 must not:
+
+- edit
+- regenerate
+- broaden
+- shrink
+- or replace
+
+the suspended Batch 1 manifest.
+
+It remains historical evidence for the failed preflight/APPLY boundary.
+
+Any future production remediation manifest requires a new Product Owner decision after #1141 findings.
+
+## Reviewer requirements
+
+Reviewer must explicitly answer:
+
+1. Is there now one authoritative scope validator used by preflight and APPLY?
+2. Can preflight enumerate every blocker before mutation begins?
+3. Does a blocked manifest guarantee zero remediation mutation?
+4. Is strict company/store/source/property isolation preserved?
+5. Can NULL sourcePropertyId ever become authorized without an explicit policy decision?
+6. Is A/B/C diagnostic only?
+7. Is there any path where APPLY can begin while preflight blockers exist?
+8. Does the implementation introduce any cross-property leakage risk?
+
+Reviewer should return BLOCK if any answer indicates scope validation has been weakened.
+
+## Out of scope
+
+- Editing or regenerating Batch 1 manifest
+- Running APPLY
+- Running production reconciliation
+- Repairing mappings
+- Deleting mappings
+- Reassociating mappings
+- Backfilling sourcePropertyId
+- Broadly accepting NULL property values
+- Automatically authorizing A-class evidence
+- Deciding the final remediation policy for A/B/C groups
+
+## Stop condition
+
+#1141 ends with:
+
+- read-only forensic findings
+- suspended-run mutation verification
+- hardened preflight
+- tests
+- Reviewer/QA evidence
+- proposed A/B/C population
+
+Then STOP.
+
+Product Owner decides what happens to A/B/C groups before any new manifest or production APPLY is considered.
