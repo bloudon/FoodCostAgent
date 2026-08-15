@@ -1,0 +1,140 @@
+Batch 1 APPLY approval is suspended. Keep the existing manifest unchanged as evidence, but it is no longer executable under the prior approval.
+
+The 13 stopped audits are useful forensic evidence. Since there were 0 applied groups, we do not need normal post-APPLY reconciliation. I would still want a simple read-only confirmation that no supersession/repoint mutations occurred, but not the full remediation reconcile workflow.
+
+Send Replit this:
+
+# BLOCKER — APPLY Exposed Cross-Scope Mapping Evidence Missing From Preflight
+
+
+- source Item Code
+- proposed canonical item
+- sibling items
+- every relevant external mapping
+- mapping sourceSystem
+- mapping sourcePropertyId
+- mapping company/store scope if stored
+- which inventory item owns the mapping
+- whether APPLY considers it in-scope or out-of-scope
+- exact reason
+
+
+Classify each problematic mapping into:
+
+
+### A — LEGACY BAY HILL / MISSING SCOPE METADATA
+
+
+Evidence shows the mapping belongs to the known Bay Hill Orderly imports but a newer property/scope field is NULL or missing.
+
+
+### B — TRUE FOREIGN PROPERTY / SOURCE
+
+
+Mapping demonstrably belongs to another property, company, source system, or unrelated source identity.
+
+
+### C — AMBIGUOUS
+
+
+Insufficient evidence to prove either A or B.
+
+
+Do not treat NULL automatically as foreign and do not treat NULL automatically as Bay Hill.
+
+
+## Specifically explain the 13 stopped groups
+
+
+Return the exact 13 source Item Codes and, for each:
+
+
+- offending mapping ID
+- owning inventoryItemId
+- mapping source/system/property values
+- why APPLY rejected it
+- evidence supporting A, B, or C above
+
+
+We need to know whether these are another manifestation of the legacy NULL-property problem already confirmed in Bay Hill, or genuinely out-of-scope mappings.
+
+
+## Full-manifest preflight
+
+
+The same analysis must scan all 848 groups and return:
+
+
+- total groups clean
+- total groups with legacy/missing-scope mappings
+- total groups with true foreign mappings
+- total ambiguous
+- total mappings involved
+- affected Item Codes
+
+
+The result must be deterministic and complete before another APPLY is considered.
+
+
+## Preflight hardening
+
+
+Change the read-only preflight so it runs the same scope validation used by APPLY across the complete manifest.
+
+
+Required behavior:
+
+
+1. inspect all groups
+2. collect all blockers
+3. make zero remediation mutations
+4. fail the overall preflight if any APPLY blocker exists
+5. return the complete blocked-group list
+
+
+APPLY must never be the mechanism used to discover these conditions.
+
+
+## Mutation verification
+
+
+Because `applied=0`, perform only a bounded read-only verification that:
+
+
+- no inventory item was superseded by this attempted run
+- no count line was repointed by this attempted run
+- no group has an APPLIED audit outcome
+- the only new persistent records are STOPPED audit evidence, if that is the designed behavior
+
+
+Do not run or represent normal successful-batch reconciliation.
+
+
+## Stop
+
+
+Return the forensic findings and proposed policy for A/B/C cases.
+
+
+Do not modify the manifest.
+Do not APPLY.
+Do not repair external mappings yet.
+What I suspect we may find
+
+There are two very different possible outcomes.
+
+If these are true foreign mappings, Claude/Replit missed an important risk class and those groups need to come out of the automated set.
+
+If they are legacy Bay Hill mappings with NULL/missing sourcePropertyId, then this is probably the same schema-evolution problem that caused the original zero-group report. In that case, simply excluding them would be the wrong fix. We would instead need a tightly evidenced way to recognize legacy Bay Hill ownership without weakening cross-property isolation.
+
+That distinction is important enough that I would not let Replit “fix” this by changing:
+
+property must equal 24472
+
+into something like:
+
+property = 24472 OR property IS NULL
+
+globally. That could turn a safety guard into a tenant/property leak.
+
+The good part here is that we caught it with 0 of 848 applied. This is annoying, but it is exactly why we built the stop conditions into the production repair process.
