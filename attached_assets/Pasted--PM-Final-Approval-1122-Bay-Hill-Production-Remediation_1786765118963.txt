@@ -1,0 +1,167 @@
+## PM Final Approval — #1122 Bay Hill Production Remediation
+
+APPROVED TO PROCEED THROUGH REPORT MODE.
+
+Production APPLY remains gated by Product Owner approval of the exact generated report/manifest.
+
+### 1. Production schema must be deployed through the normal migration path
+
+Before production APPLY, confirm the #1121 schema additions exist on the production VPS:
+
+- inventory-item supersession fields
+- remediation audit table
+- required indexes/constraints
+
+Do not manually reproduce development DDL ad hoc in production.
+
+Use the project's normal idempotent production migration/startup mechanism and record the migration result.
+
+If production schema differs from the reviewed #1121 schema, STOP before apply.
+
+### 2. Production REPORT MODE may run first if it is genuinely read-only
+
+Run the report against:
+
+Company:
+Bay Hill CC
+
+companyId:
+43abaf82-44ce-4231-9570-7a01e7c85ced
+
+Store:
+ee9e1530-50db-45f4-ae61-2c45e86827f0
+
+Source:
+ORDERLY
+
+Bay Hill source property only.
+
+Before execution, verify from code that REPORT MODE does not require or populate the new audit/supersession fields and performs zero writes.
+
+Then run:
+
+pnpm --filter @workspace/api-server run orderly:remediate -- --mode report --json > report.json
+
+Return `report.json` to PM/Product Owner before building an approval manifest.
+
+### 3. Report review gate
+
+Before approval, summarize:
+
+- total candidate groups
+- SAFE_CANDIDATE count
+- AMBIGUOUS count
+- CONFLICT count
+- NOT_DEFECT_RELATED count
+- inventoryItem IDs proposed for supersession
+- canonical-selection reasons
+- affected May/June count references
+- expected valuation impact
+
+Explicitly identify:
+
+- Chambord
+- Sweet n Low
+
+and the other known systemic examples where evidence supports them.
+
+Names are verification aids only, not merge evidence.
+
+### 4. Product Owner approves exact source identities
+
+Approval must be for an explicit list of source Item Codes from this exact report.
+
+Do not interpret:
+
+"looks good"
+"run the safe ones"
+"approve the report"
+
+as permission to apply every SAFE_CANDIDATE.
+
+The exact list must be recorded.
+
+### 5. Manifest becomes immutable approval evidence
+
+The generated manifest must bind to:
+
+- production company/store/property
+- exact approved Item Codes
+- report ID/hash
+- canonical IDs
+- duplicate IDs
+- manifest ID
+
+After Product Owner approval of that manifest, do not regenerate it and apply the replacement without another approval.
+
+### 6. Take a production database recovery point before APPLY
+
+Immediately before production mutation, create/verify an appropriate production PostgreSQL backup or snapshot sufficient to recover the pre-remediation state.
+
+Record:
+
+- backup/snapshot timestamp
+- database/environment
+- manifest ID being applied
+
+This is a safety recovery point, not the primary rollback mechanism.
+
+### 7. Apply remains group-atomic
+
+Run only the approved manifest.
+
+Any:
+
+- STALE_REPORT
+- UNIQUENESS_COLLISION
+- CONFLICT
+- unexpected reference
+- source/property mismatch
+
+must stop that group without partial mutation.
+
+Do not force, override, broaden, or auto-reclassify it.
+
+Successful earlier groups may remain completed and audited as designed.
+
+### 8. Post-apply reconciliation
+
+Reconcile both period and group level.
+
+Required production baselines:
+
+May 2026:
+$254,286.67
+
+June 2026:
+$261,007.67
+
+For every repaired group also report:
+
+- valuation before
+- valuation after
+- delta
+- references moved
+- locations/count rows retained
+
+Expected group delta is normally $0.00.
+
+### 9. Important wording change to Done Looks Like
+
+Change:
+
+"show zero remaining SAFE_CANDIDATE groups"
+
+to:
+
+"show zero remaining SAFE_CANDIDATE groups among the Product-Owner-approved remediation set."
+
+Do not make successful completion dependent on automatically repairing newly discovered or intentionally unapproved safe candidates.
+
+Any remaining candidate becomes a separate review decision.
+
+### Gate
+
+REPORT MODE → PM review → exact Item Code approval → manifest → PM approval of manifest → production recovery point → APPLY → reconciliation.
+
+The remaining historical imports stay blocked until reconciliation is green.
