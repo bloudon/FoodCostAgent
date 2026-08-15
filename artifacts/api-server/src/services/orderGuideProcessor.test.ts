@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractNameCount } from './orderGuideProcessor';
-import { isBottleOrCanWithFluidOz } from '../../shared/orderGuideUtils';
+import { isBottleOrCanWithFluidOz } from '../orderGuideUtils';
 
 /**
  * Unit tests for extractNameCount().

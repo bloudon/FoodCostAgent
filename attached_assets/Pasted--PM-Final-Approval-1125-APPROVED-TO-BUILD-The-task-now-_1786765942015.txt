@@ -1,0 +1,76 @@
+## PM Final Approval — #1125
+
+APPROVED TO BUILD.
+
+The task now accurately reflects the current four failures and correctly identifies the PDF issue as a real production defect rather than test-only noise.
+
+### Final implementation constraints
+
+#### 1. PDF dependency repair
+
+Use only an officially exported `pdf-parse` 2.4.5 API.
+
+Do not replace the broken internal import with a different unsupported package subpath.
+
+Adapt the dependency behind the existing FnB PDF abstraction so downstream callers continue receiving the same application-level contract:
+
+- extracted text
+- page count
+
+Do not spread `pdf-parse` v2-specific behavior into unrelated order-guide parsing code.
+
+Verification must prove that a representative PDF still passes through `PdfOrderGuide` and produces the expected text/page-count behavior and downstream product parsing.
+
+#### 2. Stable fixture resolution
+
+Fix the Sales-by-Item fixture lookup using a deterministic repository/module-relative path.
+
+Do not replace the current broken `process.cwd()` assumption with another working-directory assumption that only happens to work locally.
+
+The test must resolve correctly when run:
+
+- individually from the API package
+- as part of the full API suite
+- in CI/repository-root execution
+
+#### 3. Preserve test intent
+
+For all four files:
+
+- no assertion deletion
+- no assertion weakening
+- no `.skip`
+- no `.todo`
+- no replacement with mocks that avoid exercising the behavior the original regression test intended to cover
+
+If a repaired test begins failing on a real assertion after its setup/import issue is fixed, treat that as a newly exposed defect and report/fix the smallest underlying cause rather than modifying the assertion to restore green.
+
+### Validation
+
+Run in this order:
+
+1. each of the four formerly broken test files individually
+2. full API suite:
+   `cd artifacts/api-server && npx vitest run`
+3. API typecheck:
+   `pnpm --filter @workspace/api-server run typecheck`
+
+Record:
+
+- individual file results
+- final test-file count
+- final passing/failing/skipped test count
+- typecheck result
+
+Expected outcome:
+
+- 0 failing test files
+- 0 failing tests
+- formerly broken assertions actually execute
+- passing-test count increases above the 1396 baseline
+
+### Scope
+
+No Bay Hill production data access or mutation belongs in #1125.
+
+Status: APPROVED TO BUILD.

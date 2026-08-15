@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
 import * as XLSX from 'xlsx';
 import { parseSalesByItemWorkbook, inferOutlet } from './SalesByItemParser';
@@ -21,8 +22,8 @@ import { getAccessibleStores } from '../../permissions';
 // ─── Fixture ──────────────────────────────────────────────────────────────────
 
 const XLSX_PATH = path.resolve(
-  process.cwd(),
-  'attached_assets/Sales_by_item_6-26_1785685525716.xlsx',
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../attached_assets/Sales_by_item_6-26_1785685525716.xlsx',
 );
 const xlsxBuffer = readFileSync(XLSX_PATH);
 

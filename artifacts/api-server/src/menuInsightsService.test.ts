@@ -3,7 +3,7 @@ import {
   classifyToken,
   isExcludedFromAvgPrice,
   BATCH_PREP_KEYWORDS,
-} from "../server/services/menuInsightsService";
+} from "./services/menuInsightsService";
 
 describe("classifyToken", () => {
   it("classifies tokens containing batch prep keywords as batch_prep", () => {

@@ -1,13 +1,6 @@
-import { createRequire } from 'module';
 import { normalizeVendorUnit, SALE_ONLY_UNITS, extractPackInfoFromName } from '../../lib/vendorPackParser';
+import { PDFParse } from 'pdf-parse';
 export { normalizeVendorUnit, extractPackInfoFromName };
-const _require = createRequire(import.meta.url);
-// pdf-parse is CJS and has no ESM default export — createRequire bypasses Node ESM interop entirely.
-// We load from the lib path to avoid the test-runner wrapper in pdf-parse's index.js.
-const pdfParse = _require('pdf-parse/lib/pdf-parse.js') as (
-  buf: Buffer,
-  opts?: object
-) => Promise<{ text: string; numpages: number }>;
 
 export interface PdfProduct {
   productName: string;
@@ -37,9 +30,14 @@ export interface PdfParseResult {
  * All pages are extracted in a single pass — no page-by-page looping needed.
  */
 export async function parsePdfOrderGuide(pdfBuffer: Buffer): Promise<PdfParseResult> {
-  const data = await pdfParse(pdfBuffer);
-  const products = extractProductsFromText(data.text);
-  return { products, pageCount: data.numpages };
+  const parser = new PDFParse({ data: pdfBuffer });
+  try {
+    const data = await parser.getText();
+    const products = extractProductsFromText(data.text);
+    return { products, pageCount: data.total };
+  } finally {
+    await parser.destroy();
+  }
 }
 
 const GARBAGE_PATTERNS: RegExp[] = [

@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeVendorUnit, extractPackInfoFromName } from './PdfOrderGuide';
+import path from 'path';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import {
+  extractPackInfoFromName,
+  normalizeVendorUnit,
+  parsePdfOrderGuide,
+} from './PdfOrderGuide';
+
+const HIVE_ORDER_GUIDE_PDF = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../attached_assets/All_Products___Hive_V.O.C__page_1_1780027235968.pdf',
+);
 
 // ─── normalizeVendorUnit ─────────────────────────────────────────────────────
 
@@ -218,5 +230,18 @@ describe('extractPackInfoFromName', () => {
       expect(r.innerPack).toBe(6);
       expect(r.unit).toBeNull();
     });
+  });
+});
+
+describe('parsePdfOrderGuide', () => {
+  it('extracts a real catalog PDF through the application parser', async () => {
+    const result = await parsePdfOrderGuide(readFileSync(HIVE_ORDER_GUIDE_PDF));
+
+    expect(result.pageCount).toBe(6);
+    expect(result.products).toContainEqual(expect.objectContaining({
+      productName: '2 oz. Clear PP Plastic Souffle Cup / Portion Cup - 2500/Case',
+      vendorSku: 'PC-2-CPP',
+      price: 25.99,
+    }));
   });
 });
