@@ -1,0 +1,156 @@
+That’s the evidence I needed. The production forensic story is now coherent:
+
+* all **932 problematic mappings** are Class A legacy/missing-scope
+* **0** are demonstrably foreign
+* **0** are ambiguous
+* all **848 groups** are blocked only by the same scope rule
+* the report is tied to the accepted production report hash
+* there are exactly **2 scoped batches**
+* `legacyAdoptionPermitted: true`
+
+That last field is especially important: it tells me #1141’s forensic logic already has a concept of **affirmatively recognized legacy adoption eligibility**, rather than merely saying “property is NULL.”
+
+So my PM decision would be:
+
+> **Approve a narrowly bounded legacy-adoption policy for this Bay Hill remediation only, using the existing shared scope validator and the positive Class A evidence.**
+
+Not a global NULL exception. Not a generic Orderly exception. Not a change that weakens B/C handling.
+
+I would send Replit this:
+
+```md
+# PM Policy Decision — Bay Hill Legacy Scope Adoption
+
+Production forensics for the approved Bay Hill Batch 1 manifest returned:
+
+- totalGroups: 848
+- cleanGroups: 0
+- blockedGroups: 848
+- groupsWithClassA: 848
+- groupsWithClassB: 0
+- groupsWithClassC: 0
+- totalMappingsInspected: 932
+- problematicMappings: 932
+
+Mapping classification:
+
+- A_LEGACY_MISSING_SCOPE: 932
+- B_DEMONSTRABLY_FOREIGN: 0
+- C_AMBIGUOUS: 0
+
+Blocker kind:
+
+- EXTERNAL_MAPPING_OTHER_SOURCE_OR_PROPERTY: 848
+
+Additional evidence:
+
+- scopedBatchCount: 2
+- legacyAdoptionPermitted: true
+- accepted report hash:
+  `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e`
+- unapproved report hash:
+  `a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a`
+
+## Product Owner Policy
+
+Authorize a narrowly bounded legacy-adoption path for this Bay Hill remediation population.
+
+This policy applies ONLY when the shared scope validator positively classifies the mapping as:
+
+`A_LEGACY_MISSING_SCOPE`
+
+and the existing forensic evidence supports legacy adoption for the approved Bay Hill scope.
+
+Do NOT implement:
+
+`sourcePropertyId IS NULL => in scope`
+
+Do NOT broaden authorization based solely on missing/null metadata.
+
+## Required authorization rule
+
+A mapping may be accepted under legacy adoption only when ALL existing positive evidence required by the Class A classifier is satisfied for:
+
+- companyId:
+  `43abaf82-44ce-4231-9570-7a01e7c85ced`
+- storeId:
+  `ee9e1530-50db-45f4-ae61-2c45e86827f0`
+- sourceSystem:
+  `ORDERLY`
+- sourcePropertyId:
+  `24472`
+- the two scoped legacy Bay Hill batches identified by the forensic path
+- the accepted remediation report / manifest binding
+
+Class B remains BLOCKED.
+
+Class C remains BLOCKED.
+
+Any mapping that fails positive Class A legacy evidence remains BLOCKED.
+
+## Architecture constraint
+
+Use the same authoritative validator introduced in #1141.
+
+Do not create a separate APPLY-only exception.
+
+Preflight and APPLY must receive identical authorization results from the shared validator.
+
+The intended decision is:
+
+- normal explicit in-scope mapping → ALLOW
+- positively proven Bay Hill Class A legacy mapping → ALLOW under this policy
+- Class B demonstrably foreign → BLOCK
+- Class C ambiguous → BLOCK
+- arbitrary NULL/missing property with insufficient evidence → BLOCK
+
+## No data repair in this task
+
+This policy does not authorize:
+
+- backfilling sourcePropertyId
+- editing external mappings
+- deleting mappings
+- rewriting provenance
+- accepting NULL globally
+
+It only determines whether an existing mapping is authorized for this specific remediation operation.
+
+## Required tests
+
+Before another production APPLY:
+
+1. Class A with positive Bay Hill legacy evidence → preflight ALLOW
+2. arbitrary NULL without legacy evidence → BLOCK
+3. Class B foreign property → BLOCK
+4. Class B foreign source system → BLOCK
+5. Class C ambiguous → BLOCK
+6. mixed Class A + Class B group → BLOCK
+7. mixed Class A + Class C group → BLOCK
+8. preflight and APPLY produce the same result
+9. all 848 current Batch 1 groups pass manifest-aware preflight
+10. the 44 held SAFE groups, Stella `99682`, and 4 AMBIGUOUS groups remain outside the manifest and unaffected
+
+Run full relevant DB-backed tests, typecheck, build, Reviewer and QA.
+
+## Production stop point
+
+After deployment, run READ-ONLY preflight against the unchanged 848-group Batch 1 manifest.
+
+Expected:
+
+- 848 groups evaluated
+- 848 authorized
+- 0 blockers
+- 0 B
+- 0 C
+- zero remediation writes
+
+STOP there and return the preflight evidence.
+
+Do NOT APPLY until Product Owner gives a fresh APPLY authorization after seeing the production preflight.
+```
+
+I would make this a **new task**, not fold it retroactively into #1141. #1141 did its job: it exposed the problem safely. This next task is a deliberate policy change based on actual production evidence.
+
+And importantly, I would keep the existing 848-group manifest unchanged. If the policy layer can make that exact manifest pass read-only preflight, that gives us a very clean proof that we are changing **authorization semantics**, not quietly changing the candidate population.
