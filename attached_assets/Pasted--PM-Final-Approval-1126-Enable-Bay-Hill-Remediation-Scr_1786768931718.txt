@@ -1,0 +1,168 @@
+## PM Final Approval — #1126 Enable Bay Hill Remediation Script
+
+APPROVED TO BUILD.
+
+This task enables the already-reviewed remediation tooling for production operation. It does NOT authorize running the production report or making any production changes.
+
+### 1. Keep the Bay Hill lock at the operator boundary
+
+For the first production workflow, require the exact approved scope:
+
+- sourceSystem: `ORDERLY`
+- sourcePropertyId: `24472`
+- company: Bay Hill CC
+- companyId: `43abaf82-44ce-4231-9570-7a01e7c85ced`
+- storeId: `ee9e1530-50db-45f4-ae61-2c45e86827f0`
+
+The CLI/operator entry point should refuse any other scope.
+
+Do not hard-code `24472` into the reusable duplicate-remediation domain/service logic if that service is otherwise source/property-neutral.
+
+The intended shape is:
+
+Bay Hill production CLI guard
+→ validates exact approved scope
+→ calls reusable remediation service
+
+not:
+
+generic remediation service
+→ contains permanent Bay Hill assumptions
+
+### 2. Report mode remains provably read-only
+
+Report mode may:
+
+- query source/import provenance
+- inspect mappings
+- inspect downstream references
+- classify candidates
+- calculate proposed canonical identities
+- calculate reconciliation evidence
+
+It must not:
+
+- insert audit rows
+- set supersession fields
+- update mappings
+- update inventory items
+- create manifests
+- normalize data
+- repair anything
+
+Readiness tests should explicitly prove zero writes from report mode.
+
+### 3. Preflight must not become mutation
+
+The operational preflight may verify:
+
+- required tables
+- required columns
+- required indexes/constraints
+- company/store/source-property binding
+- expected migration/schema version where available
+
+If something is missing:
+
+`PRECONDITION_FAILED`
+
+with a clear operator message.
+
+Do not have the remediation CLI create or alter production schema automatically.
+
+Production schema should arrive through the application's normal deployment/migration process.
+
+### 4. Separate readiness from execution
+
+#1126 Done means:
+
+- merged code is deployable
+- production-scope guard is correct
+- schema preflight exists
+- commands are documented
+- tests/typecheck pass
+
+It does NOT mean:
+
+- production report was run
+- report.json exists
+- candidate groups were reviewed
+- manifest was generated
+- production apply was authorized
+
+Those remain #1122 execution gates.
+
+### 5. Operator commands must make the gates obvious
+
+Document four distinct stages:
+
+#### Report
+Read-only.
+
+#### Manifest
+Requires:
+- exact reviewed report
+- exact approved source Item Codes
+- explicit manifest ID
+
+#### Apply
+Requires:
+- reviewed manifest
+- operator identity
+- production confirmation flag
+- current schema/preflight PASS
+- report/manifest freshness PASS
+
+#### Reconcile
+Read-only verification after apply.
+
+There must be no shortcut command equivalent to:
+
+`report-and-apply`
+or
+`apply-all-safe`
+
+### 6. Production APPLY still requires backup/recovery point
+
+The documented operating procedure should state that immediately before an eventual APPLY run, the operator must verify a current production PostgreSQL recovery point/backup.
+
+#1126 does not create that backup and does not execute APPLY.
+
+### 7. Scope refusal tests
+
+Focused tests should prove rejection of at least:
+
+- wrong companyId
+- wrong storeId
+- wrong sourcePropertyId
+- wrong sourceSystem
+- missing company/store/property
+- manifest with scope differing from report
+- apply without operator
+- apply without explicit production confirmation
+- unapproved source Item Code
+- stale report/manifest
+
+Also prove the exact approved Bay Hill scope passes readiness.
+
+### 8. Deployment note
+
+The resulting code should be safe to deploy to the VPS as part of normal application deployment.
+
+Deployment itself must not trigger remediation automatically.
+
+No startup hook, migration hook, seed process, or server restart may invoke report or apply mode.
+
+## Status
+
+APPROVED TO BUILD.
+
+After #1126 passes and is deployed:
+
+Deploy current approved main
+→ normal production migration/startup
+→ verify clean health
+→ run #1122 REPORT MODE only
+→ return report for Product Owner review
+
+No production mutation is authorized by #1126.
