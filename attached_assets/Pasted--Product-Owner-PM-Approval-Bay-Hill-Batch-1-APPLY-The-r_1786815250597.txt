@@ -1,0 +1,96 @@
+## Product Owner / PM Approval — Bay Hill Batch 1 APPLY
+
+The remaining PM preconditions are satisfied.
+
+### Exact hold-set validation
+
+PASS
+
+- Claude hold CSV: 44 unique Source Item Codes
+- Replit staged 44-group hold set: 44
+- Claude − Replit = 0
+- Replit − Claude = 0
+- all 44 remain excluded
+- Stella `99682` remains excluded separately
+- all 4 AMBIGUOUS groups remain excluded
+
+### Report / manifest binding
+
+PASS
+
+- accepted 897-group production report hash:
+  `4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e`
+
+- manifest binding matches that report
+
+- prior `4672f3bd...` value has been confirmed as the earlier zero-group report hash and is not the accepted remediation report
+
+- `unapprovedReportHash`:
+  `a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a`
+
+recomputes and matches the manifest
+
+### Approved Batch 1 population
+
+- 848 SAFE_CANDIDATE groups
+- 1,901 proposed superseded identities
+- 1,259 count-line repoints
+- expected May valuation delta: $0.00
+- expected June valuation delta: $0.00
+
+## APPLY AUTHORIZATION
+
+Product Owner approves APPLY of the existing validated Batch 1 manifest only.
+
+Do not regenerate or broaden the manifest.
+
+Before APPLY:
+
+1. confirm production scope is still:
+   - companyId `43abaf82-44ce-4231-9570-7a01e7c85ced`
+   - storeId `ee9e1530-50db-45f4-ae61-2c45e86827f0`
+   - sourceSystem `ORDERLY`
+   - sourcePropertyId `24472`
+
+2. take a production backup / recovery point immediately before APPLY
+
+3. record:
+   - manifest ID
+   - manifest SHA-256
+   - operator
+   - timestamp
+   - backup/recovery reference
+
+Then APPLY the existing 848-group manifest only.
+
+## Immediate post-APPLY validation
+
+Run reconcile immediately.
+
+Required results:
+
+- May valuation remains $254,286.67
+- June valuation remains $261,007.67
+- valuation delta = $0.00
+- 848 approved groups no longer remain as SAFE duplicate groups
+- 44 Claude-held SAFE groups remain untouched
+- Stella `99682` remains untouched
+- 4 AMBIGUOUS groups remain untouched
+- no unexpected conflicts
+- no orphaned count references
+- no scope spill outside Bay Hill
+
+Then rerun REPORT MODE and return:
+
+- groupsExamined
+- safeCandidates
+- ambiguous
+- conflicts
+- items superseded
+- count lines repointed
+- valuation reconciliation
+- confirmation held sets are unchanged
+
+STOP if any reconciliation result differs from expectation.
+
+Do not proceed to additional historical month imports until Batch 1 reconciliation is clean.
