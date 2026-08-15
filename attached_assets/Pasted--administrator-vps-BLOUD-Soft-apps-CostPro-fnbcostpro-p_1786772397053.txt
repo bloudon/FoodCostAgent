@@ -1,0 +1,60 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ pm2 show 13
+ Describing process with id 13 - name fnbcostpro
+┌───────────────────┬─────────────────────────────────────────────────────────────────────────────────┐
+│ status            │ online                                                                          │
+│ name              │ fnbcostpro                                                                      │
+│ namespace         │ default                                                                         │
+│ version           │ 1.15.0                                                                          │
+│ restarts          │ 1530                                                                            │
+│ uptime            │ 66m                                                                             │
+│ script path       │ /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs │
+│ script args       │ N/A                                                                             │
+│ error log path    │ /home/administrator/.pm2/logs/fnbcostpro-error.log                              │
+│ out log path      │ /home/administrator/.pm2/logs/fnbcostpro-out.log                                │
+│ pid path          │ /home/administrator/.pm2/pids/fnbcostpro-13.pid                                 │
+│ interpreter       │ /usr/bin/node                                                                   │
+│ interpreter args  │ --enable-source-maps                                                            │
+│ script id         │ 13                                                                              │
+│ exec cwd          │ /home/administrator/apps/CostPro/fnbcostpro                                     │
+│ exec mode         │ fork_mode                                                                       │
+│ node.js version   │ 20.20.2                                                                         │
+│ node env          │ production                                                                      │
+│ watch & reload    │ ✘                                                                               │
+│ unstable restarts │ 0                                                                               │
+│ created at        │ 2026-08-15T04:33:31.825Z                                                        │
+└───────────────────┴─────────────────────────────────────────────────────────────────────────────────┘
+ Actions available
+┌────────────────────────┐
+│ km:heapdump            │
+│ km:cpu:profiling:start │
+│ km:cpu:profiling:stop  │
+│ km:heap:sampling:start │
+│ km:heap:sampling:stop  │
+└────────────────────────┘
+ Trigger via: pm2 trigger fnbcostpro <action_name>
+
+ Code metrics value
+┌────────────────────────┬────────────┐
+│ Used Heap Size         │ 107.00 MiB │
+│ Heap Usage             │ 97.44 %    │
+│ Heap Size              │ 109.81 MiB │
+│ Event Loop Latency p95 │ 1.22 ms    │
+│ Event Loop Latency     │ 0.41 ms    │
+│ Active handles         │ 4          │
+│ Active requests        │ 0          │
+│ HTTP                   │ 0 req/min  │
+│ HTTP P95 Latency       │ 42 ms      │
+│ HTTP Mean Latency      │ 11.5 ms    │
+└────────────────────────┴────────────┘
+ Divergent env variables from local env
+┌────────────────┬──────────────────────┐
+│ SSH_CONNECTION │ 162.237.250.163 5816 │
+│ XDG_SESSION_ID │ 11584                │
+│ SSH_CLIENT     │ 162.237.250.163 5816 │
+└────────────────┴──────────────────────┘
+
+ Add your own code metrics: http://bit.ly/code-metrics
+ Use `pm2 logs fnbcostpro [--lines 1000]` to display logs
+ Use `pm2 env 13` to display environment variables
+ Use `pm2 monit` to monitor CPU and Memory usage fnbcostpro
