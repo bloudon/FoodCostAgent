@@ -62,33 +62,6 @@ import {
  */
 export const REMEDIATION_REPORT_VERSION = '1.0.0';
 
-/**
- * The only production scope authorized for the first execution (PM approval,
- * #1121). Report mode may inspect this scope; apply mode may mutate only this
- * scope. The underlying functions accept a scope argument so the code stays
- * reusable and testable, but `assertFirstProductionScope` refuses anything
- * else, and the CLI always calls it.
- */
-export const BAY_HILL_PRODUCTION_SCOPE = {
-  companyId: '43abaf82-44ce-4231-9570-7a01e7c85ced',
-  storeId: 'ee9e1530-50db-45f4-ae61-2c45e86827f0',
-  sourceSystem: 'ORDERLY',
-  /**
-   * The approved source property, pinned as part of the lock.
-   *
-   * The property is what selects WHICH data the run touches — discovery,
-   * mapping identity, and reconciliation are all property-scoped. Leaving it
-   * out of the lock meant any property bound to the store would pass, including
-   * one named in a hand-edited manifest, so the lock did not actually constrain
-   * the data set it claimed to.
-   *
-   * Set to the authorized property id before the production run. Empty string
-   * means "not yet authorized" and refuses every production scope check rather
-   * than silently matching legacy pre-binding rows, which also use ''.
-   */
-  sourcePropertyId: '',
-} as const;
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type GroupClassification =
@@ -404,40 +377,6 @@ function sameNumber(a: number | null, b: number | null): boolean {
 /** Renders a nullable number for a stop message. */
 function fmt(value: number | null): string {
   return value === null ? 'unset' : String(value);
-}
-
-/**
- * Verifies the requested scope is the single approved first production scope.
- * The CLI always calls this; tests call the underlying functions directly with
- * their own fixture scope so the code stays reusable without widening the
- * production boundary.
- */
-export function assertFirstProductionScope(scope: RemediationScope): void {
-  // The authorized property must be filled in before any production run. Until
-  // then this refuses everything, rather than treating '' as a wildcard that
-  // would also match legacy pre-binding rows.
-  if (!BAY_HILL_PRODUCTION_SCOPE.sourcePropertyId) {
-    throw new RemediationScopeError(
-      'No approved source property is pinned in BAY_HILL_PRODUCTION_SCOPE. The production run ' +
-        'cannot be authorized until the Product Owner confirms the exact source property id and ' +
-        'it is recorded in the code, because the property determines which data is touched.',
-    );
-  }
-  if (
-    scope.companyId !== BAY_HILL_PRODUCTION_SCOPE.companyId ||
-    scope.storeId !== BAY_HILL_PRODUCTION_SCOPE.storeId ||
-    scope.sourceSystem !== BAY_HILL_PRODUCTION_SCOPE.sourceSystem ||
-    scope.sourcePropertyId !== BAY_HILL_PRODUCTION_SCOPE.sourcePropertyId
-  ) {
-    throw new RemediationScopeError(
-      'The first production remediation run is locked to Bay Hill CC ' +
-        `(company ${BAY_HILL_PRODUCTION_SCOPE.companyId}, store ${BAY_HILL_PRODUCTION_SCOPE.storeId}, ` +
-        `source ${BAY_HILL_PRODUCTION_SCOPE.sourceSystem}, ` +
-        `property ${BAY_HILL_PRODUCTION_SCOPE.sourcePropertyId}). Refusing scope ` +
-        `company=${scope.companyId} store=${scope.storeId} source=${scope.sourceSystem} ` +
-        `property=${scope.sourcePropertyId || '(none)'}.`,
-    );
-  }
 }
 
 /**

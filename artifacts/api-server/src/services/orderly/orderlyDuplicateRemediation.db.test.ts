@@ -42,8 +42,6 @@ import {
 } from '@workspace/db';
 import {
   applyRemediationManifest,
-  assertFirstProductionScope,
-  BAY_HILL_PRODUCTION_SCOPE,
   buildApplyManifest,
   buildRemediationReport,
   computeReportHash,
@@ -56,6 +54,7 @@ import {
   type ApplyManifest,
   type RemediationScope,
 } from './orderlyDuplicateRemediation';
+import { preflightRemediationDatabase } from './orderlyDuplicateRemediationPreflight';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 const RUN = vi.hoisted(() => Date.now().toString(36));
@@ -636,44 +635,6 @@ async function expectNoMutation(code: string): Promise<void> {
 }
 
 describe.skipIf(SKIP)('remediation scope boundary', () => {
-  it('refuses every production scope until the approved source property is pinned', () => {
-    // The property decides WHICH data a run touches, so an unpinned lock is not
-    // a lock. '' must mean "not yet authorized", never "any property".
-    expect(BAY_HILL_PRODUCTION_SCOPE.sourcePropertyId).toBe('');
-    expect(() =>
-      assertFirstProductionScope(BAY_HILL_PRODUCTION_SCOPE as unknown as RemediationScope),
-    ).toThrow(/No approved source property is pinned/);
-  });
-
-  it('locks the first production run to the approved company, store, system and property', () => {
-    // Simulate the post-approval state so the comparison itself is covered.
-    const pinned = { ...BAY_HILL_PRODUCTION_SCOPE, sourcePropertyId: 'approved-prop' };
-    const mutable = BAY_HILL_PRODUCTION_SCOPE as unknown as { sourcePropertyId: string };
-    const original = mutable.sourcePropertyId;
-    mutable.sourcePropertyId = 'approved-prop';
-    try {
-      expect(() => assertFirstProductionScope(pinned as unknown as RemediationScope)).not.toThrow();
-      expect(() =>
-        assertFirstProductionScope({ ...scope, companyId: ID.company }),
-      ).toThrow(RemediationScopeError);
-      expect(() =>
-        assertFirstProductionScope({
-          ...pinned,
-          storeId: 'some-other-store',
-        } as unknown as RemediationScope),
-      ).toThrow(/locked to Bay Hill CC/);
-      // A different property bound to the same approved store is still refused.
-      expect(() =>
-        assertFirstProductionScope({
-          ...pinned,
-          sourcePropertyId: 'some-other-property',
-        } as unknown as RemediationScope),
-      ).toThrow(/locked to Bay Hill CC/);
-    } finally {
-      mutable.sourcePropertyId = original;
-    }
-  });
-
   it('refuses a store that belongs to another company', async () => {
     await expect(
       resolveScope({ companyId: ID.otherCompany, storeId: ID.store, sourceSystem: 'ORDERLY' }),
@@ -698,6 +659,22 @@ describe.skipIf(SKIP)('remediation scope boundary', () => {
       sourceSystem: 'ORDERLY',
     });
     expect(resolved).toEqual(scope);
+  });
+
+  it('preflights required schema and binding using only reads', async () => {
+    const beforeAudits = await db
+      .select({ id: inventoryItemRemediationAudit.id })
+      .from(inventoryItemRemediationAudit)
+      .where(eq(inventoryItemRemediationAudit.companyId, ID.company));
+    const result = await preflightRemediationDatabase(scope);
+    const afterAudits = await db
+      .select({ id: inventoryItemRemediationAudit.id })
+      .from(inventoryItemRemediationAudit)
+      .where(eq(inventoryItemRemediationAudit.companyId, ID.company));
+
+    expect(result.scope).toEqual(scope);
+    expect(result.verifiedIndexes).toContain('inv_item_remediation_audit_group_idx');
+    expect(afterAudits).toEqual(beforeAudits);
   });
 });
 

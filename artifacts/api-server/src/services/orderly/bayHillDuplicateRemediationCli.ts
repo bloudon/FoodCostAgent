@@ -5,7 +5,8 @@
  * into an apply run: apply requires a manifest file that a human wrote after
  * reviewing a report, and the manifest must carry the report hash.
  *
- *   # read-only discovery — safe to run against production
+ *   # read-only readiness and discovery — safe to run against production
+ *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode preflight
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode report
  *   pnpm --filter @workspace/api-server run orderly:remediate -- --mode report --json > report.json
  *
@@ -27,18 +28,16 @@
  * so an operator can prove which scope they meant; a value that does not match
  * the approved production scope is refused.
  *
- * Every mode here (report included) refuses to run until the approved source
- * property id is pinned in BAY_HILL_PRODUCTION_SCOPE. That pin is deliberately
- * left empty until the Product Owner confirms the exact property, so no run of
- * any kind can be aimed at production data before that decision is recorded.
+ * Preflight, report, and reconcile are read-only. Apply is deliberately a
+ * separate command and requires a reviewed manifest, current preflight pass,
+ * named operator, and explicit confirmation. Before an eventual APPLY, the
+ * operator must confirm a current production PostgreSQL recovery point.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
   applyRemediationManifest,
-  assertFirstProductionScope,
   BAY_HILL_PERIOD_EXPECTATIONS,
-  BAY_HILL_PRODUCTION_SCOPE,
   buildApplyManifest,
   buildRemediationReport,
   reconcilePeriods,
@@ -48,8 +47,13 @@ import {
   type RemediationGroup,
   type RemediationReport,
 } from './orderlyDuplicateRemediation';
+import {
+  assertBayHillProductionScope,
+  BAY_HILL_PRODUCTION_SCOPE,
+} from './bayHillDuplicateRemediationGuard';
+import { preflightRemediationDatabase, type RemediationPreflightResult } from './orderlyDuplicateRemediationPreflight';
 
-type Mode = 'report' | 'manifest' | 'apply' | 'reconcile';
+type Mode = 'preflight' | 'report' | 'manifest' | 'apply' | 'reconcile';
 
 function parseArgs(argv: string[]): Record<string, string | boolean> {
   const out: Record<string, string | boolean> = {};
@@ -139,12 +143,24 @@ function printReport(report: RemediationReport): void {
   );
 }
 
+function printPreflight(result: RemediationPreflightResult): void {
+  console.log('Remediation preflight PASS (read-only, no writes performed)');
+  console.log(
+    `scope company=${result.scope.companyId} store=${result.scope.storeId} ` +
+      `source=${result.scope.sourceSystem} property=${result.scope.sourcePropertyId}`,
+  );
+  console.log(
+    `verified tables=${result.verifiedTables.length} columns=${result.verifiedColumns.length} ` +
+      `indexes/constraints=${result.verifiedIndexes.length} binding=active`,
+  );
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const mode = (args.mode as Mode) ?? 'report';
 
-  if (!['report', 'manifest', 'apply', 'reconcile'].includes(mode)) {
-    throw new Error(`Unknown --mode ${String(args.mode)}. Use report | manifest | apply | reconcile.`);
+  if (!['preflight', 'report', 'manifest', 'apply', 'reconcile'].includes(mode)) {
+    throw new Error(`Unknown --mode ${String(args.mode)}. Use preflight | report | manifest | apply | reconcile.`);
   }
 
   // ── Manifest generation needs no DB scope resolution ─────────────────────
@@ -159,7 +175,7 @@ async function main(): Promise<void> {
       );
     }
     const report = JSON.parse(readFileSync(reportPath, 'utf8')) as RemediationReport;
-    assertFirstProductionScope(report.scope);
+    assertBayHillProductionScope(report.scope);
     const codes = approve
       .split(',')
       .map(code => code.trim())
@@ -176,8 +192,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  const requestedCompany = typeof args.company === 'string' ? args.company : BAY_HILL_PRODUCTION_SCOPE.companyId;
-  const requestedStore = typeof args.store === 'string' ? args.store : BAY_HILL_PRODUCTION_SCOPE.storeId;
+  const requestedScope = {
+    companyId: typeof args.company === 'string' ? args.company : BAY_HILL_PRODUCTION_SCOPE.companyId,
+    storeId: typeof args.store === 'string' ? args.store : BAY_HILL_PRODUCTION_SCOPE.storeId,
+    sourceSystem: typeof args['source-system'] === 'string'
+      ? args['source-system']
+      : BAY_HILL_PRODUCTION_SCOPE.sourceSystem,
+    sourcePropertyId: typeof args['source-property'] === 'string'
+      ? args['source-property']
+      : BAY_HILL_PRODUCTION_SCOPE.sourcePropertyId,
+  };
 
   if (mode === 'apply') {
     const manifestPath = args.manifest;
@@ -192,7 +216,7 @@ async function main(): Promise<void> {
       );
     }
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ApplyManifest;
-    assertFirstProductionScope(manifest.scope);
+    assertBayHillProductionScope(manifest.scope);
     if (manifest.reportVersion !== REMEDIATION_REPORT_VERSION) {
       throw new Error(
         `Manifest report version ${manifest.reportVersion} does not match this build ` +
@@ -215,6 +239,7 @@ async function main(): Promise<void> {
           'the manifest with --mode manifest; a hand-edited manifest cannot be applied.',
       );
     }
+    await preflightRemediationDatabase(manifest.scope);
 
     console.log(
       `Applying manifest ${manifest.manifestId} (${manifest.groups.length} group(s)) against ` +
@@ -250,13 +275,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const scope = await resolveScope({
-    companyId: requestedCompany,
-    storeId: requestedStore,
-    sourceSystem: BAY_HILL_PRODUCTION_SCOPE.sourceSystem,
-    sourcePropertyId: typeof args['source-property'] === 'string' ? args['source-property'] : undefined,
-  });
-  assertFirstProductionScope(scope);
+  assertBayHillProductionScope(requestedScope);
+  const scope = await resolveScope(requestedScope);
+  const preflight = await preflightRemediationDatabase(scope);
+
+  if (mode === 'preflight') {
+    printPreflight(preflight);
+    return;
+  }
 
   if (mode === 'reconcile') {
     const periods = await reconcilePeriods(scope, BAY_HILL_PERIOD_EXPECTATIONS);
