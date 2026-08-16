@@ -4,6 +4,29 @@
 Product Owner authorization recorded in Section 7. This document authorizes
 nothing by itself.**
 
+**Run-2 addendum (PM decision — #1158 accepted, performance blocker closed):**
+
+- **Minimum deployed code:** production `main` at or after commit `d391cfe1`
+  ("Make production DB identity mandatory and code-owned in bench guard"),
+  which includes the accepted APPLY optimization (`26cf57a9`: under-lock
+  rebuild scoped to the group's own source code). Record `git rev-parse HEAD`
+  as evidence; a deployed HEAD older than `26cf57a9` = STOP and redeploy.
+- **Expected runtime with accepted code:** one-time manifest-wide validation
+  pass (~2–3 minutes) plus 848 sub-second group transactions — approximately
+  **5–10 minutes total**. A run tracking toward hours indicates a stale build
+  (the pre-optimization code measured ~105 s/group); STOP and verify the
+  deployed commit rather than letting it run.
+- **Fresh recovery point is mandatory:** the recovery point recorded for the
+  prior aborted attempt must NOT be reused. Section 2 must be executed again
+  immediately before this run, and Section 7 evidence must reference the NEW
+  recovery identifier.
+- Before Section 1, confirm the prior aborted attempt remains fully reconciled
+  (zero mutations recorded; May $254,286.67 / June $261,007.67, delta $0.00)
+  and the `fnbcostpro` application is healthy under PM2.
+- All prior safety gates remain unchanged and required; this addendum adds
+  preconditions only. Production APPLY remains unauthorized until fresh
+  Product Owner sign-off at Gate 7 (Section 7).
+
 This runbook executes the one-time Bay Hill Batch 1 duplicate remediation under
 **operational write quiescence** (PM decision: no manifest-level locking is
 added for this controlled migration; the transaction-time scope validation
