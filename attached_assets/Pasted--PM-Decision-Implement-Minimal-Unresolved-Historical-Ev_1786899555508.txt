@@ -1,0 +1,198 @@
+# PM Decision — Implement Minimal Unresolved Historical Evidence Model
+
+Claude independently reviewed the May historical-import design.
+
+Decision:
+
+**APPROVE WITH SIMPLIFICATION**
+
+Do not build a rich unresolved-line entity.
+
+## First: confirm the existing session model
+
+Before schema changes, inspect the current count-session schema and answer:
+
+- how historical/unapplied sessions are distinguished from live/applied sessions
+- whether the existing model can safely represent an unapplied historical snapshot
+- whether introducing a separate historical snapshot entity is actually necessary
+
+Prefer extending the existing session model if it already has a clean historical/unapplied distinction.
+
+Do not create a parallel historical snapshot abstraction unless the current schema genuinely cannot support this safely.
+
+## Minimal persisted model
+
+If the existing count-session model is appropriate, add only a thin relationship:
+
+`historical_session_unresolved_rows`
+
+Minimum fields:
+
+- sessionId
+- importRowId
+
+No copied:
+
+- description
+- quantity
+- value
+- supplier
+- location
+- pack data
+
+Read source evidence through the authoritative import row.
+
+Do not add workflow/status machinery for unresolved rows.
+
+Presence in this relationship means:
+
+> this source row contributes historical evidence to this snapshot but has no safe canonical inventory identity.
+
+## Existing invariants remain
+
+Do NOT:
+
+- make normal count-line inventoryItemId nullable
+- create synthetic inventory items
+- fuzzy-match blank-code rows
+- invent Item Codes
+- push unresolved evidence into live inventory
+- modify live on-hand
+
+Normal count lines continue to require a real canonical inventory item.
+
+## Valuation ownership
+
+Do not store an independent unresolved valuation.
+
+Compute:
+
+`resolved valuation`
+from normal historical count lines
+
+and:
+
+`unresolved valuation`
+from linked authoritative import rows
+
+Then:
+
+`historical snapshot total = resolved + unresolved`
+
+and:
+
+`reconciliation delta = authoritative source valuation - historical snapshot total`
+
+For May the expected result is:
+
+- resolved: $189,649.90
+- unresolved: $64,636.77
+- total: $254,286.67
+- source: $254,286.67
+- delta: $0.00
+
+There must be one authoritative computation path for these totals.
+
+Avoid per-screen ad hoc valuation logic.
+
+## Historical immutability
+
+Reference-only is acceptable only if historical evidence cannot silently drift.
+
+Confirm the lifecycle of approved import rows.
+
+Once an import row contributes to a finalized historical session, either:
+
+1. the authoritative import row must be immutable/frozen,
+
+or
+
+2. the relationship must store a checksum/version sufficient to detect later mutation.
+
+Prefer the simpler existing immutability mechanism if one already exists.
+
+Do not duplicate all source fields just to solve this.
+
+## Operational isolation
+
+Unresolved historical rows must never participate in:
+
+- live on-hand
+- normal inventory valuation
+- theoretical usage
+- ingredient-level variance
+- predictive ordering
+- purchasing
+- recipes
+- vendor-item resolution
+- mobile/live counting
+
+Any calculation requiring canonical item identity must use resolved count lines only.
+
+The unresolved valuation is valid for historical snapshot reconciliation, not ingredient-level operational calculations.
+
+## Reconciliation vs identity resolution
+
+Treat these as separate concepts:
+
+- valuation reconciliation
+- identity resolution
+
+For May:
+
+- valuation reconciled = yes
+- identity fully resolved = no
+
+The UI may display:
+
+`Reconciled — unresolved identities remain`
+
+Do not imply that $0.00 valuation delta means all source identities have been resolved.
+
+Avoid adding persisted booleans unless the existing session schema naturally supports them; deriving them is acceptable for the MVP.
+
+## Zero-value rows
+
+The 2,229 zero/blank-quantity rows may remain only in the authoritative import batch.
+
+Do not create session records solely for row-count parity.
+
+Before finalizing, confirm that `$0.00` means genuine zero/blank source count/value and not a failed calculation coerced to zero.
+
+## Future resolution
+
+Do not build resolution workflow now.
+
+Preserve the architectural rule:
+
+> future resolution must be additive and auditable, not a rewrite of the original historical source facts.
+
+Do not design a generic resolution-events system in this task unless required by current acceptance.
+
+## Scope
+
+Keep this explicitly migration/history-only.
+
+Do not broaden it into a live “unmatched inventory item” feature.
+
+## May acceptance gate
+
+Re-run the exact May workbook in Dev.
+
+Required:
+
+- source rows: 5,358
+- source valuation: $254,286.67
+- resolved count lines remain based on actual safe identity/count evidence
+- unresolved historical rows: expected 1,039 unless deterministic safe resolution changes this
+- resolved + unresolved valuation = $254,286.67
+- reconciliation delta = $0.00
+- no synthetic core items
+- no fuzzy blank-code resolution
+- no duplicate core identities from reliable Item Codes
+- historical session remains unapplied
+- live on-hand unchanged
+
+STOP after May validation.
+
+Do not load June or additional historical months yet.
