@@ -55,9 +55,12 @@ import {
   type RemediationScope,
 } from './orderlyDuplicateRemediation';
 import {
+  preflightManifestMergeContent,
   preflightRemediationDatabase,
   RemediationManifestBlockedError,
+  RemediationMergeContentBlockedError,
 } from './orderlyDuplicateRemediationPreflight';
+import { registerPrimaryLocationMergePolicyForTests } from './orderlyMergeContentPolicy';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 const RUN = vi.hoisted(() => Date.now().toString(36));
@@ -597,7 +600,7 @@ async function seedChambordDefect(code = `chambord-${RUN}`): Promise<{
  * A stop that still mutated is the failure mode these tests exist to catch, so
  * checking only the returned failure code would miss it.
  */
-async function expectNoMutation(code: string): Promise<void> {
+async function expectNoMutation(code: string, itemIds: string[] = createdItemIds): Promise<void> {
   const mappings = (await db
     .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
     .from(inventoryItemExternalMappings)
@@ -616,7 +619,7 @@ async function expectNoMutation(code: string): Promise<void> {
       supersededAt: inventoryItems.supersededAt,
     })
     .from(inventoryItems)
-    .where(inArray(inventoryItems.id, createdItemIds))) as Array<{
+    .where(inArray(inventoryItems.id, itemIds))) as Array<{
     id: string;
     active: number;
     superseded: string | null;
@@ -689,6 +692,74 @@ async function expectManifestBlocked(
   expect(auditsAfter).toHaveLength(auditsBefore.length);
 
   await expectNoMutation(code);
+  return blocked;
+}
+
+/**
+ * Asserts APPLY refused the manifest at the MERGE-CONTENT gate: same
+ * all-or-nothing semantics as the scope gate, for deterministic content
+ * collisions. No group is attempted, so no audit rows — not even 'stopped'
+ * ones — and zero mutation anywhere.
+ */
+/**
+ * A valid Option A authorization bound to the given test manifest. Production
+ * mints its equivalent only at the Bay Hill operator boundary; tests mint one
+ * per manifest so merge-content verdicts are exercised WITH the rule armed.
+ */
+function optionAAuthorization(manifest: ApplyManifest) {
+  // Registered through the test-environment-gated hook: the service verifies
+  // policy instances by reference identity against the code-owned registry,
+  // so a plain object literal here would be refused as forged.
+  const policy = registerPrimaryLocationMergePolicyForTests({
+    policyId: `test-option-a-${manifest.manifestId}`,
+    scope,
+    manifestId: manifest.manifestId,
+    reportHash: manifest.reportHash,
+    expectedGroupCount: manifest.groups.length,
+  });
+  return {
+    policy,
+    manifestId: manifest.manifestId,
+    reportHash: manifest.reportHash,
+    groupCount: manifest.groups.length,
+  };
+}
+
+async function expectMergeContentBlocked(
+  manifest: ApplyManifest,
+  code: string,
+  itemIds: string[] = createdItemIds,
+  options: { authorized?: boolean } = {},
+): Promise<RemediationMergeContentBlockedError> {
+  const auditsBefore = (await db
+    .select({ id: inventoryItemRemediationAudit.id })
+    .from(inventoryItemRemediationAudit)
+    .where(eq(inventoryItemRemediationAudit.companyId, ID.company))) as Array<{ id: string }>;
+
+  let caught: unknown;
+  try {
+    await applyRemediationManifest(
+      manifest,
+      ID.admin,
+      db,
+      options.authorized === false
+        ? {}
+        : { primaryLocationMergeAuthorization: optionAAuthorization(manifest) },
+    );
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(RemediationMergeContentBlockedError);
+  const blocked = caught as RemediationMergeContentBlockedError;
+  expect(blocked.evaluation.blockers.map(entry => entry.sourceExternalId)).toContain(code);
+
+  const auditsAfter = (await db
+    .select({ id: inventoryItemRemediationAudit.id })
+    .from(inventoryItemRemediationAudit)
+    .where(eq(inventoryItemRemediationAudit.companyId, ID.company))) as Array<{ id: string }>;
+  expect(auditsAfter).toHaveLength(auditsBefore.length);
+
+  await expectNoMutation(code, itemIds);
   return blocked;
 }
 
@@ -1222,12 +1293,14 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-unitconflict-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    expect(result.groups[0].failureCode).toBe('UNIQUENESS_COLLISION');
-    expect(result.groups[0].failureReason).toMatch(/conversion factor/i);
+    // The manifest-wide merge-content gate now refuses the whole manifest
+    // before any group is attempted, rather than stopping per group.
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/conversion factor/i);
 
     // Both conversion factors survive, and nothing was superseded.
     const unitRows = (await db
@@ -1299,12 +1372,12 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-parconflict-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    expect(result.groups[0].failureCode).toBe('UNIQUENESS_COLLISION');
-    expect(result.groups[0].failureReason).toMatch(/par target/i);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/par target/i);
 
     // Both assignments survive untouched, on their original items.
     const assignments = (await db
@@ -1883,12 +1956,10 @@ describe.skipIf(SKIP)('apply mode', () => {
       unitCost: 25,
     });
 
-    const result = await applyRemediationManifest(manifest, ID.admin);
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('STALE_REPORT');
+    // The late line collides with the canonical's (juneCount, storageA) line,
+    // so the manifest-wide merge-content gate now refuses the whole manifest
+    // before any group is attempted — same zero-mutation outcome, earlier.
+    await expectMergeContentBlocked(manifest, code);
 
     // The concurrently-written line is still on the duplicate, unmoved.
     const [line] = (await db
@@ -2152,12 +2223,12 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-storeconflict-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    expect(result.groups[0].failureCode).toBe('UNIQUENESS_COLLISION');
-    expect(result.groups[0].failureReason).toMatch(/par level/i);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/par level/i);
 
     // Both store rows survive with their own settings.
     const storeRows = (await db
@@ -2209,12 +2280,12 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-legacyconflict-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    expect(result.groups[0].failureCode).toBe('UNIQUENESS_COLLISION');
-    expect(result.groups[0].failureReason).toMatch(/primary/i);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/primary/i);
 
     const legacy = (await db
       .select({
@@ -2648,13 +2719,13 @@ describe.skipIf(SKIP)('apply mode', () => {
     const report = await buildRemediationReport(scope);
     expect(report.groups[0].classification).toBe('SAFE_CANDIDATE');
     const manifest = buildApplyManifest(report, [code], `m-collision-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.stopped).toBe(1);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('UNIQUENESS_COLLISION');
-    expect(stopped.failureReason).toMatch(new RegExp(ID.storageA));
+    // Deterministic collision → refused at the manifest-wide merge gate.
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(new RegExp(ID.storageA));
 
     // Nothing partially applied: both count rows, both location assignments,
     // both mappings, and both items are untouched.
@@ -2680,14 +2751,14 @@ describe.skipIf(SKIP)('apply mode', () => {
       expect(item.supersededByItemId).toBeNull();
     }
 
-    // The stop is auditable.
+    // Refusal happened at the gate, before any group was attempted, so no
+    // audit rows exist — not even a 'stopped' one. The evidence lives in the
+    // error's evaluation instead (asserted via expectMergeContentBlocked).
     const audits = await db
-      .select({ result: inventoryItemRemediationAudit.result, failureReason: inventoryItemRemediationAudit.failureReason })
+      .select({ result: inventoryItemRemediationAudit.result })
       .from(inventoryItemRemediationAudit)
       .where(eq(inventoryItemRemediationAudit.companyId, ID.company));
-    expect(audits).toHaveLength(1);
-    expect((audits[0] as { result: string }).result).toBe('stopped');
-    expect((audits[0] as { failureReason: string }).failureReason).toMatch(/UNIQUENESS_COLLISION/);
+    expect(audits).toHaveLength(0);
   });
 
   it('repoints vendor items and recipe components onto the canonical item', async () => {
@@ -2842,5 +2913,800 @@ describe.skipIf(SKIP)('report hash', () => {
     const third = await buildRemediationReport(scope);
     expect(third.reportHash).not.toBe(first.reportHash);
     expect(computeReportHash(scope, third.groups)).toBe(third.reportHash);
+  });
+});
+
+// ─── Option A: the approved primary-location-only merge rule ──────────────────
+//
+// PM-approved narrow rule: when canonical and duplicate store-settings rows
+// differ ONLY on primaryLocationId, retain the canonical's primary, discard the
+// duplicate's, preserve the full location-assignment union, and record the
+// discarded value in the audit evidence. Any other protected-field difference
+// remains a hard stop. The manifest-wide merge-content preflight must reach the
+// same verdicts as APPLY because both call the same pure decision functions.
+describe.skipIf(SKIP)('primary-location-only store-settings merge (Option A)', () => {
+  /** Seeds one canonical + one duplicate, both store-linked, with count rows. */
+  async function seedStorePair(
+    code: string,
+    settings: {
+      canonical: Partial<{ primaryLocationId: string | null; parLevel: number | null; reorderLevel: number | null; active: number }>;
+      dupe: Partial<{ primaryLocationId: string | null; parLevel: number | null; reorderLevel: number | null; active: number }>;
+    },
+    options: { dupeAssignmentLocation?: string | null } = {},
+  ): Promise<{ canonical: string; dupe: string }> {
+    const canonical = await makeItem(code, {
+      name: `Option A ${code}`,
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe = await makeItem(code, {
+      name: `Option A ${code}`,
+      storeLinked: true,
+      locationIds:
+        options.dupeAssignmentLocation === null
+          ? []
+          : [options.dupeAssignmentLocation ?? ID.locationB],
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    await stageResolvedRow(ID.mayBatch, 60, code, canonical, { description: 'Option A' });
+    await stageResolvedRow(ID.juneBatch, 60, code, dupe, { description: 'Option A' });
+
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 10, reorderLevel: 4, active: 1, ...settings.canonical })
+      .where(eq(storeInventoryItems.inventoryItemId, canonical));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 10, reorderLevel: 4, active: 1, ...settings.dupe })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe));
+    return { canonical, dupe };
+  }
+
+  function manifestItems(manifest: ApplyManifest) {
+    return manifest.groups.map(group => ({
+      sourceExternalId: group.sourceExternalId,
+      canonicalItemId: group.canonicalItemId,
+      supersededItemIds: group.supersededItemIds,
+    }));
+  }
+
+  it('1. merges identical store rows (control: rule not involved)', async () => {
+    const code = `oa-identical-${RUN}`;
+    const { canonical } = await seedStorePair(code, { canonical: {}, dupe: {} });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-identical-${RUN}`);
+
+    const preview = await preflightManifestMergeContent(scope, manifestItems(manifest));
+    expect(preview.conflictGroups).toBe(0);
+    expect(preview.primaryLocationMergeCount).toBe(0);
+
+    const result = await applyRemediationManifest(manifest, ID.admin);
+    expect(result.applied).toBe(1);
+    const storeRows = await db
+      .select({ inventoryItemId: storeInventoryItems.inventoryItemId })
+      .from(storeInventoryItems)
+      .where(inArray(storeInventoryItems.inventoryItemId, createdItemIds));
+    expect(storeRows).toHaveLength(1);
+    expect(storeRows[0].inventoryItemId).toBe(canonical);
+  });
+
+  it('2+3. primary-location-only difference merges, retains the canonical primary, and records the discarded value in the audit', async () => {
+    const code = `oa-loconly-${RUN}`;
+    const { canonical, dupe } = await seedStorePair(code, {
+      canonical: { primaryLocationId: ID.locationA },
+      dupe: { primaryLocationId: ID.locationB },
+    });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-loconly-${RUN}`);
+
+    const result = await applyRemediationManifest(manifest, ID.admin, db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(manifest),
+    });
+    expect(result.applied).toBe(1);
+
+    // Canonical's primary retained; never a computed/new value.
+    const [storeRow] = (await db
+      .select({
+        inventoryItemId: storeInventoryItems.inventoryItemId,
+        primaryLocationId: storeInventoryItems.primaryLocationId,
+      })
+      .from(storeInventoryItems)
+      .where(inArray(storeInventoryItems.inventoryItemId, [canonical, dupe]))) as Array<{
+      inventoryItemId: string;
+      primaryLocationId: string | null;
+    }>;
+    expect(storeRow.inventoryItemId).toBe(canonical);
+    expect(storeRow.primaryLocationId).toBe(ID.locationA);
+
+    // Audit row carries the full per-exception evidence.
+    const [audit] = (await db
+      .select({ referencesMoved: inventoryItemRemediationAudit.referencesMoved })
+      .from(inventoryItemRemediationAudit)
+      .where(
+        and(
+          eq(inventoryItemRemediationAudit.companyId, ID.company),
+          eq(inventoryItemRemediationAudit.sourceExternalId, code),
+          eq(inventoryItemRemediationAudit.result, 'applied'),
+        ),
+      )) as Array<{ referencesMoved: Record<string, unknown> }>;
+    const merges = audit.referencesMoved.primaryLocationMerges as Array<Record<string, unknown>>;
+    expect(merges).toHaveLength(1);
+    expect(merges[0]).toMatchObject({
+      storeId: ID.store,
+      canonicalItemId: canonical,
+      supersededItemId: dupe,
+      retainedPrimaryLocationId: ID.locationA,
+      discardedPrimaryLocationId: ID.locationB,
+      otherProtectedSettingsMatched: true,
+      locationUnionPreserved: true,
+    });
+  });
+
+  it('4. the discarded primary location survives in the merged assignment union', async () => {
+    const code = `oa-union-${RUN}`;
+    const { canonical } = await seedStorePair(code, {
+      canonical: { primaryLocationId: ID.locationA },
+      dupe: { primaryLocationId: ID.locationB },
+    });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-union-${RUN}`);
+    const result = await applyRemediationManifest(manifest, ID.admin, db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(manifest),
+    });
+    expect(result.applied).toBe(1);
+
+    const assignments = (await db
+      .select({ locationId: inventoryItemLocationAssignments.locationId })
+      .from(inventoryItemLocationAssignments)
+      .where(eq(inventoryItemLocationAssignments.inventoryItemId, canonical))) as Array<{
+      locationId: string;
+    }>;
+    const locations = assignments.map(row => row.locationId).sort();
+    expect(locations).toContain(ID.locationA);
+    expect(locations).toContain(ID.locationB); // the discarded primary's location
+  });
+
+  it('5. blocks when the discarded primary location would vanish from the union', async () => {
+    const code = `oa-vanish-${RUN}`;
+    // Duplicate's primary is location B, but NO assignment (modern or legacy)
+    // anywhere in the group names location B — discarding it would erase the
+    // location from the item entirely.
+    await seedStorePair(
+      code,
+      { canonical: { primaryLocationId: ID.locationA }, dupe: { primaryLocationId: ID.locationB } },
+      { dupeAssignmentLocation: null },
+    );
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-vanish-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/not represented/i);
+  });
+
+  it('6. par-level difference alone still blocks', async () => {
+    const code = `oa-par-${RUN}`;
+    await seedStorePair(code, { canonical: { parLevel: 10 }, dupe: { parLevel: 96 } });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-par-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers.find(e => e.sourceExternalId === code)!.conflicts.join('; '),
+    ).toMatch(/par level/i);
+  });
+
+  it('7. reorder-level difference alone still blocks', async () => {
+    const code = `oa-reorder-${RUN}`;
+    await seedStorePair(code, { canonical: { reorderLevel: 4 }, dupe: { reorderLevel: 9 } });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-reorder-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers.find(e => e.sourceExternalId === code)!.conflicts.join('; '),
+    ).toMatch(/reorder level/i);
+  });
+
+  it('8. active-flag difference alone still blocks', async () => {
+    const code = `oa-active-${RUN}`;
+    await seedStorePair(code, { canonical: { active: 1 }, dupe: { active: 0 } });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-active-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers.find(e => e.sourceExternalId === code)!.conflicts.join('; '),
+    ).toMatch(/active flag/i);
+  });
+
+  it('9. primary location PLUS another difference blocks — the rule never widens', async () => {
+    const code = `oa-multi-${RUN}`;
+    await seedStorePair(code, {
+      canonical: { primaryLocationId: ID.locationA, parLevel: 10 },
+      dupe: { primaryLocationId: ID.locationB, parLevel: 96 },
+    });
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-multi-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    const conflicts = blocked.evaluation.blockers
+      .find(e => e.sourceExternalId === code)!
+      .conflicts.join('; ');
+    expect(conflicts).toMatch(/primary location/i);
+    expect(conflicts).toMatch(/par level/i);
+  });
+
+  it('10. multi-location assignment union is fully preserved across the merge', async () => {
+    const code = `oa-multiunion-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: 'Multi Union',
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe = await makeItem(code, {
+      name: 'Multi Union',
+      storeLinked: true,
+      locationIds: [ID.locationA, ID.locationB], // overlapping + new
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    await stageResolvedRow(ID.mayBatch, 61, code, canonical, { description: 'Multi Union' });
+    await stageResolvedRow(ID.juneBatch, 61, code, dupe, { description: 'Multi Union' });
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, canonical));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationB, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-multiunion-${RUN}`);
+    const result = await applyRemediationManifest(manifest, ID.admin, db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(manifest),
+    });
+    expect(result.applied).toBe(1);
+
+    const assignments = (await db
+      .select({ locationId: inventoryItemLocationAssignments.locationId })
+      .from(inventoryItemLocationAssignments)
+      .where(inArray(inventoryItemLocationAssignments.inventoryItemId, [canonical, dupe]))) as Array<{
+      locationId: string;
+    }>;
+    // Every row now lives on the canonical, one per location, none lost.
+    const remaining = (await db
+      .select({ inventoryItemId: inventoryItemLocationAssignments.inventoryItemId })
+      .from(inventoryItemLocationAssignments)
+      .where(eq(inventoryItemLocationAssignments.inventoryItemId, dupe))) as Array<{
+      inventoryItemId: string;
+    }>;
+    expect(remaining).toHaveLength(0);
+    expect(new Set(assignments.map(row => row.locationId))).toEqual(
+      new Set([ID.locationA, ID.locationB]),
+    );
+  });
+
+  it('11. the full-manifest merge preflight enumerates eligibility and conflicts per group', async () => {
+    const cleanCode = `oa-pf-clean-${RUN}`;
+    await seedStorePair(cleanCode, {
+      canonical: { primaryLocationId: ID.locationA },
+      dupe: { primaryLocationId: ID.locationB },
+    });
+    const conflictCode = `oa-pf-conflict-${RUN}`;
+    await seedStorePair(conflictCode, {
+      canonical: { parLevel: 1 },
+      dupe: { parLevel: 2 },
+    });
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(
+      report,
+      [cleanCode, conflictCode],
+      `m-oa-preflight-${RUN}`,
+    );
+    const evaluation = await preflightManifestMergeContent(scope, manifestItems(manifest), db, {
+      doNotThrow: true,
+      primaryLocationMergeAuthorization: optionAAuthorization(manifest),
+    });
+    expect(evaluation.totalGroups).toBe(2);
+    expect(evaluation.primaryLocationOnlyGroups).toBe(1);
+    expect(evaluation.conflictGroups).toBe(1);
+    expect(evaluation.blockers.map(b => b.sourceExternalId)).toEqual([conflictCode]);
+    const eligible = evaluation.findings.find(f => f.sourceExternalId === cleanCode)!;
+    expect(eligible.primaryLocationMerges).toHaveLength(1);
+    expect(eligible.primaryLocationMerges[0].discardedPrimaryLocationId).toBe(ID.locationB);
+  });
+
+  it('12. a manifest with any merge-content blocker begins zero remediation mutation', async () => {
+    const cleanCode = `oa-zero-clean-${RUN}`;
+    const { canonical: cleanCanonical, dupe: cleanDupe } = await seedStorePair(cleanCode, {
+      canonical: {},
+      dupe: {},
+    });
+    const conflictCode = `oa-zero-conflict-${RUN}`;
+    await seedStorePair(conflictCode, { canonical: { parLevel: 1 }, dupe: { parLevel: 2 } });
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(
+      report,
+      [cleanCode, conflictCode],
+      `m-oa-zero-${RUN}`,
+    );
+    await expectMergeContentBlocked(manifest, conflictCode);
+    // The CLEAN group was not applied either: all-or-nothing.
+    await expectNoMutation(cleanCode);
+    const cleanRows = await db
+      .select({ id: storeInventoryItems.id })
+      .from(storeInventoryItems)
+      .where(inArray(storeInventoryItems.inventoryItemId, [cleanCanonical, cleanDupe]));
+    expect(cleanRows).toHaveLength(2);
+  });
+
+  it('13. preflight and APPLY reach the same decision for the same manifest', async () => {
+    // Eligible manifest: preflight says eligible, APPLY applies.
+    const okCode = `oa-parity-ok-${RUN}`;
+    await seedStorePair(okCode, {
+      canonical: { primaryLocationId: ID.locationA },
+      dupe: { primaryLocationId: ID.locationB },
+    });
+    let report = await buildRemediationReport(scope);
+    const okManifest = buildApplyManifest(report, [okCode], `m-oa-parity-ok-${RUN}`);
+    const okPreview = await preflightManifestMergeContent(scope, manifestItems(okManifest), db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(okManifest),
+    });
+    expect(okPreview.conflictGroups).toBe(0);
+    expect(okPreview.primaryLocationOnlyGroups).toBe(1);
+    const okResult = await applyRemediationManifest(okManifest, ID.admin, db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(okManifest),
+    });
+    expect(okResult.applied).toBe(1);
+
+    // Blocked manifest: preflight names the same blocker APPLY refuses on.
+    const badCode = `oa-parity-bad-${RUN}`;
+    const badPair = await seedStorePair(badCode, {
+      canonical: { reorderLevel: 1 },
+      dupe: { reorderLevel: 7 },
+    });
+    report = await buildRemediationReport(scope);
+    const badManifest = buildApplyManifest(report, [badCode], `m-oa-parity-bad-${RUN}`);
+    const badPreview = await preflightManifestMergeContent(scope, manifestItems(badManifest), db, {
+      doNotThrow: true,
+    });
+    expect(badPreview.conflictGroups).toBe(1);
+    // Scope the no-mutation check to the bad pair — the ok group above was
+    // legitimately applied in this same test.
+    const blocked = await expectMergeContentBlocked(badManifest, badCode, [
+      badPair.canonical,
+      badPair.dupe,
+    ]);
+    expect(blocked.evaluation.blockers.map(b => b.sourceExternalId)).toEqual(
+      badPreview.blockers.map(b => b.sourceExternalId),
+    );
+    expect(blocked.evaluation.blockers[0].conflicts).toEqual(badPreview.blockers[0].conflicts);
+  });
+});
+
+// ─── Duplicate-vs-duplicate collisions (canonical has no row for the key) ─────
+//
+// APPLY repoints duplicates sequentially, so the first duplicate's row becomes
+// the canonical's row and every LATER duplicate is compared against it. The
+// preflight must simulate exactly that, or a manifest could pass the gate and
+// still stop mid-APPLY.
+describe.skipIf(SKIP)('merge preflight ↔ APPLY parity for duplicate-vs-duplicate collisions', () => {
+  it('blocks when two duplicates disagree on par level and the canonical has no store row', async () => {
+    const code = `dd-store-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: 'DD Store',
+      authoritativeMapping: true,
+      // NOT storeLinked — the canonical has no store-settings row at all.
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe1 = await makeItem(code, {
+      name: 'DD Store',
+      storeLinked: true,
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    const dupe2 = await makeItem(code, { name: 'DD Store', storeLinked: true });
+    await stageResolvedRow(ID.mayBatch, 70, code, canonical, { description: 'DD Store' });
+    await stageResolvedRow(ID.mayBatch, 71, code, dupe1, { description: 'DD Store' });
+    await stageResolvedRow(ID.juneBatch, 70, code, dupe2, { description: 'DD Store' });
+
+    await db
+      .update(storeInventoryItems)
+      .set({ parLevel: 3 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe1));
+    await db
+      .update(storeInventoryItems)
+      .set({ parLevel: 44 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe2));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-dd-store-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/par level/i);
+  });
+
+  it('blocks when two duplicates disagree on a conversion factor the canonical does not declare', async () => {
+    const code = `dd-unit-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: 'DD Unit',
+      authoritativeMapping: true,
+      storeLinked: true,
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe1 = await makeItem(code, {
+      name: 'DD Unit',
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    const dupe2 = await makeItem(code, { name: 'DD Unit' });
+    await stageResolvedRow(ID.mayBatch, 72, code, canonical, { description: 'DD Unit' });
+    await stageResolvedRow(ID.mayBatch, 73, code, dupe1, { description: 'DD Unit' });
+    await stageResolvedRow(ID.juneBatch, 72, code, dupe2, { description: 'DD Unit' });
+
+    await db.insert(inventoryItemUnits).values([
+      { companyId: ID.company, inventoryItemId: dupe1, unitId: caseUnit, unitsPerCanonical: 6, isIssueUnit: 0 },
+      { companyId: ID.company, inventoryItemId: dupe2, unitId: caseUnit, unitsPerCanonical: 12, isIssueUnit: 0 },
+    ]);
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-dd-unit-${RUN}`);
+    const blocked = await expectMergeContentBlocked(manifest, code);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/conversion factor/i);
+  });
+
+  it('blocks the canonical-absent, primary-only shape even WITH Option A authorization (fail closed pending PO approval)', async () => {
+    const code = `dd-loconly-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: 'DD LocOnly',
+      authoritativeMapping: true,
+      locationIds: [ID.locationA, ID.locationB],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe1 = await makeItem(code, {
+      name: 'DD LocOnly',
+      storeLinked: true,
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    const dupe2 = await makeItem(code, { name: 'DD LocOnly', storeLinked: true });
+    await stageResolvedRow(ID.mayBatch, 74, code, canonical, { description: 'DD LocOnly' });
+    await stageResolvedRow(ID.mayBatch, 75, code, dupe1, { description: 'DD LocOnly' });
+    await stageResolvedRow(ID.juneBatch, 74, code, dupe2, { description: 'DD LocOnly' });
+
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe1));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationB, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe2));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-dd-loconly-${RUN}`);
+
+    // The approved Option A rule retains the CANONICAL's primary. Here the
+    // canonical has no store row at all — the disagreement is between two
+    // duplicates — so there is no approved retention source and the shape
+    // fails closed even though a valid authorization is presented.
+    const preview = await preflightManifestMergeContent(
+      scope,
+      [
+        {
+          sourceExternalId: code,
+          canonicalItemId: manifest.groups[0].canonicalItemId,
+          supersededItemIds: manifest.groups[0].supersededItemIds,
+        },
+      ],
+      db,
+      { doNotThrow: true, primaryLocationMergeAuthorization: optionAAuthorization(manifest) },
+    );
+    expect(preview.conflictGroups).toBe(1);
+    expect(preview.blockers[0].conflicts.join('; ')).toMatch(/no store row on the canonical/i);
+
+    const blocked = await expectMergeContentBlocked(manifest, code, [canonical, dupe1, dupe2]);
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/no store row on the canonical/i);
+
+    // All three store rows are untouched — zero mutation.
+    const storeRows = await db
+      .select({ inventoryItemId: storeInventoryItems.inventoryItemId })
+      .from(storeInventoryItems)
+      .where(inArray(storeInventoryItems.inventoryItemId, [canonical, dupe1, dupe2]));
+    expect(storeRows).toHaveLength(2);
+  });
+});
+
+// Reviewer-required parity assertion: for the canonical-absent, primary-only
+// duplicate-vs-duplicate case the shape now FAILS CLOSED (no approved
+// retention source), so parity means preflight and APPLY refuse on the SAME
+// conflict, with zero mutation.
+describe.skipIf(SKIP)('deterministic duplicate ordering: preflight verdict === APPLY verdict', () => {
+  it('preflight and APPLY refuse the canonical-absent shape on the identical conflict', async () => {
+    const code = `dd-parity-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: 'DD Parity',
+      authoritativeMapping: true,
+      locationIds: [ID.locationA, ID.locationB],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe1 = await makeItem(code, {
+      name: 'DD Parity',
+      storeLinked: true,
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    const dupe2 = await makeItem(code, { name: 'DD Parity', storeLinked: true });
+    await stageResolvedRow(ID.mayBatch, 76, code, canonical, { description: 'DD Parity' });
+    await stageResolvedRow(ID.mayBatch, 77, code, dupe1, { description: 'DD Parity' });
+    await stageResolvedRow(ID.juneBatch, 76, code, dupe2, { description: 'DD Parity' });
+
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe1));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationB, parLevel: 5, reorderLevel: 2, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe2));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-dd-parity-${RUN}`);
+
+    const preview = await preflightManifestMergeContent(
+      scope,
+      [
+        {
+          sourceExternalId: code,
+          canonicalItemId: manifest.groups[0].canonicalItemId,
+          supersededItemIds: manifest.groups[0].supersededItemIds,
+        },
+      ],
+      db,
+      { doNotThrow: true, primaryLocationMergeAuthorization: optionAAuthorization(manifest) },
+    );
+    expect(preview.conflictGroups).toBe(1);
+    expect(preview.findings[0].primaryLocationMerges).toHaveLength(0);
+
+    const blocked = await expectMergeContentBlocked(manifest, code, [canonical, dupe1, dupe2]);
+    // Preflight and APPLY refuse on the IDENTICAL conflict text.
+    expect(blocked.evaluation.blockers.map(b => b.sourceExternalId)).toEqual(
+      preview.blockers.map(b => b.sourceExternalId),
+    );
+    expect(blocked.evaluation.blockers[0].conflicts).toEqual(preview.blockers[0].conflicts);
+
+    // Both duplicate store rows are untouched; the canonical still has none.
+    const storeRows = (await db
+      .select({ inventoryItemId: storeInventoryItems.inventoryItemId })
+      .from(storeInventoryItems)
+      .where(inArray(storeInventoryItems.inventoryItemId, [canonical, dupe1, dupe2]))) as Array<{
+      inventoryItemId: string;
+    }>;
+    expect(new Set(storeRows.map(r => r.inventoryItemId))).toEqual(new Set([dupe1, dupe2]));
+  });
+});
+
+// ─── Option A authorization boundary (Reviewer-required) ──────────────────────
+//
+// The narrow merge rule must be unreachable without an explicit, code-owned
+// authorization bound to the exact manifest. An unauthorized manifest fails
+// closed with zero mutation; a mis-bound authorization refuses the run.
+describe.skipIf(SKIP)('Option A authorization boundary', () => {
+  it('an unauthorized manifest cannot invoke the primary-location merge — fail closed, zero mutation', async () => {
+    const code = `oa-noauth-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: `Option A ${code}`,
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe = await makeItem(code, {
+      name: `Option A ${code}`,
+      storeLinked: true,
+      locationIds: [ID.locationB],
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    await stageResolvedRow(ID.mayBatch, 78, code, canonical, { description: `Option A ${code}` });
+    await stageResolvedRow(ID.juneBatch, 78, code, dupe, { description: `Option A ${code}` });
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 10, reorderLevel: 4, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, canonical));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationB, parLevel: 10, reorderLevel: 4, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-noauth-${RUN}`);
+
+    // Preflight WITHOUT authorization: the primary-only difference is an
+    // ordinary fail-closed conflict.
+    const preview = await preflightManifestMergeContent(
+      scope,
+      [
+        {
+          sourceExternalId: code,
+          canonicalItemId: manifest.groups[0].canonicalItemId,
+          supersededItemIds: manifest.groups[0].supersededItemIds,
+        },
+      ],
+      db,
+      { doNotThrow: true },
+    );
+    expect(preview.conflictGroups).toBe(1);
+    expect(preview.blockers[0].conflicts.join('; ')).toMatch(/no option a.*authorization/i);
+
+    // APPLY WITHOUT authorization refuses at the gate with zero mutation.
+    const blocked = await expectMergeContentBlocked(manifest, code, [canonical, dupe], {
+      authorized: false,
+    });
+    expect(
+      blocked.evaluation.blockers
+        .find(entry => entry.sourceExternalId === code)!
+        .conflicts.join('; '),
+    ).toMatch(/no option a.*authorization/i);
+
+    // With the SAME data and a valid authorization the merge is permitted —
+    // proving the block above was the authorization boundary, nothing else.
+    const result = await applyRemediationManifest(manifest, ID.admin, db, {
+      primaryLocationMergeAuthorization: optionAAuthorization(manifest),
+    });
+    expect(result.applied).toBe(1);
+  });
+
+  it('a mis-bound authorization refuses the run outright instead of downgrading', async () => {
+    const code = `oa-misbound-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: `Option A ${code}`,
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe = await makeItem(code, {
+      name: `Option A ${code}`,
+      storeLinked: true,
+      locationIds: [ID.locationB],
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    await stageResolvedRow(ID.mayBatch, 79, code, canonical, { description: `Option A ${code}` });
+    await stageResolvedRow(ID.juneBatch, 79, code, dupe, { description: `Option A ${code}` });
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-misbound-${RUN}`);
+    // A REGISTERED, self-consistent authorization — but bound to a different
+    // manifest identity. The binding check must refuse this run outright.
+    const wrong = optionAAuthorization({
+      ...manifest,
+      manifestId: 'some-other-manifest',
+    } as ApplyManifest);
+
+    await expect(
+      applyRemediationManifest(manifest, ID.admin, db, {
+        primaryLocationMergeAuthorization: wrong,
+      }),
+    ).rejects.toThrow(/PRIMARY_LOCATION_MERGE_UNAUTHORIZED/);
+    await expectNoMutation(code, [canonical, dupe]);
+  });
+
+  it('a fabricated self-consistent policy object (not in the code-owned registry) is refused with zero mutation', async () => {
+    const code = `oa-forged-${RUN}`;
+    const canonical = await makeItem(code, {
+      name: `Option A ${code}`,
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 1, 10]],
+    });
+    const dupe = await makeItem(code, {
+      name: `Option A ${code}`,
+      storeLinked: true,
+      locationIds: [ID.locationB],
+      countRows: [[ID.juneCount, ID.storageB, 1, 10]],
+    });
+    await stageResolvedRow(ID.mayBatch, 80, code, canonical, { description: `Option A ${code}` });
+    await stageResolvedRow(ID.juneBatch, 80, code, dupe, { description: `Option A ${code}` });
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationA, parLevel: 10, reorderLevel: 4, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, canonical));
+    await db
+      .update(storeInventoryItems)
+      .set({ primaryLocationId: ID.locationB, parLevel: 10, reorderLevel: 4, active: 1 })
+      .where(eq(storeInventoryItems.inventoryItemId, dupe));
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-oa-forged-${RUN}`);
+
+    // Every FIELD matches this manifest perfectly — but the policy object was
+    // constructed by the caller, not registered by the policy module, so
+    // reference-identity verification refuses it before any gate runs.
+    const forged = {
+      policy: {
+        policyId: 'forged-option-a',
+        scope,
+        manifestId: manifest.manifestId,
+        reportHash: manifest.reportHash,
+        expectedGroupCount: manifest.groups.length,
+      },
+      manifestId: manifest.manifestId,
+      reportHash: manifest.reportHash,
+      groupCount: manifest.groups.length,
+    };
+
+    await expect(
+      applyRemediationManifest(manifest, ID.admin, db, {
+        primaryLocationMergeAuthorization: forged,
+      }),
+    ).rejects.toThrow(/not an instance from the code-owned approved-policy registry/);
+    await expectNoMutation(code, [canonical, dupe]);
+  });
+
+  it('setting NODE_ENV/VITEST at RUNTIME in a production process cannot reopen the registry', async () => {
+    // The test-environment gate is captured at module load. A process started
+    // WITHOUT test env vars must refuse registration even after a direct
+    // caller mutates process.env — run that scenario in a real subprocess.
+    const { execFileSync } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const path = await import('node:path');
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const script = `
+      import(${JSON.stringify(path.join(here, 'orderlyMergeContentPolicy.ts'))}).then(mod => {
+        // Attacker flips the env AFTER load — must change nothing.
+        process.env.VITEST = 'true';
+        process.env.NODE_ENV = 'test';
+        const policy = {
+          policyId: 'runtime-bypass',
+          scope: { companyId: 'c', storeId: 's', sourceSystem: 'ORDERLY', sourcePropertyId: 'p' },
+          manifestId: 'm', reportHash: 'h', expectedGroupCount: 1,
+        };
+        try {
+          mod.registerPrimaryLocationMergePolicyForTests(policy);
+          console.log('REGISTERED');
+        } catch (error) {
+          console.log('REFUSED: ' + error.message);
+        }
+        // Belt and braces: the unregistered object also fails authorization.
+        try {
+          mod.assertPrimaryLocationMergeAuthorization(
+            { policy, manifestId: 'm', reportHash: 'h', groupCount: 1 },
+            { scope: policy.scope, manifestId: 'm', reportHash: 'h', groupCount: 1 },
+          );
+          console.log('AUTHORIZED');
+        } catch (error) {
+          console.log('UNAUTHORIZED: ' + error.message.slice(0, 80));
+        }
+      });
+    `;
+    const env = { ...process.env };
+    delete env.VITEST;
+    delete env.NODE_ENV;
+    delete env.VITEST_POOL_ID;
+    delete env.VITEST_WORKER_ID;
+    const output = execFileSync('pnpm', ['exec', 'tsx', '-e', script], {
+      env,
+      cwd: path.join(here, '..', '..', '..'),
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    expect(output).toContain('REFUSED:');
+    expect(output).toMatch(/STARTED as a test run/);
+    expect(output).toContain('UNAUTHORIZED:');
+    expect(output).not.toContain('REGISTERED');
+    expect(output).not.toContain('AUTHORIZED\n');
   });
 });

@@ -20,4 +20,5 @@
 - [Legacy scope columns hide data](legacy-scope-column-discovery.md) — exact-match predicates on later-added nullable scope columns return a clean empty result; widen by evidence, and unify the predicate across phases.
 - [Import period identity](import-period-identity.md) — a batch's stored date is the count-close date and row dates are purchase dates; scope by "nothing postdates period end".
 - [db.execute result shape](db-execute-result-shape.md) — QueryResult vs bare array by driver; a wrong cast reads zero rows and makes "zero violations" checks pass vacuously.
+- [Exception authorization registry](exception-authorization-registry.md) — reference-identity registry of frozen policies; load-time test gate; forgeable structural objects prove nothing.
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.

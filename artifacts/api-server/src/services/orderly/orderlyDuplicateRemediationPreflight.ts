@@ -31,9 +31,23 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
+  inventoryCountLines,
+  inventoryItemLocationAssignments,
+  inventoryItemLocations,
   inventoryItemRemediationAudit,
+  inventoryItemUnits,
   inventoryItems,
+  storeInventoryItems,
 } from '@workspace/db';
+import {
+  assertPrimaryLocationMergeAuthorization,
+  assignmentDifferences,
+  decideStoreSettingsMerge,
+  legacyLocationDifferences,
+  unitDifferences,
+  type PrimaryLocationMergeAuthorization,
+  type PrimaryLocationMergeRecord,
+} from './orderlyMergeContentPolicy';
 import {
   evaluateManifestScope,
   type ManifestGroupItems,
@@ -275,6 +289,458 @@ export async function preflightManifestScope(
   }
 
   return evaluation;
+}
+
+// ─── Manifest-wide merge-content gate ─────────────────────────────────────────
+
+/**
+ * Raised when the manifest is in scope but its CONTENT cannot merge: one or
+ * more groups would stop on a deterministic merge-content collision
+ * (store-settings disagreement beyond the approved primary-location-only rule,
+ * a location-assignment or legacy-location disagreement, a unit conversion
+ * factor mismatch, a count-line uniqueness collision, or a discarded primary
+ * location that would vanish from the merged location union).
+ */
+export class RemediationMergeContentBlockedError extends Error {
+  readonly code = 'MERGE_CONTENT_BLOCKED';
+  readonly evaluation: ManifestMergeContentEvaluation;
+
+  constructor(message: string, evaluation: ManifestMergeContentEvaluation) {
+    super(`[MERGE_CONTENT_BLOCKED] ${message}`);
+    this.name = 'RemediationMergeContentBlockedError';
+    this.evaluation = evaluation;
+  }
+}
+
+export interface GroupMergeContentFinding {
+  sourceExternalId: string;
+  /**
+   * Store rows that WOULD merge under the approved primary-location-only rule,
+   * with the retained and discarded values. Empty for a group whose rows are
+   * all identical or disjoint.
+   */
+  primaryLocationMerges: PrimaryLocationMergeRecord[];
+  /** Deterministic merge-content blockers. Any entry blocks the manifest. */
+  conflicts: string[];
+}
+
+export interface ManifestMergeContentEvaluation {
+  totalGroups: number;
+  /** Groups with no conflicts and no primary-location merges. */
+  cleanGroups: number;
+  /** Groups eligible ONLY via the primary-location-only rule. */
+  primaryLocationOnlyGroups: number;
+  /** Groups with at least one deterministic blocker. */
+  conflictGroups: number;
+  /** Total store rows that would merge under the narrow rule. */
+  primaryLocationMergeCount: number;
+  findings: GroupMergeContentFinding[];
+  blockers: GroupMergeContentFinding[];
+}
+
+export interface MergeContentPreflightOptions {
+  onProgress?: (completed: number, total: number) => void;
+  /** Return the evaluation instead of throwing on blockers. */
+  doNotThrow?: boolean;
+  /**
+   * Explicit Option A authorization. WITHOUT it, every primary-location-only
+   * store-settings difference is an ordinary fail-closed conflict — the narrow
+   * merge rule is bound to one proven manifest population, never a general
+   * canonical-wins policy available to arbitrary service callers.
+   */
+  primaryLocationMergeAuthorization?: PrimaryLocationMergeAuthorization;
+}
+
+/**
+ * The manifest-wide MERGE-CONTENT gate (read-only).
+ *
+ * The scope gate asks whether every group belongs to the approved property;
+ * this asks whether every group's rows can actually merge under the approved
+ * rules. The production Bay Hill run passed the scope gate and still stopped
+ * its first ten groups on store-settings collisions, because merge content was
+ * only ever examined per group at mutation time. The rule that follows, same
+ * as the scope incident's:
+ *
+ *   APPLY must never discover a deterministic merge-content blocker that a
+ *   manifest-aware read-only preflight could have discovered first.
+ *
+ * That is guaranteed the same way: both paths call the same pure decision
+ * functions in `orderlyMergeContentPolicy`, so eligibility here means the same
+ * thing at mutation time (modulo concurrent change, which APPLY's in-transaction
+ * re-validation still catches).
+ *
+ * Zero mutation — SELECTs only.
+ */
+export async function preflightManifestMergeContent(
+  scope: RemediationScope,
+  groups: ManifestGroupItems[],
+  runner: typeof db = db,
+  options: MergeContentPreflightOptions = {},
+): Promise<ManifestMergeContentEvaluation> {
+  if (groups.length === 0) {
+    throw new RemediationPreconditionError(
+      'Manifest contains no approved groups, so there is nothing to evaluate.',
+    );
+  }
+
+  // Validate the Option A authorization before trusting it. Fail closed: an
+  // invalid authorization refuses the run outright rather than silently
+  // downgrading to unauthorized behavior, so an operator cannot mistake a
+  // binding typo for a clean-but-blocked manifest.
+  const mergeAuthorized = options.primaryLocationMergeAuthorization !== undefined;
+  if (options.primaryLocationMergeAuthorization) {
+    assertPrimaryLocationMergeAuthorization(options.primaryLocationMergeAuthorization, {
+      scope,
+      groupCount: groups.length,
+    });
+  }
+
+  const findings: GroupMergeContentFinding[] = [];
+  let completed = 0;
+
+  for (const group of groups) {
+    const { canonicalItemId, supersededItemIds } = group;
+    const duplicateIds = supersededItemIds;
+    const conflicts: string[] = [];
+    const primaryLocationMerges: PrimaryLocationMergeRecord[] = [];
+
+    if (duplicateIds.length > 0) {
+      // One batched SELECT per relation for the WHOLE group (canonical +
+      // duplicates), then an in-memory simulation of APPLY's sequential merge.
+      //
+      // The simulation matters, not just the batching: APPLY repoints
+      // duplicates one at a time, so a duplicate's row that lands on the
+      // canonical becomes the "existing" row every LATER duplicate is compared
+      // against. A preflight that only compared duplicates against the
+      // canonical's original rows would miss duplicate-vs-duplicate collisions
+      // whenever the canonical has no row for the shared key.
+      const allIds = [canonicalItemId, ...duplicateIds];
+      // Deterministic processing order matching APPLY's duplicate loop.
+      const dupeOrder = new Map(duplicateIds.map((id, index) => [id, index]));
+      const byApplyOrder = <T extends { inventoryItemId: string }>(rows: T[]): T[] =>
+        [...rows].sort(
+          (a, b) =>
+            (dupeOrder.get(a.inventoryItemId) ?? -1) - (dupeOrder.get(b.inventoryItemId) ?? -1),
+        );
+
+      const [countRows, storeRows, assignmentRows, legacyRows, unitRows] = await Promise.all([
+        runner
+          .select({
+            inventoryItemId: inventoryCountLines.inventoryItemId,
+            inventoryCountId: inventoryCountLines.inventoryCountId,
+            storageLocationId: inventoryCountLines.storageLocationId,
+          })
+          .from(inventoryCountLines)
+          .where(inArray(inventoryCountLines.inventoryItemId, allIds)) as Promise<
+          Array<{ inventoryItemId: string; inventoryCountId: string; storageLocationId: string }>
+        >,
+        runner
+          .select({
+            inventoryItemId: storeInventoryItems.inventoryItemId,
+            storeId: storeInventoryItems.storeId,
+            primaryLocationId: storeInventoryItems.primaryLocationId,
+            parLevel: storeInventoryItems.parLevel,
+            reorderLevel: storeInventoryItems.reorderLevel,
+            active: storeInventoryItems.active,
+          })
+          .from(storeInventoryItems)
+          .where(inArray(storeInventoryItems.inventoryItemId, allIds)) as Promise<
+          Array<{
+            inventoryItemId: string;
+            storeId: string;
+            primaryLocationId: string | null;
+            parLevel: number | null;
+            reorderLevel: number | null;
+            active: number;
+          }>
+        >,
+        runner
+          .select({
+            inventoryItemId: inventoryItemLocationAssignments.inventoryItemId,
+            locationId: inventoryItemLocationAssignments.locationId,
+            parTarget: inventoryItemLocationAssignments.parTarget,
+            isPrimary: inventoryItemLocationAssignments.isPrimary,
+            active: inventoryItemLocationAssignments.active,
+          })
+          .from(inventoryItemLocationAssignments)
+          .where(inArray(inventoryItemLocationAssignments.inventoryItemId, allIds)) as Promise<
+          Array<{
+            inventoryItemId: string;
+            locationId: string;
+            parTarget: number | null;
+            isPrimary: number;
+            active: number;
+          }>
+        >,
+        runner
+          .select({
+            inventoryItemId: inventoryItemLocations.inventoryItemId,
+            storageLocationId: inventoryItemLocations.storageLocationId,
+            isPrimary: inventoryItemLocations.isPrimary,
+          })
+          .from(inventoryItemLocations)
+          .where(inArray(inventoryItemLocations.inventoryItemId, allIds)) as Promise<
+          Array<{ inventoryItemId: string; storageLocationId: string; isPrimary: number }>
+        >,
+        runner
+          .select({
+            inventoryItemId: inventoryItemUnits.inventoryItemId,
+            unitId: inventoryItemUnits.unitId,
+            isIssueUnit: inventoryItemUnits.isIssueUnit,
+            unitsPerCanonical: inventoryItemUnits.unitsPerCanonical,
+          })
+          .from(inventoryItemUnits)
+          .where(inArray(inventoryItemUnits.inventoryItemId, allIds)) as Promise<
+          Array<{
+            inventoryItemId: string;
+            unitId: string;
+            isIssueUnit: number;
+            unitsPerCanonical: number;
+          }>
+        >,
+      ]);
+
+      // The merged location union: every location named by ANY item in the
+      // group survives the merge, so this is the invariant's search space.
+      const unionLocationIds = new Set<string>([
+        ...assignmentRows.map(row => row.locationId),
+        ...legacyRows.map(row => row.storageLocationId),
+      ]);
+
+      // ── Count lines — unique(count, item, storage location) ───────────────
+      const countKeys = new Set(
+        countRows
+          .filter(row => row.inventoryItemId === canonicalItemId)
+          .map(row => `${row.inventoryCountId}::${row.storageLocationId}`),
+      );
+      for (const line of byApplyOrder(countRows.filter(r => r.inventoryItemId !== canonicalItemId))) {
+        const key = `${line.inventoryCountId}::${line.storageLocationId}`;
+        if (countKeys.has(key)) {
+          conflicts.push(
+            `count session ${line.inventoryCountId} storage location ` +
+              `${line.storageLocationId} would collide on the canonical item`,
+          );
+        }
+        countKeys.add(key);
+      }
+
+      // ── Store inventory settings — the approved narrow rule ───────────────
+      // Baseline per store: the canonical's row, or (exactly as in APPLY) the
+      // first duplicate's row once it has been repointed onto the canonical.
+      // Baselines are tagged with their origin: the Option A authorization
+      // covers ONLY merges against a genuine canonical row; a primary-location
+      // difference against a duplicate-origin baseline (canonical had no row
+      // for that store) is an unapproved shape and fails closed.
+      const storeBaseline = new Map(
+        storeRows
+          .filter(row => row.inventoryItemId === canonicalItemId)
+          .map(row => [row.storeId, { row, fromCanonical: true }]),
+      );
+      for (const row of byApplyOrder(storeRows.filter(r => r.inventoryItemId !== canonicalItemId))) {
+        const baseline = storeBaseline.get(row.storeId);
+        if (!baseline) {
+          // No collision: APPLY repoints this row, and it becomes the row every
+          // later duplicate is compared against.
+          storeBaseline.set(row.storeId, { row, fromCanonical: false });
+          continue;
+        }
+        const existing = baseline.row;
+        const decision = decideStoreSettingsMerge(existing, row);
+        if (decision.kind === 'conflict') {
+          conflicts.push(
+            `store ${row.storeId} settings differ beyond the primary-location-only rule ` +
+              `(${decision.differences.join('; ')})`,
+          );
+        } else if (decision.kind === 'primary_location_only') {
+          if (!mergeAuthorized) {
+            conflicts.push(
+              `store ${row.storeId} differs only on primary location, but no Option A ` +
+                'primary-location merge authorization was provided — the narrow merge rule is ' +
+                'bound to one approved manifest population, so this remains a fail-closed collision',
+            );
+            continue;
+          }
+          if (!baseline.fromCanonical) {
+            conflicts.push(
+              `store ${row.storeId} has no store row on the canonical item, and two duplicates ` +
+                'disagree on the primary location. The approved Option A rule retains the ' +
+                "CANONICAL's primary; with no canonical row there is no approved retention " +
+                'source, so this shape fails closed pending explicit approval',
+            );
+            continue;
+          }
+          const survives =
+            decision.discardedPrimaryLocationId === null ||
+            unionLocationIds.has(decision.discardedPrimaryLocationId);
+          if (!survives) {
+            conflicts.push(
+              `store ${row.storeId} differs only on primary location, but discarded location ` +
+                `${decision.discardedPrimaryLocationId} is not represented in the merged ` +
+                'location union',
+            );
+          } else {
+            primaryLocationMerges.push({
+              storeId: row.storeId,
+              canonicalItemId,
+              supersededItemId: row.inventoryItemId,
+              retainedPrimaryLocationId: decision.retainedPrimaryLocationId,
+              discardedPrimaryLocationId: decision.discardedPrimaryLocationId,
+              otherProtectedSettingsMatched: true,
+              locationUnionPreserved: true,
+            });
+          }
+        }
+        // identical → duplicate's row is deleted; baseline unchanged.
+      }
+
+      // ── Location assignments — unique(item, location) ─────────────────────
+      const assignmentBaseline = new Map(
+        assignmentRows
+          .filter(row => row.inventoryItemId === canonicalItemId)
+          .map(row => [row.locationId, row]),
+      );
+      for (const assignment of byApplyOrder(
+        assignmentRows.filter(r => r.inventoryItemId !== canonicalItemId),
+      )) {
+        const existing = assignmentBaseline.get(assignment.locationId);
+        if (!existing) {
+          assignmentBaseline.set(assignment.locationId, assignment);
+          continue;
+        }
+        const differences = assignmentDifferences(existing, assignment);
+        if (differences.length > 0) {
+          conflicts.push(
+            `location assignment ${assignment.locationId} differs (${differences.join('; ')})`,
+          );
+        }
+      }
+
+      // ── Legacy item-location rows — unique(item, storage location) ────────
+      const legacyBaseline = new Map(
+        legacyRows
+          .filter(row => row.inventoryItemId === canonicalItemId)
+          .map(row => [row.storageLocationId, row]),
+      );
+      for (const legacy of byApplyOrder(
+        legacyRows.filter(r => r.inventoryItemId !== canonicalItemId),
+      )) {
+        const existing = legacyBaseline.get(legacy.storageLocationId);
+        if (!existing) {
+          legacyBaseline.set(legacy.storageLocationId, legacy);
+          continue;
+        }
+        const differences = legacyLocationDifferences(existing, legacy);
+        if (differences.length > 0) {
+          conflicts.push(
+            `legacy item-location ${legacy.storageLocationId} differs (${differences.join('; ')})`,
+          );
+        }
+      }
+
+      // ── Item units — unique(item, unit, isIssueUnit) ──────────────────────
+      const unitBaseline = new Map(
+        unitRows
+          .filter(row => row.inventoryItemId === canonicalItemId)
+          .map(row => [`${row.unitId}::${row.isIssueUnit}`, row]),
+      );
+      for (const unitRow of byApplyOrder(
+        unitRows.filter(r => r.inventoryItemId !== canonicalItemId),
+      )) {
+        const key = `${unitRow.unitId}::${unitRow.isIssueUnit}`;
+        const existing = unitBaseline.get(key);
+        if (!existing) {
+          unitBaseline.set(key, unitRow);
+          continue;
+        }
+        const differences = unitDifferences(existing, unitRow);
+        if (differences.length > 0) {
+          conflicts.push(
+            `unit ${unitRow.unitId} (isIssueUnit=${unitRow.isIssueUnit}) differs ` +
+              `(${differences.join('; ')})`,
+          );
+        }
+      }
+    }
+
+    findings.push({
+      sourceExternalId: group.sourceExternalId,
+      primaryLocationMerges,
+      conflicts,
+    });
+    completed++;
+    options.onProgress?.(completed, groups.length);
+  }
+
+  const blockers = findings.filter(finding => finding.conflicts.length > 0);
+  const evaluation: ManifestMergeContentEvaluation = {
+    totalGroups: findings.length,
+    cleanGroups: findings.filter(
+      finding => finding.conflicts.length === 0 && finding.primaryLocationMerges.length === 0,
+    ).length,
+    primaryLocationOnlyGroups: findings.filter(
+      finding => finding.conflicts.length === 0 && finding.primaryLocationMerges.length > 0,
+    ).length,
+    conflictGroups: blockers.length,
+    primaryLocationMergeCount: findings.reduce(
+      (total, finding) => total + finding.primaryLocationMerges.length,
+      0,
+    ),
+    findings,
+    blockers,
+  };
+
+  if (blockers.length > 0 && options.doNotThrow !== true) {
+    const codes = blockers.map(blocker => blocker.sourceExternalId);
+    const shown = codes.slice(0, 10).join(', ');
+    const overflow = codes.length > 10 ? `, +${codes.length - 10} more` : '';
+    throw new RemediationMergeContentBlockedError(
+      `${blockers.length} of ${evaluation.totalGroups} approved group(s) carry merge-content ` +
+        `conflicts beyond the approved primary-location-only rule and would stop during APPLY: ` +
+        `${shown}${overflow}. No group may be remediated while any blocker exists in the ` +
+        'manifest. Run --mode merge-preflight for the full per-group conflict evidence.',
+      evaluation,
+    );
+  }
+
+  void scope;
+  return evaluation;
+}
+
+/**
+ * Read-only twin of the mutation path's location-preservation invariant: the
+ * discarded primary location must be represented on the canonical or a
+ * duplicate (whose rows are unioned onto the canonical in the same
+ * transaction), in the modern assignment table or the legacy item-location
+ * table. A discarded NULL names no location, so there is nothing to preserve.
+ */
+async function discardedPrimaryLocationRepresented(
+  runner: typeof db,
+  itemIds: string[],
+  discardedPrimaryLocationId: string | null,
+): Promise<boolean> {
+  if (discardedPrimaryLocationId === null) return true;
+  const [assignment] = (await runner
+    .select({ id: inventoryItemLocationAssignments.id })
+    .from(inventoryItemLocationAssignments)
+    .where(
+      and(
+        inArray(inventoryItemLocationAssignments.inventoryItemId, itemIds),
+        eq(inventoryItemLocationAssignments.locationId, discardedPrimaryLocationId),
+      ),
+    )
+    .limit(1)) as Array<{ id: string }>;
+  if (assignment) return true;
+  const [legacy] = (await runner
+    .select({ id: inventoryItemLocations.id })
+    .from(inventoryItemLocations)
+    .where(
+      and(
+        inArray(inventoryItemLocations.inventoryItemId, itemIds),
+        eq(inventoryItemLocations.storageLocationId, discardedPrimaryLocationId),
+      ),
+    )
+    .limit(1)) as Array<{ id: string }>;
+  return Boolean(legacy);
 }
 
 // ─── Suspended-run mutation verification ──────────────────────────────────────

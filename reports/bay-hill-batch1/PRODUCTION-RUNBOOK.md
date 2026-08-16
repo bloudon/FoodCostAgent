@@ -215,6 +215,54 @@ also exits non-zero if any group is blocked):
 Record the sanitized summary object. This mode performs no writes and cannot
 transition into APPLY.
 
+## 6b. Production merge-content preflight (read-only) — **ADDED AFTER THE 2026-08-15 APPLY ABORT**
+
+The first production APPLY passed the scope gate and still stopped its first
+ten groups on store-settings collisions (`primaryLocationId` disagreement).
+Per the PM-approved Option A rule, a store-settings row pair that differs
+ONLY on `primaryLocationId` is now mergeable (canonical's primary retained,
+duplicate's discarded, discarded value recorded in audit evidence, location
+union preserved); every other protected-field difference still blocks. This
+section verifies, read-only, that the WHOLE manifest is eligible under those
+rules before any authorization is sought. It runs the same pure decision
+functions APPLY runs.
+
+```bash
+$REMEDIATE --mode merge-preflight --manifest "$MANIFEST" --json
+```
+
+Required output — **every** line must match; any deviation = STOP (the CLI
+exits non-zero if any group carries another conflict):
+
+| Field | Required value |
+| --- | --- |
+| `manifestId` | `bay-hill-batch1-2026-08-15` |
+| `readOnly` | `true` |
+| `remediationWrites` | 0 |
+| `totalGroups` (groups evaluated) | 848 |
+| `eligibleGroups` (clean + primary-location-only) | 848 |
+| `conflictGroups` (other conflicts) | 0 |
+| `reportHash` | `4eec609c…dd501e` (full value above, unchanged) |
+
+`cleanGroups` / `primaryLocationOnlyGroups` may split 848 between them in any
+proportion; their sum must be 848. Record the sanitized summary object,
+including `primaryLocationMergeCount`. This mode performs no writes and cannot
+transition into APPLY.
+
+**Option A authorization boundary.** The primary-location-only merge rule is
+NOT a general service behavior: it activates only when the run presents the
+code-owned `BAY_HILL_PRIMARY_LOCATION_MERGE_POLICY` (registered by reference
+in the approved-policy registry and bound to this exact manifest id, report
+hash, scope, and 848-group count). This CLI mints that authorization itself in
+`merge-preflight` and `apply` modes; a direct caller of the remediation
+service without it gets the original fail-closed collision behavior.
+Additionally, the **canonical-absent shape fails closed even with the
+authorization**: if the canonical item has no store row and two duplicates
+disagree on primary location, there is no approved retention source and the
+group blocks in both preflight and APPLY. Duplicates are always processed in
+deterministic manifest (`supersededItemIds`) order, so the preflight verdict
+and the APPLY outcome are computed over the identical sequence.
+
 ## 7. Fresh Product Owner authorization gate — **HARD STOP**
 
 **No APPLY command may be typed, queued, or scripted until this section is
@@ -230,6 +278,9 @@ Sign-off record (all fields required):
 | Manifest SHA-256 approved | `64570b45…289756` (must be restated in full) |
 | Recovery-point reference (from Section 2) | |
 | Policy-preflight result (from Section 6, incl. 848/848/0) | |
+| Merge-content preflight result (from Section 6b, incl. 848 evaluated / 848 eligible / 0 other conflicts) | |
+| PO acknowledges the canonical-absent primary-only shape is FAIL-CLOSED (not merged) and would require separate approval | |
+| PO acknowledges duplicates are merged in deterministic manifest order (preflight verdict = APPLY outcome) | |
 | Operator identity executing the APPLY | |
 
 If any earlier section produced a deviation, this gate cannot be signed.
@@ -242,7 +293,9 @@ production operator ID, and the explicit production confirmation flag. It does
 **not** regenerate the manifest, and all existing scope/policy guards remain
 active (the CLI re-runs the full manifest-wide scope gate itself before the
 first mutation — expect `Scope gate passed: 848/848 group(s) clean` before any
-group output).
+group output — and then re-runs the manifest-wide merge-content gate; a
+deterministic merge conflict anywhere in the manifest aborts the whole APPLY
+with `MERGE_CONTENT_BLOCKED` before the first transaction opens).
 
 ```bash
 $REMEDIATE --mode apply \

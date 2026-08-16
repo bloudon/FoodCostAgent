@@ -122,3 +122,6 @@ plus a direct check over exactly the item ids that manifest named.
 **Why:** Aggregate "does production look clean" cannot distinguish this run's
 effects from an unrelated earlier repair, and passes silently when it scanned
 the wrong population.
+
+## Preflight/apply parity by simulation
+When APPLY mutates sequentially (later rows compared against earlier merges), a read-only preflight must SIMULATE that sequence in memory — same ordering rule (manifest order), same baselines — or a manifest can pass the gate and still stop mid-APPLY. **How to apply:** derive both from one shared pure decision module and add a DB test asserting the preflight's predicted evidence/verdict deep-equals APPLY's audit/refusal.

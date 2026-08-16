@@ -1,0 +1,167 @@
+# PM Decision — Bay Hill UNIQUENESS_COLLISION Policy
+
+## Incident disposition
+
+The Batch 1 APPLY attempt is considered safely aborted.
+
+Evidence:
+
+- in-apply scope gate passed 848/848
+- first 10 attempted groups stopped with UNIQUENESS_COLLISION
+- operator aborted per runbook
+- no inventory remediation mutation occurred
+- refusal audit evidence only
+- read-only full-manifest analysis confirms the collision pattern is systematic
+
+Production may be restarted after read-only reconciliation confirms the existing May/June baselines remain unchanged.
+
+## Root cause accepted
+
+Read-only analysis of all 1,901 canonical/duplicate pairs in the approved 848-group manifest shows:
+
+- 848/848 groups contain canonical + duplicate store-setting rows
+- 848/848 conflict on `primaryLocationId`
+- 0 par-level conflicts
+- 0 reorder-level conflicts
+- 0 active-flag conflicts
+
+The differing primary locations are legitimate active Bay Hill storage locations.
+
+This is consistent with the original defect:
+
+one Orderly product
+→ rows for multiple physical locations
+→ multiple FnB inventory identities
+
+Therefore different primary locations are inherent duplicate fallout, not evidence that the underlying products differ.
+
+## Product Owner policy — APPROVE OPTION A
+
+Authorize a narrowly scoped merge rule:
+
+### Canonical wins on `primaryLocationId` ONLY
+
+When merging duplicate store-settings rows:
+
+If ALL protected fields other than `primaryLocationId` are equal, and the only difference is `primaryLocationId`:
+
+- retain the canonical item's existing `primaryLocationId`
+- preserve the union of legitimate location assignments
+- supersede/remove the duplicate store-settings row as required by the existing merge
+- record the discarded duplicate primary-location value in remediation audit evidence
+
+Do not calculate a new primary location.
+Do not choose most-used / first / alphabetical / highest-count location.
+Do not change the canonical primary location.
+
+The canonical item's current value wins because it is deterministic and preserves existing canonical behavior.
+
+## Fail-closed rule
+
+Any difference in another protected field remains a hard stop.
+
+Examples:
+
+- par level differs → BLOCK
+- reorder level differs → BLOCK
+- active flag differs → BLOCK
+- unexpected store/company scope differs → BLOCK
+- any other protected live configuration differs → BLOCK
+
+Do not broaden this into a general "canonical wins on configuration conflicts" policy.
+
+The exception is ONLY:
+
+`primaryLocationId`
+
+under the proven Bay Hill duplicate-remediation conditions.
+
+## Location preservation invariant
+
+Before approving the merge, prove that discarding the duplicate's primary designation does NOT discard the actual location relationship.
+
+The resulting canonical inventory item must retain presence/assignment in every legitimate location represented by the merged identities.
+
+Example:
+
+canonical primary = Cafe
+duplicate primary = Halfway House
+
+After merge:
+
+- primary remains Cafe
+- Cafe assignment remains
+- Halfway House assignment remains
+- only the competing "primary" designation is removed
+
+A location must never disappear merely because its item identity was superseded.
+
+## Audit requirement
+
+For every group using this exception, preserve:
+
+- canonical inventoryItemId
+- superseded inventoryItemId
+- retained primaryLocationId
+- discarded duplicate primaryLocationId
+- confirmation all other protected settings matched
+- confirmation location assignment union was preserved
+
+Do not alter historical source evidence.
+
+## Preflight hardening
+
+The prior policy-preflight checked authorization/scope but did not simulate merge-content collisions.
+
+Add a read-only merge-content preflight using the SAME conflict logic as APPLY.
+
+Before another production APPLY, the full manifest must report:
+
+- groups evaluated = 848
+- groups eligible under primary-location-only rule = 848
+- groups with other protected-setting conflicts = 0
+
+APPLY must retain transaction-time validation as defense in depth.
+
+As with scope validation:
+
+> APPLY must not discover a deterministic merge-content blocker that full-manifest read-only preflight could have discovered first.
+
+## Required tests
+
+At minimum:
+
+1. identical settings → merge
+2. primaryLocationId only differs → canonical primary retained
+3. duplicate primary location remains in canonical location assignments
+4. par differs → BLOCK
+5. reorder differs → BLOCK
+6. active differs → BLOCK
+7. primary + par differ → BLOCK
+8. primary + reorder differ → BLOCK
+9. primary + active differ → BLOCK
+10. multi-location duplicate group preserves complete location union
+11. full-manifest merge preflight enumerates all conflicts
+12. blocked manifest begins zero remediation mutation
+13. preflight/APPLY use the same conflict decision semantics
+
+Run DB-backed tests, full relevant suite, typecheck/build, Reviewer and QA.
+
+## Production procedure after code approval
+
+Do not reuse the prior APPLY authorization.
+
+After deployment:
+
+1. rerun the production runbook from writer-quiescence
+2. verify unchanged manifest SHA
+3. rerun policy/scope preflight
+4. run new merge-content preflight
+5. require:
+   - 848 authorized
+   - 0 scope blockers
+   - 848 eligible primary-location-only collisions
+   - 0 other setting conflicts
+6. return evidence for a fresh Product Owner APPLY authorization
+
+No APPLY until that fresh authorization.

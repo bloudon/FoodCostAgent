@@ -11,6 +11,10 @@ import type {
   LegacyAdoptionPolicy,
   RemediationScope,
 } from './orderlyRemediationScopeValidator';
+import type {
+  PrimaryLocationMergeAuthorization,
+  PrimaryLocationMergePolicy,
+} from './orderlyMergeContentPolicy';
 
 export const BAY_HILL_PRODUCTION_SCOPE = {
   companyId: '43abaf82-44ce-4231-9570-7a01e7c85ced',
@@ -41,6 +45,24 @@ export function bayHillLegacyAdoptionAuthorization(input: {
   groupCount: number;
 }): LegacyAdoptionAuthorization {
   return { policy: BAY_HILL_LEGACY_ADOPTION_POLICY, ...input };
+}
+
+/**
+ * PM-approved Option A authorization for the Bay Hill Batch 1 population ONLY.
+ * The policy instance itself lives in the code-owned approved-policy registry
+ * (orderlyMergeContentPolicy.ts) — authorization requires that exact frozen
+ * instance by reference identity, so neither a JSON edit nor a fabricated
+ * structural twin can broaden the primary-location merge exception.
+ */
+import { BAY_HILL_PRIMARY_LOCATION_MERGE_POLICY } from './orderlyMergeContentPolicy';
+export { BAY_HILL_PRIMARY_LOCATION_MERGE_POLICY };
+
+export function bayHillPrimaryLocationMergeAuthorization(input: {
+  manifestId: string;
+  reportHash: string;
+  groupCount: number;
+}): PrimaryLocationMergeAuthorization {
+  return { policy: BAY_HILL_PRIMARY_LOCATION_MERGE_POLICY, ...input };
 }
 
 export function assertBayHillProductionScope(scope: RemediationScope): void {

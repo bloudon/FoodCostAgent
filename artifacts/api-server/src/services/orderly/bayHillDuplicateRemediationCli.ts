@@ -74,9 +74,11 @@ import {
 import {
   assertBayHillProductionScope,
   bayHillLegacyAdoptionAuthorization,
+  bayHillPrimaryLocationMergeAuthorization,
   BAY_HILL_PRODUCTION_SCOPE,
 } from './bayHillDuplicateRemediationGuard';
 import {
+  preflightManifestMergeContent,
   preflightManifestScope,
   preflightRemediationDatabase,
   RemediationManifestBlockedError,
@@ -104,6 +106,7 @@ type Mode =
   | 'reconcile'
   | 'forensics'
   | 'policy-preflight'
+  | 'merge-preflight'
   | 'verify-suspended';
 
 const MODES: Mode[] = [
@@ -115,6 +118,7 @@ const MODES: Mode[] = [
   'reconcile',
   'forensics',
   'policy-preflight',
+  'merge-preflight',
   'verify-suspended',
 ];
 
@@ -495,6 +499,11 @@ async function main(): Promise<void> {
     );
     const result = await applyRemediationManifest(manifest, operator, db, {
       legacyAdoptionAuthorization,
+      primaryLocationMergeAuthorization: bayHillPrimaryLocationMergeAuthorization({
+        manifestId: manifest.manifestId,
+        reportHash: manifest.reportHash,
+        groupCount: manifest.groups.length,
+      }),
     });
     console.log('─'.repeat(78));
     for (const group of result.groups) {
@@ -674,6 +683,99 @@ async function main(): Promise<void> {
       );
     }
     if (evaluation.blockedGroups > 0) process.exitCode = 1;
+    return;
+  }
+
+  // ── Read-only merge-content preflight ────────────────────────────────────
+  //
+  // Runs THE SAME pure merge-content decision functions APPLY runs, over every
+  // approved group, without writing anything. Before the next production APPLY
+  // the full manifest must report every group eligible (identical or
+  // primary-location-only) and zero other conflicts, and that evidence goes
+  // back for a fresh Product Owner APPLY authorization.
+  if (mode === 'merge-preflight') {
+    const manifestPath = args.manifest;
+    if (typeof manifestPath !== 'string') {
+      throw new Error('--mode merge-preflight requires --manifest <manifest.json> [--json]');
+    }
+    const manifest = loadManifest(manifestPath);
+    await preflightRemediationDatabase(manifest.scope);
+
+    const evaluation = await preflightManifestMergeContent(
+      manifest.scope,
+      manifestGroupItems(manifest),
+      db,
+      {
+        // The Bay Hill operator boundary is the ONLY place this code-owned
+        // Option A authorization is minted; direct service callers get the
+        // fail-closed default.
+        primaryLocationMergeAuthorization: bayHillPrimaryLocationMergeAuthorization({
+          manifestId: manifest.manifestId,
+          reportHash: manifest.reportHash,
+          groupCount: manifest.groups.length,
+        }),
+        // Report the full picture rather than throwing: a blocked group is
+        // evidence to return, not an error to hide.
+        doNotThrow: true,
+        onProgress: (completed, total) => {
+          if (completed % 100 === 0 || completed === total) {
+            console.error(`  evaluated ${completed}/${total} group(s)`);
+          }
+        },
+      },
+    );
+
+    const summary = {
+      mode: 'merge-preflight',
+      readOnly: true,
+      remediationWrites: 0,
+      manifestId: manifest.manifestId,
+      reportHash: manifest.reportHash,
+      unapprovedReportHash: manifest.unapprovedReportHash,
+      scope: manifest.scope,
+      totalGroups: evaluation.totalGroups,
+      cleanGroups: evaluation.cleanGroups,
+      primaryLocationOnlyGroups: evaluation.primaryLocationOnlyGroups,
+      eligibleGroups: evaluation.cleanGroups + evaluation.primaryLocationOnlyGroups,
+      conflictGroups: evaluation.conflictGroups,
+      primaryLocationMergeCount: evaluation.primaryLocationMergeCount,
+      blockedSourceExternalIds: evaluation.blockers.map(blocker => blocker.sourceExternalId),
+      blockers: evaluation.blockers,
+    };
+
+    if (args.json === true) {
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      console.log('─'.repeat(78));
+      console.log('MERGE-CONTENT PREFLIGHT (read-only, no writes performed)');
+      console.log(`manifest ${summary.manifestId} (unchanged)`);
+      console.log(`report hash ${summary.reportHash}`);
+      console.log('─'.repeat(78));
+      console.log(`groups evaluated:               ${summary.totalGroups}`);
+      console.log(`groups clean (identical rows):  ${summary.cleanGroups}`);
+      console.log(`groups primary-location-only:   ${summary.primaryLocationOnlyGroups}`);
+      console.log(`groups eligible for APPLY:      ${summary.eligibleGroups}`);
+      console.log(`groups with OTHER conflicts:    ${summary.conflictGroups}`);
+      console.log(`store rows merged under rule:   ${summary.primaryLocationMergeCount}`);
+      if (evaluation.conflictGroups > 0) {
+        console.log(
+          `blocked codes: ${summary.blockedSourceExternalIds.slice(0, 20).join(', ')}` +
+            (summary.blockedSourceExternalIds.length > 20
+              ? `, +${summary.blockedSourceExternalIds.length - 20} more`
+              : ''),
+        );
+        for (const blocker of evaluation.blockers.slice(0, 20)) {
+          for (const conflict of blocker.conflicts) {
+            console.log(`  ${blocker.sourceExternalId}: ${conflict}`);
+          }
+        }
+      }
+      console.log(
+        '\nSTOP POINT. No remediation writes were performed and no APPLY was attempted. ' +
+          'Return this evidence for a fresh Product Owner APPLY authorization.',
+      );
+    }
+    if (evaluation.conflictGroups > 0) process.exitCode = 1;
     return;
   }
 
