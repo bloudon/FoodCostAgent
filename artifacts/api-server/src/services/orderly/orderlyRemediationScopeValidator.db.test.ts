@@ -87,7 +87,7 @@ const scope: RemediationScope = {
 function legacyAuthorization(groupCount: number): LegacyAdoptionAuthorization {
   const policy: LegacyAdoptionPolicy = {
     policyId: `test-legacy-adoption-${RUN}`,
-    scope,
+    scope: { ...scope },
     manifestId: `legacy-manifest-${RUN}`,
     reportHash: `legacy-report-${RUN}`,
     unapprovedReportHash: `legacy-remainder-${RUN}`,
@@ -230,6 +230,19 @@ async function makeCleanGroup(code: string): Promise<ManifestGroupItems> {
     scopedCountLine: true,
   });
   return { sourceExternalId: code, canonicalItemId: canonical, supersededItemIds: [duplicate] };
+}
+
+async function makeClassALegacyGroup(code: string): Promise<ManifestGroupItems> {
+  const canonical = await makeItem(`${code} class A canonical`, {
+    mapping: { code },
+    scopedImportRow: code,
+  });
+  const legacy = await makeItem(`${code} class A legacy`, {
+    mapping: { code: `${code}-legacy`, sourcePropertyId: null },
+    scopedImportRow: code,
+    scopedCountLine: true,
+  });
+  return { sourceExternalId: code, canonicalItemId: canonical, supersededItemIds: [legacy] };
 }
 
 beforeAll(async () => {
@@ -693,6 +706,113 @@ maybe('NULL and empty source-property scope', () => {
 });
 
 maybe('narrow legacy-adoption authorization', () => {
+  /**
+   * The production policy is safe only if every individual binding comparison
+   * remains fail-closed. Keep this table intentionally explicit: a future
+   * relaxation of one field must fail this test even if the other fields still
+   * match the reviewed population.
+   */
+  it('blocks Class A when every authorization binding field is independently altered or absent', async () => {
+    type AuthorizationMutation = (authorization: LegacyAdoptionAuthorization) => void;
+    const cases: Array<[string, AuthorizationMutation]> = [
+      ['companyId altered', authorization => {
+        authorization.policy.scope = { ...authorization.policy.scope, companyId: ID.otherCompany };
+      }],
+      ['companyId absent', authorization => {
+        delete (authorization.policy.scope as Partial<RemediationScope>).companyId;
+      }],
+      ['storeId altered', authorization => {
+        authorization.policy.scope = { ...authorization.policy.scope, storeId: ID.storeB };
+      }],
+      ['storeId absent', authorization => {
+        delete (authorization.policy.scope as Partial<RemediationScope>).storeId;
+      }],
+      ['sourceSystem altered', authorization => {
+        authorization.policy.scope = { ...authorization.policy.scope, sourceSystem: 'SYSCO' };
+      }],
+      ['sourceSystem absent', authorization => {
+        delete (authorization.policy.scope as Partial<RemediationScope>).sourceSystem;
+      }],
+      ['sourcePropertyId altered', authorization => {
+        authorization.policy.scope = { ...authorization.policy.scope, sourcePropertyId: ID.propertyB };
+      }],
+      ['sourcePropertyId absent', authorization => {
+        delete (authorization.policy.scope as Partial<RemediationScope>).sourcePropertyId;
+      }],
+      ['manifestId altered', authorization => {
+        authorization.manifestId = 'different-manifest';
+      }],
+      ['manifestId absent', authorization => {
+        delete (authorization as Partial<LegacyAdoptionAuthorization>).manifestId;
+      }],
+      ['accepted report hash altered', authorization => {
+        authorization.reportHash = 'different-report-hash';
+      }],
+      ['accepted report hash absent', authorization => {
+        delete (authorization as Partial<LegacyAdoptionAuthorization>).reportHash;
+      }],
+      ['unapproved remainder hash altered', authorization => {
+        authorization.unapprovedReportHash = 'different-remainder-hash';
+      }],
+      ['unapproved remainder hash absent', authorization => {
+        delete (authorization as Partial<LegacyAdoptionAuthorization>).unapprovedReportHash;
+      }],
+      ['manifest group count altered', authorization => {
+        authorization.groupCount = 2;
+      }],
+      ['manifest group count absent', authorization => {
+        delete (authorization as Partial<LegacyAdoptionAuthorization>).groupCount;
+      }],
+      ['policy expected group count altered', authorization => {
+        authorization.policy.expectedGroupCount = 2;
+      }],
+      ['policy expected group count absent', authorization => {
+        delete (authorization.policy as Partial<LegacyAdoptionPolicy>).expectedGroupCount;
+      }],
+      ['expected scoped legacy batch count altered', authorization => {
+        authorization.policy.expectedScopedLegacyBatchCount = 1;
+      }],
+      ['expected scoped legacy batch count absent', authorization => {
+        delete (authorization.policy as Partial<LegacyAdoptionPolicy>).expectedScopedLegacyBatchCount;
+      }],
+    ];
+
+    for (const [label, mutate] of cases) {
+      const code = `${RUN}-binding-${label.replace(/[^a-z0-9]+/gi, '-')}`;
+      const group = await makeClassALegacyGroup(code);
+      const authorization = legacyAuthorization(1);
+      mutate(authorization);
+
+      const evaluation = await evaluateManifestScope(db, scope, [group], {
+        legacyAdoptionAuthorization: authorization,
+      });
+      const mapping = evaluation.groups[0].mappings.find(
+        candidate => candidate.sourceExternalId === `${code}-legacy`,
+      )!;
+
+      expect(evaluation.blockedGroups, label).toBe(1);
+      expect(evaluation.groups[0].inScope, label).toBe(false);
+      expect(mapping.classification, label).toBe('A_LEGACY_MISSING_SCOPE');
+      expect(mapping.authorizedByLegacyAdoptionPolicy, label).toBe(false);
+      expect(mapping.inScope, label).toBe(false);
+    }
+  });
+
+  it('blocks Class A when the legacy-adoption authorization is absent', async () => {
+    const code = `${RUN}-binding-absent-authorization`;
+    const group = await makeClassALegacyGroup(code);
+
+    const evaluation = await evaluateManifestScope(db, scope, [group]);
+    const mapping = evaluation.groups[0].mappings.find(
+      candidate => candidate.sourceExternalId === `${code}-legacy`,
+    )!;
+
+    expect(evaluation.blockedGroups).toBe(1);
+    expect(mapping.classification).toBe('A_LEGACY_MISSING_SCOPE');
+    expect(mapping.authorizedByLegacyAdoptionPolicy).toBe(false);
+    expect(mapping.inScope).toBe(false);
+  });
+
   it('allows a positively proven Class A mapping only under the exact policy binding', async () => {
     const code = `${RUN}-legacy-allow`;
     const canonical = await makeItem('legacy allow canonical', { mapping: { code }, scopedImportRow: code });
@@ -803,8 +923,16 @@ maybe('narrow legacy-adoption authorization', () => {
     });
 
     expect(evaluation.blockedGroups).toBe(2);
-    expect(evaluation.groups[0].mappings.some(mapping => mapping.classification === 'B_DEMONSTRABLY_FOREIGN')).toBe(true);
-    expect(evaluation.groups[1].mappings.some(mapping => mapping.classification === 'C_AMBIGUOUS')).toBe(true);
+    const mixedBMappings = evaluation.groups[0].mappings;
+    const mixedCMappings = evaluation.groups[1].mappings;
+    expect(mixedBMappings.some(mapping => mapping.classification === 'B_DEMONSTRABLY_FOREIGN')).toBe(true);
+    expect(mixedCMappings.some(mapping => mapping.classification === 'C_AMBIGUOUS')).toBe(true);
+    expect(mixedBMappings.find(mapping => mapping.sourceExternalId === `${codeB}-legacy`)?.authorizedByLegacyAdoptionPolicy).toBe(true);
+    expect(mixedBMappings.find(mapping => mapping.sourceExternalId === `${codeB}-legacy`)?.inScope).toBe(true);
+    expect(mixedBMappings.find(mapping => mapping.sourceExternalId === `${codeB}-foreign`)?.inScope).toBe(false);
+    expect(mixedCMappings.find(mapping => mapping.sourceExternalId === `${codeC}-legacy`)?.authorizedByLegacyAdoptionPolicy).toBe(true);
+    expect(mixedCMappings.find(mapping => mapping.sourceExternalId === `${codeC}-legacy`)?.inScope).toBe(true);
+    expect(mixedCMappings.find(mapping => mapping.sourceExternalId === `${codeC}-unknown`)?.inScope).toBe(false);
   });
 
   it('gives preflight and the APPLY adapter the same legacy-adoption result', async () => {

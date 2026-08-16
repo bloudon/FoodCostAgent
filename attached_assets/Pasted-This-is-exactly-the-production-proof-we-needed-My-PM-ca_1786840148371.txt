@@ -1,0 +1,88 @@
+This is exactly the production proof we needed.
+
+My PM call:
+
+> **#1142 — PASS / CLOSED**
+>
+> The unchanged 848-group Batch 1 population is now proven in production to pass the legacy-adoption policy with **848 authorized, 0 blocked, 0 B/C mappings, 2 scoped legacy batches, and 0 writes**.
+
+At this point, I would **not change the manifest, policy, or candidate set**. The only remaining pre-APPLY gate is the exhaustive authorization-binding regression work in #1143.
+
+Send Replit this:
+
+```md
+## PM Decision — #1142 Accepted
+
+#1142 production policy preflight is accepted as PASS.
+
+Production evidence:
+
+- Manifest: `bay-hill-batch1-2026-08-15`
+- Groups evaluated: 848
+- Authorized groups: 848
+- Blocked groups: 0
+- Class A mappings: 932
+- Class B mappings: 0
+- Class C mappings: 0
+- Scoped legacy batches: 2
+- Policy binding: PASS
+- Remediation writes: 0
+- Manifest SHA-256 unchanged:
+  `64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756`
+
+The production authorization model is therefore validated for the exact reviewed Batch 1 population.
+
+Do not:
+
+- regenerate the manifest
+- modify the 848-group population
+- repair or backfill mappings
+- broaden the legacy-adoption policy
+- run APPLY yet
+
+## Next gate — #1143
+
+Complete the exhaustive authorization-binding regression coverage.
+
+At minimum prove fail-closed behavior when each bound field is independently altered or absent:
+
+- companyId
+- storeId
+- sourceSystem
+- sourcePropertyId
+- manifestId
+- accepted report hash
+- unapproved remainder hash
+- expected group count
+- expected scoped legacy batch count
+- legacy-adoption authorization absent
+- arbitrary NULL/missing property without positive Class A evidence
+- Class B present
+- Class C present
+- mixed A+B
+- mixed A+C
+
+Also prove the exact approved values pass.
+
+Reviewer must explicitly confirm there is no way for:
+
+- a modified manifest
+- a different tenant/property
+- a different source
+- a different report population
+- or arbitrary NULL scope metadata
+
+to self-grant legacy authorization.
+
+Run focused DB tests, full API suite, typecheck/build, Reviewer and QA.
+
+STOP after #1143.
+
+No APPLY until fresh Product Owner approval after #1143 passes.
+```
+
+Assuming #1143 comes back clean, I think we are finally at the point where I would authorize the production sequence:
+
+**fresh backup/recovery point → exact unchanged manifest APPLY → immediate reconcile → post-APPLY report → verify held groups untouched.**
+
+And importantly, we should not let another side issue widen the scope now. The 848-group population and authorization boundary have both been independently narrowed and production-proven; #1143 should be the last code-confidence gate before execution.
