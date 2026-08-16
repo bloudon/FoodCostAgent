@@ -933,6 +933,19 @@ function metadataCompletenessOf(item: {
 export async function buildRemediationReport(
   scope: RemediationScope,
   runner: typeof db = db,
+  options: {
+    /**
+     * Restrict discovery to these source codes only. Used by the per-group
+     * under-lock freshness recheck in APPLY: a group's facts (candidates,
+     * classification, conflicts, evidence, per-group hash) are derived
+     * exclusively from that code's rows, mappings, prior audits, and candidate
+     * items, so filtering to one code yields byte-identical group output while
+     * skipping the other groups' ~23 queries per candidate. The returned
+     * report-level hash and totals then describe only the filtered population
+     * and MUST NOT be compared against whole-report hashes.
+     */
+    onlySourceCodes?: string[];
+  } = {},
 ): Promise<RemediationReport> {
   // Batch scoping is resolved by the shared helper so that discovery, the
   // apply-time exclusivity check, and reconciliation cannot disagree about
@@ -976,10 +989,12 @@ export async function buildRemediationReport(
     }>;
 
     // Group source rows by reliable code.
+    const requestedCodes = options.onlySourceCodes ? new Set(options.onlySourceCodes) : null;
     const byCode = new Map<string, typeof rows>();
     for (const row of rows) {
       const code = row.sourceItemCode?.trim();
       if (!code) continue;
+      if (requestedCodes && !requestedCodes.has(code)) continue;
       const bucket = byCode.get(code) ?? [];
       bucket.push(row);
       byCode.set(code, bucket);
@@ -1690,7 +1705,18 @@ export async function applyRemediationManifest(
           const candidateIds = [approval.canonicalItemId, ...approval.supersededItemIds];
           await lockGroupEvidence(tx, manifest.scope, candidateIds);
 
-          const locked = await buildRemediationReport(manifest.scope, tx);
+          // Scoped to THIS group's source code. The whole-scope invariants
+          // (remainder hash, scope gate, merge-content gate) were proven once
+          // above, immediately before mutation began; what must be revalidated
+          // under the lock is only this group's own evidence. A group's facts
+          // are derived exclusively from its code's rows/mappings/audits/
+          // candidates, so the scoped rebuild yields the identical group
+          // object — without re-running the other 800+ groups' discovery
+          // queries inside every transaction (measured at ~65k queries/group,
+          // the entire ~105 s/group production APPLY cost).
+          const locked = await buildRemediationReport(manifest.scope, tx, {
+            onlySourceCodes: [approval.sourceExternalId],
+          });
           const lockedGroup = locked.groups.find(
             candidate => candidate.sourceExternalId === approval.sourceExternalId,
           );

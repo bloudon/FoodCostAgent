@@ -957,6 +957,40 @@ describe.skipIf(SKIP)('report mode', () => {
     expect(report.groups[0].canonicalSelectionReason).toMatch(/earliest valid import-created identity/);
   });
 
+  it('onlySourceCodes-filtered report reproduces the identical group object and per-group hash', async () => {
+    // Two co-existing groups; the under-lock APPLY recheck rebuilds only one.
+    const first = await seedChambordDefect();
+    const secondCode = `parity-${RUN}`;
+    const secondCanonical = await makeItem(secondCode, {
+      name: 'Parity Syrup',
+      authoritativeMapping: true,
+      storeLinked: true,
+      locationIds: [ID.locationA],
+      countRows: [[ID.mayCount, ID.storageA, 7, 12]],
+    });
+    const secondDupe = await makeItem(secondCode, {
+      name: 'Parity Syrup',
+      locationIds: [ID.locationB],
+      countRows: [[ID.juneCount, ID.storageB, 1, 12]],
+    });
+    await stageResolvedRow(ID.mayBatch, 11, secondCode, secondCanonical, { description: 'Parity Syrup' });
+    await stageResolvedRow(ID.juneBatch, 12, secondCode, secondDupe, { description: 'Parity Syrup' });
+
+    const full = await buildRemediationReport(scope);
+    expect(full.groups.map(group => group.sourceExternalId).sort()).toEqual(
+      [first.code, secondCode].sort(),
+    );
+
+    for (const code of [first.code, secondCode]) {
+      const filtered = await buildRemediationReport(scope, db, { onlySourceCodes: [code] });
+      expect(filtered.groups).toHaveLength(1);
+      const fullGroup = full.groups.find(group => group.sourceExternalId === code)!;
+      const filteredGroup = filtered.groups[0];
+      expect(filteredGroup).toEqual(fullGroup);
+      expect(computeReportHash(scope, [filteredGroup])).toBe(computeReportHash(scope, [fullGroup]));
+    }
+  });
+
   it('reports immutable historical invoice evidence as CONFLICT instead of planning a repoint', async () => {
     const code = `immutable-${RUN}`;
     const first = await makeItem(code, { name: 'Mayonnaise - Extra Heavy', authoritativeMapping: true, storeLinked: true });
