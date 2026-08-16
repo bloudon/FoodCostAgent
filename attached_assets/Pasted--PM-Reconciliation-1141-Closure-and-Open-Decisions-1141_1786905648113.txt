@@ -1,0 +1,68 @@
+## PM Reconciliation — #1141 Closure and Open Decisions
+
+#1141 is accepted as PASS / CLOSED.
+
+The apply path now correctly owns the whole-manifest safety gate, so no caller can bypass preflight and begin remediation of a manifest containing a known blocker.
+
+The suspended production run is also sufficiently verified mutation-free.
+
+## Decision 1 — Legacy / ambiguous ownership policy
+
+This is NOT an open Bay Hill decision.
+
+The Bay Hill Class A policy was already explicitly approved, implemented, independently reviewed, and production-validated under #1142.
+
+For the exact approved Batch 1 population:
+
+- positively proven `A_LEGACY_MISSING_SCOPE` may be authorized only through the existing narrowly bound Bay Hill policy
+- arbitrary NULL/missing property remains blocked
+- Class B remains blocked
+- Class C remains blocked
+- mixed A+B / A+C remains blocked
+
+Production policy-preflight already proved:
+
+- 848 groups evaluated
+- 848 authorized
+- 0 blocked
+- 932 Class A mappings
+- 0 Class B
+- 0 Class C
+- 2 scoped legacy batches
+- 0 writes
+
+Therefore no new #1152 policy task is required for Batch 1.
+
+Do not broaden that policy beyond its existing binding.
+
+## Decision 2 — concurrent-writer semantics
+
+Do not implement a new manifest-level locking architecture for Bay Hill at this time.
+
+For this one-time production remediation, use operational write quiescence instead.
+
+Final production procedure will be:
+
+1. take/verify immediate production recovery point
+2. stop the FnB API/application writers on the VPS
+3. confirm no relevant background writer remains active
+4. run the exact production policy-preflight against the unchanged manifest
+5. if and only if clean, APPLY the unchanged manifest
+6. immediately reconcile
+7. run post-APPLY report/verification
+8. restart application
+9. verify health
+
+The existing transaction-time scope validation remains defense in depth.
+
+This avoids adding a distributed locking mechanism solely for a controlled migration.
+
+If remediation later becomes a routine live-production capability that must execute while concurrent inventory/mapping writers remain active, revisit manifest-level concurrency semantics as a separate product/architecture requirement.
+
+## Current state
+
+No new manifest.
+No population changes.
+No policy broadening.
+
+The next APPLY still requires fresh Product Owner authorization and the agreed production recovery point / execution runbook.

@@ -94,6 +94,26 @@ must never unblock: a diagnosed group still blocks until a Product Owner sets
 policy. Say so in the code and in the operator output, or the label will be read
 as an approval.
 
+# Concurrency is handled by write quiescence, not locking (PM decision)
+
+For the one-time Bay Hill remediation, the PM ruled against adding a
+manifest-level lock. Concurrent-writer safety comes from an operational
+runbook instead: recovery point → stop API/application writers on the VPS →
+confirm no background writers → policy-preflight the unchanged manifest →
+APPLY only if clean → reconcile → post-APPLY verification → restart → health
+check. Transaction-time scope validation stays as defense in depth.
+
+**Why:** A distributed locking mechanism solely for a controlled one-time
+migration is not worth its complexity; quiescence gives the same all-or-nothing
+guarantee operationally.
+
+**How to apply:** Every future APPLY of this manifest requires fresh Product
+Owner authorization plus that runbook — never a live-traffic apply. If
+remediation ever becomes a routine live capability with active writers, revisit
+manifest-level concurrency as a separate architecture requirement. The Batch 1
+Class A policy is closed too: 848/848 groups authorized under the existing
+narrowly bound policy (932 Class A, 0 B, 0 C); do not broaden it.
+
 # Bound suspended-run verification to the run
 
 Proving an aborted run mutated nothing must be scoped to that run's manifest id,
