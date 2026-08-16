@@ -2263,18 +2263,43 @@ function CountSessionDoneStep({
         </dl>
       </div>
 
-      {result.identityUnresolved && (
-        <Alert data-testid="alert-identity-unresolved">
-          <Info className="h-4 w-4" />
-          <AlertDescription className="text-xs text-left">
-            <strong>Reconciled — unresolved identities remain.</strong>{" "}
-            Every dollar from the source file is accounted for, but {result.unresolvedRowCount.toLocaleString()} rows
-            ({fmt(result.unresolvedTotal)}) had no Item Code we could match to an inventory item. Their value is kept
-            as source evidence on this snapshot, so it will not appear in item-level reporting until those rows are
-            matched.
-          </AlertDescription>
-        </Alert>
-      )}
+      {result.identityUnresolved && (() => {
+        // "Reconciled" is a claim about the money, not about identities. Only
+        // say it when the snapshot actually ties out to the source file —
+        // otherwise the unresolved-identity note would reassure the user that
+        // every dollar is accounted for while a real difference is on screen.
+        const tiesOut = result.reconciliationDelta != null && Math.abs(result.reconciliationDelta) < 0.005;
+        return (
+          <Alert
+            variant={tiesOut ? undefined : "destructive"}
+            data-testid="alert-identity-unresolved"
+          >
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-xs text-left">
+              {tiesOut ? (
+                <>
+                  <strong>Reconciled — unresolved identities remain.</strong>{" "}
+                  Every dollar from the source file is accounted for, but{" "}
+                </>
+              ) : (
+                <>
+                  <strong>
+                    Does not reconcile —{" "}
+                    {result.reconciliationDelta != null
+                      ? `${fmt(result.reconciliationDelta)} unaccounted for`
+                      : "the source total is unavailable"}
+                    .
+                  </strong>{" "}
+                  This snapshot does not tie out to the source file. In addition,{" "}
+                </>
+              )}
+              {result.unresolvedRowCount.toLocaleString()} rows ({fmt(result.unresolvedTotal)}) had no Item Code we
+              could match to an inventory item. Their value is kept as source evidence on this snapshot, so it will
+              not appear in item-level reporting until those rows are matched.
+            </AlertDescription>
+          </Alert>
+        );
+      })()}
 
       <div className="grid grid-cols-2 gap-3 text-left">
         {[

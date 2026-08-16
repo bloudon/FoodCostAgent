@@ -679,6 +679,16 @@ export interface CountSessionPreviewRow {
   /** Valuation from the Orderly file */
   totalCost: number | null;
   packagePrice: number | null;
+  /**
+   * The authoritative raw `Total Cost` cell for this row.
+   *
+   * Line economics MUST be derived from this, not from the parsed `totalCost`
+   * convenience column. Reconciliation measures the source workbook against what
+   * was persisted; if the preview reconciles on the raw value while the count
+   * lines are built from a parsed value with fallbacks, a discrepancy between the
+   * two shows a clean preview and a silently different persisted valuation.
+   */
+  authoritativeValue: number;
 }
 
 /**
@@ -844,6 +854,16 @@ export async function previewCountSession(
     // Only include rows with meaningful count data
     const hasCount = hasUsableCountGeometry(row);
     if (!hasCount) {
+      // A row with no countable geometry cannot become a count line — there is
+      // no quantity to persist. If it still carries value, dropping it here
+      // would delete that value from the snapshot while reconciliation counted
+      // it on the source side. Retain it as evidence instead, exactly like an
+      // identity-less row: the value survives against the authoritative import
+      // row rather than being silently lost.
+      if (sourceValue !== 0) {
+        unresolvedImportRowIds.push(row.id);
+        unresolvedTotal += sourceValue;
+      }
       excludedRows.push({
         rowIndex: row.rowIndex,
         rawDescription: row.rawDescription ?? row.cleanedDescription,
@@ -868,6 +888,7 @@ export async function previewCountSession(
       totalUnits: row.totalUnits ?? null,
       totalCost: row.totalCost ?? null,
       packagePrice: row.packagePrice ?? null,
+      authoritativeValue: sourceValue,
     });
   }
 
@@ -875,7 +896,9 @@ export async function previewCountSession(
   // canonical identity plus what did not. Comparing only the importable
   // (resolved) portion against the source total is what previously reported a
   // 25% "loss" for a snapshot that had in fact captured every source row.
-  const importableTotal = includedRows.reduce((s, r) => s + (r.totalCost ?? 0), 0);
+  // Authoritative value, not the parsed column: this figure is compared against
+  // the persisted line valuation, so both sides must be derived the same way.
+  const importableTotal = round2(includedRows.reduce((s, r) => s + r.authoritativeValue, 0));
   const snapshotTotal = batch.snapshotTotal ?? null;
   const reconciliation = reconcileHistoricalSnapshot({
     sourceTotal: snapshotTotal ?? sourceValuation,
@@ -1161,7 +1184,7 @@ export async function createCountSession(
 
   const sessionName = `Imported from Orderly — ${batch.originalFilename} — ${inventoryDateStr}`;
 
-  await db.transaction(async (tx: any) => {
+  const verified = await db.transaction(async (tx: any) => {
     // Create storageLocations entries for any new locations
     for (const locName of preview.locations) {
       const norm = normalizeLocationName(locName);
@@ -1192,9 +1215,12 @@ export async function createCountSession(
         sourceFilename: batch.originalFilename,
         sourceInventoryDate: inventoryDateStr,
         importedSnapshotTotal: preview.snapshotTotal,
-        // Reference-only snapshot: excluded from live on-hand and blocked from
-        // apply/edit/delete paths.
-        isHistoricalImport: 1,
+        // Deliberately NOT flagged historical yet. The flag makes the session
+        // immutable — unrepairable and undeletable through the guarded APIs — so
+        // it is only granted at the end of this transaction, after the persisted
+        // valuation has been verified to reconcile. A session that fails
+        // verification must roll back, not survive as protected wreckage.
+        isHistoricalImport: 0,
       })
       .returning({ id: inventoryCounts.id });
     finalCountId = countRow.id;
@@ -1217,16 +1243,11 @@ export async function createCountSession(
       const item = itemsById.get(row.inventoryItemId);
       const unitId = item?.unitId && validUnitIds.has(item.unitId) ? item.unitId : fallbackUnitId;
       const qty = row.totalUnits ?? (row.count1 ?? 0) + (row.count2 ?? 0) + (row.count3 ?? 0);
-      // Derive extended cost from snapshot economics — use row.totalCost directly
-      // (Orderly already computed this), then fall back to packagePrice or current price.
-      let extendedCost: number;
-      if (row.totalCost != null && row.totalCost > 0) {
-        extendedCost = row.totalCost;
-      } else if (row.packagePrice != null && row.packagePrice > 0 && qty > 0) {
-        extendedCost = row.packagePrice * qty;
-      } else {
-        extendedCost = (item?.pricePerUnit ?? 0) * qty;
-      }
+      // Extended cost comes from the authoritative raw source cell — the same
+      // value reconciliation measures against. Using the parsed column (or a
+      // packagePrice/current-price fallback) would let a raw/parsed discrepancy
+      // produce a clean preview and a persisted valuation that quietly differs.
+      const extendedCost = row.authoritativeValue;
 
       const locName = row.storageLocation ?? 'General Storage';
       const norm = normalizeLocationName(locName);
@@ -1306,18 +1327,55 @@ export async function createCountSession(
           );
       }
     }
+
+    // Verify BEFORE granting immutability, and inside the transaction so a
+    // failure rolls the whole snapshot back.
+    //
+    // The flag makes this session unrepairable and undeletable through the
+    // guarded APIs. If verification ran after commit, a concurrent source-row
+    // change, drifted evidence, or a line/source valuation mismatch would throw
+    // having already left a protected, unreconciled session behind that no
+    // guarded API could clean up. Reading through `tx` also means the evidence
+    // hashes are re-checked against the rows as they exist in this transaction.
+    const persistedInTx = await computePersistedHistoricalTotals(finalCountId, tx);
+    const txReconciliation = reconcileHistoricalSnapshot({
+      sourceTotal: preview.snapshotTotal,
+      resolvedTotal: persistedInTx.resolvedTotal,
+      unresolvedTotal: persistedInTx.unresolvedTotal,
+      tolerance: reconciliationTolerance,
+    });
+
+    if (persistedInTx.unresolvedRowCount !== unresolvedLinkValues.length) {
+      throw new Error(
+        `Historical evidence incomplete for snapshot ${finalCountId}: expected ` +
+        `${unresolvedLinkValues.length} linked rows, persisted ${persistedInTx.unresolvedRowCount}.`,
+      );
+    }
+
+    // A snapshot that does not reconcile must not be preserved as an immutable
+    // record of a number nobody can justify. `acknowledgedVariance` is an
+    // explicit operator decision to accept a known variance; without it, an
+    // out-of-tolerance result rolls back.
+    if (txReconciliation.exceedsTolerance && !acknowledgedVariance) {
+      const pct = ((txReconciliation.deltaPct ?? 0) * 100).toFixed(2);
+      throw new Error(
+        `Persisted snapshot ${finalCountId} does not reconcile: delta ` +
+        `$${(txReconciliation.delta ?? 0).toFixed(2)} (${pct}%) exceeds tolerance ` +
+        `(${(reconciliationTolerance * 100).toFixed(1)}%). The import was rolled back.`,
+      );
+    }
+
+    // Verified — grant immutability as the last write in the transaction.
+    await tx
+      .update(inventoryCounts)
+      .set({ isHistoricalImport: 1 })
+      // @ts-ignore
+      .where(eq(inventoryCounts.id, finalCountId));
+
+    return { persisted: persistedInTx, finalReconciliation: txReconciliation };
   });
 
-  // Final reconciliation is computed from what was actually persisted — count
-  // lines for resolved value, linked import rows for unresolved value — so a
-  // silent write loss cannot be reported as a clean import.
-  const persisted = await computePersistedHistoricalTotals(finalCountId);
-  const finalReconciliation = reconcileHistoricalSnapshot({
-    sourceTotal: preview.snapshotTotal,
-    resolvedTotal: persisted.resolvedTotal,
-    unresolvedTotal: persisted.unresolvedTotal,
-    tolerance: reconciliationTolerance,
-  });
+  const { persisted, finalReconciliation } = verified;
 
   return {
     countId: finalCountId,
@@ -1343,12 +1401,21 @@ export async function createCountSession(
  * link's stored hash is re-verified so evidence that drifted after linking is a
  * hard failure rather than a quietly changed total.
  */
-async function computePersistedHistoricalTotals(countId: string): Promise<{
+async function computePersistedHistoricalTotals(
+  countId: string,
+  /**
+   * Executor to read through. Verification runs inside the write transaction, so
+   * it must read the uncommitted rows via `tx`; reading through the module-level
+   * connection would see the pre-transaction state and verify nothing.
+   */
+  executor?: any,
+): Promise<{
   resolvedTotal: number;
   unresolvedTotal: number;
   unresolvedRowCount: number;
 }> {
-  const lines = await db
+  const reader: any = executor ?? db;
+  const lines = await reader
     .select({ qty: inventoryCountLines.qty, unitCost: inventoryCountLines.unitCost })
     .from(inventoryCountLines)
     // @ts-ignore
@@ -1360,7 +1427,7 @@ async function computePersistedHistoricalTotals(countId: string): Promise<{
     0,
   );
 
-  const links = await db
+  const links = await reader
     .select({
       evidenceHash: historicalSessionUnresolvedRows.sourceEvidenceHash,
       rowId: inventoryImportRows.id,
