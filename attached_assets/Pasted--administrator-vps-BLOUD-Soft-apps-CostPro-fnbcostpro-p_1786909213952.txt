@@ -1,0 +1,22 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ psql "$DATABASE_URL" -c "
+  SELECT source_external_id, left(failure_reason, 120) AS failure_reason, created_at
+  FROM inventory_item_remediation_audit
+  WHERE company_id = '43abaf82-44ce-4231-9570-7a01e7c85ced'
+    AND source_system = 'ORDERLY'
+    AND source_property_id = '24472'
+    AND created_at >= '2026-08-16 19:00:00+00'
+  ORDER BY created_at;"
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ psql "$DATABASE_URL" -c "
+  SELECT source_external_id, failure_reason
+  FROM inventory_item_remediation_audit
+  WHERE company_id = '43abaf82-44ce-4231-9570-7a01e7c85ced'
+    AND source_system = 'ORDERLY'
+    AND source_property_id = '24472'
+    AND created_at >= '2026-08-16 19:00:00+00'
+  ORDER BY created_at
+  LIMIT 3;"
+ source_external_id |                                                                                                                                                                                                  failure_reason                                                                                                                                                                           
+--------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 0033076            | UNIQUENESS_COLLISION: UNIQUENESS_COLLISION: store inventory settings for store ee9e1530-50db-45f4-ae61-2c45e86827f0 differ between canonical item 761c22ae-11d0-46f4-a0eb-0bdf471a441f and a duplicate (primary location 7445526e-fb0f-46af-8e08-87b99f4d8222 vs 990310c3-b933-4d29-a61f-61b4d8bea962). Merging would silently discard live store configuration — stopping this group for manual reconciliation.
+ 0049066            | UNIQUENESS_COLLISION: UNIQUENESS_COLLISION: store inventory settings for store ee9e1530-50db-45f4-ae61-2c45e86827f0 differ between canonical item b3348d0d-8906-4237-a5db-4acea5ca08d3 and a duplicate (primary location 5385283e-53f4-424f-9531-11f26a2594b8 vs 10919515-110f-41a0-87f7-34dc352a7ed8). Merging would silently discard live store configuration — stopping this group for :
