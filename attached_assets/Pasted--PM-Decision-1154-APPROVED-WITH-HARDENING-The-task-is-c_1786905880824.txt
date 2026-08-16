@@ -1,0 +1,292 @@
+# PM Decision — #1154 APPROVED WITH HARDENING
+
+The task is correct and is the remaining prerequisite before a fresh Product Owner APPLY authorization.
+
+The runbook must be operationally executable, fail-closed, and specific to the existing Bay Hill Batch 1 manifest.
+
+## Core invariant
+
+The production cleanup must run only while relevant application writers are quiesced.
+
+“API stopped” is not sufficient by itself.
+
+The runbook must identify and verify all processes capable of writing any tables touched by the remediation.
+
+At minimum investigate:
+
+- FnB API process
+- background workers
+- scheduled jobs / cron
+- queue consumers
+- import workers
+- inventory/count writers
+- any other PM2 process or service using the FnB production database
+
+Document exactly which processes must be stopped and which may remain running.
+
+## Required runbook sections
+
+### 1. Preconditions
+
+Record:
+
+- operator
+- timestamp
+- VPS host
+- production repo path
+- current git commit
+- current application version
+- manifest ID
+- manifest path
+- manifest SHA-256
+- expected manifest population = 848
+- approved production scope
+
+Confirm manifest byte identity against:
+
+`64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756`
+
+Abort on any mismatch.
+
+### 2. Recovery point
+
+Document the exact production backup/recovery procedure.
+
+The runbook must state:
+
+- command or provider action
+- recovery-point identifier
+- timestamp
+- how to confirm completion
+- how to confirm it covers the production PostgreSQL database
+- rollback procedure if remediation or reconciliation fails
+
+Do not use vague language such as “take a backup.”
+
+The operator must record the actual recovery reference before proceeding.
+
+### 3. Stop application writers
+
+Provide exact commands for stopping the relevant VPS processes.
+
+For PM2, use the actual production process names/IDs determined from the environment rather than placeholders where possible.
+
+Do not stop unrelated applications on the VPS unnecessarily.
+
+### 4. Verify write quiescence
+
+Provide a read-only verification procedure proving no relevant application writer remains.
+
+Include:
+
+- process check
+- PM2 state
+- relevant background job check
+- PostgreSQL active-connection/session inspection where appropriate
+
+Define what database connections are expected to remain, such as:
+
+- operator CLI connection
+- administrative monitoring
+
+and which constitute an abort condition.
+
+Avoid relying only on connection count; identify application/user/database/source where practical.
+
+### 5. Final manifest integrity check
+
+Immediately before policy preflight, recompute:
+
+`sha256sum reports/bay-hill-batch1/bay-hill-batch1-manifest.json`
+
+Required:
+
+`64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756`
+
+Abort otherwise.
+
+### 6. Production policy-preflight
+
+Provide the exact absolute-path VPS command.
+
+Expected:
+
+- manifest = bay-hill-batch1-2026-08-15
+- groups evaluated = 848
+- authorized = 848
+- blocked = 0
+- Class A mappings = 932
+- Class B = 0
+- Class C = 0
+- scoped legacy batches = 2
+- policy binding = PASS
+- writes = 0
+
+Any deviation = STOP.
+
+### 7. Fresh Product Owner authorization gate
+
+The runbook must explicitly STOP here.
+
+Include a sign-off section containing:
+
+- Product Owner approval
+- date/time
+- manifest SHA
+- recovery-point reference
+- preflight result
+- operator identity
+
+No APPLY command may be executed until this section is completed.
+
+### 8. APPLY
+
+Provide the exact production CLI command.
+
+It must:
+
+- use the unchanged manifest
+- include the production operator ID
+- include explicit production confirmation
+- preserve all existing scope/policy guards
+- not regenerate the manifest
+
+Document expected success output.
+
+The approved expected aggregate should be stated explicitly.
+
+If the current CLI semantics expect:
+
+- applied = 848
+- alreadyRemediated = 0
+- stopped = 0
+
+state that.
+
+Any STOPPED group or unexpected result immediately transitions to failure handling.
+
+### 9. Reconcile
+
+Run immediately after successful APPLY while application writers remain stopped.
+
+Document exact command and expected:
+
+- May valuation = $254,286.67
+- June valuation = $261,007.67
+- valuation delta = $0.00
+- no orphaned references
+- no unauthorized scope spill
+- approved groups resolved as expected
+
+Do not restart the application before reconciliation succeeds.
+
+### 10. Post-APPLY report
+
+Run REPORT while writers remain quiesced.
+
+Document what should remain:
+
+- 44 Claude-held SAFE groups untouched
+- Stella `99682` untouched
+- 4 AMBIGUOUS groups untouched
+- Batch 1 approved duplicate population no longer active as remediation candidates
+
+Do not assume the overall report will return zero groups because intentionally-held groups remain.
+
+State the exact expected post-run population if the code can determine it reliably.
+
+### 11. Restart application
+
+Only after APPLY + reconcile + post-report pass.
+
+Provide exact PM2 start/restart commands for only the processes stopped earlier.
+
+### 12. Health verification
+
+Check:
+
+- PM2 state
+- API health endpoint
+- production logs for startup errors
+- DB connectivity
+- basic authenticated application availability if available
+
+Document the expected health response.
+
+### 13. Failure / rollback matrix
+
+Define explicit actions for:
+
+#### Failure before APPLY
+No rollback needed.
+Keep writers stopped or safely restart depending on issue.
+
+#### APPLY returns zero mutations / refuses
+Do not reconcile as successful.
+Investigate.
+No DB restore unless unexpected writes occurred.
+
+#### Partial/unexpected APPLY
+Keep application writers stopped.
+Do not improvise.
+Capture evidence.
+Use recovery procedure if integrity cannot be proven.
+
+#### Reconciliation failure after successful APPLY
+Keep writers stopped.
+Do not restart application.
+Capture evidence.
+Escalate to Product Owner/PM for rollback decision.
+
+#### Post-report mismatch
+Same fail-closed treatment.
+
+#### Application fails health check after successful reconciliation
+Do not automatically roll back remediation if data reconciliation is clean.
+Diagnose application startup separately unless evidence indicates remediation damage.
+
+## Evidence handling
+
+At each gate produce sanitized structured evidence.
+
+Do not commit:
+
+- raw terminal dumps containing production-sensitive values
+- DATABASE_URL
+- credentials
+- environment files
+- secrets
+
+The repository evidence should contain only the minimum sanitized facts needed to prove the gate.
+
+## Existing manifest
+
+This task must not modify:
+
+`reports/bay-hill-batch1/bay-hill-batch1-manifest.json`
+
+The task should verify byte identity before and after runbook creation.
+
+## Out of scope
+
+- APPLY
+- production mutation
+- manifest regeneration
+- candidate changes
+- policy changes
+- new locking architecture
+- mapping repair
+- historical-import work
+
+## Done
+
+Return:
+
+- `reports/bay-hill-batch1/PRODUCTION-RUNBOOK.md`
+- manifest hash before/after
+- exact identified writer processes
+- exact quiescence-verification procedure
+- exact rollback/recovery procedure
+- Reviewer/QA confirmation that following the document cannot accidentally cross the APPLY authorization gate
+
+STOP after documentation.
