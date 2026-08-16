@@ -1,0 +1,20 @@
+Here's the PM-ready status:
+
+## Task #1141 — Expose inventory cleanup blockers before apply: **DONE and merged**
+
+**Problem closed:** The suspended Bay Hill cleanup run revealed that the all-or-nothing safety gate lived only in the operator CLI. The apply function itself could be called directly and would commit clean groups one by one, discovering a blocker only when it reached it — exactly how the production run got suspended mid-manifest.
+
+**What shipped:**
+- The manifest-wide gate is now enforced *inside* the apply path itself, before any write or audit row. One blocked group anywhere refuses the entire manifest with zero mutations — no caller can bypass it.
+- Verified the suspended Bay Hill run mutated nothing: no supersessions, no repointed count lines, no APPLIED audit rows, count-line checksums unchanged.
+- Deterministic forensic reports per manifest group: canonical items, siblings, all mappings, scope fields, exact blocker reasons, and A/B/C ownership classifications (diagnostic only — they never authorize anything).
+- Preflight enumerates *every* blocker in one pass, so operators get one decision instead of a sequence of failed runs.
+- Regression coverage against the real database: 60 tests in the remediation suite (incl. two new ones — a clean group in a blocked manifest is provably untouched, and multiple foreign mappings on one group are all reported together). Full Orderly suite: 254 passed; the one failure is a pre-existing fixture collision unrelated to this work (confirmed by reproducing it with the changes removed).
+- Independent authorization/data-integrity review: **PASS WITH FOLLOW-UP**, not blocked. Confirmed tenant/property isolation is fail-closed, reruns after a successful apply still work, and no partial-application path remains.
+- The suspended manifest itself is untouched and unapplied; the May historical session is unchanged ($254,286.67, delta $0.00).
+
+**Two open decisions for the PM** (I proposed these as tasks #1152/#1153, since cancelled — they still need an answer eventually):
+1. **Policy call:** what to do with records whose property ownership can't be proven (Class A legacy / Class C ambiguous). They stay blocked until someone with authority rules — that's deliberate, but it means part of Bay Hill can't be cleaned until the ruling exists.
+2. **Concurrency semantics:** the reviewer's one non-blocking finding — if another writer creates a new cross-property reference *mid-run*, that group is safely stopped but earlier groups have already committed. Nothing unauthorized is ever written; the question is whether "all or nothing" must also hold against concurrent writers, and if so we'd add a manifest-level lock.
+
+Everything is green: typecheck clean, API restarted and healthy, all four workflows running.
