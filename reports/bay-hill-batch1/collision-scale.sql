@@ -1912,9 +1912,9 @@ conflicts AS (
          (c.active IS DISTINCT FROM d.active)                           AS active_diff
   FROM pairs p
   JOIN store_inventory_items d
-    ON d.inventory_item_id = p.duplicate_id::uuid
+    ON d.inventory_item_id = p.duplicate_id
   JOIN store_inventory_items c
-    ON c.inventory_item_id = p.canonical_id::uuid
+    ON c.inventory_item_id = p.canonical_id
    AND c.store_id = d.store_id
 )
 SELECT
