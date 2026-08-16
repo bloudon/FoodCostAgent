@@ -72,17 +72,9 @@ function summarizeLog(entries: QueryLogEntry[]): string {
 }
 
 async function main() {
-  // Fail-closed environment guard: this script seeds and deletes synthetic
-  // tenants. It must never run against a production database.
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('[bench] refusing to run with NODE_ENV=production');
-  }
-  const dbUrl = process.env.DATABASE_URL ?? '';
-  if (!/neon\.tech|localhost|127\.0\.0\.1/.test(dbUrl)) {
-    throw new Error(
-      '[bench] DATABASE_URL host is not on the dev allowlist (neon.tech/localhost); refusing to run',
-    );
-  }
+  // Fail-closed database-identity guard — must run before any DB import.
+  const { assertBenchDatabaseAllowed } = await import('./benchGuard');
+  assertBenchDatabaseAllowed('bench');
 
   await patchDriver();
 

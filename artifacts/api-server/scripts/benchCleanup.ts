@@ -1,9 +1,8 @@
 import 'dotenv/config';
 import { eq, inArray, like } from 'drizzle-orm';
 async function main() {
-  if (process.env.NODE_ENV === 'production') throw new Error('refusing: NODE_ENV=production');
-  const dbUrl = process.env.DATABASE_URL ?? '';
-  if (!/neon\.tech|localhost|127\.0\.0\.1/.test(dbUrl)) throw new Error('refusing: DATABASE_URL not on dev allowlist');
+  const { assertBenchDatabaseAllowed } = await import('./benchGuard');
+  assertBenchDatabaseAllowed('benchCleanup');
   const runId = process.argv[2];
   if (!runId || !/^bench-[a-z0-9]+$/.test(runId)) {
     throw new Error('usage: tsx scripts/benchCleanup.ts <bench-RUNID> — an explicit run id is required; refusing to sweep all bench-%% tenants');
