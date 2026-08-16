@@ -40,6 +40,27 @@ the audit trail stops being comparable. Keep the in-transaction re-check as
 defence in depth: preflight proves the manifest was clean when it ran, the
 transaction re-check proves it is still clean under lock.
 
+# A gate enforced at the call site is not enforced
+
+The all-or-nothing manifest gate must live inside the mutation function itself,
+not in the operator CLI that usually calls it.
+
+**Why:** Having the CLI run the whole-manifest gate and the mutation function
+run only its per-group check looks equivalent — the same validator runs either
+way — but it leaves the mutation function callable directly with no gate at
+all. Any other caller (a route, a script, a job, a test) silently gets the old
+group-by-group behaviour, which applies clean groups and discovers a blocker
+only when the loop reaches it. The guarantee has to be a property of APPLY, not
+of one call site remembering to ask.
+
+**How to apply:** Put the gate at the top of the mutation entry point, before
+the first transaction or audit write, and let the operator front-end call it
+again first for progress output and forensics. A duplicated SELECT-only
+evaluation on a rare operator action is a cheap price for a guarantee that
+cannot be bypassed. When adding it, expect existing tests that asserted a
+per-group "stopped" result to now assert a manifest-level refusal — the correct
+evidence becomes "no audit row at all", since no group was ever attempted.
+
 # Enumerate every blocker; never stop at the first
 
 A blocked manifest must report the complete blocker set in one read-only pass.

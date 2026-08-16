@@ -99,6 +99,16 @@ import {
   type LegacyAdoptionAuthorization,
   type RemediationScope,
 } from './orderlyRemediationScopeValidator';
+// The manifest-wide gate lives with the other read-only preflight checks, but it
+// is imported HERE — into the apply path itself — on purpose. Enforcing it only
+// in the operator CLI left `applyRemediationManifest` callable directly with no
+// gate at all, which is the exact hole this task exists to close. That module
+// imports only the shared validator, so this introduces no cycle.
+import { preflightManifestScope } from './orderlyDuplicateRemediationPreflight';
+// APPLY can now reject a whole manifest at the gate, so every caller of
+// `applyRemediationManifest` needs to be able to catch that specific failure
+// without reaching into the preflight module directly.
+export { RemediationManifestBlockedError } from './orderlyDuplicateRemediationPreflight';
 
 /** Downstream references, counted per table. */
 export interface ReferenceCounts {
@@ -1507,6 +1517,40 @@ export async function applyRemediationManifest(
         `in this scope. Regenerate the report, re-review it, and rebuild the manifest.`,
     );
   }
+
+  // ── Manifest-wide scope gate — before the first group is touched ──────────
+  //
+  // This is the invariant the suspended production run violated: it began
+  // mutating an 848-group manifest and discovered cross-property external
+  // mappings group by group, because scope was only ever checked per group at
+  // mutation time. It stopped correctly and changed nothing, but only by luck of
+  // ordering — a blocker in position 800 would have been found after 799 groups
+  // were already committed.
+  //
+  // The gate previously lived only in the operator CLI, which left this function
+  // callable directly with no gate at all. Any caller — a route, a script, a
+  // future job — would get the old per-group behaviour. It belongs here, on the
+  // mutation path itself, so the guarantee is a property of APPLY rather than of
+  // one call site remembering to ask.
+  //
+  // Partial application is deliberately not offered. The reviewer approved this
+  // manifest as a unit; applying its clean subset would substitute a scope
+  // nobody signed off on. One blocker anywhere refuses the whole manifest, with
+  // no writes and no audit rows.
+  //
+  // The CLI runs this same gate first for progress reporting and forensics. The
+  // repeated evaluation is SELECT-only and this path is a rare operator action,
+  // so paying for it twice is the right trade against a bypassable guarantee.
+  await preflightManifestScope(
+    manifest.scope,
+    manifest.groups.map(group => ({
+      sourceExternalId: group.sourceExternalId,
+      canonicalItemId: group.canonicalItemId,
+      supersededItemIds: group.supersededItemIds,
+    })),
+    runner,
+    { legacyAdoptionAuthorization: options.legacyAdoptionAuthorization },
+  );
 
   const groupResults: ApplyGroupResult[] = [];
   const byCode = new Map(report.groups.map(group => [group.sourceExternalId, group]));

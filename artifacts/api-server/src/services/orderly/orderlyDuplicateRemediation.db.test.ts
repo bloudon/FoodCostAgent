@@ -54,7 +54,10 @@ import {
   type ApplyManifest,
   type RemediationScope,
 } from './orderlyDuplicateRemediation';
-import { preflightRemediationDatabase } from './orderlyDuplicateRemediationPreflight';
+import {
+  preflightRemediationDatabase,
+  RemediationManifestBlockedError,
+} from './orderlyDuplicateRemediationPreflight';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 const RUN = vi.hoisted(() => Date.now().toString(36));
@@ -69,6 +72,13 @@ const ID = {
   bindingB: `rem-binding-b-${RUN}`,
   property: `rem-prop-${RUN}`,
   propertyB: `rem-prop-b-${RUN}`,
+  /**
+   * A THIRD Orderly property, used only to prove that several foreign mappings
+   * on one group are all reported together. It deliberately has no binding row:
+   * a mapping can name a property this company never bound, and that must still
+   * be surfaced as a blocker rather than ignored for lacking a binding.
+   */
+  propertyC: `rem-prop-c-${RUN}`,
   locationA: `rem-loc-a-${RUN}`,
   locationB: `rem-loc-b-${RUN}`,
   storageA: `rem-sloc-a-${RUN}`,
@@ -632,6 +642,54 @@ async function expectNoMutation(code: string): Promise<void> {
       ),
     )) as Array<{ result: string }>;
   expect(audits.filter(row => row.result === 'applied')).toHaveLength(0);
+}
+
+/**
+ * Asserts APPLY refused the manifest at the gate rather than at mutation time.
+ *
+ * The distinction is the whole point of the gate. Before it existed, a manifest
+ * containing an out-of-scope group still entered the apply loop: clean groups
+ * were mutated and audited, and the blocked group was only discovered when the
+ * loop reached it, recording a per-group `stopped` row. That is a partial
+ * application of a manifest the reviewer approved as a unit.
+ *
+ * Now the refusal happens before the first transaction opens, so the correct
+ * evidence is not "one group stopped" but "nothing happened at all": no
+ * supersession, and — unlike a per-group stop — not even a stopped audit row,
+ * because no group was ever attempted.
+ */
+async function expectManifestBlocked(
+  manifest: ApplyManifest,
+  code: string,
+): Promise<RemediationManifestBlockedError> {
+  const auditsBefore = (await db
+    .select({ id: inventoryItemRemediationAudit.id })
+    .from(inventoryItemRemediationAudit)
+    .where(eq(inventoryItemRemediationAudit.companyId, ID.company))) as Array<{ id: string }>;
+
+  let caught: unknown;
+  try {
+    await applyRemediationManifest(manifest, ID.admin);
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(RemediationManifestBlockedError);
+  const blocked = caught as RemediationManifestBlockedError;
+
+  // The blocked group is named in the evaluation the error carries, so the
+  // operator gets the full picture from the refusal itself.
+  expect(blocked.evaluation.blockers.map(entry => entry.sourceExternalId)).toContain(code);
+
+  // No group was attempted, so the audit table is untouched — not even a
+  // 'stopped' row, which is what the old per-group path would have written.
+  const auditsAfter = (await db
+    .select({ id: inventoryItemRemediationAudit.id })
+    .from(inventoryItemRemediationAudit)
+    .where(eq(inventoryItemRemediationAudit.companyId, ID.company))) as Array<{ id: string }>;
+  expect(auditsAfter).toHaveLength(auditsBefore.length);
+
+  await expectNoMutation(code);
+  return blocked;
 }
 
 describe.skipIf(SKIP)('remediation scope boundary', () => {
@@ -1298,14 +1356,7 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-xprop-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.applied).toBe(0);
-    expect(result.stopped).toBe(1);
-    const [stopped] = result.groups;
-    expect(stopped.result).toBe('stopped');
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
+    await expectManifestBlocked(manifest, code);
 
     // The foreign-property mapping is untouched and still points at dupeB.
     const foreign = (await db
@@ -1344,12 +1395,7 @@ describe.skipIf(SKIP)('apply mode', () => {
 
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-xstore-${RUN}`);
-    const result = await applyRemediationManifest(manifest, ID.admin);
-
-    expect(result.stopped).toBe(1);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
+    await expectManifestBlocked(manifest, code);
 
     // The other store's stock row survives, still on the duplicate.
     const [otherStore] = (await db
@@ -1390,12 +1436,7 @@ describe.skipIf(SKIP)('apply mode', () => {
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-crossprop-${RUN}`);
 
-    const result = await applyRemediationManifest(manifest, ID.admin);
-    expect(result.applied).toBe(0);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
-    await expectNoMutation(code);
+    await expectManifestBlocked(manifest, code);
 
     // The foreign property's count line is untouched and still on the duplicate.
     const [foreign] = (await db
@@ -1436,12 +1477,7 @@ describe.skipIf(SKIP)('apply mode', () => {
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-unapprovedcount-${RUN}`);
 
-    const result = await applyRemediationManifest(manifest, ID.admin);
-    expect(result.applied).toBe(0);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
-    await expectNoMutation(code);
+    await expectManifestBlocked(manifest, code);
 
     // The unapproved batch's count line stayed on the duplicate, untouched.
     const [line] = (await db
@@ -1479,12 +1515,7 @@ describe.skipIf(SKIP)('apply mode', () => {
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-rejectedrows-${RUN}`);
 
-    const result = await applyRemediationManifest(manifest, ID.admin);
-    expect(result.applied).toBe(0);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
-    await expectNoMutation(code);
+    await expectManifestBlocked(manifest, code);
 
     // The rejected batch's row still resolves to the duplicate.
     const [row] = (await db
@@ -1532,15 +1563,168 @@ describe.skipIf(SKIP)('apply mode', () => {
     const report = await buildRemediationReport(scope);
     const manifest = buildApplyManifest(report, [code], `m-manualprov-${RUN}`);
 
-    const result = await applyRemediationManifest(manifest, ID.admin);
-    expect(result.applied).toBe(0);
-    const [stopped] = result.groups;
-    if (stopped.result !== 'stopped') throw new Error('expected stopped');
-    expect(stopped.failureCode).toBe('OUT_OF_SCOPE_REFERENCE');
-    await expectNoMutation(code);
+    await expectManifestBlocked(manifest, code);
 
     await db.delete(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, manualCountId));
     await db.delete(inventoryCounts).where(eq(inventoryCounts.id, manualCountId));
+  });
+
+  /**
+   * THE no-partial-application regression.
+   *
+   * The suspended production run began mutating an 848-group manifest and only
+   * discovered a cross-property mapping when the loop reached that group. Every
+   * group before it had already been committed. Ordering decided how much of a
+   * manifest got applied, which is not a decision anyone approved.
+   *
+   * So it is not enough that the blocked group is refused: the CLEAN group in
+   * the same manifest must also be left untouched. If this test ever sees the
+   * clean group applied, the gate has regressed back into the apply loop.
+   */
+  it('applies nothing at all when one group in a multi-group manifest is blocked', async () => {
+    // A clean group that would apply perfectly well on its own...
+    const cleanCode = `partial-clean-${RUN}`;
+    const cleanCanonical = await makeItem(cleanCode, {
+      name: 'Partial Clean Gin',
+      authoritativeMapping: true,
+      storeLinked: true,
+      countRows: [[ID.mayCount, ID.storageA, 4, 25]],
+    });
+    const cleanDupe = await makeItem(cleanCode, {
+      name: 'Partial Clean Gin',
+      countRows: [[ID.juneCount, ID.storageB, 2, 25]],
+    });
+    await stageResolvedRow(ID.mayBatch, 70, cleanCode, cleanCanonical, {
+      storageLocation: 'Liquor Cage',
+    });
+    await stageResolvedRow(ID.juneBatch, 70, cleanCode, cleanDupe, { storageLocation: 'Pool Cafe' });
+
+    // ...and a blocked group, ordered AFTER it so the old per-group path would
+    // have committed the clean one before ever noticing this.
+    const blockedCode = `partial-blocked-${RUN}`;
+    const blockedCanonical = await makeItem(blockedCode, {
+      name: 'Partial Blocked Rum',
+      authoritativeMapping: true,
+      storeLinked: true,
+      countRows: [[ID.mayCount, ID.storageA, 3, 25]],
+    });
+    const blockedDupe = await makeItem(blockedCode, {
+      name: 'Partial Blocked Rum',
+      countRows: [[ID.juneCount, ID.storageB, 5, 25]],
+    });
+    await db.insert(inventoryItemExternalMappings).values({
+      companyId: ID.company,
+      inventoryItemId: blockedDupe,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.propertyB,
+      sourceExternalId: `${blockedCode}-otherclub`,
+      sourceDescription: 'Partial Blocked Rum (other club)',
+      matchStrategy: 'code',
+      confidenceScore: 1,
+    });
+    await stageResolvedRow(ID.mayBatch, 71, blockedCode, blockedCanonical, {
+      storageLocation: 'Liquor Cage',
+    });
+    await stageResolvedRow(ID.juneBatch, 71, blockedCode, blockedDupe, {
+      storageLocation: 'Pool Cafe',
+    });
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(
+      report,
+      [cleanCode, blockedCode],
+      `m-partial-${RUN}`,
+    );
+    expect(manifest.groups).toHaveLength(2);
+
+    const blocked = await expectManifestBlocked(manifest, blockedCode);
+
+    // Only the genuinely blocked group is named — the gate refuses the manifest
+    // as a unit without mislabelling the clean group as a scope violation.
+    expect(blocked.evaluation.blockers.map(entry => entry.sourceExternalId)).toEqual([blockedCode]);
+    expect(blocked.evaluation.totalGroups).toBe(2);
+    expect(blocked.evaluation.cleanGroups).toBe(1);
+
+    // The clean group is untouched: not superseded, not audited. This is the
+    // assertion the production incident was missing.
+    await expectNoMutation(cleanCode);
+    const cleanRows = (await db
+      .select({ id: inventoryItems.id, superseded: inventoryItems.supersededByItemId })
+      .from(inventoryItems)
+      .where(inArray(inventoryItems.id, [cleanCanonical, cleanDupe]))) as Array<{
+      id: string;
+      superseded: string | null;
+    }>;
+    expect(cleanRows).toHaveLength(2);
+    for (const row of cleanRows) expect(row.superseded).toBeNull();
+
+    // The clean group's count line never moved onto its canonical.
+    const [movedLine] = (await db
+      .select({ itemId: inventoryCountLines.inventoryItemId })
+      .from(inventoryCountLines)
+      .where(
+        and(
+          eq(inventoryCountLines.inventoryCountId, ID.juneCount),
+          eq(inventoryCountLines.inventoryItemId, cleanDupe),
+        ),
+      )) as Array<{ itemId: string }>;
+    expect(movedLine?.itemId).toBe(cleanDupe);
+  });
+
+  /**
+   * One blocked group can hold SEVERAL foreign mappings. Reporting only the
+   * first turns one refusal into a sequence of them: the operator clears the
+   * mapping named in the error, reruns, and is told about the next one.
+   */
+  it('reports every foreign mapping on a group, not just the first', async () => {
+    const { code, dupeB, dupeC } = await seedChambordDefect();
+    // Two different foreign properties, on two different duplicates in the same
+    // group, plus a foreign-company mapping — three distinct blockers at once.
+    await db.insert(inventoryItemExternalMappings).values([
+      {
+        companyId: ID.company,
+        inventoryItemId: dupeB,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.propertyB,
+        sourceExternalId: `${code}-clubB`,
+        sourceDescription: 'Chambord (club B)',
+        matchStrategy: 'code',
+        confidenceScore: 1,
+      },
+      {
+        companyId: ID.company,
+        inventoryItemId: dupeC,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.propertyC,
+        sourceExternalId: `${code}-clubC`,
+        sourceDescription: 'Chambord (club C)',
+        matchStrategy: 'code',
+        confidenceScore: 1,
+      },
+    ]);
+
+    const report = await buildRemediationReport(scope);
+    const manifest = buildApplyManifest(report, [code], `m-multimap-${RUN}`);
+
+    const blocked = await expectManifestBlocked(manifest, code);
+
+    const group = blocked.evaluation.blockers.find(entry => entry.sourceExternalId === code)!;
+    const foreignCodes = group.mappings
+      .filter(mapping => !mapping.inScope)
+      .map(mapping => mapping.sourceExternalId)
+      .sort();
+    // BOTH foreign mappings are surfaced by the single refusal.
+    expect(foreignCodes).toEqual([`${code}-clubB`, `${code}-clubC`]);
+
+    // And each is attributed to the duplicate that actually carries it, so the
+    // operator can act on them without re-querying.
+    const owners = new Map(
+      group.mappings
+        .filter(mapping => !mapping.inScope)
+        .map(mapping => [mapping.sourceExternalId, mapping.ownerInventoryItemId]),
+    );
+    expect(owners.get(`${code}-clubB`)).toBe(dupeB);
+    expect(owners.get(`${code}-clubC`)).toBe(dupeC);
   });
 
   it('stops when a count-line quantity is edited in place after review', async () => {
