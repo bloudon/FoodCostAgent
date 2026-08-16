@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { initObjectStorageCleanup } from "./objectStorageCleanup";
 import { ensureAccountingClassificationSchema } from "./services/accountingClassificationMigration";
 import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
+import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/historicalSessionUnresolvedRows";
 import { db } from "./db";
 
 const rawPort = process.env["PORT"];
@@ -45,6 +46,14 @@ if (Number.isNaN(port) || port <= 0) {
       { err },
       "Fatal: inventory item remediation schema initialization failed — refusing to start",
     );
+    process.exit(1);
+  }
+
+  try {
+    await ensureHistoricalSessionUnresolvedRowsSchema(db);
+    logger.info("[Migration] historical unresolved-row schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: historical unresolved-row schema initialization failed");
     process.exit(1);
   }
 

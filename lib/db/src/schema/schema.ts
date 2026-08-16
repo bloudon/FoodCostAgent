@@ -715,6 +715,7 @@ export const inventoryCounts = pgTable("inventory_counts", {
   sourceFilename: text("source_filename"),                // original filename from the import
   sourceInventoryDate: text("source_inventory_date"),     // YYYY-MM-DD from the Orderly report
   importedSnapshotTotal: real("imported_snapshot_total"), // total value from source for reconciliation
+  isHistoricalImport: integer("is_historical_import").notNull().default(0), // immutable, reconciliation-only imported snapshot
 });
 
 export const insertInventoryCountSchema = createInsertSchema(inventoryCounts).omit({ id: true, countedAt: true }).extend({
@@ -746,6 +747,24 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   uniqueCountItemLocation: unique().on(table.inventoryCountId, table.inventoryItemId, table.storageLocationId),
   // Optimize count line queries
   countIdIdx: index("inventory_count_lines_count_id_idx").on(table.inventoryCountId),
+}));
+
+/**
+ * Source rows that belong to an imported historical snapshot but do not have a
+ * safe canonical inventory identity. Source facts remain authoritative in
+ * inventory_import_rows; this is intentionally only a relationship plus an
+ * integrity marker, never an unmatched live-inventory record.
+ */
+export const historicalSessionUnresolvedRows = pgTable("historical_session_unresolved_rows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  importRowId: varchar("import_row_id").notNull(),
+  sourceEvidenceHash: text("source_evidence_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniqueSessionImportRow: unique().on(table.sessionId, table.importRowId),
+  sessionIdx: index("historical_session_unresolved_rows_session_idx").on(table.sessionId),
+  importRowIdx: index("historical_session_unresolved_rows_import_row_idx").on(table.importRowId),
 }));
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 

@@ -19,6 +19,7 @@
 
 import { db } from '../../db';
 import { eq, and, inArray, or, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import {
   inventoryImportBatches,
   inventoryImportRows,
@@ -27,6 +28,7 @@ import {
   inventoryLocations,
   inventoryCounts,
   inventoryCountLines,
+  historicalSessionUnresolvedRows,
   storageLocations,
   inventoryItems,
   units,
@@ -506,6 +508,10 @@ export interface CreateCountSessionResult {
   name: string;
   linesCreated: number;
   importableTotal: number;
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+  historicalSnapshotTotal: number;
+  identityUnresolved: boolean;
   reconciliationDelta: number | null;
   reconciliationDeltaPct: number | null;
   locationsCreated: number;
@@ -535,6 +541,11 @@ export interface CountSessionPreview {
   excludedRows: ExcludedRow[];
   /** Sum of totalCost for included rows */
   importableTotal: number;
+  /** Valuation retained through unresolved source-evidence links. */
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+  historicalSnapshotTotal: number;
+  identityUnresolved: boolean;
   /** Absolute delta between importableTotal and snapshotTotal */
   reconciliationDelta: number | null;
   /** Delta as a fraction (0–1) of snapshotTotal */
@@ -548,6 +559,93 @@ export interface CountSessionPreview {
   duplicateWarnings: Array<{ countId: string; countDate: string; name: string | null }>;
   /** Cross-reference discrepancies (June vs May) */
   crossReferenceDiscrepancies: CrossReferenceDiscrepancy[];
+  /** IDs only; source facts remain on the authoritative import row. */
+  unresolvedImportRowIds: string[];
+}
+
+export function hasUsableCountGeometry(row: Pick<InventoryImportRow, 'totalUnits' | 'count1' | 'count2' | 'count3'>): boolean {
+  return (row.totalUnits ?? 0) > 0 ||
+    (row.count1 ?? 0) > 0 ||
+    (row.count2 ?? 0) > 0 ||
+    (row.count3 ?? 0) > 0;
+}
+
+/**
+ * Historical valuation must come from Orderly's original cell, never a parsed
+ * floating-point convenience column. A missing or malformed value is a hard
+ * failure so reconciliation cannot silently coerce evidence to zero.
+ */
+export function authoritativeSourceValue(row: Pick<InventoryImportRow, 'id' | 'rawData'>): number {
+  const raw = (row.rawData as Record<string, unknown> | null)?.['Total Cost'];
+  if (raw === null || raw === undefined || String(raw).trim() === '') {
+    throw new Error(`Import row ${row.id} is missing authoritative Total Cost evidence`);
+  }
+  const normalized = String(raw).trim()
+    .replace(/[$,\s]/g, '')
+    .replace(/^\((.*)\)$/, '-$1');
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) {
+    throw new Error(`Import row ${row.id} has malformed authoritative Total Cost evidence`);
+  }
+  return value;
+}
+
+export function sourceEvidenceHash(row: Pick<InventoryImportRow, 'id' | 'batchId' | 'rawData'>): string {
+  return createHash('sha256')
+    .update(JSON.stringify({ id: row.id, batchId: row.batchId, rawData: row.rawData }))
+    .digest('hex');
+}
+
+export interface HistoricalReconciliation {
+  resolvedTotal: number;
+  unresolvedTotal: number;
+  historicalSnapshotTotal: number;
+  delta: number | null;
+  deltaPct: number | null;
+  exceedsTolerance: boolean;
+}
+
+/**
+ * Single reconciliation definition shared by preview, creation and reporting.
+ *
+ * A historical snapshot retains every source row: rows that earned a canonical
+ * inventory identity become count lines, and the rest are retained as linked
+ * source evidence. The snapshot therefore reconciles as resolved + unresolved
+ * against the source total — divergence here means evidence was lost, not that
+ * identity resolution was incomplete.
+ */
+export function reconcileHistoricalSnapshot(input: {
+  sourceTotal: number | null;
+  resolvedTotal: number;
+  unresolvedTotal: number;
+  tolerance: number;
+}): HistoricalReconciliation {
+  const historicalSnapshotTotal = round2(input.resolvedTotal + input.unresolvedTotal);
+  const sourceTotal = input.sourceTotal;
+  if (sourceTotal == null || sourceTotal <= 0) {
+    return {
+      resolvedTotal: round2(input.resolvedTotal),
+      unresolvedTotal: round2(input.unresolvedTotal),
+      historicalSnapshotTotal,
+      delta: null,
+      deltaPct: null,
+      exceedsTolerance: false,
+    };
+  }
+  const delta = round2(Math.abs(historicalSnapshotTotal - sourceTotal));
+  const deltaPct = delta / sourceTotal;
+  return {
+    resolvedTotal: round2(input.resolvedTotal),
+    unresolvedTotal: round2(input.unresolvedTotal),
+    historicalSnapshotTotal,
+    delta,
+    deltaPct,
+    exceedsTolerance: deltaPct > input.tolerance,
+  };
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function normalizeLocationName(name: string): string {
@@ -718,10 +816,24 @@ export async function previewCountSession(
   const includedRows: CountSessionPreviewRow[] = [];
   const excludedRows: ExcludedRow[] = [];
   const locationNames = new Set<string>();
+  const unresolvedImportRowIds: string[] = [];
+  // Valuation is always read from the authoritative raw source cell, never from
+  // the parsed convenience column, so resolved + unresolved reconcile exactly
+  // against the source workbook rather than against a re-derived number.
+  let sourceValuation = 0;
+  let resolvedValuation = 0;
+  let unresolvedTotal = 0;
 
   for (const row of batchRows) {
+    const sourceValue = authoritativeSourceValue(row);
+    sourceValuation += sourceValue;
+
     const itemId = rowToItemId.get(row.rowIndex);
     if (!itemId) {
+      // No safe canonical identity. The row still carries historical evidence,
+      // so it is linked to the snapshot rather than silently dropped.
+      unresolvedImportRowIds.push(row.id);
+      unresolvedTotal += sourceValue;
       excludedRows.push({
         rowIndex: row.rowIndex,
         rawDescription: row.rawDescription ?? row.cleanedDescription,
@@ -730,11 +842,7 @@ export async function previewCountSession(
       continue;
     }
     // Only include rows with meaningful count data
-    const hasCount =
-      (row.totalUnits != null && row.totalUnits > 0) ||
-      (row.count1 != null && row.count1 > 0) ||
-      (row.count2 != null && row.count2 > 0) ||
-      (row.count3 != null && row.count3 > 0);
+    const hasCount = hasUsableCountGeometry(row);
     if (!hasCount) {
       excludedRows.push({
         rowIndex: row.rowIndex,
@@ -744,6 +852,7 @@ export async function previewCountSession(
       continue;
     }
     if (row.storageLocation) locationNames.add(row.storageLocation.trim());
+    resolvedValuation += sourceValue;
 
     includedRows.push({
       rowIndex: row.rowIndex,
@@ -762,18 +871,21 @@ export async function previewCountSession(
     });
   }
 
-  // Reconciliation
+  // Reconciliation — a historical snapshot is the sum of what received a
+  // canonical identity plus what did not. Comparing only the importable
+  // (resolved) portion against the source total is what previously reported a
+  // 25% "loss" for a snapshot that had in fact captured every source row.
   const importableTotal = includedRows.reduce((s, r) => s + (r.totalCost ?? 0), 0);
   const snapshotTotal = batch.snapshotTotal ?? null;
-  let reconciliationDelta: number | null = null;
-  let reconciliationDeltaPct: number | null = null;
-  let reconciliationExceedsTolerance = false;
-
-  if (snapshotTotal != null && snapshotTotal > 0) {
-    reconciliationDelta = Math.abs(importableTotal - snapshotTotal);
-    reconciliationDeltaPct = reconciliationDelta / snapshotTotal;
-    reconciliationExceedsTolerance = reconciliationDeltaPct > tolerance;
-  }
+  const reconciliation = reconcileHistoricalSnapshot({
+    sourceTotal: snapshotTotal ?? sourceValuation,
+    resolvedTotal: resolvedValuation,
+    unresolvedTotal,
+    tolerance,
+  });
+  const reconciliationDelta = reconciliation.delta;
+  const reconciliationDeltaPct = reconciliation.deltaPct;
+  const reconciliationExceedsTolerance = reconciliation.exceedsTolerance;
 
   // Duplicate guard — look for existing count sessions from same source
   const inventoryDateStr = batch.inventoryDate;
@@ -894,6 +1006,10 @@ export async function previewCountSession(
     includedRows,
     excludedRows,
     importableTotal,
+    unresolvedTotal: reconciliation.unresolvedTotal,
+    unresolvedRowCount: unresolvedImportRowIds.length,
+    historicalSnapshotTotal: reconciliation.historicalSnapshotTotal,
+    identityUnresolved: unresolvedImportRowIds.length > 0,
     reconciliationDelta,
     reconciliationDeltaPct,
     reconciliationExceedsTolerance,
@@ -901,6 +1017,7 @@ export async function previewCountSession(
     locations: Array.from(locationNames).sort(),
     duplicateWarnings,
     crossReferenceDiscrepancies,
+    unresolvedImportRowIds,
   };
 }
 
@@ -1000,6 +1117,43 @@ export async function createCountSession(
     existingStorageLocs.map((l: { id: string; name: string }) => [normalizeLocationName(l.name), l.id]),
   );
 
+  // Build the unresolved evidence links before opening the transaction.
+  // Ownership is re-checked here rather than trusted from the preview: the link
+  // is what keeps this valuation alive, so a row from another batch must never
+  // be able to inflate a snapshot's total.
+  const unresolvedLinkValues: Array<{ importRowId: string; evidenceHash: string }> = [];
+  if (preview.unresolvedImportRowIds.length > 0) {
+    const unresolvedRows: InventoryImportRow[] = [];
+    const FETCH_CHUNK = 500;
+    for (let i = 0; i < preview.unresolvedImportRowIds.length; i += FETCH_CHUNK) {
+      const slice = preview.unresolvedImportRowIds.slice(i, i + FETCH_CHUNK);
+      const fetched = await db
+        .select()
+        .from(inventoryImportRows)
+        // @ts-ignore
+        .where(inArray(inventoryImportRows.id, slice));
+      unresolvedRows.push(...fetched);
+    }
+    if (unresolvedRows.length !== preview.unresolvedImportRowIds.length) {
+      throw new Error(
+        `Unresolved evidence rows disappeared between preview and creation for batch ${batchId}.`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const row of unresolvedRows) {
+      if (row.batchId !== batchId) {
+        throw new Error(
+          `Import row ${row.id} does not belong to batch ${batchId} and cannot be linked as historical evidence.`,
+        );
+      }
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      // Fails loudly if the row lost its authoritative value.
+      authoritativeSourceValue(row);
+      unresolvedLinkValues.push({ importRowId: row.id, evidenceHash: sourceEvidenceHash(row) });
+    }
+  }
+
   // Everything in one transaction
   let locationsCreated = 0;
   let linesCreated = 0;
@@ -1038,6 +1192,9 @@ export async function createCountSession(
         sourceFilename: batch.originalFilename,
         sourceInventoryDate: inventoryDateStr,
         importedSnapshotTotal: preview.snapshotTotal,
+        // Reference-only snapshot: excluded from live on-hand and blocked from
+        // apply/edit/delete paths.
+        isHistoricalImport: 1,
       })
       .returning({ id: inventoryCounts.id });
     finalCountId = countRow.id;
@@ -1130,6 +1287,36 @@ export async function createCountSession(
       await tx.insert(inventoryCountLines).values(lineValues.slice(i, i + CHUNK));
     }
     linesCreated = lineValues.length;
+
+    // Link the unresolved source rows to this snapshot. These rows carry no
+    // canonical identity, so the link plus the authoritative import row is the
+    // only place their value survives.
+    if (unresolvedLinkValues.length > 0) {
+      for (let i = 0; i < unresolvedLinkValues.length; i += CHUNK) {
+        await tx
+          .insert(historicalSessionUnresolvedRows)
+          .values(
+            unresolvedLinkValues
+              .slice(i, i + CHUNK)
+              .map(v => ({
+                sessionId: finalCountId,
+                importRowId: v.importRowId,
+                sourceEvidenceHash: v.evidenceHash,
+              })),
+          );
+      }
+    }
+  });
+
+  // Final reconciliation is computed from what was actually persisted — count
+  // lines for resolved value, linked import rows for unresolved value — so a
+  // silent write loss cannot be reported as a clean import.
+  const persisted = await computePersistedHistoricalTotals(finalCountId);
+  const finalReconciliation = reconcileHistoricalSnapshot({
+    sourceTotal: preview.snapshotTotal,
+    resolvedTotal: persisted.resolvedTotal,
+    unresolvedTotal: persisted.unresolvedTotal,
+    tolerance: reconciliationTolerance,
   });
 
   return {
@@ -1137,9 +1324,73 @@ export async function createCountSession(
     inventoryDate: inventoryDateStr,
     name: sessionName,
     linesCreated,
-    importableTotal: preview.importableTotal,
-    reconciliationDelta: preview.reconciliationDelta,
-    reconciliationDeltaPct: preview.reconciliationDeltaPct,
+    importableTotal: finalReconciliation.resolvedTotal,
+    unresolvedTotal: finalReconciliation.unresolvedTotal,
+    unresolvedRowCount: persisted.unresolvedRowCount,
+    historicalSnapshotTotal: finalReconciliation.historicalSnapshotTotal,
+    identityUnresolved: persisted.unresolvedRowCount > 0,
+    reconciliationDelta: finalReconciliation.delta,
+    reconciliationDeltaPct: finalReconciliation.deltaPct,
     locationsCreated,
+  };
+}
+
+/**
+ * Read back the persisted snapshot and re-derive its two valuation halves.
+ *
+ * Resolved value comes from the count lines themselves; unresolved value is read
+ * through the evidence links back to the authoritative import rows, and each
+ * link's stored hash is re-verified so evidence that drifted after linking is a
+ * hard failure rather than a quietly changed total.
+ */
+async function computePersistedHistoricalTotals(countId: string): Promise<{
+  resolvedTotal: number;
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+}> {
+  const lines = await db
+    .select({ qty: inventoryCountLines.qty, unitCost: inventoryCountLines.unitCost })
+    .from(inventoryCountLines)
+    // @ts-ignore
+    .where(eq(inventoryCountLines.inventoryCountId, countId));
+
+  const resolvedTotal = lines.reduce(
+    (sum: number, l: { qty: number | null; unitCost: number | null }) =>
+      sum + round2((l.qty ?? 0) * (l.unitCost ?? 0)),
+    0,
+  );
+
+  const links = await db
+    .select({
+      evidenceHash: historicalSessionUnresolvedRows.sourceEvidenceHash,
+      rowId: inventoryImportRows.id,
+      batchId: inventoryImportRows.batchId,
+      rawData: inventoryImportRows.rawData,
+    })
+    .from(historicalSessionUnresolvedRows)
+    .innerJoin(
+      inventoryImportRows,
+      // @ts-ignore
+      eq(historicalSessionUnresolvedRows.importRowId, inventoryImportRows.id),
+    )
+    // @ts-ignore
+    .where(eq(historicalSessionUnresolvedRows.sessionId, countId));
+
+  let unresolvedTotal = 0;
+  for (const link of links) {
+    const row = { id: link.rowId, batchId: link.batchId, rawData: link.rawData } as InventoryImportRow;
+    const currentHash = sourceEvidenceHash(row);
+    if (currentHash !== link.evidenceHash) {
+      throw new Error(
+        `Historical evidence for import row ${link.rowId} changed after linking; snapshot ${countId} cannot be reconciled.`,
+      );
+    }
+    unresolvedTotal += authoritativeSourceValue(row);
+  }
+
+  return {
+    resolvedTotal: round2(resolvedTotal),
+    unresolvedTotal: round2(unresolvedTotal),
+    unresolvedRowCount: links.length,
   };
 }

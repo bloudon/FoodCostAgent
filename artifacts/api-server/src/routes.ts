@@ -21,6 +21,7 @@ import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, i
 import { updateVendorItemPackGeometry, invalidatePackGeometryForInventoryItem } from "./services/vendorPackGeometry";
 import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedLineSavings, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
+import { historicalSessionBlock } from "./services/inventory/historicalSessionGuard";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -11847,6 +11848,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count not found" });
       }
 
+      const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalEditBlock) {
+        return res.status(403).json(historicalEditBlock);
+      }
+
       const user = (req as any).user;
       
       // Determine if this is the latest count for the store
@@ -11900,6 +11906,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.getInventoryCount(existingLine.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
+      }
+
+      const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalEditBlock) {
+        return res.status(403).json(historicalEditBlock);
       }
 
       const user = (req as any).user;
@@ -12013,6 +12024,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count session not found" });
       }
 
+      const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalEditBlock) {
+        return res.status(403).json(historicalEditBlock);
+      }
+
       const user = (req as any).user;
       
       // Determine if this is the latest count for the store
@@ -12056,6 +12072,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
       }
+      const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalEditBlock) {
+        return res.status(403).json(historicalEditBlock);
+      }
       const user = (req as any).user;
       if (count.companyId !== user.companyId && user.role !== "global_admin") {
         return res.status(403).json({ error: "Forbidden" });
@@ -12095,6 +12115,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.getInventoryCount(line.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
+      }
+      const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalEditBlock) {
+        return res.status(403).json(historicalEditBlock);
       }
       const user = (req as any).user;
       if (count.companyId !== user.companyId && user.role !== "global_admin") {
@@ -12255,6 +12279,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count session not found" });
       }
 
+      const historicalDeleteBlock = historicalSessionBlock(count as any, 'delete');
+      if (historicalDeleteBlock) {
+        return res.status(403).json(historicalDeleteBlock);
+      }
+
       const user = (req as any).user;
       
       // Determine if this is the latest count for the store
@@ -12300,6 +12329,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if already applied
       if ((count as any).applied === 1) {
         return res.status(400).json({ error: "This inventory count has already been applied" });
+      }
+
+      const historicalApplyBlock = historicalSessionBlock(count as any, 'apply');
+      if (historicalApplyBlock) {
+        return res.status(403).json(historicalApplyBlock);
       }
 
       const user = (req as any).user;
@@ -23489,6 +23523,10 @@ Human Handoff:
         if (applyToLine && lineId && sessionId && result.netWeight != null) {
           // Validate session ownership and lock status
           const count = await storage.getInventoryCount(sessionId);
+          // Writing a scanned weight onto a line is an edit, so a historical
+          // snapshot rejects it outright rather than silently skipping the write.
+          const catchWeightBlock = count ? historicalSessionBlock(count as any, 'edit') : null;
+          if (catchWeightBlock) return res.status(403).json(catchWeightBlock);
           if (count && count.companyId === companyId && (count as any).applied !== 1) {
             if (!userId || (await mobileUserCanAccessStore(userId, count.storeId))) {
               const existingLine = await storage.getInventoryCountLine(lineId);
@@ -23884,6 +23922,11 @@ Human Handoff:
 
       if ((count as any).applied === 1) {
         return res.status(403).json({ error: "Session is already applied and cannot be edited" });
+      }
+
+      const historicalMobileEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalMobileEditBlock) {
+        return res.status(403).json(historicalMobileEditBlock);
       }
 
       // Find the count line(s) for this item in this session
@@ -24571,6 +24614,11 @@ Human Handoff:
         return res.status(403).json({ error: "Session is already applied and cannot be edited" });
       }
 
+      const historicalMobileEditBlock = historicalSessionBlock(count as any, 'edit');
+      if (historicalMobileEditBlock) {
+        return res.status(403).json(historicalMobileEditBlock);
+      }
+
       // @ts-ignore
       const existingLine = await storage.getInventoryCountLine(req.params.lineId);
       if (!existingLine || existingLine.inventoryCountId !== count.id) {
@@ -24674,6 +24722,11 @@ Human Handoff:
 
       if ((count as any).applied === 1) {
         return res.status(400).json({ error: "This inventory count has already been applied" });
+      }
+
+      const historicalMobileApplyBlock = historicalSessionBlock(count as any, 'apply');
+      if (historicalMobileApplyBlock) {
+        return res.status(403).json(historicalMobileApplyBlock);
       }
 
       const lines = await storage.getInventoryCountLines(count.id);
@@ -24791,6 +24844,10 @@ Human Handoff:
       if ((count as any).applied === 1) {
         return res.status(403).json({ error: "Session is locked" });
       }
+      // Bulk scan-apply is an edit path: it rewrites count-line quantities, so a
+      // historical snapshot must reject it the same way a single-line PATCH does.
+      const scanApplyBlock = historicalSessionBlock(count as any, 'edit');
+      if (scanApplyBlock) return res.status(403).json(scanApplyBlock);
 
       const { lines: lineUpdates, mode = "add" } = req.body;
       if (!Array.isArray(lineUpdates) || lineUpdates.length === 0) {

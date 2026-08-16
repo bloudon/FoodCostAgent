@@ -72,7 +72,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   rowConfidenceKey,
@@ -196,6 +196,10 @@ interface ConversionPreview {
   originalFilename: string;
   snapshotTotal: number | null;
   importableTotal: number;
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+  historicalSnapshotTotal: number;
+  identityUnresolved: boolean;
   reconciliationDelta: number;
   reconciliationDeltaPct: number;
   exceedsVarianceTolerance: boolean;
@@ -1522,8 +1526,11 @@ function CountSessionPreviewStep({
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground mb-1">Importable value</div>
-            <div className="text-2xl font-bold">{fmt(preview.importableTotal)}</div>
+            <div className="text-xs text-muted-foreground mb-1">Snapshot total</div>
+            <div className="text-2xl font-bold" data-testid="text-preview-snapshot-total">{fmt(preview.historicalSnapshotTotal)}</div>
+            <div className="text-xs text-muted-foreground">
+              {fmt(preview.importableTotal)} counted + {fmt(preview.unresolvedTotal)} retained
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -1559,6 +1566,13 @@ function CountSessionPreviewStep({
             <div className="font-medium">{fmtPct(preview.reconciliationTolerance)}</div>
           </div>
         </div>
+        {preview.identityUnresolved && (
+          <p className="mt-3 text-xs text-muted-foreground" data-testid="text-preview-identity-unresolved">
+            {preview.unresolvedRowCount.toLocaleString()} rows ({fmt(preview.unresolvedTotal)}) have no matchable Item
+            Code. Their value is retained on the snapshot as source evidence, but they will not appear in item-level
+            reporting.
+          </p>
+        )}
         {preview.reconciliationExceedsTolerance && (
           <div className="mt-3 flex items-start gap-2">
             <input
@@ -2183,6 +2197,10 @@ interface CreateCountSessionResult {
   name: string;
   linesCreated: number;
   importableTotal: number;
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+  historicalSnapshotTotal: number;
+  identityUnresolved: boolean;
   reconciliationDelta: number | null;
   reconciliationDeltaPct: number | null;
   locationsCreated: number;
@@ -2215,13 +2233,53 @@ function CountSessionDoneStep({
         </AlertDescription>
       </Alert>
 
+      <div className="rounded-lg border p-4 text-left" data-testid="snapshot-reconciliation">
+        <div className="text-sm font-medium mb-3">Snapshot reconciliation</div>
+        <dl className="space-y-2 text-sm">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">Counted against inventory items</dt>
+            <dd className="font-semibold tabular-nums" data-testid="text-resolved-value">{fmt(result.importableTotal)}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">
+              Retained without an inventory item
+              <span className="block text-xs">{result.unresolvedRowCount.toLocaleString()} source rows</span>
+            </dt>
+            <dd className="font-semibold tabular-nums" data-testid="text-unresolved-value">{fmt(result.unresolvedTotal)}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 border-t pt-2">
+            <dt className="font-medium">Historical snapshot total</dt>
+            <dd className="font-semibold tabular-nums" data-testid="text-snapshot-total">{fmt(result.historicalSnapshotTotal)}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-muted-foreground">Difference vs. Orderly</dt>
+            <dd className="font-semibold tabular-nums" data-testid="text-reconciliation-delta">
+              {result.reconciliationDelta != null ? fmt(result.reconciliationDelta) : "—"}
+              {result.reconciliationDeltaPct != null && (
+                <span className="text-xs text-muted-foreground ml-1">({fmtPct(result.reconciliationDeltaPct)})</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      {result.identityUnresolved && (
+        <Alert data-testid="alert-identity-unresolved">
+          <Info className="h-4 w-4" />
+          <AlertDescription className="text-xs text-left">
+            <strong>Reconciled — unresolved identities remain.</strong>{" "}
+            Every dollar from the source file is accounted for, but {result.unresolvedRowCount.toLocaleString()} rows
+            ({fmt(result.unresolvedTotal)}) had no Item Code we could match to an inventory item. Their value is kept
+            as source evidence on this snapshot, so it will not appear in item-level reporting until those rows are
+            matched.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-2 gap-3 text-left">
         {[
           { label: "Count lines created", value: result.linesCreated.toLocaleString() },
           { label: "Locations created", value: result.locationsCreated.toLocaleString() },
-          { label: "Importable total", value: fmt(result.importableTotal) },
-          { label: "Reconciliation delta", value: result.reconciliationDelta != null ? fmt(result.reconciliationDelta) : "—" },
-          { label: "Delta %", value: fmtPct(result.reconciliationDeltaPct) },
           { label: "Inventory date", value: result.inventoryDate ?? "—" },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg border p-3">
@@ -2231,10 +2289,18 @@ function CountSessionDoneStep({
         ))}
       </div>
 
-      <Button onClick={onDone} className="w-full">
-        <BarChart2 className="h-4 w-4 mr-2" />
-        Back to import history
-      </Button>
+      <div className="space-y-2">
+        <Button asChild className="w-full" data-testid="link-view-count-session">
+          <Link href={`/count/${result.countId}`}>
+            <ClipboardList className="h-4 w-4 mr-2" />
+            View count session
+          </Link>
+        </Button>
+        <Button onClick={onDone} variant="outline" className="w-full">
+          <BarChart2 className="h-4 w-4 mr-2" />
+          Back to import history
+        </Button>
+      </div>
     </div>
   );
 }
@@ -2264,6 +2330,11 @@ interface CountSessionPreview {
   includedRows: CountSessionPreviewRow[];
   excludedRows: ExcludedRow[];
   importableTotal: number;
+  unresolvedTotal: number;
+  unresolvedRowCount: number;
+  historicalSnapshotTotal: number;
+  identityUnresolved: boolean;
+  unresolvedImportRowIds: string[];
   reconciliationDelta: number | null;
   reconciliationDeltaPct: number | null;
   reconciliationExceedsTolerance: boolean;
