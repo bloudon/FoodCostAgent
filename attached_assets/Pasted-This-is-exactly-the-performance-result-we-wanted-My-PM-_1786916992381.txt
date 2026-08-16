@@ -1,0 +1,134 @@
+This is exactly the performance result we wanted. My PM call is:
+
+> **#1158 — PASS / CLOSED.**
+>
+> The 24-hour downtime concern is resolved without weakening the safety model.
+
+The root cause was clean and appropriately narrow: the apply path was rebuilding the entire remediation universe **inside every single group transaction**. Filtering that under-lock rebuild to the one source code being applied is the right fix because the group’s own evidence/hash is unchanged and all manifest-wide invariants still run once before mutation.
+
+The before/after is decisive:
+
+* ~64,174 queries/group → **215**
+* ~122 sec/group → **~0.7–1.5 sec**
+* expected production run → **~5–10 minutes**, plus upfront preflight
+
+I would **not ask Claude for another architecture review here**. Architect + independent Reviewer already passed this exact optimization, and it did not alter the business or safety contract. More review would be process creep.
+
+### Next step
+
+We are back to the production runbook. Before another APPLY, I would require the normal fresh gates because the deployed code changed:
+
+1. deploy current `main` to VPS
+2. confirm the prior aborted attempt left production reconciled and `fnbcostpro` is healthy
+3. take a **fresh recovery point**
+4. quiesce FnB writers
+5. verify manifest SHA unchanged
+6. run policy preflight
+7. run merge-content preflight
+8. only if both are clean, bring me the fresh Gate 7 evidence for final APPLY authorization
+
+Send Replit this:
+
+```md
+## PM Decision — #1158 Accepted
+
+#1158 is accepted as PASS / CLOSED.
+
+The performance blocker is resolved.
+
+### Accepted findings
+
+Root cause:
+
+`buildRemediationReport(scope, tx)`
+
+was rebuilding the entire scoped remediation population inside every group-level SERIALIZABLE transaction solely to re-derive that group's under-lock evidence.
+
+Measured at the 848-group fixture:
+
+- before: 64,174 queries/group
+- before: ~122 sec/group
+- after: 215 queries/group
+- after: ~0.7–1.5 sec/group
+
+Expected production Batch 1 runtime:
+
+approximately 5–10 minutes after the one-time manifest-wide validation pass.
+
+### Safety model remains required
+
+The optimization is accepted because these protections remain unchanged:
+
+- whole-manifest report validation
+- unapproved remainder hash
+- policy/scope preflight
+- merge-content preflight
+- SERIALIZABLE group transaction
+- lockGroupEvidence
+- under-lock group drift check
+- per-group hash parity
+- audit evidence
+- Option A authorization registry
+- transaction-time fail-closed validation
+
+The filtered report path must remain semantically identical for the requested group to the same group produced by the full report.
+
+### No additional architecture review required
+
+Architect and independent Reviewer gates have passed.
+
+Do not add further abstraction or redesign around this optimization.
+
+## Production procedure
+
+Production APPLY remains unauthorized.
+
+After deploying the accepted code:
+
+1. confirm production application is healthy and prior aborted run remains reconciled
+2. create a fresh production recovery point
+3. quiesce FnB application writers
+4. verify no unexpected production DB writers remain
+5. verify manifest SHA remains:
+
+`64570b455c2ec84c4a03c2d85b5a83f171570314550b3111766c793f01289756`
+
+6. run production policy-preflight
+
+Required:
+- 848 evaluated
+- 848 authorized
+- 0 blocked
+- A = 932
+- B = 0
+- C = 0
+- legacy batches = 2
+- writes = 0
+
+7. run production merge-preflight
+
+Required:
+- 848 evaluated
+- 848 eligible
+- 0 conflicts
+- canonical-absent blocked shape = 0
+- no protected-setting conflicts other than the authorized primary-location-only shape
+
+8. STOP at Product Owner Gate 7
+
+Return:
+
+- fresh recovery reference
+- deployed git commit
+- manifest SHA
+- writer-quiescence evidence
+- policy-preflight totals
+- merge-preflight totals
+- estimated/observed preflight runtime
+
+Do not APPLY until fresh Product Owner authorization.
+```
+
+One thing I’d be strict about: **do not reuse the old recovery point** from before the performance change. The database may be unchanged, but we’re about to make a fresh production mutation attempt under new code. Take a new snapshot immediately before this run.
+
+At this stage, the cleanup itself is no longer the engineering problem. We’re down to executing the already-approved population safely and verifying the result.
