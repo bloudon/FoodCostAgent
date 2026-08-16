@@ -1,0 +1,117 @@
+## PM Decision — May Dev Import Is a Completeness Blocker
+
+The Dev historical-import mechanics are working:
+
+- count session persisted
+- session is unapplied
+- countId returned correctly
+- stored line valuation matches completion screen
+- no silent live on-hand mutation
+
+However, this May import is NOT acceptable as a reconciled historical inventory snapshot.
+
+### Source
+
+- 5,358 workbook rows
+- source valuation: $254,286.67
+
+### Persisted session
+
+- 2,090 count lines
+- 21 storage locations
+- represented valuation: $189,649.90
+
+### Missing
+
+- $64,636.77
+- 25.42%
+
+Do not proceed to additional historical months yet.
+
+## Core issue
+
+The importer is currently conflating:
+
+1. ability to resolve a row to an authoritative core inventory identity
+2. ability to preserve historical inventory/count/value evidence
+
+Those are not the same thing.
+
+A blank or unreliable Item Code may prevent safe automatic identity resolution.
+
+It must NOT automatically cause legitimate historical quantity/value evidence to disappear.
+
+## Required next investigation
+
+Produce a complete reconciliation of all 5,358 source rows and all $254,286.67.
+
+Break the population into mutually exclusive categories and report:
+
+- row count
+- source valuation
+- destination behavior
+
+At minimum:
+
+- reliable Item Code + resolved item + usable count geometry
+- reliable Item Code + resolved item + unusable geometry
+- reliable Item Code + unresolved item
+- blank Item Code + safely resolved
+- blank Item Code + unresolved
+- supplier-resolution failure
+- zero/blank quantity that legitimately produces no count line
+- malformed source geometry
+- any other exclusion category
+
+The categories must reconcile exactly to:
+
+- 5,358 rows
+- $254,286.67 source valuation
+
+## Key design question
+
+Determine whether a historical source row can be preserved when canonical inventory identity is unresolved.
+
+Preferred principle:
+
+> Preserve source historical evidence first; resolve canonical identity separately.
+
+For example, an unresolved historical row may retain:
+
+- source description
+- source Item Code if present
+- supplier
+- storage location
+- source quantity/pack evidence
+- source extended value
+- import batch/month
+- unresolved resolution state
+
+without fabricating a core inventory identity.
+
+Do not fuzzy-merge blank-code rows merely to make reconciliation pass.
+
+## Count geometry
+
+Investigate the 4,319 resolved rows versus only 2,090 count lines.
+
+Explain why 2,229 resolved rows failed count-line creation and how much valuation they represent.
+
+If the workbook contains authoritative historical quantity/value information, do not require modern normalized pack geometry merely to preserve the historical snapshot.
+
+Do not invent conversions.
+
+## Acceptance before another month
+
+May must reach:
+
+- all 5,358 source rows classified
+- all $254,286.67 accounted for
+- no silent source-value loss
+- reliable source Item Codes create no duplicate core identities
+- blank-code rows remain non-authoritative unless safely matched
+- location evidence preserved
+- historical session remains unapplied
+- reconciliation delta $0.00, unless specific rows are explicitly identified as genuinely unrepresentable and approved by PM
+
+#1147 — Open Count Session link is approved as a small UI follow-up, but it is not the current blocker.
