@@ -33,12 +33,38 @@ describe.each([
   ['scripts/benchCleanup.ts', ['bench-abc123']],
 ])('bench guard for %s', (script, args) => {
   it('refuses a production-shaped Neon URL without the exact-host opt-in, before any DB import', () => {
-    const result = runScript(script, args, { DATABASE_URL: PROD_SHAPED_URL });
+    const result = runScript(script, args, {
+      DATABASE_URL: PROD_SHAPED_URL,
+      REMEDIATION_PRODUCTION_DB_HOST: 'some-other-prod-host.example.com',
+    });
     const output = `${result.stdout}\n${result.stderr}`;
     expect(result.status).not.toBe(0);
     expect(output).toMatch(/refusing/i);
     expect(output).toMatch(/REMEDIATION_BENCH_ALLOW_DB_HOST/);
     // Refusal happened before the DB module loaded (its driver banner never printed).
+    expect(output).not.toContain('Using Neon serverless PostgreSQL driver');
+  });
+
+  it('refuses opt-in when the production identity is undeclared (missing config is not permission)', () => {
+    const result = runScript(script, args, {
+      DATABASE_URL: PROD_SHAPED_URL,
+      REMEDIATION_BENCH_ALLOW_DB_HOST: 'ep-prod-shaped-12345.us-east-2.aws.neon.tech',
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toMatch(/production database identity unavailable/);
+    expect(output).not.toContain('Using Neon serverless PostgreSQL driver');
+  });
+
+  it('rejects the code-owned production endpoint (VPS-local PostgreSQL) regardless of opt-in and declarations', () => {
+    const result = runScript(script, args, {
+      DATABASE_URL: 'postgresql://user:secret@127.0.0.1:5432/fnb',
+      REMEDIATION_BENCH_ALLOW_DB_HOST: '127.0.0.1',
+      REMEDIATION_PRODUCTION_DB_HOST: 'unrelated.example.com',
+    });
+    const output = `${result.stdout}\n${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toMatch(/code-owned/);
     expect(output).not.toContain('Using Neon serverless PostgreSQL driver');
   });
 
@@ -50,7 +76,7 @@ describe.each([
     });
     const output = `${result.stdout}\n${result.stderr}`;
     expect(result.status).not.toBe(0);
-    expect(output).toMatch(/matches PRODUCTION_DATABASE_URL/);
+    expect(output).toMatch(/matches the declared production host/);
     expect(output).not.toContain('Using Neon serverless PostgreSQL driver');
   });
 
