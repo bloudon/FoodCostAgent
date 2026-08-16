@@ -36,3 +36,11 @@ control. If a paste was already committed, remove it from the working tree and f
 branch that will be pushed; do not rewrite the workspace checkpoint branch to scrub it,
 since that destroys the user's rollback history — note the residual location in the report
 instead.
+
+## CLI working-directory guard
+
+When invoking a package-filtered CLI, pnpm runs the script from the package directory rather than the repository root. Production operator commands must use an absolute manifest path (or the correct relative path from `artifacts/api-server`) and checksum the file before and after.
+
+**Why:** the first approved preflight attempt failed with ENOENT before evaluation solely because a repository-root-relative manifest path was resolved from the package working directory.
+
+**How to apply:** prefer `/home/administrator/apps/CostPro/fnbcostpro/reports/...` for VPS evidence commands; treat ENOENT as a failed preflight, not as evidence about the database.
