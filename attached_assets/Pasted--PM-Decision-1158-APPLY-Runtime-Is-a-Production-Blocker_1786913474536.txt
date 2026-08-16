@@ -1,0 +1,113 @@
+# PM Decision — #1158 APPLY Runtime Is a Production Blocker
+
+The merge-policy hardening is accepted.
+
+Do NOT schedule another production APPLY while estimated runtime remains approximately:
+
+105 sec/group × 848 groups ≈ 24 hours
+
+Operational write quiescence was approved as a simpler alternative to introducing new concurrency/locking architecture.
+
+A 24-hour application-write outage invalidates that operational assumption.
+
+## Objective
+
+Determine why APPLY requires ~105 seconds per group and reduce runtime materially without weakening:
+
+- manifest-wide preflight
+- transaction-time revalidation
+- tenant/store/property isolation
+- audit evidence
+- canonical-selection rules
+- primary-location-only policy
+- atomicity of each group
+- reconciliation guarantees
+
+This is a performance investigation first, not permission for architectural redesign.
+
+## Step 1 — Measure before changing
+
+Instrument one representative remediation group and identify wall-clock time spent in:
+
+- scope validation
+- merge-content validation
+- external mapping queries
+- store configuration checks
+- location assignment reads/writes
+- count-line repoints
+- downstream reference repoints
+- supersession writes
+- audit writes
+- transaction open/commit
+- repeated manifest/report/hash validation
+- deliberate sleeps/throttling/retries if any
+
+Also measure SQL query count per group.
+
+Return the top contributors.
+
+## Step 2 — Look for obvious repeated work
+
+Specifically investigate whether APPLY is repeatedly doing work that is invariant across all 848 groups, such as:
+
+- loading/scanning the entire manifest
+- resolving the same scoped legacy batches
+- rereading policy constants/bindings from DB
+- rescanning all mappings
+- rebuilding global lookup maps
+- repeating whole-manifest preflight
+- sequential queries that could be batched
+- O(groups × references) scans
+- per-row queries instead of set-based DB operations
+
+Prefer deletion/caching/batching over new abstraction.
+
+## Step 3 — Preserve safety semantics
+
+Do not remove transaction-time validation.
+
+But separate:
+
+- manifest-wide invariants that can be proven once immediately before mutation
+from
+- group-specific state that must be revalidated under transaction
+
+Do not rerun whole-manifest analysis inside every group if that is occurring.
+
+## Step 4 — Establish target
+
+Propose a realistic production runtime target after measurement.
+
+PM preference:
+
+- minutes, not hours
+- ideally <30 minutes total
+- if safely achievable, substantially less
+
+Do not optimize solely to hit an arbitrary benchmark; explain the expected runtime based on measured query/work reductions.
+
+## Step 5 — Validate against representative production shape
+
+Use Dev/database-backed fixtures shaped like:
+
+- 848 groups
+- ~1,900 superseded identities
+- ~1,259 count-line repoints
+- ~932 legacy mappings
+- multi-location assignment unions
+
+Do not require production mutation to benchmark the algorithm.
+
+## Stop condition
+
+Return:
+
+- measured reason for ~105 sec/group
+- proposed smallest safe optimization
+- before/after benchmark
+- any safety tradeoff
+- expected 848-group runtime
+
+Do not APPLY production.
+Do not weaken guards.
+Do not introduce manifest-level locking unless PM separately approves it.

@@ -21,4 +21,5 @@
 - [Import period identity](import-period-identity.md) — a batch's stored date is the count-close date and row dates are purchase dates; scope by "nothing postdates period end".
 - [db.execute result shape](db-execute-result-shape.md) — QueryResult vs bare array by driver; a wrong cast reads zero rows and makes "zero violations" checks pass vacuously.
 - [Exception authorization registry](exception-authorization-registry.md) — reference-identity registry of frozen policies; load-time test gate; forgeable structural objects prove nothing.
+- [Under-lock revalidation scoping](apply-under-lock-scoping.md) — scope per-group under-lock rechecks to the group's own dependency set; whole-scope gates run once pre-mutation; bench tools need fail-closed DB-identity guards.
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
