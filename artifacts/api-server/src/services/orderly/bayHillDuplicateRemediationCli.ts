@@ -53,6 +53,7 @@ import 'dotenv/config';
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { db } from '../../db';
+import { buildRemainderAnalysis } from './orderlyRemainderAnalysis';
 import {
   applyRemediationManifest,
   BAY_HILL_PERIOD_EXPECTATIONS,
@@ -107,7 +108,8 @@ type Mode =
   | 'forensics'
   | 'policy-preflight'
   | 'merge-preflight'
-  | 'verify-suspended';
+  | 'verify-suspended'
+  | 'remainder-analysis';
 
 const MODES: Mode[] = [
   'preflight',
@@ -120,6 +122,7 @@ const MODES: Mode[] = [
   'policy-preflight',
   'merge-preflight',
   'verify-suspended',
+  'remainder-analysis',
 ];
 
 /** The item population a manifest names, for the shared scope validator. */
@@ -804,6 +807,65 @@ async function main(): Promise<void> {
       printSuspendedVerification(verification);
     }
     if (!verification.mutationFree) process.exitCode = 1;
+    return;
+  }
+
+  // ── Read-only remainder analysis of a partially applied run ─────────────
+  //
+  // PM directive after the 807/41 partial APPLY: preserve the applied groups,
+  // explain every stopped group and the post-APPLY CONFLICT, and prove the
+  // population set relationships — with zero mutation. There is deliberately
+  // no path from this mode into APPLY.
+  if (mode === 'remainder-analysis') {
+    const manifestPath = args.manifest;
+    if (typeof manifestPath !== 'string') {
+      throw new Error(
+        '--mode remainder-analysis requires --manifest <manifest.json> [--held <held-codes.txt>] [--json] [--out <file>]',
+      );
+    }
+    const manifest = loadManifest(manifestPath);
+    await preflightRemediationDatabase(manifest.scope);
+
+    const heldCodes =
+      typeof args.held === 'string'
+        ? readFileSync(args.held, 'utf8')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0 && !line.startsWith('#'))
+        : [];
+
+    const analysis = await buildRemainderAnalysis(manifest, db, {
+      heldCodes,
+      mergeContent: {
+        primaryLocationMergeAuthorization: bayHillPrimaryLocationMergeAuthorization({
+          manifestId: manifest.manifestId,
+          reportHash: manifest.reportHash,
+          groupCount: manifest.groups.length,
+        }),
+      },
+      onProgress: (completed, total) => {
+        if (completed % 100 === 0 || completed === total) {
+          console.error(`  evaluated ${completed}/${total} group(s)`);
+        }
+      },
+    });
+
+    const rendered = JSON.stringify(analysis, null, 2);
+    if (typeof args.out === 'string') {
+      writeFileSync(args.out, rendered);
+      console.log(
+        `Wrote remainder analysis to ${args.out} — applied=${analysis.auditSummary.applied} ` +
+          `stopped=${analysis.auditSummary.stopped} conflicts=${analysis.conflictGroups.length} ` +
+          `auditPopulationComplete=${analysis.population.auditPopulationComplete} ` +
+          `safeSetMatchesStoppedSet=${analysis.population.safeSetMatchesStoppedSet}`,
+      );
+    } else {
+      console.log(rendered);
+    }
+    console.log(
+      'STOP POINT. Read-only analysis only — no remediation writes were performed ' +
+        'and no APPLY was attempted.',
+    );
     return;
   }
 
