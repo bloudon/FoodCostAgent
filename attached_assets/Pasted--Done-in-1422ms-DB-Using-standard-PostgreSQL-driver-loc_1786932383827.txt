@@ -1,0 +1,628 @@
+⚡ Done in 1422ms
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+  evaluated 100/848 group(s)
+  evaluated 200/848 group(s)
+  evaluated 300/848 group(s)
+  evaluated 400/848 group(s)
+  evaluated 500/848 group(s)
+  evaluated 600/848 group(s)
+  evaluated 700/848 group(s)
+  evaluated 800/848 group(s)
+  evaluated 848/848 group(s)
+Wrote remainder analysis to bay-hill-remainder-analysis.json — applied=807 stopped=41 conflicts=1 auditPopulationComplete=true safeSetMatchesStoppedSet=false
+STOP POINT. Read-only analysis only — no remediation writes were performed and no APPLY was attempted.
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ cd /home/administrator/apps/CostPro/fnbcostpro
+jq '.population | del(.currentSafeCodes)' bay-hill-remainder-analysis.json
+jq '.conflictGroups[] | del(.evidenceAtStop, .evidence)' bay-hill-remainder-analysis.json
+jq '[.stoppedGroups[] | {code: .sourceExternalId, failureCode: .audit.failureCode, reason: .audit.failureReason, now: .current.classification, overlap: (.appliedOverlap | length), eligible: .eligibleUnderPrimaryLocationOnly}]' bay-hill-remainder-analysis.json
+jq: error: Could not open file bay-hill-remainder-analysis.json: No such file or directory
+jq: error: Could not open file bay-hill-remainder-analysis.json: No such file or directory
+jq: error: Could not open file bay-hill-remainder-analysis.json: No such file or directory
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ jq '.population | del(.currentSafeCodes)' artifacts/api-server/bay-hill-remainder-analysis.json
+jq '.conflictGroups[] | del(.evidenceAtStop, .evidence)' artifacts/api-server/bay-hill-remainder-analysis.json
+jq '[.stoppedGroups[] | {code: .sourceExternalId, failureCode: .audit.failureCode, reason: .audit.failureReason, now: .current.classification, overlap: (.appliedOverlap | length), eligible: .eligibleUnderPrimaryLocationOnly}]' artifacts/api-server/bay-hill-remainder-analysis.json
+{
+  "approvedCount": 848,
+  "appliedCodesNoLongerActiveSafe": true,
+  "appliedCodesStillActiveSafe": [],
+  "approvedUnaccountedFor": [],
+  "auditCodesOutsideManifest": [],
+  "auditPopulationComplete": true,
+  "safeSetMatchesStoppedSet": false,
+  "stoppedCodesNotCurrentlySafe": [
+    {
+      "code": "0566838",
+      "classification": "CONFLICT"
+    },
+    {
+      "code": "09-85275",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "100160",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "18-09509",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "220089",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "28010",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "31376",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "446128",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "4488464",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "4537371",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "4676306",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "4966146",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "5132234",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "666720",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "686472",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "7166386",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "7213183",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "7260291",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "7420251",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "77626",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "7792187",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "8426330",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "86276",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "984248",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "APPRD88HF",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "ASP11LG",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "BAN1",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "BERBB",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "BERRB",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "BROCR",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "CABRDEA",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "HERBARR15",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "LEM200HF",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "LETLF",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "LIME200HF",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "MELHD6",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "POTSWDI",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "avo48",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "cel36",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "herbbas",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "spinbaby",
+      "classification": "NO_ACTIVE_GROUP"
+    }
+  ],
+  "safeFromStopped": [],
+  "safeFromHeld": [
+    "09-71510",
+    "2434371",
+    "430016",
+    "7200946",
+    "7915166",
+    "BKST W/W OA 5/8",
+    "BLACK GROUPER FILLETS PBO SKIN OFF",
+    "BRONZINO FILLET UN-SIZED SKIN-ON PBO",
+    "BSKT MARBLE 5/8",
+    "BSKT SOUR 5/8",
+    "BSKT W/W Oat 5/8",
+    "BV CAB SAUV LATOUR PRIV RSV 21 6B 750ML",
+    "Baja Precious - High Oleic Sunflower Oil, 1 Gallon Jug - Expeller Pressed, Wonderful in the Kitchen, Amazing on Your Skin and a Million Other Uses, Bottled in the USA",
+    "Great River Organic Milling, Specialty Flour, Wheat Bran, Stone Ground, Organic, 40-Pounds (Pack of 1)",
+    "HIGH NOON CKTL PEACH LOOSE CAN 24PK 355M",
+    "Hapi Hot Wasabi Peas, 9.9 Ounce Tins (Pack of 4)",
+    "JAIL ISLAND PC SK/OFF 4-5",
+    "MAHI MAHI FILLET SKIN/OFF",
+    "MANDARIN OLIVE OIL - 250ML (8.5 Oz)",
+    "MONTHELIE DOUH PORCH MEIX GARNI 20 750ML",
+    "OYSTERS 1/2 SHELL 144CT SALTY SEA TRAY PK 12/12CT",
+    "PROVERB CAB SAUV CA STLV 750ML",
+    "Pasta : Rigatoni egg , extruded",
+    "SHRIMP U/12 NATURAL WHITE GULF PRINCESS EZ PEEL 20#",
+    "SWORD SINGL EYE BLO S/OFF TENDERLOIN FILT MIGNON",
+    "WAHOO LOIN FRESH HAND-CUT SK/OFF",
+    "WS - MIXED VARIETY, 5#",
+    "[JL] Jerky Bags 3.25 OZ",
+    "black grouper fillets",
+    "crawfsh tail mt 150-200ct wild mediteranean caught",
+    "guinness 4pk",
+    "halibut fillet s/on east east coast/canadian wild",
+    "mahi mahi fillet skin/off wild caught-[sushi] pbo",
+    "pasta : rigatoni egg, extruded",
+    "santa fe spice",
+    "scallops u/10 gallon 8# tub, bill by lb.",
+    "snapper american fillets",
+    "snapper american fillets use 6up sk/off pbo",
+    "sweet & salty",
+    "wandering bear straight black organic cold brew coffee on tap, iced coffee drink - extra strong, bold, smooth, no sugar added, shelf-stable, ready to drink, 100% organic - 128 fl oz (1 gallon)",
+    "wild striped bass fillets sk/on fillet from 8+ fish"
+  ],
+  "unexpectedSafeCodes": [],
+  "heldCodesTouchedByThisManifest": [],
+  "heldCodesWithChangedClassification": [
+    {
+      "code": "99682",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "LEMON OLIVE OIL - 500ML (16.5 Oz)",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "oni jum",
+      "classification": "NO_ACTIVE_GROUP"
+    },
+    {
+      "code": "tuna saku style cut 6-8oz aqua blu 10lb case",
+      "classification": "NO_ACTIVE_GROUP"
+    }
+  ],
+  "stellaCode": "99682",
+  "stellaStatus": "NO_ACTIVE_GROUP",
+  "stellaTouched": false,
+  "currentAmbiguousCodes": [
+    "10149134",
+    "7023177",
+    "7468556",
+    "9021845"
+  ],
+  "expectedAmbiguousCodes": [
+    "10149134",
+    "7468556",
+    "7023177",
+    "9021845"
+  ],
+  "ambiguousMatchesExpected": true,
+  "currentConflictCodes": [
+    "0566838"
+  ]
+}
+{
+  "sourceExternalId": "0566838",
+  "inManifestApprovedSet": true,
+  "stoppedInThisRun": true,
+  "stopReason": "STALE_REPORT: group 0566838 is now CONFLICT (candidate items use different canonical inventory units)",
+  "classificationAtStop": "CONFLICT",
+  "assessment": "Baseline: approved as SAFE_CANDIDATE in the reviewed manifest report. Now CONFLICT. no item-id overlap with any applied merge. Convergence-vs-defect causality requires human comparison of the frozen audit evidence (evidenceAtStop / applied audit rows) against the current evidence below.",
+  "proposedCanonicalItemId": null,
+  "candidateItemIds": [
+    "1b26eb5d-d893-4158-93b1-61120dc36627",
+    "8f679334-0ced-4fc1-a988-ef1a9d406a54",
+    "a63f3bec-d582-4316-9efe-996a9d00aebb"
+  ],
+  "canonicalSelectionReason": null,
+  "appliedOverlap": [],
+  "mergeConflicts": []
+}
+[
+  {
+    "code": "0566838",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: group 0566838 is now CONFLICT (candidate items use different canonical inventory units)",
+    "now": "CONFLICT",
+    "overlap": 0,
+    "eligible": false
+  },
+  {
+    "code": "09-85275",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 09-85275 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "100160",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 100160 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "18-09509",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 18-09509 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 4,
+    "eligible": false
+  },
+  {
+    "code": "220089",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 220089 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "28010",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 28010 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "31376",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 31376 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "446128",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 446128 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 8,
+    "eligible": false
+  },
+  {
+    "code": "4488464",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 4488464 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "4537371",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 4537371 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "4676306",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 4676306 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 5,
+    "eligible": false
+  },
+  {
+    "code": "4966146",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 4966146 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "5132234",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 5132234 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "666720",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 666720 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "686472",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 686472 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "7166386",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 7166386 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 4,
+    "eligible": false
+  },
+  {
+    "code": "7213183",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 7213183 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "7260291",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 7260291 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 10,
+    "eligible": false
+  },
+  {
+    "code": "7420251",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 7420251 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "77626",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 77626 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 8,
+    "eligible": false
+  },
+  {
+    "code": "7792187",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 7792187 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "8426330",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 8426330 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "86276",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 86276 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "984248",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code 984248 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 9,
+    "eligible": false
+  },
+  {
+    "code": "APPRD88HF",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code APPRD88HF no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "ASP11LG",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code ASP11LG no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "avo48",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code avo48 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "BAN1",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code BAN1 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 4,
+    "eligible": false
+  },
+  {
+    "code": "BERBB",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code BERBB no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "BERRB",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code BERRB no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "BROCR",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code BROCR no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "CABRDEA",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code CABRDEA no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "cel36",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code cel36 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "HERBARR15",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code HERBARR15 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "herbbas",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code herbbas no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "LEM200HF",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code LEM200HF no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 5,
+    "eligible": false
+  },
+  {
+    "code": "LETLF",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code LETLF no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "LIME200HF",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code LIME200HF no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 5,
+    "eligible": false
+  },
+  {
+    "code": "MELHD6",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code MELHD6 no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 2,
+    "eligible": false
+  },
+  {
+    "code": "POTSWDI",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code POTSWDI no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  },
+  {
+    "code": "spinbaby",
+    "failureCode": "STALE_REPORT",
+    "reason": "STALE_REPORT: STALE_REPORT: source code spinbaby no longer produces a duplicate group in this scope (detected under lock at mutation time — the group changed after it was reviewed)",
+    "now": "NO_ACTIVE_GROUP",
+    "overlap": 3,
+    "eligible": false
+  }
+]
