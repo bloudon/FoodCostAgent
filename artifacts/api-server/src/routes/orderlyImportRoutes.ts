@@ -896,11 +896,12 @@ export function registerOrderlyImportRoutes(app: Express): void {
         console.error('[OrderlyImport] create-count-session error:', err);
         const status =
           err.message?.includes('not found') ? 404
+          : err.code === 'BATCH_STORE_MISMATCH' ? 409
           : err.message?.includes('must be approved') ? 409
           : err.message?.includes('variance') ? 422
           : err.message?.includes('No rows') ? 422
           : 500;
-        res.status(status).json({ error: err.message });
+        res.status(status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
       }
     },
   );

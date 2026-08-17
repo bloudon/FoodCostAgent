@@ -189,6 +189,33 @@ describe.skipIf(SKIP)('historical snapshot session', () => {
     expect(preview.reconciliationExceedsTolerance).toBe(false);
   });
 
+  it('rejects a storeId that disagrees with the approved batch destination, even for an accessible store', async () => {
+    const otherStoreId = `hs-store-other-${RUN}`;
+    await db.insert(companyStores).values({
+      id: otherStoreId,
+      companyId: ID.company,
+      code: `HSO${RUN}`.slice(0, 10),
+      name: 'Other Accessible Store',
+      status: 'active',
+    });
+
+    await expect(
+      createCountSession({
+        batchId: ID.batch,
+        companyId: ID.company,
+        userId: ID.admin,
+        storeId: otherStoreId,
+      }),
+    ).rejects.toMatchObject({ code: 'BATCH_STORE_MISMATCH' });
+
+    // Fail closed: the rejected call must have created nothing.
+    const sessions = await db
+      .select({ id: inventoryCounts.id })
+      .from(inventoryCounts)
+      .where(eq(inventoryCounts.sourceBatchId, ID.batch));
+    expect(sessions).toHaveLength(0);
+  });
+
   it('persists the snapshot with linked unresolved evidence and reconciles to zero', async () => {
     const result = await createCountSession({
       batchId: ID.batch,

@@ -1098,6 +1098,22 @@ export async function createCountSession(
     .where(eq(inventoryImportBatches.id, batchId))
     .limit(1);
 
+  // Destination authority comes from the approved batch's persisted target
+  // store (validated against the source-property binding at approval time),
+  // never from the caller. A client-supplied storeId that disagrees with the
+  // approved destination is rejected outright — user accessibility to the
+  // other store is not sufficient. Legacy batches approved before target
+  // stores were persisted (null targetStoreId) keep working unchanged.
+  if (batch.targetStoreId && batch.targetStoreId !== storeId) {
+    throw Object.assign(
+      new Error(
+        `Store mismatch: this batch was approved for store ${batch.targetStoreId} ` +
+        `and cannot create a count session in store ${storeId}.`,
+      ),
+      { code: 'BATCH_STORE_MISMATCH' },
+    );
+  }
+
   const inventoryDateStr = batch.inventoryDate ?? new Date().toISOString().split('T')[0];
   const [y, m, d] = inventoryDateStr.split('-').map(Number);
   const countDate = new Date(Date.UTC(y, m - 1, d));
