@@ -1,0 +1,90 @@
+# PM Decision — Preserve 807 Applied Groups; Investigate Remaining Tail
+
+The partial Batch 1 state is accepted as internally reconciled.
+
+## Production evidence
+
+APPLY:
+
+- applied: 807
+- alreadyRemediated: 0
+- stopped: 41
+
+Reconciliation:
+
+May 2026:
+- expected: $254,286.67
+- actual: $254,286.67
+- delta: $0.00
+- MATCH
+
+June 2026:
+- expected: $261,007.67
+- actual: $261,007.67
+- delta: $0.00
+- MATCH
+
+Post-remediation report:
+
+- remaining SAFE_CANDIDATE: 41
+- remaining AMBIGUOUS: 4
+- remaining CONFLICT: 1
+
+## PM decision
+
+DO NOT restore the production recovery point.
+
+The 807 successfully applied groups remain in place.
+
+DO NOT rerun the original 848-group manifest.
+
+Production may be restarted after normal health verification because valuation reconciliation is clean and the remaining work is a bounded unapplied tail.
+
+## Required read-only investigation
+
+Analyze the exact 41 STOPPED groups plus the new CONFLICT.
+
+Return for every stopped group:
+
+- Source Item Code
+- canonical inventoryItemId
+- remaining sibling IDs
+- exact STOPPED audit reason
+- exact field/evidence that caused the stop
+- whether any shared identity or reference changed as a result of one of the 807 successful merges
+- current classification:
+  - SAFE_CANDIDATE
+  - AMBIGUOUS
+  - CONFLICT
+- whether the group remains eligible under the approved primary-location-only policy
+
+Also identify the single CONFLICT group explicitly and explain:
+
+1. its Source Item Code
+2. why it was not CONFLICT before the 807-group APPLY
+3. what production state/evidence now causes CONFLICT
+4. whether this is expected consequence of shared canonical convergence or an implementation defect
+
+## Population reconciliation
+
+Prove set relationships:
+
+- 807 APPLIED groups are no longer active SAFE duplicate groups
+- exact 41 STOPPED groups account for the remaining approved Batch 1 SAFE population
+- 44 Claude-held SAFE groups remain untouched
+- Stella `99682` remains untouched
+- original 4 AMBIGUOUS remain untouched
+
+If the reported 41 SAFE population includes/excludes any group unexpectedly, surface the difference explicitly.
+
+## No mutation
+
+Do not:
+
+- APPLY the remainder
+- regenerate the original manifest
+- repair the conflict
+- alter mappings/settings
+- restore the backup
+
+Return the bounded remainder analysis first.
