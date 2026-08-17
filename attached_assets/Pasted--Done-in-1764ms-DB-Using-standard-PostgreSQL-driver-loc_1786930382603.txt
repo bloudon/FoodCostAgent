@@ -1,0 +1,94 @@
+⚡ Done in 1764ms
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+  evaluated 100/848 group(s)
+  evaluated 200/848 group(s)
+  evaluated 300/848 group(s)
+  evaluated 400/848 group(s)
+  evaluated 500/848 group(s)
+  evaluated 600/848 group(s)
+  evaluated 700/848 group(s)
+  evaluated 800/848 group(s)
+  evaluated 848/848 group(s)
+{
+  "mode": "policy-preflight",
+  "readOnly": true,
+  "remediationWrites": 0,
+  "policyId": "bay-hill-batch1-legacy-scope-adoption",
+  "manifestId": "bay-hill-batch1-2026-08-15",
+  "reportHash": "4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e",
+  "unapprovedReportHash": "a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a",
+  "scope": {
+    "companyId": "43abaf82-44ce-4231-9570-7a01e7c85ced",
+    "storeId": "ee9e1530-50db-45f4-ae61-2c45e86827f0",
+    "sourceSystem": "ORDERLY",
+    "sourcePropertyId": "24472"
+  },
+  "totalGroups": 848,
+  "authorizedGroups": 848,
+  "blockedGroups": 0,
+  "scopedBatchCount": 2,
+  "legacyAdoptionPermitted": true,
+  "mappingClassDistribution": {
+    "A_LEGACY_MISSING_SCOPE": 932,
+    "B_DEMONSTRABLY_FOREIGN": 0,
+    "C_AMBIGUOUS": 0
+  },
+  "mappingsAuthorizedByLegacyPolicy": 932,
+  "blockedSourceExternalIds": []
+}
+
+> @workspace/api-server@1.15.0 orderly:remediate /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> pnpm run build && node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs -- --mode merge-preflight --manifest /home/administrator/apps/CostPro/fnbcostpro/reports/bay-hill-batch1/bay-hill-batch1-manifest.json --json
+
+
+> @workspace/api-server@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> node ./build.mjs
+
+
+  dist/index.mjs                                                 13.4mb ⚠️
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs        1.4mb ⚠️
+  dist/pino-worker.mjs                                          153.4kb
+  dist/pino-file.mjs                                            142.1kb
+  dist/pino-pretty.mjs                                          114.4kb
+  dist/thread-stream-worker.mjs                                   7.3kb
+  dist/index.mjs.map                                             22.8mb
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs.map    2.7mb
+  dist/pino-worker.mjs.map                                      256.9kb
+  dist/pino-file.mjs.map                                        229.1kb
+  dist/pino-pretty.mjs.map                                      203.6kb
+  dist/thread-stream-worker.mjs.map                              12.0kb
+
+⚡ Done in 1226ms
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+  evaluated 100/848 group(s)
+  evaluated 200/848 group(s)
+  evaluated 300/848 group(s)
+  evaluated 400/848 group(s)
+  evaluated 500/848 group(s)
+  evaluated 600/848 group(s)
+  evaluated 700/848 group(s)
+  evaluated 800/848 group(s)
+  evaluated 848/848 group(s)
+{
+  "mode": "merge-preflight",
+  "readOnly": true,
+  "remediationWrites": 0,
+  "manifestId": "bay-hill-batch1-2026-08-15",
+  "reportHash": "4eec609ca3d1bc34c8ac2aa4e0d292920f95df62b502a9af77978e4114dd501e",
+  "unapprovedReportHash": "a20be1dc5c099bfc42f49b3924bb797bdb3d149ef4fa4f02a9619739ecee792a",
+  "scope": {
+    "companyId": "43abaf82-44ce-4231-9570-7a01e7c85ced",
+    "storeId": "ee9e1530-50db-45f4-ae61-2c45e86827f0",
+    "sourceSystem": "ORDERLY",
+    "sourcePropertyId": "24472"
+  },
+  "totalGroups": 848,
+  "cleanGroups": 0,
+  "primaryLocationOnlyGroups": 848,
+  "eligibleGroups": 848,
+  "conflictGroups": 0,
+  "primaryLocationMergeCount": 1900,
+  "blockedSourceExternalIds": [],
+  "blockers": []
+}
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$
