@@ -8,6 +8,7 @@ import { initObjectStorageCleanup } from "./objectStorageCleanup";
 import { ensureAccountingClassificationSchema } from "./services/accountingClassificationMigration";
 import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
 import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/historicalSessionUnresolvedRows";
+import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniqueness";
 import { db } from "./db";
 
 const rawPort = process.env["PORT"];
@@ -54,6 +55,18 @@ if (Number.isNaN(port) || port <= 0) {
     logger.info("[Migration] historical unresolved-row schema ready");
   } catch (err) {
     logger.error({ err }, "Fatal: historical unresolved-row schema initialization failed");
+    process.exit(1);
+  }
+
+  // Vendor-item uniqueness invariant (PM-approved after the Gate 2 duplicate
+  // cleanup). Verifies live data BEFORE creating the partial unique index and
+  // fails closed if violating rows exist — serving without the invariant would
+  // silently re-open the duplicate-creation defect this closes.
+  try {
+    await ensureVendorItemUniquenessSchema(db);
+    logger.info("[Migration] vendor item uniqueness index ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: vendor item uniqueness initialization failed — refusing to start");
     process.exit(1);
   }
 

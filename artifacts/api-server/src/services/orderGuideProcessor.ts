@@ -13,6 +13,7 @@ import { db } from '../db';
 import { sql, eq, inArray, and } from 'drizzle-orm';
 import { vendorItems } from '@workspace/db';
 import { recordVendorPrice } from './vendorPriceService';
+import { getOrCreateVendorItem } from './vendorItemResolution';
 
 /**
  * Regex to detect a count or weight-per-unit hint embedded in a product name, e.g.:
@@ -1017,7 +1018,8 @@ export class OrderGuideProcessor {
       // after creation so all price provenance goes through the shared write gate.
       let vendorItemCreated = false;
       if (vendorId) {
-        const newVi = await this.storage.createVendorItem({
+        // Shared get-or-create — identical duplicate handling on every insert path.
+        const resolution = await getOrCreateVendorItem(db, {
           vendorId,
           inventoryItemId: inventoryItem.id,
           vendorSku: line.vendorSku,
@@ -1026,7 +1028,11 @@ export class OrderGuideProcessor {
           caseSize: outerCount ?? 1,
           innerPackSize: innerSize ?? undefined,
         });
-        if (line.price != null && line.price > 0) {
+        const newVi = resolution.vendorItem;
+        // Stamp price only when this call created the row: stamping this
+        // line's pack onto a row created elsewhere would overwrite that row's
+        // real pack-derived pricing.
+        if (resolution.created && line.price != null && line.price > 0) {
           await recordVendorPrice({
             vendorItemId: newVi.id,
             inventoryItemId: inventoryItem.id,
@@ -1041,7 +1047,7 @@ export class OrderGuideProcessor {
             representsActualPurchase: false,
           });
         }
-        vendorItemCreated = true;
+        vendorItemCreated = resolution.created;
       }
 
       return { inventoryCreated: true, vendorItemCreated, storeAssignmentsCreated };
@@ -1065,11 +1071,18 @@ export class OrderGuideProcessor {
         return false;
       }
 
-      // Check if vendor item already exists for this vendor+SKU combination
+      // Check if a vendor item already exists for the FULL identity triple
+      // (vendor, inventory item, raw SKU) — the same identity the uniqueness
+      // index and shared resolver use. Matching on vendor+SKU alone would let
+      // a SKU legitimately shared by two inventory items refresh the wrong
+      // row and sync the wrong inventory item.
       // Signature: getVendorItems(vendorId?, companyId?, storeId?)
       const existingVendorItems = await this.storage.getVendorItems(vendorId, companyId);
       const existing = existingVendorItems.find(
-        vi => vi.vendorId === vendorId && vi.vendorSku === line.vendorSku
+        vi =>
+          vi.vendorId === vendorId &&
+          vi.inventoryItemId === line.matchedInventoryItemId &&
+          vi.vendorSku === line.vendorSku
       );
 
       // Get the inventory item to find its unit
@@ -1087,7 +1100,13 @@ export class OrderGuideProcessor {
       const itemUnitNameForVendor = itemUnitForVendor?.name ?? 'pound';
 
       if (existing) {
-        // Vendor item already exists — update pricing and pack info if we have new price data.
+        // Same-triple row already exists — this is an INTENTIONAL re-import
+        // refresh (order guides are vendor quote catalogs; re-importing an
+        // updated guide is how pack geometry and quoted prices get updated).
+        // All writes go through the shared price gate; identity is the full
+        // triple, so this can never touch a different inventory item's row.
+        // This is distinct from the post-resolver race-loser case below,
+        // where side effects are skipped entirely.
         if (line.price != null && line.price > 0) {
           const { unitPrice } = deriveUnitPrice(line.price, outerCnt, innerSz, line.uom ?? '', itemUnitNameForVendor);
           // Structural update — pack geometry only (no price fields)
@@ -1118,7 +1137,9 @@ export class OrderGuideProcessor {
       // No existing vendor item — create one without price fields.
       // M3A: price provenance must go through the shared write gate (recordVendorPrice)
       // so priceBasis, derivation, and source tagging are consistent everywhere.
-      const newVi = await this.storage.createVendorItem({
+      // Shared get-or-create — resolves to the existing row instead of
+      // duplicating if another path created it since the check above.
+      const resolution = await getOrCreateVendorItem(db, {
         vendorId,
         inventoryItemId: line.matchedInventoryItemId,
         vendorSku: line.vendorSku,
@@ -1129,7 +1150,11 @@ export class OrderGuideProcessor {
         // Store the pack UOM so the vendor detail page can reconstruct case price correctly
         packUom: line.uom ?? undefined,
       });
-      if (line.price != null && line.price > 0) {
+      const newVi = resolution.vendorItem;
+      // Only stamp price on a row this call created — a lost race means the
+      // existing-row branch above should have handled it, and stamping here
+      // would overwrite the winner's pack-derived pricing.
+      if (resolution.created && line.price != null && line.price > 0) {
         await recordVendorPrice({
           vendorItemId: newVi.id,
           inventoryItemId: inventoryItem.id,
@@ -1145,10 +1170,15 @@ export class OrderGuideProcessor {
         });
       }
 
-      // Sync vendor data to linked inventory item
-      await this.syncVendorDataToInventoryItem(line, inventoryItem);
+      // Sync vendor data to linked inventory item — only when this call
+      // actually created the vendor-item row. A race loser must not write its
+      // case size / brand / variable-weight metadata onto the shared
+      // inventory item over the winner's data.
+      if (resolution.created) {
+        await this.syncVendorDataToInventoryItem(line, inventoryItem);
+      }
 
-      return true;
+      return resolution.created;
     } catch (error) {
       console.error('[OrderGuide] Error creating vendor item:', error);
       return false;

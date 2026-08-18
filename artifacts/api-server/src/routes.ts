@@ -52,6 +52,7 @@ import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
+import { getOrCreateVendorItem } from "./services/vendorItemResolution";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations, voiceInterpretLogs } from "@workspace/db";
@@ -9943,10 +9944,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(enriched);
   });
 
-  app.post("/api/vendor-items", async (req, res) => {
+  // @ts-ignore
+  app.post("/api/vendor-items", requireAuth, async (req, res) => {
     try {
+      const companyId = (req as any).companyId;
       const data = insertVendorItemSchema.parse(req.body);
-      
+
+      // Tenant ownership: both halves of the identity must belong to the
+      // caller's company before any resolution or price write happens.
+      if (data.inventoryItemId) {
+        const invItemCheck = await storage.getInventoryItem(data.inventoryItemId);
+        if (!invItemCheck || invItemCheck.companyId !== companyId) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+      }
+      if (data.vendorId) {
+        const vendorCheck = await storage.getVendor(data.vendorId, companyId);
+        if (!vendorCheck) {
+          return res.status(404).json({ error: "Vendor not found" });
+        }
+      }
+
       // Normalize: fold any legacy innerPackSize into caseSize, then force innerPackSize = 1
       // (Task #52: caseSize is now the single "total units per case" field)
       if (data.innerPackSize && data.innerPackSize > 1) {
@@ -9959,7 +9977,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enteredCasePrice = data.lastCasePrice;
       const caseSize = data.caseSize || 1;
       const { lastPrice: _lp, lastCasePrice: _lcp, priceSource: _ps, pricedAt: _pa, ...createData } = data;
-      const vendorItem = await storage.createVendorItem(createData);
+      // Shared get-or-create: a manual entry duplicating an existing
+      // (vendor, item, SKU) identity resolves to the existing row instead of
+      // creating a duplicate.
+      const { vendorItem, created } = await getOrCreateVendorItem(db, createData);
+
+      // A duplicate manual entry resolves to the existing row and performs NO
+      // side effects: stamping the submitted price/pack onto a row this call
+      // did not create would silently rewrite that row's pricing. The client
+      // gets the existing row with 200 (vs 201) so the distinction is visible.
+      if (!created) {
+        return res.status(200).json(vendorItem);
+      }
 
       // M3A: stamp price through shared service (manual = quote source, no inventory cost update).
       if (enteredCasePrice && enteredCasePrice > 0) {
@@ -13357,15 +13386,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Create a vendor item on the fly for this inventory item.
               // M3A: po_create is a quote source — price fields stamped via shared
               // service AFTER create (no direct lastPrice write on createVendorItem).
-              const newVendorItem = await storage.createVendorItem({
+              // Shared get-or-create (NULL-SKU path reuses any existing pair row).
+              const resolution = await getOrCreateVendorItem(db, {
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
                 purchaseUnitId: line.unitId,
                 caseSize: 1,
                 active: 1,
               });
+              const newVendorItem = resolution.vendorItem;
               vendorItemId = newVendorItem.id;
-              if (line.priceEach > 0) {
+              // Stamp price ONLY when this call created the row. If the
+              // resolver returned an existing row (concurrent creator won),
+              // stamping with caseSize: 1 would overwrite that row's real
+              // pack-derived pricing — pre-existing rows were never stamped
+              // here before this change either.
+              if (resolution.created && line.priceEach > 0) {
                 await recordVendorPrice({
                   vendorItemId: newVendorItem.id,
                   inventoryItemId: line.inventoryItemId,
@@ -13442,15 +13478,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Create a vendor item on the fly for this inventory item.
               // M3A: po_create is a quote source — price fields stamped via shared
               // service AFTER create (no direct lastPrice write on createVendorItem).
-              const newVendorItem = await storage.createVendorItem({
+              // Shared get-or-create (NULL-SKU path reuses any existing pair row).
+              const resolution = await getOrCreateVendorItem(db, {
                 vendorId: po.vendorId,
                 inventoryItemId: line.inventoryItemId,
                 purchaseUnitId: line.unitId,
                 caseSize: 1,
                 active: 1,
               });
+              const newVendorItem = resolution.vendorItem;
               vendorItemId = newVendorItem.id;
-              if (line.priceEach > 0) {
+              // Stamp price ONLY when this call created the row. If the
+              // resolver returned an existing row (concurrent creator won),
+              // stamping with caseSize: 1 would overwrite that row's real
+              // pack-derived pricing — pre-existing rows were never stamped
+              // here before this change either.
+              if (resolution.created && line.priceEach > 0) {
                 await recordVendorPrice({
                   vendorItemId: newVendorItem.id,
                   inventoryItemId: line.inventoryItemId,

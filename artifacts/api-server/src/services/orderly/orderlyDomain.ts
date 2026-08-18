@@ -56,6 +56,7 @@ import {
 } from './OrderlyMatcher';
 import type { InventoryImportRow } from '@workspace/db';
 import { storage } from '../../storage';
+import { getOrCreateVendorItem } from '../vendorItemResolution';
 import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1570,22 +1571,23 @@ export async function applyBatchApproval(
 
       // ── Vendor-item link ─────────────────────────────────────────────
       if (resolvedItemId && resolvedVendorId) {
-        await tx
-          .insert(vendorItems)
-          .values({
-            vendorId: resolvedVendorId,
-            inventoryItemId: resolvedItemId,
-            vendorSku: rowPreview.sourceItemCode,
-            purchaseUnitId: eachUnitId,
-            caseSize: rowPreview.caseQuantity ?? 1,
-            lastPrice: rowPreview.packagePrice ?? 0,
-            lastCasePrice: rowPreview.packagePrice ?? 0,
-            priceSource: 'order_guide_import',
-            pricedAt: new Date(),
-            active: 1,
-          })
-          .onConflictDoNothing();
-        vendorItemsCreated++;
+        // Shared get-or-create: resolves to the existing row on the
+        // (vendor, item, SKU) identity instead of the old blind
+        // onConflictDoNothing (which was a silent no-op before the
+        // uniqueness index existed and produced thousands of duplicates).
+        const resolution = await getOrCreateVendorItem(tx as unknown as typeof db, {
+          vendorId: resolvedVendorId,
+          inventoryItemId: resolvedItemId,
+          vendorSku: rowPreview.sourceItemCode,
+          purchaseUnitId: eachUnitId,
+          caseSize: rowPreview.caseQuantity ?? 1,
+          lastPrice: rowPreview.packagePrice ?? 0,
+          lastCasePrice: rowPreview.packagePrice ?? 0,
+          priceSource: 'order_guide_import',
+          pricedAt: new Date(),
+          active: 1,
+        });
+        if (resolution.created) vendorItemsCreated++;
       }
 
       // ── Location resolution ──────────────────────────────────────────

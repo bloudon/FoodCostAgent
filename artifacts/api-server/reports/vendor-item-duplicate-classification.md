@@ -1,6 +1,6 @@
 # Gate 1 Classifier Report — Duplicate vendor catalog rows (READ-ONLY)
 
-Generated: 2026-08-18T21:12:42.748Z · database: heliumdb · **no writes performed**
+Generated: 2026-08-18T21:37:38.135Z · database: heliumdb · **no writes performed**
 
 ## Pack-equivalence contract used
 ```
@@ -30,16 +30,16 @@ lower/trim; differing non-null values conflict; NULL never conflicts).
 ## Totals
 | Metric | Value |
 |---|---|
-| Total vendor_items | 8867 |
-| Duplicate groups | 2431 |
-| Excess rows | 6207 |
-| Companies affected | 1 |
+| Total vendor_items | 2660 |
+| Duplicate groups | 0 |
+| Excess rows | 0 |
+| Companies affected | 0 |
 
 ## Classification
 | Class | Groups | Excess rows | Disposition |
 |---|---|---|---|
-| A — exact duplicate purchasing identity | 2412 | 6144 | AUTO-MERGE CANDIDATES |
-| B — same SKU, conflicting pack geometry | 19 | 63 | HOLD |
+| A — exact duplicate purchasing identity | 0 | 0 | AUTO-MERGE CANDIDATES |
+| B — same SKU, conflicting pack geometry | 0 | 0 | HOLD |
 | C — NULL/blank SKU (null=0, blank=0) | 0 | 0 | HOLD except 0 authoritative-identity groups |
 | D — conflicting external/source mappings | 0 | 0 | HOLD |
 | E — protected config disagreement | 0 | 0 | HOLD |
@@ -51,17 +51,17 @@ Class C shadow classes (what each would be if SKU-less-ness were ignored): {}
 |---|---|
 | Class A groups with differing price snapshots (diagnostic only, still A) | 0 |
 | Class A groups with cosmetic raw-pack (pack_uom) differences | 0 |
-| Groups whose class depends on normalization assumptions (null-vs-value canonical qty) | 19 |
+| Groups whose class depends on normalization assumptions (null-vs-value canonical qty) | 0 |
 | Additional groups that would merge under SKU trim/uppercase (NOT applied) | 0 |
 
 ## Harvill's Produce
 | Metric | Value |
 |---|---|
-| Duplicate groups | 118 |
-| Class A groups | 99 |
-| Class A rows | 272 |
-| Proposed deletions (Class A only) | 173 |
-| By class | {"A":99,"B":19} |
+| Duplicate groups | 0 |
+| Class A groups | 0 |
+| Class A rows | 0 |
+| Proposed deletions (Class A only) | 0 |
+| By class | {} |
 
 ## Reference inventory (dynamically enumerated, fail-closed)
 DB/schema columns holding vendor_items ids (bucket 1):
@@ -87,34 +87,16 @@ Audit/provenance columns (bucket 3 — stored IDs without FK semantics, repointe
 ## Merge proposal (Gate 2 — HOLD, pending PM approval)
 | Metric | Value |
 |---|---|
-| Mergeable groups (A + authoritative C) | 2412 |
-| Proposed survivors | 2412 |
-| Proposed deletions | 6144 |
+| Mergeable groups (A + authoritative C) | 0 |
+| Proposed survivors | 0 |
+| Proposed deletions | 0 |
 
 Survivor rule: authoritative external mapping target → most downstream references → vendor_items has no created_at column; deterministic tiebreak after external-mapping and reference-count rules is the lexicographically smallest id.
 
 ## Recommended uniqueness constraint
-HOLD any (vendor_id, inventory_item_id, vendor_sku) uniqueness: 19 non-Class-A duplicate groups with real SKUs exist (B=19, D=0, E=0); a strong constraint would forbid rows PM has not yet ruled on. Recommend deciding B/D/E disposition first, or a narrower constraint excluding those groups.
+Partial unique index UNIQUE(vendor_id, inventory_item_id, vendor_sku) WHERE vendor_sku IS NOT NULL AND btrim(vendor_sku) <> '' — safe once Class A merged; NULL/blank-SKU rows deliberately NOT constrained (Class C held).
 
 ## Held group samples (B/D/E, first 20)
-- [B] Harvill's Produce Co., Inc. · sku="letgsm" · 10 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="letromhrt" · 8 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="CUCE" · 6 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="pepgrlb" · 6 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="BERSBD" · 6 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="tom4540" · 6 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="tomtoy" · 6 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="BEANGRSN" · 4 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="MELCL" · 4 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="PINEGRP" · 4 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="POTYUKB" · 4 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="PEPRD" · 4 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="HERBCIL6" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="grawh2" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="LETGRM" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="PARITAL6" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="ONISWLB" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="SHALPLGL" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
-- [B] Harvill's Produce Co., Inc. · sku="STAREA" · 2 rows — pack geometry conflict: canonical_qty_per_purchase_unit (null-vs-value)
+(none)
 
 **STOP. No writes, no uniqueness constraint, no insert-path refactor until PM approves Gate 2.**
