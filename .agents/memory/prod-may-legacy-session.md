@@ -26,6 +26,13 @@ or a demonstrably wrong old-only resolution). Do NOT unwind or re-import
 merely because the current matcher would resolve rows differently. Coherence
 check script: `reports/bay-hill-may-gate/verify_may_june_baseline_coherence.sql`.
 
+**Outcome (2026-08-17): ACCEPTED as baseline.** Coherence check passed: zero
+lines on superseded/dead items, valuations cent-exact, stopped groups all known
+(stale/collision/out-of-scope). Residual: ~119 same-name active blank-code item
+groups (mostly beverages) — analytics-splitting duplicates outside the
+code-scoped remediation program; consolidating them is a separate PM-gated
+program, never a May/June "fix".
+
 **How to apply:** Any May-related production work starts read-only (script at
 `artifacts/api-server/reports/bay-hill-may-gate/verify_may_production_readonly.sql`)
 and requires explicit PM sign-off before any write. Watch the file-hash dedupe:
