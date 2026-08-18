@@ -1,0 +1,88 @@
+This is now scoped correctly. **PM approval: Gate 1 GO. Gate 2 remains HOLD until we see the classifier output.**
+
+The important improvement is that the task no longer assumes the uniqueness rule in advance. It now treats vendor-product identity as something to prove from the actual rows, which is the right approach after what we learned from the inventory duplicate remediation.
+
+I only want three small tightenings before Replit starts.
+
+First, for **Class A**, I would make “equivalent pack geometry” explicit rather than subjective. The classifier should state exactly which normalized fields must agree and which source-string differences are ignorable. For example, raw pack text may differ cosmetically while normalized purchase unit and quantity-per-purchase-unit are equivalent. We need the report to show the normalization rule used, otherwise “equivalent” can drift into opinion.
+
+Second, the “price fields” comparison in Gate 1 should be diagnostic only. Different current/last prices should **not automatically move a group out of Class A** if the purchasing identity and pack are otherwise proven identical. Duplicate vendor rows can naturally have different stale/latest price snapshots. What matters is preserving all dated price history and selecting the survivor without losing chronology.
+
+Third, the dynamic reference enumeration should distinguish between:
+
+* actual DB/schema references,
+* repo-level soft references/IDs,
+* audit/provenance fields that store IDs without FK semantics.
+
+That way the apply gate can prove nothing was missed without treating every incidental textual reference as something to repoint.
+
+I’d add this small PM amendment:
+
+```md
+## PM Approval — #1191 Gate 1
+
+APPROVED to proceed with the READ-ONLY classifier only.
+
+Gate 2 remains HOLD pending PM review of the classifier output.
+
+### Clarifications
+
+#### Pack-equivalence contract
+
+The classifier must define the exact normalized fields used to decide that pack geometry is equivalent.
+
+Raw pack-string differences alone must not create a conflict if normalized purchasing geometry is the same.
+
+Conversely, materially different:
+- purchase unit
+- canonical qty per purchase unit
+- unit-of-measure basis
+- other approved purchasing-geometry fields
+
+must prevent Class A.
+
+Return the normalization/equivalence rule in the PM report.
+
+#### Price differences are not identity conflicts by themselves
+
+Current/last price fields are diagnostic evidence only.
+
+Two rows may still be Class A when:
+- vendor/item/SKU identity is the same
+- pack geometry is equivalent
+- source identity does not conflict
+- protected operational fields do not conflict
+
+even if their price snapshots differ.
+
+All dated price-history rows must be preserved and repointed during any later merge.
+
+#### Reference enumeration
+
+Report references in three buckets:
+
+1. DB/schema reference columns
+2. repo-level soft-ID references
+3. audit/provenance references
+
+Any live reference that would become invalid after loser deletion must be handled before Gate 2.
+
+### Gate 1 output
+
+In addition to the existing requested metrics, include:
+
+- exact pack-equivalence rule used
+- Class A groups with differing price snapshots
+- Class A groups with cosmetic raw-pack differences but equivalent normalized geometry
+- any group whose class would change depending on normalization assumptions
+
+No writes.
+No uniqueness constraint.
+No insert-path refactor yet.
+
+STOP after the classifier report.
+```
+
+With that, I’d let them run it.
+
+The key thing I want back is not just “6,207 excess rows.” I want to know **how many are truly boring duplicates versus how many expose a real vendor-product modeling distinction**. If Class A is overwhelmingly dominant, this should become a straightforward cleanup. If B/C/D/E are substantial, we’ll know not to over-tighten the uniqueness constraint.
