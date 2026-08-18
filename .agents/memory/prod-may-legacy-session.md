@@ -17,6 +17,15 @@ forbidden — the goal is one authoritative May snapshot. The applied session
 mutated live on-hand, so migrating it is an unwind-and-migrate design problem,
 not a metadata flip.
 
+**PM scope reduction (2026-08-17):** the May/June sessions are the ORIGINAL
+imports that created the duplicate-identity population — valuations reconciled
+exactly through remediation. Default disposition is ACCEPT MAY/JUNE AS
+HISTORICAL BASELINE unless a concrete material mapping error is proven
+(lines referencing superseded items, stopped groups touching those sessions,
+or a demonstrably wrong old-only resolution). Do NOT unwind or re-import
+merely because the current matcher would resolve rows differently. Coherence
+check script: `reports/bay-hill-may-gate/verify_may_june_baseline_coherence.sql`.
+
 **How to apply:** Any May-related production work starts read-only (script at
 `artifacts/api-server/reports/bay-hill-may-gate/verify_may_production_readonly.sql`)
 and requires explicit PM sign-off before any write. Watch the file-hash dedupe:
