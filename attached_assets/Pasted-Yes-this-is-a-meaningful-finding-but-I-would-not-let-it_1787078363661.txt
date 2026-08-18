@@ -1,0 +1,219 @@
+Yes — this is a meaningful finding, but **I would not let it expand #1178 into another big importer project.** The evidence actually gives us a pretty clean boundary.
+
+## PM decision
+
+**#1178 stays complete.** We add one **bounded source-shape amendment** for Progressive/the beer vendor:
+
+> An invoice can reconcile even when product-line dollars do not equal the invoice header total, provided the difference is deterministically explained as a vendor-specific keg-deposit flow.
+
+Then **#1182 owns the actual deposit balance/ledger behavior.**
+
+The key architecture distinction is:
+
+**Invoice importer:** “What happened on this invoice?”
+**Deposit ledger:** “What is the running refundable deposit balance with this vendor?”
+
+Those should not become the same subsystem.
+
+### 1. Deposit inference: approve, but fail closed
+
+The evidence is unusually strong:
+
+* 25/25 product-line sums exactly equal Beer Expense.
+* 17/25 header differences are exact ±$50 multiples.
+* no deposit line items exist at all.
+
+So for this vendor, deriving the deposit movement from the unexplained header-vs-product gap is justified.
+
+But I would **not** make a generic rule that “invoice gap = deposit.”
+
+The contract should be:
+
+> If a vendor has an explicitly configured keg-deposit rate and the invoice's otherwise-unexplained gap is an exact integer multiple of that rate, classify the gap as **explained deposit flow**.
+
+Otherwise it remains a reconciliation warning.
+
+That protects us later when another vendor has freight, tax, fuel surcharge, credits, etc.
+
+### 2. Do not hard-code `$50`
+
+Even though Progressive is clearly behaving at $50, make this a **vendor-specific rate**, not a magic constant.
+
+And I would make the rate effective-dated from the start, but very simply:
+
+```text
+vendor
+deposit amount per keg
+effective from
+effective to (nullable)
+```
+
+Why? If Progressive goes to $60 next year, we shouldn't reinterpret old invoices.
+
+No complex pricing engine. Just don't trap ourselves with a global `$50`.
+
+### 3. Signed deposit event, not fake invoice lines
+
+Do **not** synthesize fake “KEG DEPOSIT” product lines to make invoice arithmetic balance.
+
+Preserve the source truth:
+
+```text
+Product lines: $X
+Invoice header: $Y
+Derived deposit flow: +/- $Z
+Reconciliation: EXPLAINED
+```
+
+Then #1182 can create a deposit-ledger event linked back to that invoice.
+
+That keeps beer pricing clean, exactly as the rehearsal demonstrated.
+
+I would also preserve the source calculation/evidence so we can always show why FnB inferred the event:
+
+> header amount − qualifying product/accounting amount = deposit flow
+
+### 4. We need to prove the sign semantics once
+
+Before writing balances, have Replit state from actual Progressive examples:
+
+* Does **+$50** mean one new keg deposit charged?
+* Does **−$50** mean one keg returned/refunded?
+
+That is very likely, but it needs to be source-proven rather than inferred from arithmetic alone.
+
+Once proven, that's the contract.
+
+### 5. The duplicate invoice finding is separate and important
+
+This is actually the more dangerous #1178 implication.
+
+We previously strengthened identity to:
+
+> vendor + invoice number
+
+Progressive proves that may still be insufficient if the source genuinely contains **two distinct invoices with the same vendor invoice number**.
+
+We should **not weaken dedupe globally by simply allowing duplicates**.
+
+Instead, determine what distinguishes those two source invoices in the export. Preferred stable source identity should include the smallest real discriminator available, for example a source invoice ID if the export provides one.
+
+If it does **not**, then return the exact distinguishing source fields before changing identity. Date + amount + invoice number might be usable evidence, but I don't want to canonize a fabricated composite until we see what the source actually gives us.
+
+### 6. Sheet-name variation: make the parser tolerant, not vendor-specific
+
+This:
+
+> `Invoice Totals (Deposit Ledger)`
+
+should not require Progressive-specific parser code.
+
+Simple rule:
+
+> Accept the canonical `Invoice Totals` sheet or an unambiguous sheet whose name begins with `Invoice Totals`.
+
+Still fail if two candidate sheets exist.
+
+That's small and sensible.
+
+---
+
+I'd give Replit this PM direction:
+
+```md
+# PM Decision — Progressive Deposit Findings
+
+## Overall
+
+The Progressive rehearsal validates a new source shape without reopening the bulk invoice architecture.
+
+#1178 remains the invoice-import domain.
+#1182 owns vendor keg-deposit balances.
+
+## #1178 bounded amendment
+
+### Deposit-aware reconciliation
+
+Do not require product-line sum to equal invoice header amount when a documented vendor deposit model explains the difference.
+
+For a vendor with an explicitly configured deposit rate:
+
+1. calculate the otherwise-unexplained invoice gap
+2. determine whether it is an exact signed integer multiple of the effective vendor deposit rate
+3. if yes:
+   - classify as `explained_deposit_flow`
+   - preserve the signed deposit amount and derived keg count
+   - do not flag the invoice as unreconciled
+4. if no:
+   - retain the normal reconciliation warning
+
+Never assume any unexplained invoice gap is a deposit.
+
+No synthetic deposit product line should be created.
+
+Product price history remains based only on real product lines.
+
+### Sheet-name tolerance
+
+Support:
+
+`Invoice Totals`
+
+and an unambiguous variant beginning with:
+
+`Invoice Totals ...`
+
+such as:
+
+`Invoice Totals (Deposit Ledger)`
+
+Fail closed if multiple candidate totals sheets exist.
+
+### Duplicate source invoice identity
+
+The Progressive source contains a genuine repeated invoice number.
+
+Do not simply disable vendor+invoice-number dedupe.
+
+First identify the real source evidence distinguishing the two invoices.
+
+If a stable source invoice identifier exists, use it.
+
+If none exists, return the available distinguishing fields and proposed deterministic source identity for PM review before changing the dedupe contract.
+
+## #1182 deposit ledger
+
+The ledger should consume derived deposit events from qualifying invoices.
+
+Minimum event evidence:
+
+- company/store
+- vendor
+- source invoice identity
+- invoice date
+- effective deposit rate
+- signed deposit amount
+- derived keg count
+- derivation/reconciliation provenance
+
+Vendor deposit rate must be vendor-specific and effective-dated.
+
+Before implementation, prove from source examples which sign represents:
+
+- deposit charged / keg issued
+- deposit refunded / keg returned
+
+Do not guess.
+
+Running balance should be derived from immutable deposit events rather than manually rewriting historical invoice values.
+```
+
+## One more product point
+
+This is actually valuable beyond accounting reconciliation. Once we have a reliable deposit ledger, FnB can tell a beverage manager something Orderly apparently doesn't expose cleanly:
+
+> **“Progressive currently owes/us or we have $X tied up in keg deposits, representing approximately N outstanding kegs.”**
+
+That's useful operational information, but I would keep **alerts, aging, outstanding-keg dashboards, and return workflows out of #1182 MVP**. First prove the ledger math.
+
+So my call is: **good discovery, small importer amendment, proceed with #1182 — don't turn deposits into invoice line items and don't reopen the whole invoice importer.**
