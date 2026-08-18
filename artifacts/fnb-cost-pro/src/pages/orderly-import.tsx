@@ -654,6 +654,8 @@ function ConfirmDateStep({
         <Input
           id="inv-date"
           type="date"
+          min="2000-01-01"
+          max="2100-12-31"
           value={dateValue}
           onChange={(e) => {
             setDateValue(e.target.value);

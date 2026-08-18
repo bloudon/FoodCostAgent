@@ -933,6 +933,22 @@ export function registerOrderlyImportRoutes(app: Express): void {
           });
         }
 
+        // Plausibility guard: reject implausible years (e.g. a 2-digit year
+        // entry like "26" arriving as "0026") and non-calendar dates.
+        const parsedDate = new Date(`${inventoryDate}T00:00:00Z`);
+        const year = Number(inventoryDate.slice(0, 4));
+        if (
+          Number.isNaN(parsedDate.getTime()) ||
+          parsedDate.toISOString().slice(0, 10) !== inventoryDate ||
+          year < 2000 ||
+          year > 2100
+        ) {
+          return res.status(400).json({
+            error:
+              'inventoryDate must be a real calendar date with a 4-digit year between 2000 and 2100',
+          });
+        }
+
         const [updated] = await db
           .update(inventoryImportBatches)
           .set({ inventoryDate, inventoryDateConfirmed: 1 })
