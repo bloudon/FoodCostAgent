@@ -1,0 +1,190 @@
+This is exactly the Gate 1 result we were hoping for. **PM decision: GO to Gate 2, with one tiny preflight for the 19 Class B groups and the `edi_messages.payload_json` caveat.**
+
+The headline is decisive: **2,412 of 2,431 groups are proven boring duplicates, representing 6,144 of 6,207 excess rows.** That is 99% of the cleanup, with zero downstream references on would-be losers. I do not want to turn the remaining 19 groups into a separate investigation project.
+
+The Class B pattern is also unusually clean. If the only difference is:
+
+> `canonical_qty_per_purchase_unit = NULL` on one row vs a deterministically derived value on the duplicate
+
+and there are **no genuinely conflicting pack geometries**, then this looks like incomplete normalization, not a distinct purchasing identity.
+
+My preference is to prove that once, promote those 19 to A where deterministic, then perform one cleanup.
+
+```md
+# PM Decision — #1191 Gate 1 Accepted / Gate 2 GO
+
+## Gate 1 disposition
+
+ACCEPTED.
+
+Read-only classifier results establish:
+
+- 2,431 duplicate vendor-product groups
+- 6,207 excess rows
+- Class A: 2,412 groups / 6,144 excess rows
+- Class B: 19 groups / 63 rows
+- Class C: 0
+- Class D: 0
+- Class E: 0
+
+99% of the population is proven exact duplicate purchasing identity.
+
+Would-be Class A loser rows currently hold zero downstream references across all enumerated reference columns.
+
+Proceed to Gate 2 subject to the two preflight conditions below.
+
+---
+
+## Preflight 1 — Resolve the 19 Class B groups narrowly
+
+All 19 Class B groups differ only because:
+
+`canonical_qty_per_purchase_unit`
+
+is NULL on some rows and deterministically derived/populated on others.
+
+No genuinely conflicting pack geometry was found.
+
+Before APPLY, for each of the 19 groups prove read-only that:
+
+1. the non-null canonical quantity can be deterministically derived from the same underlying pack evidence available on the NULL row;
+2. purchase unit / UOM basis otherwise agrees;
+3. no source identity conflicts exist;
+4. no protected configuration differences exist.
+
+If all four are true:
+
+> treat the NULL-vs-derived difference as incomplete normalization, not a distinct purchasing identity, and promote that group to Class A.
+
+Do NOT copy arbitrary pack geometry from survivor to loser merely to make the comparison pass.
+
+The equivalence must be derivable from existing evidence.
+
+If any one of the 19 cannot be proven deterministically, leave that group HELD and continue with the proven population.
+
+Do not block the other 2,412 groups.
+
+Return the final pre-apply count:
+
+- promoted B → A
+- remaining held B
+
+---
+
+## Preflight 2 — EDI serialized-reference check
+
+Inspect `edi_messages.payload_json` read-only for persistence of any vendor-item IDs belonging to proposed losers.
+
+We do not need generic JSON archaeology.
+
+Answer only:
+
+- proposed loser IDs present: YES / NO
+- affected message count
+- whether those IDs are operationally dereferenced later or retained only as historical serialized evidence
+
+If no proposed loser IDs exist, proceed.
+
+If loser IDs exist and later code dereferences them as live vendor-item identities, STOP for PM review.
+
+If they exist only as immutable historical payload evidence and are not dereferenced, document that and proceed without rewriting historical payloads.
+
+---
+
+# Gate 2 APPLY
+
+After successful preflight:
+
+### Population
+
+Merge/delete only groups proven Class A after the final preflight.
+
+### Survivor
+
+Use the approved deterministic survivor order:
+
+1. authoritative external-mapping target
+2. most downstream references
+3. oldest stable row as tiebreaker
+
+Given current evidence, losers are expected to have zero references, but APPLY must recheck rather than assume.
+
+### Mutation
+
+For each group transactionally:
+
+1. lock/revalidate current group evidence
+2. verify classification still qualifies as Class A
+3. repoint any references that appeared since dry-run
+4. verify reference conservation
+5. delete loser rows
+6. write remediation audit evidence
+
+Never delete first and hope reference enumeration was correct.
+
+### Pack data
+
+Do not merge/copy pack geometry between proven duplicates.
+
+The merge is identity consolidation, not data synthesis.
+
+### Price history
+
+Preserve all dated price-history records.
+
+If any loser unexpectedly acquired price history after Gate 1, repoint it to the survivor rather than collapsing observations.
+
+---
+
+# Post-merge invariant
+
+After cleanup, return:
+
+- groups applied
+- groups already remediated
+- groups stopped
+- rows deleted
+- references repointed by table
+- zero-orphan verification
+- Harvill's vendor-item count before/after
+- remaining duplicate groups by class
+- remaining Class B holds, if any
+
+Expected Harvill's shape:
+
+approximately 118 proven vendor products rather than 354 catalog rows, subject to any B groups that remain held.
+
+---
+
+# Unique constraint
+
+If all 19 Class B groups deterministically promote to A and the resulting data proves that reliable non-null SKU is unique for:
+
+`vendor + inventory item + SKU`
+
+then return the exact proposed constraint for PM approval.
+
+Do NOT silently add the constraint in the same APPLY unless it is already separately reviewed/approved.
+
+I want the remediation result first, then the invariant.
+
+NULL-SKU behavior remains separate and must not be broadened even though Gate 1 found zero duplicate NULL-SKU groups.
+
+---
+
+# Insert-path hardening
+
+Likewise, do not let the cleanup balloon into a refactor.
+
+After the final uniqueness contract is approved, implement the smallest shared get-or-create behavior needed across the four known insert paths.
+
+The immediate priority is:
+
+> remove the proven duplicate catalog rows safely and establish the evidence needed for the invariant.
+```
+
+One thing I would change from the current task plan: **don't combine cleanup + unique constraint + four-path refactor into a single irreversible step.** The classifier has now made the cleanup extremely safe and simple. Take that win first.
+
+If all 19 Harvill's groups promote—as I suspect they will—we'll likely end with essentially **2,431 clean merge groups and 6,207 deletions**, with almost no reference movement. Then we can add the DB invariant with much higher confidence.
+
+This is now a **small remediation**, not another duplicate saga.
