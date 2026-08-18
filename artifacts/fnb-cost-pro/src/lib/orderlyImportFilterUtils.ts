@@ -10,14 +10,21 @@ export interface RowPreviewLike {
   itemMatch: {
     strategy: string;
     confidence: string;
+    possibleRecode?: boolean;
+    possibleRecodeMatchedId?: string | null;
+    possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
   };
 }
 
 /**
  * Returns the canonical confidence key used by both the filter chips and the
  * filteredRows predicate.  Mirrors the `confidenceBadge` display logic.
+ *
+ * "recode" takes priority — a row flagged as a possible re-code is shown
+ * exclusively under the "Re-code" filter chip, not under "Likely" or "New".
  */
 export function rowConfidenceKey(row: RowPreviewLike): string {
+  if (row.itemMatch.possibleRecode) return "recode";
   if (row.itemMatch.strategy === "none") return "new";
   return row.itemMatch.confidence; // "high" | "medium" | "low" | "ambiguous"
 }

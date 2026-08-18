@@ -114,6 +114,10 @@ interface MatchResult {
   candidates: CandidateDetail[];
   /** Enriched by the server — the auto-matched item detail (medium/high confidence rows). */
   matchedItem?: CandidateDetail | null;
+  /** True when the row has a valid item code that is unmapped but name exactly matches an existing item. */
+  possibleRecode?: boolean;
+  /** The existing item whose name matches this row's description (only when possibleRecode is true). */
+  possibleRecodeItem?: CandidateDetail | null;
 }
 
 interface RowPreview {
@@ -134,8 +138,11 @@ interface RowPreview {
 
 interface ResolutionPreview {
   batchId: string;
+
   inventoryDate: string | null;
+
   totalRows: number;
+
   summary: {
     totalRows: number;
     itemsMatchedHigh: number;
@@ -151,11 +158,15 @@ interface ResolutionPreview {
     itemsResolvedByLocationHistory: number;
     itemsWillCreate: number;
     itemsHeldForReview: number;
+    itemsRecode: number;
     itemsMatchedUnique: number;
     rowsMatchedSafe: number;
   };
+
   rows: RowPreview[];
+
   newLocations: string[];
+
   newVendors: string[];
 }
 
@@ -233,7 +244,8 @@ interface Store {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function confidenceBadge(confidence: string, strategy: string) {
+function confidenceBadge(confidence: string, strategy: string, possibleRecode?: boolean) {
+  if (possibleRecode) return <Badge className="bg-amber-100 text-amber-800 border-amber-200">Re-code?</Badge>;
   if (confidence === "high") return <Badge className="bg-green-100 text-green-800 border-green-200">Matched</Badge>;
   if (confidence === "medium") return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Likely</Badge>;
   if (confidence === "low") return <Badge className="bg-orange-100 text-orange-800 border-orange-200">Fuzzy</Badge>;
@@ -1074,9 +1086,10 @@ export function ResolutionPreviewStep({
           (s.itemsAmbiguous > 0 ? 1 : 0) +
           (s.rowsRequiringReview > 0 ? 1 : 0) +
           (preview.newLocations.length > 0 ? 1 : 0) +
-          (preview.newVendors.length > 0 ? 1 : 0);
+          (preview.newVendors.length > 0 ? 1 : 0) +
+          (s.itemsRecode > 0 ? 1 : 0);
         if (noticeCount === 0) return null;
-        const warningCount = (s.itemsAmbiguous > 0 ? 1 : 0) + (s.rowsRequiringReview > 0 ? 1 : 0);
+        const warningCount = (s.itemsAmbiguous > 0 ? 1 : 0) + (s.rowsRequiringReview > 0 ? 1 : 0) + (s.itemsRecode > 0 ? 1 : 0);
         return (
           <div className="rounded-md border">
             <button
@@ -1095,6 +1108,7 @@ export function ResolutionPreviewStep({
                 {noticesCollapsed && (
                   <span className="text-muted-foreground font-normal">
                     {[
+                      s.itemsRecode > 0 ? `${s.itemsRecode} possible re-code${s.itemsRecode > 1 ? "s" : ""}` : null,
                       s.itemsAmbiguous > 0 ? `${s.itemsAmbiguous} ambiguous` : null,
                       s.rowsRequiringReview > 0 ? `${s.rowsRequiringReview} fuzzy` : null,
                       preview.newLocations.length > 0 ? `${preview.newLocations.length} new location${preview.newLocations.length > 1 ? "s" : ""}` : null,
@@ -1116,6 +1130,19 @@ export function ResolutionPreviewStep({
             <strong>{s.itemsResolvedByLocationHistory} {s.itemsResolvedByLocationHistory === 1 ? "row" : "rows"}</strong> resolved
             by location history — the system remembered which item was previously counted at this storage location and
             auto-selected it from the ambiguous candidates.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Possible re-code warning */}
+      {s.itemsRecode > 0 && (
+        <Alert className="border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-900">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800 dark:text-amber-300">
+            <strong>{s.itemsRecode} {s.itemsRecode === 1 ? "row" : "rows"}</strong> {s.itemsRecode === 1 ? "has" : "have"} a new item code but{" "}
+            {s.itemsRecode === 1 ? "its name exactly matches" : "their names exactly match"} an existing catalog item —
+            Orderly may have re-coded {s.itemsRecode === 1 ? "it" : "them"} this period. Use the{" "}
+            <strong>Re-code?</strong> filter to review and link to the existing item. Approving without linking will create duplicates.
           </AlertDescription>
         </Alert>
       )}
@@ -1183,6 +1210,7 @@ export function ResolutionPreviewStep({
 
           // Confidence levels present in this batch, in display order
           const confidenceLevels: { key: string; label: string }[] = [
+            { key: "recode",    label: "Re-code?"  },
             { key: "high",      label: "Matched"   },
             { key: "medium",    label: "Likely"    },
             { key: "low",       label: "Fuzzy"     },
@@ -1332,12 +1360,30 @@ export function ResolutionPreviewStep({
                                 {row.sourceCategory || "—"}
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-1.5">
-                                  {confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy)}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {confidenceBadge(row.itemMatch.confidence, row.itemMatch.strategy, row.itemMatch.possibleRecode)}
                                   {hasOverride && (
                                     <Badge className="text-[9px] px-1 py-0 bg-sky-50 text-sky-700 border-sky-200">
                                       {decision === null ? "→ new" : "→ linked"}
                                     </Badge>
+                                  )}
+                                  {row.itemMatch.possibleRecode && row.itemMatch.possibleRecodeItem && !hasOverride && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setDecision((row as any).rowIndex, (row.itemMatch as any).possibleRecodeMatchedId ?? null); }}
+                                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors whitespace-nowrap"
+                                      title={`Link to: ${row.itemMatch.possibleRecodeItem.name}`}
+                                    >
+                                      <Link2 className="h-2.5 w-2.5" />
+                                      Link to existing
+                                    </button>
+                                  )}
+                                  {row.itemMatch.possibleRecode && hasOverride && decision !== null && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setDecision((row as any).rowIndex, undefined); }}
+                                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground hover:bg-muted/50 transition-colors"
+                                    >
+                                      Undo
+                                    </button>
                                   )}
                                 </div>
                               </TableCell>

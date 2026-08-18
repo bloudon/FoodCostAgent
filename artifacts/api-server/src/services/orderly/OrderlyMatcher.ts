@@ -21,6 +21,21 @@ export interface MatchResult {
   candidateIds: string[];
   requiresReview: boolean;
   score?: number;
+  /**
+   * True when the row has a valid item code that is not yet mapped to any
+   * existing item (no external_mapping, no item_code hit), but the name
+   * exactly normalizes-matches an existing active item.  Orderly sometimes
+   * assigns a new code to a product it previously tracked under a different
+   * code — these rows look "New" but are almost always re-codes of existing
+   * catalog items.  Linking stays an explicit user action; this flag surfaces
+   * the candidate so the user can decide.
+   */
+  possibleRecode?: boolean;
+  /**
+   * The ID of the existing inventory item whose normalized name exactly matches
+   * this row's cleaned description.  Populated only when possibleRecode is true.
+   */
+  possibleRecodeMatchedId?: string | null;
 }
 
 export interface MatchableItem {
@@ -390,37 +405,55 @@ export interface RowResolution {
 
 export interface ResolutionSummary {
   totalRows: number;
+
   itemsMatchedHigh: number;
+
   itemsMatchedMedium: number;
+
   itemsAmbiguous: number;
+
   itemsNew: number;
+
   itemsFuzzy: number;
+
   vendorsMatched: number;
+
   vendorsNew: number;
+
   locationsMatched: number;
+
   locationsNew: number;
+
   rowsRequiringReview: number;
+
   itemsResolvedByLocationHistory: number;
   /**
    * Unresolved rows with a usable item code — approval will actually insert
    * a new inventory item for these (absent a user override).
    */
+
   itemsWillCreate: number;
   /**
    * Unresolved blank-code rows — approval skips these; they are held for
    * later review and never create items.
    */
+
   itemsHeldForReview: number;
   /**
-   * DISTINCT existing inventory items safely matched (non-review matches).
-   * Row-level tallies count the same item once per storage location.
+   * Rows with a valid item code that is not yet mapped but whose name exactly
+   * normalizes-matches an existing active item — possible Orderly re-codes.
+   * These rows need explicit user review to avoid creating duplicates.
    */
+
   itemsMatchedUnique: number;
   /**
    * Rows safely auto-linked to an existing item (matchedId set, no review
    * required) — the row-level counterpart of itemsMatchedUnique.
    */
+
   rowsMatchedSafe: number;
+
+  itemsRecode: number;
 }
 
 export function computeResolutionSummary(rows: RowResolution[]): ResolutionSummary {
@@ -434,6 +467,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
   let itemsResolvedByLocationHistory = 0;
   let itemsWillCreate = 0;
   let itemsHeldForReview = 0;
+  let itemsRecode = 0;
 
   // Approval treats all rows sharing a reliable (valid) item code as ONE
   // identity: any safe existing match links the whole group, and a wholly
@@ -459,6 +493,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     else itemsNew++;
 
     if (m.strategy === 'location_history') itemsResolvedByLocationHistory++;
+    if (m.possibleRecode) itemsRecode++;
 
     if (m.requiresReview) rowsRequiringReview++;
 
@@ -520,6 +555,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     itemsResolvedByLocationHistory,
     itemsWillCreate,
     itemsHeldForReview,
+    itemsRecode,
     itemsMatchedUnique: matchedItemIds.size,
     rowsMatchedSafe,
   };

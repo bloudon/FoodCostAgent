@@ -601,6 +601,36 @@ export async function runResolutionPreview(
       if (resolved) itemMatch = resolved;
     }
 
+    // ── Possible re-code detection ──
+    // When a row has a valid item code that is NOT in the external mappings
+    // (unmapped code) AND was not resolved by item_code strategy (the code
+    // doesn't match any existing pluSku), but the cleaned description exactly
+    // normalizes-matches an existing item name, Orderly has most likely
+    // assigned a new code to a product already in the catalog.  Flag the row
+    // so the user can explicitly link it rather than creating a duplicate.
+    // This does NOT auto-link — linking stays an explicit user action.
+    const isUnmappedValidCode =
+      !extId &&
+      row.itemCodeStatus === 'valid' &&
+      Boolean(row.sourceItemCode?.trim());
+    const codeWasMatched =
+      itemMatch.strategy === 'external_mapping' || itemMatch.strategy === 'item_code';
+    if (isUnmappedValidCode && !codeWasMatched) {
+      const normalizedDesc = normalizeForMatch(row.cleanedDescription ?? '');
+      if (normalizedDesc) {
+        const nameExactMatch = matchableItems.find(
+          it => normalizeForMatch(it.name) === normalizedDesc,
+        );
+        if (nameExactMatch) {
+          itemMatch = {
+            ...itemMatch,
+            possibleRecode: true,
+            possibleRecodeMatchedId: nameExactMatch.id,
+          };
+        }
+      }
+    }
+
     resolutions.push({ rowIndex: row.rowIndex, itemMatch, vendorMatch, locationMatch, itemCodeStatus: row.itemCodeStatus, sourceItemCode: row.sourceItemCode });
   }
 
@@ -627,6 +657,13 @@ export async function runResolutionPreview(
       // @ts-ignore
       ? { ...matchedItemBase, knownLocations: locationsByItemId.get(matchedItemBase.id) ?? [] }
       : null;
+    const possibleRecodeBase = rawMatch.possibleRecodeMatchedId
+      ? (itemById.get(rawMatch.possibleRecodeMatchedId) ?? null)
+      : null;
+    const possibleRecodeItem = possibleRecodeBase
+      // @ts-ignore
+      ? { ...possibleRecodeBase, knownLocations: locationsByItemId.get(possibleRecodeBase.id) ?? [] }
+      : null;
 
     return {
       rowId: row.id,
@@ -642,7 +679,7 @@ export async function runResolutionPreview(
       baseUnit: row.baseUnit,
       packagePrice: row.packagePrice,
       totalCost: row.totalCost,
-      itemMatch: { ...rawMatch, candidates, matchedItem },
+      itemMatch: { ...rawMatch, candidates, matchedItem, possibleRecodeItem },
       vendorMatch: resolutions[i].vendorMatch,
       locationMatch: resolutions[i].locationMatch,
     };
