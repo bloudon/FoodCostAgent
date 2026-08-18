@@ -1,0 +1,90 @@
+## PM Disposition — #1178
+
+#1178 is ACCEPTED / COMPLETE on the merged implementation, subject to final merged-state Reviewer/QA PASS.
+
+The review fixes are considered permanent contracts of the bulk invoice importer:
+
+- backdated imports cannot replace newer current prices
+- dated observations are retained even when price is unchanged
+- all batch operations enforce destination-store access
+- batch listings respect store scope
+- upload and approval are race-safe/idempotent
+- invoice identity is vendor-scoped
+- approved-batch reporting reflects persisted results
+- Category and GL Code are retained as historical source evidence
+
+## Follow-up 1 — Small held-line resolution workflow
+
+APPROVED for scoping.
+
+Keep it minimal:
+
+Held historical invoice line
+→ explicitly select existing vendor product / inventory item
+→ validate tenant/store/vendor scope
+→ create/use authorized identity mapping where appropriate
+→ link the historical line
+→ record its dated historical price observation
+
+Requirements:
+
+- no inventory-item auto-create
+- no fuzzy auto-authorization
+- no source evidence rewrite
+- no bulk merge tooling
+- no AI matching requirement
+- idempotent linking
+- full provenance retained
+
+This is additive resolution of immutable historical evidence.
+
+## Follow-up 2 — Messy vendor rehearsal
+
+REQUIRED BEFORE PRODUCTION BULK LOADING.
+
+This is QA/rehearsal, not a new feature by default.
+
+Run at least one additional vendor export containing less-clean source conditions where available:
+
+- same-day/split invoices
+- credits/negative lines
+- freight/tax/fees
+- missing GL / "No Account"
+- unknown Item Codes
+- pack conflicts
+- zero-dollar lines
+- legitimate invoice-total reconciliation differences
+
+Return a PM summary:
+
+- invoices
+- lines
+- dollars
+- match rate
+- holds by reason
+- reconciliation warnings by reason
+- duplicates detected
+- price observations proposed
+- any source shape the importer cannot represent honestly
+
+Do not add code merely to make the fixture green.
+Fail-closed behavior is acceptable.
+
+## Follow-up 3 — Vendor catalog deduplication
+
+PARK.
+
+Do not combine vendor-product consolidation with invoice import.
+
+The importer may expose ambiguous/duplicate catalog records, but catalog cleanup is a separate PM-gated identity program if evidence shows it materially affects onboarding or price history.
+
+## Production gate
+
+No Bay Hill production bulk invoice loading yet.
+
+Production GO comes after:
+
+1. merged #1178 Reviewer/QA PASS
+2. Community Coffee Dev evidence retained
+3. at least one messy-vendor rehearsal
+4. PM review of the resulting import summary

@@ -25,4 +25,5 @@
 - [Partial-apply convergence](partial-apply-convergence.md) — stopped groups that vanished AND overlap applied merges self-resolved transitively; no-overlap drift is the real blocker; anchor "applied" to earliest audit rows.
 - [Dev-DB test collisions & session destination](dev-db-test-collisions.md) — suites seeding real unique keys need an isolated schema clone; count-session store comes from the approved batch, never the caller.
 - [Production May legacy session](prod-may-legacy-session.md) — prod May 2026 session is applied & pre-evidence-model; never reload/force_new; unwind-vs-accept is PM-gated.
+- [Invoice importer PM disposition](invoice-importer-pm-disposition.md) — importer review fixes are permanent contracts; messy-vendor rehearsal required before prod loading; catalog dedupe parked.
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
