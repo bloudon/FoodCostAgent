@@ -55,6 +55,7 @@ import OrderGuideReview from "@/pages/order-guide-review";
 import OrderGuideScan from "@/pages/order-guide-scan";
 import InventoryImport from "@/pages/inventory-import";
 import OrderlyImport from "@/pages/orderly-import";
+import VendorInvoiceImport from "@/pages/vendor-invoice-import";
 import OrderlyReport from "@/pages/orderly-report";
 import SalesByItemImport from "@/pages/sales-by-item-import";
 import PosRecipeLinking from "@/pages/pos-recipe-linking";
@@ -614,6 +615,7 @@ function ProtectedLayoutContent() {
               <Route path="/order-guides/:id/review" component={OrderGuideReview} />
               <Route path="/inventory-import" component={InventoryImport} />
               <Route path="/orderly-import" component={OrderlyImport} />
+              <Route path="/vendor-invoice-import" component={VendorInvoiceImport} />
               <Route path="/orderly-report" component={OrderlyReport} />
               <Route path="/sales-by-item-import" component={SalesByItemImport} />
               <Route path="/pos-recipe-linking" component={PosRecipeLinking} />

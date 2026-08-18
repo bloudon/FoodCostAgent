@@ -21,7 +21,7 @@
  *     silently computing wrong unit prices.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   vendorItems,
@@ -40,11 +40,13 @@ export type VendorPriceSource =
   | "receipt"
   | "po_create"
   | "manual"
-  | "legacy_unknown";
+  | "legacy_unknown"
+  | "historical_invoice_import";
 
 export const ACTUAL_PURCHASE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
   "receipt",
   "invoice_scan",
+  "historical_invoice_import",
 ]);
 
 export const QUOTE_SOURCES: ReadonlySet<VendorPriceSource> = new Set([
@@ -105,6 +107,16 @@ export interface RecordVendorPriceParams {
 
   /** User who triggered the event — stored in history recordedBy. */
   userId?: string;
+
+  /**
+   * Business effective date of the price observation (e.g. the invoice date
+   * for historical imports). When provided and OLDER than the vendor item's
+   * current pricedAt, the observation is written to price history only —
+   * vendor_items current price, pack geometry, and inventory cost are left
+   * untouched so importing old invoices never regresses the current price.
+   * When omitted, the observation is treated as occurring now.
+   */
+  effectiveAt?: Date;
 
   /**
    * Current company-wide on-hand quantity in inventory base units.
@@ -339,33 +351,106 @@ async function _executeWrite(
   const now = new Date();
   const d = txOrDb as typeof db;
 
-  // ── 1. Always stamp vendor_items price provenance ──────────────────────────
-  await d
-    .update(vendorItems)
-    .set({
-      ...(casePrice > 0 ? { lastCasePrice: casePrice } : {}),
-      ...(unitPrice > 0 ? { lastPrice: unitPrice } : {}),
-      priceSource: source,
-      pricedAt: now,
-      ...(referenceId ? { priceSourceReferenceId: referenceId } : {}),
-      updatedAt: now,
-    })
-    // @ts-ignore
-    .where(eq(vendorItems.id, vendorItemId));
-
-  // ── 1b. Update pack geometry — read row's stored pricingBasis first ────────
-  // pricingBasis is a structural field on the vendor item (set by operators) that
-  // controls whether last_price is per purchase unit or per canonical unit.
-  // We must honour the stored value, not assume "purchase_unit" for every write.
+  // ── 0. Chronology guard ─────────────────────────────────────────────────────
+  // A historical observation (effectiveAt older than the vendor item's current
+  // pricedAt) must never regress the current price: it is recorded in price
+  // history only. Read row metadata first so the decision precedes any write.
   const [rowMeta] = await d
     .select({
       pricingBasis: vendorItems.pricingBasis,
       isVariableWeight: vendorItems.isVariableWeight,
+      pricedAt: vendorItems.pricedAt,
     })
     .from(vendorItems)
     // @ts-ignore
     .where(eq(vendorItems.id, vendorItemId))
     .limit(1);
+
+  const effectiveAt = params.effectiveAt ?? now;
+  // Equal timestamps are treated as historical too: a dated observation must
+  // never displace a same-instant (or newer) current price.
+  const isHistoricalObservation =
+    params.effectiveAt !== undefined &&
+    rowMeta?.pricedAt != null &&
+    params.effectiveAt.getTime() <= rowMeta.pricedAt.getTime();
+
+  // History-only writer shared by the historical path and the CAS fallback.
+  const writeHistoryOnly = async (): Promise<void> => {
+    if (!representsActualPurchase) return;
+    if (!inventoryItemId || !companyId) {
+      console.warn(
+        `[VendorPriceService] historical observation without inventoryItemId/companyId for vendorItemId=${vendorItemId}; skipped.`
+      );
+      return;
+    }
+    // Tenant safety: verify the inventory item belongs to the company.
+    const [owned] = await d
+      .select({ id: inventoryItems.id })
+      .from(inventoryItems)
+      .where(
+        and(
+          // @ts-ignore
+          eq(inventoryItems.id, inventoryItemId),
+          // @ts-ignore
+          eq(inventoryItems.companyId, companyId)
+        )
+      )
+      .limit(1);
+    if (!owned) return;
+    await d.insert(inventoryItemPriceHistory).values({
+      inventoryItemId,
+      pricePerUnit: unitPrice,
+      casePrice: casePrice > 0 ? casePrice : null,
+      source,
+      vendorItemId,
+      effectiveAt,
+      recordedBy: userId ?? null,
+      note: `Historical price observation via ${source}${referenceId ? ` (ref ${referenceId})` : ""}${incompatibleUnit ? " [incompatible-unit]" : ""}`,
+    });
+  };
+
+  if (isHistoricalObservation) {
+    // Current price, pack geometry, and inventory cost stay untouched.
+    await writeHistoryOnly();
+    return;
+  }
+
+  // ── 1. Stamp vendor_items price provenance ──────────────────────────────────
+  // For dated observations the update is conditional (CAS on priced_at) so a
+  // concurrent newer write can never be regressed by this one; when the guard
+  // loses the race we fall back to a history-only record.
+  const stampWhere = params.effectiveAt !== undefined
+    ? and(
+        // @ts-ignore
+        eq(vendorItems.id, vendorItemId),
+        sql`(${vendorItems.pricedAt} IS NULL OR ${vendorItems.pricedAt} < ${effectiveAt})`
+      )
+    : // @ts-ignore
+      eq(vendorItems.id, vendorItemId);
+  const stamped = await d
+    .update(vendorItems)
+    .set({
+      ...(casePrice > 0 ? { lastCasePrice: casePrice } : {}),
+      ...(unitPrice > 0 ? { lastPrice: unitPrice } : {}),
+      priceSource: source,
+      pricedAt: effectiveAt,
+      ...(referenceId ? { priceSourceReferenceId: referenceId } : {}),
+      updatedAt: now,
+    })
+    // @ts-ignore
+    .where(stampWhere)
+    .returning({ id: vendorItems.id });
+  if (params.effectiveAt !== undefined && stamped.length === 0) {
+    // Lost the chronology race — record the observation without touching
+    // current price or cost.
+    await writeHistoryOnly();
+    return;
+  }
+
+  // ── 1b. Update pack geometry — honour the row's stored pricingBasis ────────
+  // pricingBasis is a structural field on the vendor item (set by operators) that
+  // controls whether last_price is per purchase unit or per canonical unit.
+  // We must honour the stored value, not assume "purchase_unit" for every write.
 
   const rowPricingBasis = ((rowMeta?.pricingBasis) ?? "purchase_unit") as "purchase_unit" | "canonical_unit";
 
@@ -465,15 +550,20 @@ async function _executeWrite(
     );
 
   // ── 6. Write price history when price changed (skip legacy_unknown) ─────────
+  // Dated observations (effectiveAt provided) always write history, even when
+  // the price is unchanged — the observation itself is the backfilled record.
   const prevPrice = item.pricePerUnit ?? 0;
-  if (source !== "legacy_unknown" && Math.abs(unitPrice - prevPrice) > 0.000001) {
+  if (
+    source !== "legacy_unknown" &&
+    (params.effectiveAt !== undefined || Math.abs(unitPrice - prevPrice) > 0.000001)
+  ) {
     await d.insert(inventoryItemPriceHistory).values({
       inventoryItemId,
       pricePerUnit: unitPrice,
       casePrice: casePrice > 0 ? casePrice : null,
       source,
       vendorItemId,
-      effectiveAt: now,
+      effectiveAt,
       recordedBy: userId ?? null,
       note: `Price updated via ${source} (Last: $${unitPrice.toFixed(4)}, WAC: $${newAvgCost.toFixed(4)})${incompatibleUnit ? " [incompatible-unit]" : ""}`,
     });

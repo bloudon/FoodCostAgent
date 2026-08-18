@@ -35,6 +35,7 @@ import { registerPosRoutes } from "./routes/posRoutes";
 import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
 import { registerHistoricalInvoiceRoutes } from "./routes/historicalInvoiceRoutes";
+import { registerVendorInvoiceImportRoutes } from "./routes/vendorInvoiceImportRoutes";
 import { registerAccountingRoutes } from "./routes/accountingRoutes";
 import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
@@ -186,6 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMenuRoutes(app);
   registerOrderlyImportRoutes(app);
   registerHistoricalInvoiceRoutes(app);
+  registerVendorInvoiceImportRoutes(app);
   registerAccountingRoutes(app);
   registerSalesByItemRoutes(app);
   registerReportRoutes(app);
@@ -996,6 +998,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[Migration] historical invoice retention tables ready');
     } catch (err) {
       console.error('[Migration] historical invoice retention error:', err);
+    }
+  })();
+
+  // ── Vendor invoice XLSX import staging tables ──────────────────────────────
+  (async function migrateVendorInvoiceImportTables() {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS vendor_invoice_import_batches (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL DEFAULT 'ORDERLY',
+          source_property_id TEXT NOT NULL,
+          source_property_binding_id VARCHAR NOT NULL,
+          destination_store_id VARCHAR NOT NULL,
+          file_hash TEXT NOT NULL,
+          original_filename TEXT NOT NULL,
+          parser_version TEXT NOT NULL,
+          vendor_name_detected TEXT,
+          resolved_vendor_id VARCHAR,
+          invoice_count INTEGER NOT NULL DEFAULT 0,
+          line_count INTEGER NOT NULL DEFAULT 0,
+          date_range_start TEXT,
+          date_range_end TEXT,
+          total_amount REAL NOT NULL DEFAULT 0,
+          invoice_totals JSONB NOT NULL DEFAULT '[]'::jsonb,
+          status TEXT NOT NULL DEFAULT 'pending_review',
+          uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          uploaded_by VARCHAR,
+          approved_at TIMESTAMPTZ,
+          approved_by VARCHAR
+        );
+        CREATE INDEX IF NOT EXISTS vendor_invoice_import_batches_company_idx
+          ON vendor_invoice_import_batches(company_id, uploaded_at);
+        CREATE INDEX IF NOT EXISTS vendor_invoice_import_batches_hash_idx
+          ON vendor_invoice_import_batches(company_id, file_hash);
+        CREATE UNIQUE INDEX IF NOT EXISTS vendor_invoice_import_batches_hash_uniq
+          ON vendor_invoice_import_batches(company_id, file_hash)
+          WHERE status != 'rejected';
+
+        CREATE TABLE IF NOT EXISTS vendor_invoice_import_lines (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          batch_id VARCHAR NOT NULL,
+          row_index INTEGER NOT NULL,
+          invoice_number TEXT NOT NULL,
+          invoice_date TEXT NOT NULL,
+          item_code TEXT,
+          description TEXT,
+          pack_size_raw TEXT,
+          qty REAL,
+          extended_amount REAL,
+          category TEXT,
+          gl_code TEXT,
+          raw_data JSONB NOT NULL,
+          resolution_status TEXT,
+          hold_reason TEXT,
+          resolved_vendor_item_id VARCHAR,
+          resolved_inventory_item_id VARCHAR,
+          historical_invoice_line_id VARCHAR,
+          price_observation_written INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS vendor_invoice_import_lines_batch_idx
+          ON vendor_invoice_import_lines(batch_id);
+        CREATE INDEX IF NOT EXISTS vendor_invoice_import_lines_batch_row_idx
+          ON vendor_invoice_import_lines(batch_id, row_index);
+      `);
+      console.log('[Migration] vendor_invoice_import staging tables ready');
+    } catch (err) {
+      console.error('[Migration] vendor_invoice_import tables error:', err);
     }
   })();
 

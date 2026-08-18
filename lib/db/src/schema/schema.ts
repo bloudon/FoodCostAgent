@@ -2671,6 +2671,67 @@ export const vendorItemExternalMappings = pgTable("vendor_item_external_mappings
 }));
 export type VendorItemExternalMapping = typeof vendorItemExternalMappings.$inferSelect;
 
+// ─── Vendor invoice XLSX import staging ──────────────────────────────────────
+// Staged upload of per-vendor invoice line-item exports (Orderly XLSX).
+// Rows are immutable raw evidence; approval persists into the existing
+// historical_invoices / historical_invoice_lines domain — never a parallel one.
+export const vendorInvoiceImportBatches = pgTable("vendor_invoice_import_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourceSystem: text("source_system").notNull().default("ORDERLY"),
+  sourcePropertyId: text("source_property_id").notNull(),
+  sourcePropertyBindingId: varchar("source_property_binding_id").notNull(),
+  destinationStoreId: varchar("destination_store_id").notNull(),
+  fileHash: text("file_hash").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  parserVersion: text("parser_version").notNull(),
+  vendorNameDetected: text("vendor_name_detected"),
+  resolvedVendorId: varchar("resolved_vendor_id"),
+  invoiceCount: integer("invoice_count").notNull().default(0),
+  lineCount: integer("line_count").notNull().default(0),
+  dateRangeStart: text("date_range_start"),
+  dateRangeEnd: text("date_range_end"),
+  totalAmount: real("total_amount").notNull().default(0),
+  // Per-invoice totals from the Invoice Totals sheet: [{invoiceNumber, date, amount}]
+  invoiceTotals: jsonb("invoice_totals").notNull().default(sql`'[]'::jsonb`),
+  status: text("status").notNull().default("pending_review"), // pending_review | approved | rejected
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  uploadedBy: varchar("uploaded_by"),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by"),
+}, (t) => ({
+  companyIdx: index("vendor_invoice_import_batches_company_idx").on(t.companyId, t.uploadedAt),
+  hashIdx: index("vendor_invoice_import_batches_hash_idx").on(t.companyId, t.fileHash),
+}));
+export type VendorInvoiceImportBatch = typeof vendorInvoiceImportBatches.$inferSelect;
+
+export const vendorInvoiceImportLines = pgTable("vendor_invoice_import_lines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  rowIndex: integer("row_index").notNull(),
+  invoiceNumber: text("invoice_number").notNull(),
+  invoiceDate: text("invoice_date").notNull(), // YYYY-MM-DD
+  itemCode: text("item_code"),
+  description: text("description"),
+  packSizeRaw: text("pack_size_raw"),
+  qty: real("qty"),
+  extendedAmount: real("extended_amount"),
+  category: text("category"),
+  glCode: text("gl_code"),
+  rawData: jsonb("raw_data").notNull(),
+  // Set at approval time so held lines can be traced and later linked.
+  resolutionStatus: text("resolution_status"), // resolved | held
+  holdReason: text("hold_reason"),
+  resolvedVendorItemId: varchar("resolved_vendor_item_id"),
+  resolvedInventoryItemId: varchar("resolved_inventory_item_id"),
+  historicalInvoiceLineId: varchar("historical_invoice_line_id"),
+  priceObservationWritten: integer("price_observation_written").notNull().default(0),
+}, (t) => ({
+  batchIdx: index("vendor_invoice_import_lines_batch_idx").on(t.batchId),
+  batchRowIdx: index("vendor_invoice_import_lines_batch_row_idx").on(t.batchId, t.rowIndex),
+}));
+export type VendorInvoiceImportLine = typeof vendorInvoiceImportLines.$inferSelect;
+
 export const historicalInvoiceImportBatches = pgTable("historical_invoice_import_batches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),
