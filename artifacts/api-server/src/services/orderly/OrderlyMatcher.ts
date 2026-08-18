@@ -249,6 +249,8 @@ export interface VendorMatchResult {
   isNew: boolean;
   confidence: MatchConfidence;
   requiresReview: boolean;
+  /** Normalized supplier name — set for new vendors so summaries can count distinct vendors. */
+  normalizedName?: string;
 }
 
 /**
@@ -290,7 +292,7 @@ export function matchVendor(
   }
 
   // New vendor
-  return { vendorId: null, isNew: true, confidence: 'none', requiresReview: false };
+  return { vendorId: null, isNew: true, confidence: 'none', requiresReview: false, normalizedName: normalizedRaw };
 }
 
 // ─── Location matching ───────────────────────────────────────────────────────
@@ -391,7 +393,10 @@ export interface ResolutionSummary {
 
 export function computeResolutionSummary(rows: RowResolution[]): ResolutionSummary {
   let itemsMatchedHigh = 0, itemsMatchedMedium = 0, itemsAmbiguous = 0, itemsNew = 0, itemsFuzzy = 0;
-  let vendorsMatched = 0, vendorsNew = 0;
+  // Vendors are counted as DISTINCT entities, not per-row occurrences — a
+  // 5,000-row file typically involves only a few dozen vendors.
+  const matchedVendorIds = new Set<string>();
+  const newVendorNames = new Set<string>();
   const locationsSeen = new Map<string, boolean>(); // normalizedName → isNew
   let rowsRequiringReview = 0;
   let itemsResolvedByLocationHistory = 0;
@@ -408,8 +413,8 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
 
     if (m.requiresReview) rowsRequiringReview++;
 
-    if (row.vendorMatch.isNew) vendorsNew++;
-    else if (row.vendorMatch.vendorId) vendorsMatched++;
+    if (row.vendorMatch.isNew) newVendorNames.add(row.vendorMatch.normalizedName ?? '');
+    else if (row.vendorMatch.vendorId) matchedVendorIds.add(row.vendorMatch.vendorId);
 
     if (row.locationMatch.normalizedName) {
       if (!locationsSeen.has(row.locationMatch.normalizedName)) {
@@ -431,8 +436,8 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     itemsAmbiguous,
     itemsNew,
     itemsFuzzy,
-    vendorsMatched,
-    vendorsNew,
+    vendorsMatched: matchedVendorIds.size,
+    vendorsNew: newVendorNames.size,
     locationsMatched,
     locationsNew,
     rowsRequiringReview,
