@@ -29,3 +29,4 @@
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
 - [Drizzle array params](drizzle-array-params.md) — arrays bound into sql templates become ROW expressions capped at 1664; pass one jsonb param and unnest instead.
 - [Deposit-aware reconciliation](deposit-aware-reconciliation.md) — four fail-closed conditions for explained keg-deposit gaps; deposits never touch price history; ledgers consume persisted events only.
+- [Vendor-item dup program closure](vendor-item-dup-closure.md) — PM-closed; orphan cleanup stays bounded/read-only-first, NULL-SKU stays unconstrained, prod needs cleanup before deploy; assignment ≠ lifted PM hold.
