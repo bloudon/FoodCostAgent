@@ -151,6 +151,8 @@ interface ResolutionPreview {
     itemsResolvedByLocationHistory: number;
     itemsWillCreate: number;
     itemsHeldForReview: number;
+    itemsMatchedUnique: number;
+    rowsMatchedSafe: number;
   };
   rows: RowPreview[];
   newLocations: string[];
@@ -1023,8 +1025,10 @@ export function ResolutionPreviewStep({
               <Package className="h-4 w-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Items</span>
             </div>
-            <div className="text-2xl font-bold">{(s.itemsMatchedHigh + s.itemsMatchedMedium).toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">matched ({matchPct}%)</div>
+            <div className="text-2xl font-bold">{s.itemsMatchedUnique.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">
+              matched · {s.rowsMatchedSafe.toLocaleString()}/{s.totalRows.toLocaleString()} rows ({matchPct}%)
+            </div>
             <Progress value={matchPct} className="mt-2 h-1" />
           </CardContent>
         </Card>

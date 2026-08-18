@@ -411,6 +411,16 @@ export interface ResolutionSummary {
    * later review and never create items.
    */
   itemsHeldForReview: number;
+  /**
+   * DISTINCT existing inventory items safely matched (non-review matches).
+   * Row-level tallies count the same item once per storage location.
+   */
+  itemsMatchedUnique: number;
+  /**
+   * Rows safely auto-linked to an existing item (matchedId set, no review
+   * required) — the row-level counterpart of itemsMatchedUnique.
+   */
+  rowsMatchedSafe: number;
 }
 
 export function computeResolutionSummary(rows: RowResolution[]): ResolutionSummary {
@@ -437,6 +447,8 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     reliableGroupHasSafeMatch.set(code, (reliableGroupHasSafeMatch.get(code) ?? false) || safe);
   }
   const countedCreateCodes = new Set<string>();
+  const matchedItemIds = new Set<string>();
+  let rowsMatchedSafe = 0;
 
   for (const row of rows) {
     const m = row.itemMatch;
@@ -455,6 +467,10 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     // blank-code rows are held unresolved and never create items. Rows
     // sharing a reliable code resolve as one identity (see map above).
     const unresolved = m.matchedId == null || m.requiresReview;
+    if (!unresolved && m.matchedId) {
+      matchedItemIds.add(m.matchedId);
+      rowsMatchedSafe++;
+    }
     if (unresolved) {
       if (row.itemCodeStatus === 'blank') {
         itemsHeldForReview++;
@@ -504,5 +520,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     itemsResolvedByLocationHistory,
     itemsWillCreate,
     itemsHeldForReview,
+    itemsMatchedUnique: matchedItemIds.size,
+    rowsMatchedSafe,
   };
 }
