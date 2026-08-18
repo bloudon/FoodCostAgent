@@ -1,0 +1,250 @@
+I would **not approve #1191 as written yet.** The problem is real, and we should fix it, but the proposed uniqueness key is currently too aggressive for the purchasing model we just established.
+
+The dangerous assumption is:
+
+> `(vendor_id, inventory_item_id, vendor_sku)` = one real vendor product
+
+That is only safe if **one vendor SKU can never legitimately represent more than one purchase pack/geometry for the same inventory item**. We have not proven that yet. And treating `NULL SKU` as `''` makes it even riskier.
+
+We just established in #1178 that the vendor product is the purchasing identity and **Pack Size is material evidence**. I don't want #1191 to erase legitimate pack variants while cleaning artifacts created by the inventory duplicate remediation.
+
+### PM decision: HOLD APPLY, approve a short classifier first
+
+The 6,207 excess rows are almost certainly heavily polluted by the old duplicate-item problem, so this is worth doing. But Step 1 should begin by separating **obvious duplicates** from **potentially distinct vendor products**.
+
+I would send Replit this:
+
+```md
+# PM Review — #1191 Duplicate Vendor Catalog Rows
+
+## Decision
+
+APPROVE THE PROBLEM / HOLD THE MERGE RULE.
+
+Before implementing deletion or the uniqueness constraint, run a READ-ONLY classifier over the proposed duplicate population.
+
+The current proposed identity:
+
+(vendor_id, inventory_item_id, vendor_sku)
+
+has not yet been proven sufficient to represent one unique purchasing identity.
+
+This matters because vendor-product identity includes pack geometry.
+
+Do not merge rows merely because inventory-item remediation caused them to converge onto the same inventory item.
+
+---
+
+## Step 0 — Classify the 6,207 excess rows
+
+For every proposed duplicate group, compare:
+
+- vendor_id
+- inventory_item_id
+- vendor_sku
+- source/external mapping identity
+- raw/normalized pack geometry
+- purchase unit
+- units/case / qty-per-purchase-unit
+- current/latest price fields
+- active status
+- source/provenance
+- downstream references
+
+Return group counts in these buckets:
+
+### A — Exact duplicate purchasing identity
+
+Same:
+
+- vendor
+- inventory item
+- SKU
+- compatible/equivalent pack geometry
+
+and no conflicting source identity.
+
+These are AUTO-MERGE CANDIDATES.
+
+### B — Same SKU, conflicting pack geometry
+
+Same:
+
+- vendor
+- inventory item
+- SKU
+
+but materially different pack geometry/purchase unit.
+
+HOLD.
+
+Do not pick the "latest" pack and discard the other one.
+
+### C — NULL/blank SKU
+
+Do NOT automatically treat NULL SKU as a unique key equivalent to blank string.
+
+Classify separately.
+
+Only auto-merge NULL-SKU rows where another authoritative identity proves they represent the same vendor product.
+
+Otherwise HOLD.
+
+### D — Conflicting external/source mappings
+
+If candidate rows carry different authoritative external vendor-product identities, HOLD even if vendor/item/SKU match.
+
+### E — Configuration disagreement
+
+If rows differ in protected operational/configuration fields beyond fields that are explicitly merge-safe, HOLD.
+
+---
+
+# Survivor rule
+
+For Class A only, choose the survivor deterministically.
+
+Do NOT choose a survivor because it has the newest price and then copy its pack geometry onto everything.
+
+Purchasing identity must already be proven equivalent before merge.
+
+Preferred survivor characteristics may include:
+
+1. authoritative external mapping target
+2. most downstream references
+3. oldest/stable record as deterministic tiebreaker
+
+Historical price observations stay historical records and should be repointed, not collapsed into a single "latest price" value.
+
+---
+
+# Reference inventory
+
+Before APPLY, dynamically/provably enumerate every FK/reference to vendor_items.
+
+Do not rely solely on the hand-written list in the task.
+
+The currently known list includes:
+
+- historical_invoice_lines.vendor_item_id
+- inventory_item_price_history.vendor_item_id
+- po_lines.vendor_item_id
+- po_routing_audit.vendor_item_id
+- po_routing_audit.source_vendor_item_id
+- receipt_lines.vendor_item_id
+- vendor_invoice_import_lines.resolved_vendor_item_id
+- vendor_item_external_mappings.vendor_item_id
+
+Confirm via current schema/repo that this list is complete.
+
+If another live reference exists, STOP before mutation.
+
+---
+
+# Uniqueness constraint — do not add yet
+
+First prove what the real vendor-product uniqueness contract is.
+
+Do NOT yet add:
+
+UNIQUE(vendor_id, inventory_item_id, COALESCE(vendor_sku, ''))
+
+until the classifier proves that contract is safe.
+
+In particular:
+
+- NULL SKU must not automatically collapse all SKU-less vendor products for an item.
+- legitimate pack variants must remain representable.
+- authoritative source product IDs must not be erased by a weaker uniqueness rule.
+
+Return the recommended DB uniqueness rule after classification.
+
+It may be that non-null reliable SKU rows can have a stronger constraint while NULL-SKU rows require different handling.
+
+Prefer the smallest constraint that prevents the actual duplicate defect without banning legitimate vendor products.
+
+---
+
+# Insert-path hardening
+
+After the real uniqueness contract is approved:
+
+- Orderly importer
+- manual vendor-item creation
+- order-guide processor
+- PO on-the-fly creation
+
+must all use the SAME identity/resolution contract.
+
+Do not scatter four slightly different onConflict behaviors.
+
+If practical, centralize vendor-item get-or-create/upsert behavior behind one service function.
+
+Do not build a large abstraction; just prevent future identity drift.
+
+---
+
+# Dry-run output required for PM
+
+Return:
+
+- total vendor_items
+- proposed duplicate groups
+- proposed excess rows
+- Class A exact duplicates
+- Class B pack conflicts
+- Class C null/blank SKU groups
+- Class D source-mapping conflicts
+- Class E configuration conflicts
+- Harvill's exact-duplicate groups / rows
+- affected downstream references by table
+- proposed survivor count
+- proposed deletion count
+- recommended uniqueness constraint
+
+No writes yet.
+```
+
+### The part I strongly disagree with
+
+This sentence in Step 1:
+
+> “merge any non-conflicting field values worth keeping (**latest price/pack geometry**)”
+
+I would remove **pack geometry** from that completely.
+
+Pack geometry helps define the vendor product. It isn't merely metadata we can resolve by picking the newest version. If two rows have materially different packs, that is evidence they may **not be duplicates at all**.
+
+Price is different: dated price records can all survive after being repointed to one proven vendor product. We don't need to throw historical prices away to consolidate duplicate catalog identities.
+
+### The NULL SKU constraint is also too broad
+
+This proposed constraint:
+
+```sql
+(vendor_id, inventory_item_id, coalesce(vendor_sku, ''))
+```
+
+would assert:
+
+> A vendor can have only one SKU-less purchasing product for an inventory item.
+
+We haven't proven that, and beverage/produce catalog data is exactly where I wouldn't make that assumption.
+
+A safer eventual model may be something like:
+
+* reliable non-null SKU → strong vendor/SKU uniqueness within the appropriate company/source scope;
+* no SKU → external product identity or pack identity required before automatic consolidation;
+* truly ambiguous SKU-less products remain separate/reviewable.
+
+But I want the classifier numbers before choosing that schema.
+
+### Harvill's makes this worth doing
+
+The Harvill's result—**354 catalog rows for only 118 apparent item/SKU pairs**—is a strong signal that there is real cleanup available. And cleaning it should dramatically improve the held-line resolution problem we just found.
+
+But this is another identity remediation. We've learned the lesson already:
+
+> **Prove equivalence first. Merge second. Add the database invariant last.**
+
+So: **yes to #1191, but turn Step 1 into a read-only classification gate before Builder gets permission to delete anything.**
