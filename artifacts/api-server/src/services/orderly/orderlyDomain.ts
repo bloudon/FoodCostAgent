@@ -601,7 +601,7 @@ export async function runResolutionPreview(
       if (resolved) itemMatch = resolved;
     }
 
-    resolutions.push({ rowIndex: row.rowIndex, itemMatch, vendorMatch, locationMatch });
+    resolutions.push({ rowIndex: row.rowIndex, itemMatch, vendorMatch, locationMatch, itemCodeStatus: row.itemCodeStatus, sourceItemCode: row.sourceItemCode });
   }
 
   const summary = computeResolutionSummary(resolutions);

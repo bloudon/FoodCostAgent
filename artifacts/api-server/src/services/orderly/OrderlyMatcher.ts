@@ -374,6 +374,18 @@ export interface RowResolution {
   itemMatch: MatchResult;
   vendorMatch: VendorMatchResult;
   locationMatch: LocationMatchResult;
+  /**
+   * Staged row's item_code_status ("valid" | "blank" | ...). Approval never
+   * creates items for blank-code rows — they are held unresolved — so the
+   * summary needs this to report an honest "will be created" count.
+   */
+  itemCodeStatus?: string | null;
+  /**
+   * Staged row's source item code. Approval resolves all rows sharing a
+   * reliable (valid) code as ONE identity — a single safe match links the
+   * whole group, and a wholly-unresolved group creates exactly one item.
+   */
+  sourceItemCode?: string | null;
 }
 
 export interface ResolutionSummary {
@@ -389,6 +401,16 @@ export interface ResolutionSummary {
   locationsNew: number;
   rowsRequiringReview: number;
   itemsResolvedByLocationHistory: number;
+  /**
+   * Unresolved rows with a usable item code — approval will actually insert
+   * a new inventory item for these (absent a user override).
+   */
+  itemsWillCreate: number;
+  /**
+   * Unresolved blank-code rows — approval skips these; they are held for
+   * later review and never create items.
+   */
+  itemsHeldForReview: number;
 }
 
 export function computeResolutionSummary(rows: RowResolution[]): ResolutionSummary {
@@ -400,6 +422,21 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
   const locationsSeen = new Map<string, boolean>(); // normalizedName → isNew
   let rowsRequiringReview = 0;
   let itemsResolvedByLocationHistory = 0;
+  let itemsWillCreate = 0;
+  let itemsHeldForReview = 0;
+
+  // Approval treats all rows sharing a reliable (valid) item code as ONE
+  // identity: any safe existing match links the whole group, and a wholly
+  // unresolved group creates exactly one item. Mirror that here.
+  const reliableGroupHasSafeMatch = new Map<string, boolean>();
+  for (const row of rows) {
+    if (row.itemCodeStatus !== 'valid') continue;
+    const code = row.sourceItemCode?.trim();
+    if (!code) continue;
+    const safe = row.itemMatch.matchedId != null && !row.itemMatch.requiresReview;
+    reliableGroupHasSafeMatch.set(code, (reliableGroupHasSafeMatch.get(code) ?? false) || safe);
+  }
+  const countedCreateCodes = new Set<string>();
 
   for (const row of rows) {
     const m = row.itemMatch;
@@ -412,6 +449,29 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     if (m.strategy === 'location_history') itemsResolvedByLocationHistory++;
 
     if (m.requiresReview) rowsRequiringReview++;
+
+    // Mirror approval behavior: a row without a confident, non-review match
+    // creates a new item ONLY when it has a usable (non-blank) item code;
+    // blank-code rows are held unresolved and never create items. Rows
+    // sharing a reliable code resolve as one identity (see map above).
+    const unresolved = m.matchedId == null || m.requiresReview;
+    if (unresolved) {
+      if (row.itemCodeStatus === 'blank') {
+        itemsHeldForReview++;
+      } else {
+        const code = row.itemCodeStatus === 'valid' ? row.sourceItemCode?.trim() : null;
+        if (code) {
+          // Reliable-code group: create once per wholly-unresolved group;
+          // create nothing when any sibling safely matched an existing item.
+          if (!reliableGroupHasSafeMatch.get(code) && !countedCreateCodes.has(code)) {
+            countedCreateCodes.add(code);
+            itemsWillCreate++;
+          }
+        } else {
+          itemsWillCreate++;
+        }
+      }
+    }
 
     if (row.vendorMatch.isNew) newVendorNames.add(row.vendorMatch.normalizedName ?? '');
     else if (row.vendorMatch.vendorId) matchedVendorIds.add(row.vendorMatch.vendorId);
@@ -442,5 +502,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     locationsNew,
     rowsRequiringReview,
     itemsResolvedByLocationHistory,
+    itemsWillCreate,
+    itemsHeldForReview,
   };
 }

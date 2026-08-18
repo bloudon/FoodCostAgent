@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   breakTieByLocation,
+  computeResolutionSummary,
   type LocationAssignment,
   type MatchResult,
 } from './OrderlyMatcher';
@@ -99,5 +100,60 @@ describe('breakTieByLocation', () => {
 
   it('works with an empty assignments array — returns null', () => {
     expect(breakTieByLocation(ambiguousResult, 'loc-1', [])).toBeNull();
+  });
+});
+
+describe('computeResolutionSummary — will-create vs held split', () => {
+  const noVendor = { vendorId: null, isNew: false, confidence: 'none' as const, requiresReview: false };
+  const noLocation = { locationId: null, isNew: false, normalizedName: '' };
+  const match = (over: Partial<import('./OrderlyMatcher').MatchResult>) => ({
+    strategy: 'none' as const, confidence: 'none' as const, matchedId: null,
+    candidateIds: [], requiresReview: false, ...over,
+  });
+  const row = (itemMatch: any, itemCodeStatus: string) => ({
+    rowIndex: 0, itemMatch, vendorMatch: noVendor, locationMatch: noLocation, itemCodeStatus,
+  });
+
+  it('coded unresolved rows count as will-create; blank-code unresolved rows are held', () => {
+    const s = computeResolutionSummary([
+      row(match({}), 'valid'),                                             // no match, coded → create
+      row(match({ strategy: 'fuzzy', confidence: 'low', matchedId: 'i1', requiresReview: true }), 'valid'), // fuzzy → create
+      row(match({ confidence: 'ambiguous', requiresReview: true }), 'valid'), // ambiguous → create
+      row(match({}), 'blank'),                                              // blank, unresolved → held
+      row(match({ strategy: 'item_code', confidence: 'high', matchedId: 'i2' }), 'valid'), // matched → neither
+      row(match({ strategy: 'name_pack', confidence: 'medium', matchedId: 'i3' }), 'blank'), // blank but safely matched → neither
+    ]);
+    expect(s.itemsWillCreate).toBe(3);
+    expect(s.itemsHeldForReview).toBe(1);
+  });
+});
+
+describe('computeResolutionSummary — reliable-code group semantics', () => {
+  const noVendor = { vendorId: null, isNew: false, confidence: 'none' as const, requiresReview: false };
+  const noLocation = { locationId: null, isNew: false, normalizedName: '' };
+  const match = (over: Partial<MatchResult>) => ({
+    strategy: 'none' as const, confidence: 'none' as const, matchedId: null,
+    candidateIds: [], requiresReview: false, ...over,
+  });
+  const row = (itemMatch: any, itemCodeStatus: string, sourceItemCode: string | null = null) => ({
+    rowIndex: 0, itemMatch, vendorMatch: noVendor, locationMatch: noLocation, itemCodeStatus, sourceItemCode,
+  });
+
+  it('a safe sibling match suppresses creation for the whole code group', () => {
+    const s = computeResolutionSummary([
+      row(match({}), 'valid', 'C1'), // unresolved but sibling safely matched
+      row(match({ strategy: 'item_code', confidence: 'high', matchedId: 'i1' }), 'valid', 'C1'),
+    ]);
+    expect(s.itemsWillCreate).toBe(0);
+    expect(s.itemsHeldForReview).toBe(0);
+  });
+
+  it('a wholly-unresolved code group counts one creation, not one per row', () => {
+    const s = computeResolutionSummary([
+      row(match({}), 'valid', 'C2'),
+      row(match({ strategy: 'fuzzy', confidence: 'low', matchedId: 'i9', requiresReview: true }), 'valid', 'C2'),
+      row(match({}), 'valid', 'C3'),
+    ]);
+    expect(s.itemsWillCreate).toBe(2); // C2 once + C3 once
   });
 });

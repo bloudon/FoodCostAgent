@@ -148,6 +148,8 @@ interface ResolutionPreview {
     locationsNew: number;
     rowsRequiringReview: number;
     itemsResolvedByLocationHistory: number;
+    itemsWillCreate: number;
+    itemsHeldForReview: number;
   };
   rows: RowPreview[];
   newLocations: string[];
@@ -1046,8 +1048,11 @@ export function ResolutionPreviewStep({
               <Package className="h-4 w-4 text-blue-500" />
               <span className="text-xs text-muted-foreground">New items</span>
             </div>
-            <div className="text-2xl font-bold">{s.itemsNew.toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">will be created</div>
+            <div className="text-2xl font-bold">{s.itemsWillCreate.toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">
+              will be created
+              {s.itemsHeldForReview > 0 && <> · {s.itemsHeldForReview.toLocaleString()} held for review</>}
+            </div>
           </CardContent>
         </Card>
         <Card>
