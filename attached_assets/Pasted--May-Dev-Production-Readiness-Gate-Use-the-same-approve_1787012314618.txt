@@ -1,0 +1,124 @@
+## May Dev Production-Readiness Gate
+
+Use the same approved `May_2026.xlsx` workbook.
+
+### 1. Start from a clean Dev test state
+
+Do not reuse the earlier partial May session as the only proof.
+
+Either remove/reset only the prior Dev test artifacts safely, or create a fresh isolated May import/session so the result proves the current code path from beginning to end.
+
+Do not alter source workbook contents.
+
+### 2. Run preview/import
+
+Capture:
+
+- source rows
+- reliable-code rows
+- unique reliable Item Codes
+- existing inventory items matched
+- new inventory items created
+- reliable Item Codes creating >1 core item
+- cross-location source-code groups
+- blank-code rows
+- unresolved historical rows
+- storage locations
+- resolved valuation
+- unresolved valuation
+- source valuation
+- reconciliation delta
+
+Hard requirement:
+
+`reliable Item Codes creating >1 core item = 0`
+
+### 3. Validate May reconciliation
+
+Required:
+
+- source rows = 5,358
+- source valuation = $254,286.67
+- unresolved historical evidence = expected 1,039 rows unless a row is resolved by deterministic, authoritative evidence
+- resolved + unresolved valuation = $254,286.67
+- reconciliation delta = $0.00
+
+No value may disappear merely because canonical identity is unresolved.
+
+### 4. Validate unresolved-evidence behavior
+
+For the unresolved rows prove:
+
+- linked to the historical session
+- traceable to immutable source/import row
+- no synthetic inventory item created
+- no fuzzy matching
+- no live on-hand impact
+- no participation in recipe/purchasing/variance/theoretical calculations
+- unresolved valuation is computed from authoritative source rows, not independently stored
+
+### 5. Validate historical-session protection
+
+Confirm the May historical session:
+
+- is explicitly historical/unapplied
+- cannot be applied to live on-hand
+- cannot be edited through normal count mutation routes
+- cannot be changed by mobile scan/bulk scan/catch-weight routes
+- cannot be deleted/modified through any unguarded normal count path
+- remains readable for historical reporting
+
+### 6. Spot-check known duplicate-prone items
+
+If present in May, explicitly verify:
+
+- Sauce - Tabasco
+- Chambord
+- Sweet n Low
+- Heavy Cream
+- Chicken - Breast
+- Mayonnaise - Extra Heavy
+
+For each:
+
+- one canonical core inventory identity
+- multiple location evidence preserved where applicable
+- no new duplicate identity created by May import
+
+### 7. Validate zero-value rows
+
+The 2,229 zero/blank-quantity rows may remain only in the authoritative import batch.
+
+Confirm their `$0.00` value is genuine source zero/blank count behavior and not failed valuation coerced to zero.
+
+### 8. Regression / safety
+
+Run:
+
+- DB-backed importer tests
+- historical unresolved-evidence tests
+- duplicate-prevention tests
+- historical-session mutation-guard tests
+- typecheck
+- relevant full suite
+- Reviewer
+- QA
+
+### 9. Return one production-readiness report
+
+Return:
+
+- May source totals
+- resolved totals
+- unresolved totals
+- delta
+- duplicate-prevention metrics
+- number of new core items created
+- number of reliable codes creating >1 item
+- historical guard verification
+- known-item spot checks
+- Reviewer / QA result
+
+STOP after Dev validation.
+
+Do not load May on production yet.
