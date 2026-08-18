@@ -16,6 +16,7 @@ import {
   createVendorDepositRate,
   updateVendorDepositRateWindow,
   getActiveOrderlyBinding,
+  getVendorDepositLedger,
   getBatchDestinationStoreId,
   listHeldLines,
   listVendorInvoiceBatches,
@@ -227,6 +228,32 @@ export function registerVendorInvoiceImportRoutes(app: Express) {
       } catch (err: any) {
         console.error('[VendorInvoiceImport] deposit-rates create error:', err);
         res.status(errStatus(err)).json({ error: err?.message ?? 'Could not create deposit rate.' });
+      }
+    },
+  );
+
+  // ── Vendor keg-deposit ledger (read-only) ──────────────────────────────────
+  // Derived balance + immutable event history for the vendor page: "we have
+  // $X tied up in keg deposits with this vendor, ~N outstanding kegs."
+  // Company-scoped read; no mutation paths exist (events are posted only by
+  // batch approval).
+  app.get(
+    '/api/vendor-invoice-import/deposit-ledger/:vendorId',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const vendorId = String(req.params.vendorId);
+        const [vendor] = await db.select({ id: vendors.id }).from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.companyId, companyId))).limit(1);
+        if (!vendor) return res.status(404).json({ error: 'Vendor not found.' });
+        res.json(await getVendorDepositLedger(companyId, vendorId));
+      } catch (err: any) {
+        console.error('[VendorInvoiceImport] deposit-ledger error:', err);
+        res.status(errStatus(err)).json({ error: err?.message ?? 'Could not load deposit ledger.' });
       }
     },
   );

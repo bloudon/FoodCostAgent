@@ -28,6 +28,7 @@ import {
   inventoryItemExternalMappings,
   inventoryItems,
   units,
+  vendorDepositLedgerEvents,
   vendorDepositRates,
   vendorInvoiceImportBatches,
   vendorInvoiceImportLines,
@@ -445,6 +446,98 @@ export async function updateVendorDepositRateWindow(input: {
       .returning();
     return updated;
   });
+}
+
+// ─── Deposit ledger (read model) ─────────────────────────────────────────────
+//
+// Balances are DERIVED from immutable ledger events: running dollar balance =
+// SUM(signedAmount), outstanding kegs = SUM(signedKegCount). Historical keg
+// counts are never computed by dividing dollars by the current rate.
+
+export interface VendorDepositLedger {
+  vendorId: string;
+  /** Dollars currently held by the vendor as refundable keg deposits. */
+  balance: number;
+  /** Approximate kegs outstanding (sum of signed event keg counts). */
+  outstandingKegs: number;
+  events: Array<{
+    id: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    ratePerKeg: number;
+    signedAmount: number;
+    signedKegCount: number;
+    sourceInvoiceId: string;
+    batchId: string;
+    createdAt: Date | string;
+  }>;
+}
+
+/**
+ * Idempotently materialize ledger events from every approved batch's
+ * persisted deposit_flows evidence. Consumes persisted events ONLY — never
+ * re-derives gaps. Safe to re-run (unique full source identity + ON CONFLICT
+ * DO NOTHING); called at startup so batches approved before the ledger
+ * existed (or by an older server) converge.
+ */
+export async function backfillDepositLedgerFromApprovedBatches(): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO vendor_deposit_ledger_events
+      (company_id, store_id, vendor_id, batch_id, source_system,
+       source_property_id, source_invoice_id, invoice_number, invoice_date,
+       rate_per_keg, signed_amount, signed_keg_count, derivation)
+    SELECT
+      b.company_id,
+      b.destination_store_id,
+      b.resolved_vendor_id,
+      b.id,
+      b.source_system,
+      b.source_property_id,
+      f->>'sourceInvoiceId',
+      f->>'invoiceNumber',
+      f->>'invoiceDate',
+      (f->>'ratePerKeg')::real,
+      (f->>'signedAmount')::real,
+      (f->>'kegCount')::integer,
+      COALESCE(f->'derivation', '{}'::jsonb)
+    FROM vendor_invoice_import_batches b
+    CROSS JOIN LATERAL jsonb_array_elements(b.deposit_flows) AS f
+    WHERE b.status = 'approved' AND b.resolved_vendor_id IS NOT NULL
+    ON CONFLICT (company_id, source_system, source_property_id, source_invoice_id) DO NOTHING
+  `);
+}
+
+export async function getVendorDepositLedger(
+  companyId: string,
+  vendorId: string,
+): Promise<VendorDepositLedger> {
+  const rows = await db
+    .select()
+    .from(vendorDepositLedgerEvents)
+    .where(and(
+      eq(vendorDepositLedgerEvents.companyId, companyId),
+      eq(vendorDepositLedgerEvents.vendorId, vendorId),
+    ))
+    .orderBy(sql`${vendorDepositLedgerEvents.invoiceDate} DESC, ${vendorDepositLedgerEvents.invoiceNumber} DESC`);
+  // Integer-cent summation so float noise never distorts the balance.
+  const balanceCents = rows.reduce((n: number, r: any) => n + Math.round(r.signedAmount * 100), 0);
+  const outstandingKegs = rows.reduce((n: number, r: any) => n + r.signedKegCount, 0);
+  return {
+    vendorId,
+    balance: balanceCents / 100,
+    outstandingKegs,
+    events: rows.map((r: any) => ({
+      id: r.id,
+      invoiceNumber: r.invoiceNumber,
+      invoiceDate: r.invoiceDate,
+      ratePerKeg: r.ratePerKeg,
+      signedAmount: r.signedAmount,
+      signedKegCount: r.signedKegCount,
+      sourceInvoiceId: r.sourceInvoiceId,
+      batchId: r.batchId,
+      createdAt: r.createdAt,
+    })),
+  };
 }
 
 export interface InvoiceReconciliation {
@@ -1192,6 +1285,30 @@ export async function approveVendorInvoiceBatch(params: {
           priceObservationWritten: priceWritten,
         }).where(eq(vendorInvoiceImportLines.id, line.lineId));
       }
+    }
+
+    // Post deposit LEDGER events atomically with the approval — one immutable
+    // row per qualifying invoice, keyed on (company, source invoice id) so a
+    // re-import or duplicate approval can never double-post. The ledger
+    // consumes these persisted events only; it never re-derives gaps.
+    if (depositFlowEvents.length > 0 && preview.vendorId) {
+      await tx.insert(vendorDepositLedgerEvents).values(
+        depositFlowEvents.map(e => ({
+          companyId,
+          storeId: store.id,
+          vendorId: preview.vendorId as string,
+          batchId,
+          sourceSystem: 'ORDERLY',
+          sourcePropertyId: batch.sourcePropertyId as string,
+          sourceInvoiceId: e.sourceInvoiceId,
+          invoiceNumber: e.invoiceNumber,
+          invoiceDate: e.invoiceDate,
+          ratePerKeg: e.ratePerKeg,
+          signedAmount: e.signedAmount,
+          signedKegCount: e.kegCount,
+          derivation: e.derivation,
+        })),
+      ).onConflictDoNothing();
     }
 
     await tx.update(vendorInvoiceImportBatches).set({

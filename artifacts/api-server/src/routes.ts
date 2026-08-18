@@ -36,6 +36,7 @@ import { registerMenuRoutes } from "./routes/menuRoutes";
 import { registerOrderlyImportRoutes } from "./routes/orderlyImportRoutes";
 import { registerHistoricalInvoiceRoutes } from "./routes/historicalInvoiceRoutes";
 import { registerVendorInvoiceImportRoutes } from "./routes/vendorInvoiceImportRoutes";
+import { backfillDepositLedgerFromApprovedBatches } from "./services/orderly/vendorInvoiceImport";
 import { registerAccountingRoutes } from "./routes/accountingRoutes";
 import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
@@ -1085,6 +1086,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ADD COLUMN IF NOT EXISTS deposit_flows JSONB NOT NULL DEFAULT '[]'::jsonb;
       `);
       console.log('[Migration] vendor_deposit_rates ready');
+
+      // Deposit LEDGER events — immutable per-vendor rows materialized from
+      // approved-batch deposit_flows (persisted evidence only; the ledger
+      // never re-derives gaps). Runs strictly AFTER the deposit_flows column
+      // exists. The backfill INSERT..SELECT is idempotent via the unique
+      // (company_id, source_invoice_id) key, so batches approved before the
+      // ledger existed (or by an older server) converge on restart.
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS vendor_deposit_ledger_events (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          store_id VARCHAR NOT NULL,
+          vendor_id VARCHAR NOT NULL,
+          batch_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL,
+          source_invoice_id TEXT NOT NULL,
+          invoice_number TEXT NOT NULL,
+          invoice_date TEXT NOT NULL,
+          rate_per_keg REAL NOT NULL,
+          signed_amount REAL NOT NULL,
+          signed_keg_count INTEGER NOT NULL,
+          derivation JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      // Identity widening for tables created by the earlier revision: the
+      // idempotency key must be the FULL persisted source identity (company,
+      // system, property, invoice id) — matching historical_invoices — or a
+      // same-numbered invoice from a different source property would be
+      // silently dropped. Existing rows adopt their batch's system/property.
+      await db.execute(sql`
+        ALTER TABLE vendor_deposit_ledger_events
+          ADD COLUMN IF NOT EXISTS source_system TEXT,
+          ADD COLUMN IF NOT EXISTS source_property_id TEXT;
+        UPDATE vendor_deposit_ledger_events e
+          SET source_system = b.source_system,
+              source_property_id = b.source_property_id
+          FROM vendor_invoice_import_batches b
+          WHERE e.batch_id = b.id
+            AND (e.source_system IS NULL OR e.source_property_id IS NULL);
+        ALTER TABLE vendor_deposit_ledger_events
+          ALTER COLUMN source_system SET NOT NULL,
+          ALTER COLUMN source_property_id SET NOT NULL;
+        DROP INDEX IF EXISTS vendor_deposit_ledger_source_uniq;
+        CREATE UNIQUE INDEX IF NOT EXISTS vendor_deposit_ledger_source_identity_uniq
+          ON vendor_deposit_ledger_events(company_id, source_system, source_property_id, source_invoice_id);
+        CREATE INDEX IF NOT EXISTS vendor_deposit_ledger_vendor_idx
+          ON vendor_deposit_ledger_events(company_id, vendor_id, invoice_date);
+      `);
+      // Ledger events are immutable financial evidence: UPDATE is always
+      // rejected at the DB level (same mechanism as historical invoice
+      // retention). DELETE is rejected too unless a transaction explicitly
+      // opts in via SET LOCAL app.allow_deposit_ledger_delete = 'on' —
+      // a code-owned escape hatch for test cleanup / PM-gated remediation.
+      await db.execute(sql`
+        CREATE OR REPLACE FUNCTION reject_deposit_ledger_mutation()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          IF TG_OP = 'DELETE'
+             AND current_setting('app.allow_deposit_ledger_delete', true) = 'on' THEN
+            RETURN OLD;
+          END IF;
+          RAISE EXCEPTION 'deposit ledger events are immutable: % on %', TG_OP, TG_TABLE_NAME
+            USING ERRCODE = 'restrict_violation';
+        END;
+        $$ LANGUAGE plpgsql;
+      `);
+      await db.execute(sql`
+        DROP TRIGGER IF EXISTS vendor_deposit_ledger_immutable ON vendor_deposit_ledger_events;
+        CREATE TRIGGER vendor_deposit_ledger_immutable
+          BEFORE UPDATE OR DELETE ON vendor_deposit_ledger_events
+          FOR EACH ROW EXECUTE FUNCTION reject_deposit_ledger_mutation();
+      `);
+      await backfillDepositLedgerFromApprovedBatches();
+      console.log('[Migration] vendor_deposit_ledger_events ready');
     } catch (err) {
       console.error('[Migration] vendor_deposit_rates error:', err);
     }

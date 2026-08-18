@@ -2743,6 +2743,48 @@ export const insertVendorDepositRateSchema = createInsertSchema(vendorDepositRat
 export type InsertVendorDepositRate = z.infer<typeof insertVendorDepositRateSchema>;
 export type VendorDepositRate = typeof vendorDepositRates.$inferSelect;
 
+// Per-vendor keg-deposit LEDGER events. Immutable evidence rows materialized
+// from approved-batch deposit flows (deposit-aware reconciliation) — the
+// ledger consumes persisted events only and NEVER re-derives invoice gaps.
+// Running dollar balance = SUM(signed_amount); outstanding kegs =
+// SUM(signed_keg_count). Never divide balance by the current rate.
+// Sign contract: positive = deposit charged (keg out), negative = credited.
+export const vendorDepositLedgerEvents = pgTable("vendor_deposit_ledger_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  storeId: varchar("store_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(),
+  /** Approved import batch the event was materialized from (provenance). */
+  batchId: varchar("batch_id").notNull(),
+  /** Source system + property: part of the invoice identity, matching the
+   *  historical_invoices uniqueness key. The same vendor can legitimately
+   *  reuse an invoice number across different source properties. */
+  sourceSystem: text("source_system").notNull(),
+  sourcePropertyId: text("source_property_id").notNull(),
+  /** Vendor-scoped source invoice id within (system, property). */
+  sourceInvoiceId: text("source_invoice_id").notNull(),
+  invoiceNumber: text("invoice_number").notNull(),
+  invoiceDate: text("invoice_date").notNull(), // YYYY-MM-DD business date
+  /** Rate effective on the invoice date when the flow was classified. */
+  ratePerKeg: real("rate_per_keg").notNull(),
+  /** Signed dollars: + charged (kegs out), − credited (kegs returned). */
+  signedAmount: real("signed_amount").notNull(),
+  /** Signed keg count, same sign convention. Never zero. */
+  signedKegCount: integer("signed_keg_count").notNull(),
+  /** Derivation provenance: {statedTotal, lineSum} from reconciliation. */
+  derivation: jsonb("derivation").notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  // One event per FULL persisted source-invoice identity (mirrors the
+  // historical_invoices key) — re-import/duplicate approval can never
+  // double-post, and a same-numbered invoice from a DIFFERENT source
+  // property is a distinct event, never silently dropped.
+  sourceUniq: uniqueIndex("vendor_deposit_ledger_source_identity_uniq")
+    .on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceInvoiceId),
+  vendorIdx: index("vendor_deposit_ledger_vendor_idx").on(t.companyId, t.vendorId, t.invoiceDate),
+}));
+export type VendorDepositLedgerEvent = typeof vendorDepositLedgerEvents.$inferSelect;
+
 export const vendorInvoiceImportLines = pgTable("vendor_invoice_import_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   batchId: varchar("batch_id").notNull(),

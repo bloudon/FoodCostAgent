@@ -9,13 +9,14 @@
  *    windows (advisory-lock serialization).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql as sqlRaw } from "drizzle-orm";
 import { db } from "../../db";
 import {
   companies,
   companyStores,
   historicalInvoices,
   importSourcePropertyBindings,
+  vendorDepositLedgerEvents,
   vendorDepositRates,
   vendorInvoiceImportBatches,
   vendorInvoiceImportLines,
@@ -23,8 +24,10 @@ import {
 } from "@workspace/db";
 import {
   approveVendorInvoiceBatch,
+  backfillDepositLedgerFromApprovedBatches,
   classifyDepositGap,
   createVendorDepositRate,
+  getVendorDepositLedger,
   runVendorInvoiceResolutionPreview,
   updateVendorDepositRateWindow,
   VendorInvoiceImportError,
@@ -39,10 +42,25 @@ const PROPERTY_ID = `inttest-dr-prop-${SFX}`;
 const VENDOR_ID = `inttest-dr-vendor-${SFX}`;
 const VENDOR_C = `inttest-dr-vendorC-${SFX}`;
 const BATCH_C = `inttest-dr-batchC-${SFX}`;
+const VENDOR_D = `inttest-dr-vendorD-${SFX}`;
+const BATCH_D = `inttest-dr-batchD-${SFX}`;
+const PROPERTY_ID2 = `inttest-dr-prop2-${SFX}`;
+const BATCH_E = `inttest-dr-batchE-${SFX}`;
 
 async function cleanup() {
   await db.delete(vendorInvoiceImportLines)
     .where(eq(vendorInvoiceImportLines.batchId, BATCH_C));
+  await db.delete(vendorInvoiceImportLines)
+    .where(eq(vendorInvoiceImportLines.batchId, BATCH_D));
+  await db.delete(vendorInvoiceImportLines)
+    .where(eq(vendorInvoiceImportLines.batchId, BATCH_E));
+  // Ledger events are DB-immutable; deletion requires the transaction-local
+  // opt-in (code-owned escape hatch for test cleanup).
+  await db.transaction(async (tx: any) => {
+    await tx.execute(sqlRaw`SET LOCAL app.allow_deposit_ledger_delete = 'on'`);
+    await tx.delete(vendorDepositLedgerEvents)
+      .where(eq(vendorDepositLedgerEvents.companyId, COMPANY_ID));
+  });
   await db.delete(vendorInvoiceImportBatches)
     .where(eq(vendorInvoiceImportBatches.companyId, COMPANY_ID));
   await db.delete(historicalInvoices)
@@ -82,6 +100,71 @@ beforeAll(async () => {
   await db.insert(vendors).values([
     { id: VENDOR_ID, companyId: COMPANY_ID, name: `Vendor Keg ${SFX}`, orderGuideType: "manual", active: 1, receiveByUnit: 0, requires1099: 0 },
     { id: VENDOR_C, companyId: COMPANY_ID, name: `Vendor Stale ${SFX}`, orderGuideType: "manual", active: 1, receiveByUnit: 0, requires1099: 0 },
+    { id: VENDOR_D, companyId: COMPANY_ID, name: `Vendor Ledger ${SFX}`, orderGuideType: "manual", active: 1, receiveByUnit: 0, requires1099: 0 },
+  ]);
+  // Ledger batch: invoice L-1 gap +$100 (2 kegs out), invoice L-2 gap −$50
+  // (1 keg returned) at a $50 rate → net balance +$50, +1 keg outstanding.
+  await db.insert(vendorInvoiceImportBatches).values({
+    id: BATCH_D,
+    companyId: COMPANY_ID,
+    sourceSystem: "ORDERLY",
+    sourcePropertyId: PROPERTY_ID,
+    sourcePropertyBindingId: BINDING_ID,
+    destinationStoreId: STORE_ID,
+    fileHash: `hash-D-${SFX}`,
+    originalFilename: "vendor-d.xlsx",
+    parserVersion: "1.0",
+    vendorNameDetected: `Vendor Ledger ${SFX}`,
+    resolvedVendorId: VENDOR_D,
+    invoiceCount: 2,
+    lineCount: 2,
+    totalAmount: 450,
+    invoiceTotals: [
+      { invoiceNumber: `L-1-${SFX}`, invoiceDate: "2026-07-02", amount: 300 },
+      { invoiceNumber: `L-2-${SFX}`, invoiceDate: "2026-07-09", amount: 150 },
+    ],
+    status: "pending_review",
+  });
+  // Same vendor + SAME invoice number as batch D's L-1, but a DIFFERENT
+  // source property: a legitimately distinct invoice identity that must get
+  // its own ledger event (regression: vendor-number-only idempotency key
+  // silently dropped it). Gap +$50 = 1 keg.
+  await db.insert(vendorInvoiceImportBatches).values({
+    id: BATCH_E,
+    companyId: COMPANY_ID,
+    sourceSystem: "ORDERLY",
+    sourcePropertyId: PROPERTY_ID2,
+    sourcePropertyBindingId: BINDING_ID,
+    destinationStoreId: STORE_ID,
+    fileHash: `hash-E-${SFX}`,
+    originalFilename: "vendor-e.xlsx",
+    parserVersion: "1.0",
+    vendorNameDetected: `Vendor Ledger ${SFX}`,
+    resolvedVendorId: VENDOR_D,
+    invoiceCount: 1,
+    lineCount: 1,
+    totalAmount: 150,
+    invoiceTotals: [
+      { invoiceNumber: `L-1-${SFX}`, invoiceDate: "2026-07-16", amount: 150 },
+    ],
+    status: "pending_review",
+  });
+  await db.insert(vendorInvoiceImportLines).values({
+    batchId: BATCH_E, rowIndex: 0, invoiceNumber: `L-1-${SFX}`, invoiceDate: "2026-07-16",
+    itemCode: "KEG-1", description: "Keg beer", qty: 1, extendedAmount: 100,
+    category: "Beer", glCode: "5100", rawData: {},
+  });
+  await db.insert(vendorInvoiceImportLines).values([
+    {
+      batchId: BATCH_D, rowIndex: 0, invoiceNumber: `L-1-${SFX}`, invoiceDate: "2026-07-02",
+      itemCode: "KEG-1", description: "Keg beer", qty: 2, extendedAmount: 200,
+      category: "Beer", glCode: "5100", rawData: {},
+    },
+    {
+      batchId: BATCH_D, rowIndex: 1, invoiceNumber: `L-2-${SFX}`, invoiceDate: "2026-07-09",
+      itemCode: "KEG-1", description: "Keg beer", qty: 2, extendedAmount: 200,
+      category: "Beer", glCode: "5100", rawData: {},
+    },
   ]);
   // Batch with one invoice whose header−lines gap is exactly $50 (one keg out).
   await db.insert(vendorInvoiceImportBatches).values({
@@ -218,6 +301,103 @@ describe("vendor deposit rate lifecycle", () => {
       .from(historicalInvoices)
       .where(and(eq(historicalInvoices.companyId, COMPANY_ID), eq(historicalInvoices.vendorId, VENDOR_C)));
     expect((inv.sourceSnapshot as any).depositFlow).toBeUndefined();
+  });
+
+  it("approval posts immutable ledger events atomically; derived balance and keg count are event sums; re-approval never double-posts", async () => {
+    const rate = await createVendorDepositRate({
+      companyId: COMPANY_ID, vendorId: VENDOR_D,
+      ratePerKeg: 50, effectiveFrom: "2026-01-01", effectiveTo: null, createdBy: null,
+    });
+    expect(rate).not.toBeNull();
+
+    const first = await approveVendorInvoiceBatch({ batchId: BATCH_D, companyId: COMPANY_ID, userId: null });
+    expect(first.invoicesPersisted).toBe(2);
+
+    const ledger = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(ledger.events).toHaveLength(2);
+    expect(ledger.balance).toBe(50);        // +100 − 50
+    expect(ledger.outstandingKegs).toBe(1); // +2 − 1
+    const byInvoice = Object.fromEntries(ledger.events.map(e => [e.invoiceNumber, e]));
+    expect(byInvoice[`L-1-${SFX}`]).toMatchObject({ signedAmount: 100, signedKegCount: 2, ratePerKeg: 50 });
+    expect(byInvoice[`L-2-${SFX}`]).toMatchObject({ signedAmount: -50, signedKegCount: -1, ratePerKeg: 50 });
+    // Derivation provenance is persisted on the immutable event row.
+    const [rawEvent] = await db.select().from(vendorDepositLedgerEvents)
+      .where(and(eq(vendorDepositLedgerEvents.companyId, COMPANY_ID), eq(vendorDepositLedgerEvents.vendorId, VENDOR_D)))
+      .limit(1);
+    expect(rawEvent.derivation).toMatchObject({ lineSum: expect.any(Number) });
+    expect(rawEvent.storeId).toBe(STORE_ID);
+    expect(rawEvent.batchId).toBe(BATCH_D);
+
+    // Idempotency: re-approving the same batch is a no-op — no double-post.
+    const again = await approveVendorInvoiceBatch({ batchId: BATCH_D, companyId: COMPANY_ID, userId: null });
+    expect((again as any).alreadyApproved).toBe(true);
+    const ledger2 = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(ledger2.events).toHaveLength(2);
+    expect(ledger2.balance).toBe(50);
+  });
+
+  it("a same-numbered invoice from a DIFFERENT source property posts its own ledger event (full source-identity key)", async () => {
+    // Depends on the previous test: batch D (property 1) already posted an
+    // event for invoice L-1. Batch E carries the SAME vendor + invoice number
+    // under property 2 with a +$50 gap — a distinct persisted invoice
+    // identity that must not be swallowed by the idempotency key.
+    const res = await approveVendorInvoiceBatch({ batchId: BATCH_E, companyId: COMPANY_ID, userId: null });
+    expect(res.invoicesPersisted).toBe(1);
+    const ledger = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(ledger.events).toHaveLength(3);
+    expect(ledger.balance).toBe(100);       // 50 + (+100 − 50)
+    expect(ledger.outstandingKegs).toBe(2);
+    const sameNumber = ledger.events.filter(e => e.invoiceNumber === `L-1-${SFX}`);
+    expect(sameNumber).toHaveLength(2);
+    const props = await db.select({ p: vendorDepositLedgerEvents.sourcePropertyId })
+      .from(vendorDepositLedgerEvents)
+      .where(and(
+        eq(vendorDepositLedgerEvents.companyId, COMPANY_ID),
+        eq(vendorDepositLedgerEvents.invoiceNumber, `L-1-${SFX}`),
+      ));
+    expect(new Set(props.map(r => r.p))).toEqual(new Set([PROPERTY_ID, PROPERTY_ID2]));
+  });
+
+  it("ledger events are DB-immutable: UPDATE and plain DELETE are rejected", async () => {
+    const fullMessage = (err: unknown): string => {
+      const e = err as Error & { cause?: Error };
+      return `${e?.message ?? ""} :: ${e?.cause?.message ?? ""}`;
+    };
+    expect(fullMessage(await db.update(vendorDepositLedgerEvents)
+      .set({ signedAmount: 999 })
+      .where(eq(vendorDepositLedgerEvents.companyId, COMPANY_ID))
+      .then(() => { throw new Error("UPDATE unexpectedly succeeded"); }, (e: unknown) => e),
+    )).toMatch(/immutable/i);
+    expect(fullMessage(await db.delete(vendorDepositLedgerEvents)
+      .where(eq(vendorDepositLedgerEvents.companyId, COMPANY_ID))
+      .then(() => { throw new Error("DELETE unexpectedly succeeded"); }, (e: unknown) => e),
+    )).toMatch(/immutable/i);
+    // Events are still intact.
+    const ledger = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(ledger.events).toHaveLength(3);
+  });
+
+  it("startup backfill materializes persisted batch evidence and is idempotent on rerun", async () => {
+    // Remove this company's events via the opt-in escape hatch, then prove
+    // the backfill rebuilds them 1:1 from persisted deposit_flows — and that
+    // a second run adds nothing.
+    await db.transaction(async (tx: any) => {
+      await tx.execute(sqlRaw`SET LOCAL app.allow_deposit_ledger_delete = 'on'`);
+      await tx.delete(vendorDepositLedgerEvents)
+        .where(eq(vendorDepositLedgerEvents.companyId, COMPANY_ID));
+    });
+    expect((await getVendorDepositLedger(COMPANY_ID, VENDOR_D)).events).toHaveLength(0);
+
+    await backfillDepositLedgerFromApprovedBatches();
+    const rebuilt = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(rebuilt.events).toHaveLength(3);
+    expect(rebuilt.balance).toBe(100);
+    expect(rebuilt.outstandingKegs).toBe(2);
+
+    await backfillDepositLedgerFromApprovedBatches();
+    const rerun = await getVendorDepositLedger(COMPANY_ID, VENDOR_D);
+    expect(rerun.events).toHaveLength(3);
+    expect(rerun.balance).toBe(100);
   });
 
   it("concurrent creates never produce overlapping windows", async () => {

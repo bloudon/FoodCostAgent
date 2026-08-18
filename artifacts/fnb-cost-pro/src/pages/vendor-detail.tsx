@@ -4,7 +4,7 @@ import { useRoute, Link, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Box, Search } from "lucide-react";
+import { ArrowLeft, Box, CircleDollarSign, Search } from "lucide-react";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,20 @@ import {
 } from "@/components/ui/table";
 import type { Vendor } from "@shared/schema";
 import { formatUnitName } from "@/lib/utils";
+
+interface VendorDepositLedger {
+  vendorId: string;
+  balance: number;
+  outstandingKegs: number;
+  events: Array<{
+    id: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    ratePerKeg: number;
+    signedAmount: number;
+    signedKegCount: number;
+  }>;
+}
 
 interface VendorItemWithDetails {
   id: string;
@@ -62,6 +76,14 @@ export default function VendorDetail() {
     queryKey: [`/api/vendor-items?vendor_id=${vendorId}`],
     enabled: !!vendorId,
   });
+
+  // Keg-deposit ledger: derived from immutable import-reconciliation events.
+  // Vendors without deposit activity return an empty ledger — card is hidden.
+  const { data: depositLedger } = useQuery<VendorDepositLedger>({
+    queryKey: [`/api/vendor-invoice-import/deposit-ledger/${vendorId}`],
+    enabled: !!vendorId,
+  });
+  const [showDepositHistory, setShowDepositHistory] = useState(false);
 
   const isLoading = vendorLoading || itemsLoading;
 
@@ -148,6 +170,65 @@ export default function VendorDetail() {
               </span>
             </div>
           </div>
+
+          {depositLedger && depositLedger.events.length > 0 && (
+            <Card className="mb-8" data-testid="card-keg-deposit-balance">
+              <CardContent className="pt-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <CircleDollarSign className="h-8 w-8 text-orange-500" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Keg deposit balance</p>
+                      <p className="text-2xl font-semibold" data-testid="text-deposit-balance">
+                        ${depositLedger.balance.toFixed(2)}
+                      </p>
+                      <p className="text-sm text-muted-foreground" data-testid="text-deposit-kegs">
+                        ~{depositLedger.outstandingKegs} outstanding {Math.abs(depositLedger.outstandingKegs) === 1 ? "keg" : "kegs"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDepositHistory((v) => !v)}
+                    data-testid="button-toggle-deposit-history"
+                  >
+                    {showDepositHistory ? "Hide history" : `History (${depositLedger.events.length})`}
+                  </Button>
+                </div>
+                {showDepositHistory && (
+                  <div className="rounded-md border mt-4">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead className="text-right">Kegs</TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {depositLedger.events.map((e) => (
+                          <TableRow key={e.id} data-testid={`row-deposit-event-${e.invoiceNumber}`}>
+                            <TableCell>{e.invoiceDate}</TableCell>
+                            <TableCell className="font-mono">{e.invoiceNumber}</TableCell>
+                            <TableCell className="text-right">
+                              {e.signedKegCount > 0 ? `+${e.signedKegCount}` : e.signedKegCount}
+                            </TableCell>
+                            <TableCell className="text-right">${e.ratePerKeg.toFixed(2)}</TableCell>
+                            <TableCell className={`text-right ${e.signedAmount < 0 ? "text-green-600" : ""}`}>
+                              {e.signedAmount < 0 ? `−$${Math.abs(e.signedAmount).toFixed(2)}` : `$${e.signedAmount.toFixed(2)}`}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <div>
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
