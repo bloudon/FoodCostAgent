@@ -1,0 +1,85 @@
+Exactly. That makes the matching contract better.
+
+If **Pack Size is already stored on the inventory/vendor relationship**, then the workbook gives us a useful cross-check:
+
+> **Vendor + Item Code + Pack Size**
+
+should be the preferred invoice-line resolution signature when `packSize.id` is absent from the XLSX.
+
+I would revise the PM guidance to Replit like this:
+
+```md
+## PM amendment — invoice line identity should use pack size as a cross-reference
+
+The Community Coffee XLSX does not expose Orderly `packSize.id`, but it DOES expose:
+
+- Item Code
+- Pack Size
+- Vendor context
+
+FnB already stores pack/vendor geometry on the inventory/vendor relationship.
+
+Therefore invoice-line resolution should prefer:
+
+1. authoritative existing ORDERLY external mapping for the property/item
+2. vendor + Item Code
+3. verify/cross-check Pack Size against the existing vendor/inventory pack relationship
+4. description as supporting evidence only
+5. otherwise HOLD
+
+Pack Size is not necessarily the primary identity by itself, but it is material evidence that the matched Item Code points to the correct vendor product/pack.
+
+### Conflict rule
+
+If:
+
+- vendor matches
+- Item Code matches
+- but Pack Size materially disagrees with FnB's stored vendor pack
+
+do NOT silently approve the match.
+
+Surface it as a review/conflict condition because it may indicate:
+
+- changed vendor pack
+- stale FnB pack geometry
+- reused Item Code
+- parser normalization issue
+- legitimately different vendor product
+
+The importer must preserve the raw source pack string regardless of normalization.
+
+### Price observation
+
+Use the resolved vendor-product pack geometry to interpret the invoice price.
+
+Do not infer case/unit semantics from `Qty` and `Extended $` alone if the existing FnB vendor-item relationship already defines what the purchase unit/case represents.
+
+For each approved line, preserve:
+
+- raw Orderly Pack Size
+- normalized/matched FnB pack
+- Qty
+- Extended $
+- derived purchase-unit price
+- invoice date
+- vendor
+- Item Code
+- source provenance
+
+If source Pack Size and existing FnB pack geometry disagree, hold the price observation rather than writing a potentially wrong historical price.
+```
+
+That also answers part of the question I raised earlier about `Qty`. We **shouldn't reverse-engineer pack semantics solely from the invoice export** if FnB already has the matching vendor pack definition.
+
+The invoice workbook gives us the transaction facts; the vendor-item cross-reference tells us how to interpret them.
+
+So conceptually:
+
+**Community Coffee + `01815` + `1/12 EACH` → existing vendor product → canonical inventory item**
+
+is much stronger than:
+
+**description "CF GRC RB DK 12OZ" → fuzzy inventory match.**
+
+And that means #1178 should probably be even more vendor-product-centric than inventory-item-centric: **resolve the invoice line to the vendor product first, then follow that relationship to the inventory item.** That preserves the actual purchasing identity and gives us the right place to attach historical price observations.
