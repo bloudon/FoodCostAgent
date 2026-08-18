@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-08-18T21:31:42.516Z",
+  "database": "heliumdb",
+  "mode": "apply",
+  "currentState": {
+    "totalVendorItems": 2660,
+    "duplicateGroups": 0,
+    "classA": 0,
+    "classB": 0,
+    "otherHeld": 0
+  },
+  "preflight1": {
+    "promotedBtoA": 0,
+    "remainingHeldB": [],
+    "finalPreApplyMergeableGroups": 0
+  },
+  "preflight2": {
+    "loserIdsPresent": false,
+    "affectedMessageCount": 0,
+    "totalMessageCount": 0,
+    "disposition": "No proposed loser ids appear in any edi_messages payload — proceed."
+  },
+  "apply": {
+    "groupsApplied": 0,
+    "groupsAlreadyRemediated": 0,
+    "groupsStopped": 0,
+    "rowsDeleted": 0,
+    "referencesRepointedByTable": {},
+    "zeroOrphanVerification": "PASS (no merge-caused orphans)",
+    "legacyDanglingReferences": {
+      "historical_invoice_lines.vendor_item_id": 12,
+      "inventory_item_price_history.vendor_item_id": 37,
+      "po_lines.vendor_item_id": 1,
+      "receipt_lines.vendor_item_id": 1
+    },
+    "harvills": {
+      "before": 118,
+      "after": 118
+    },
+    "remainingDuplicateGroupsByClass": {},
+    "remainingHeldB": [],
+    "stoppedGroups": [],
+    "constraintRecommendation": "All duplicate groups with real SKUs are resolved. Proposed for separate PM approval (do NOT add in this apply):\n  CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS vendor_items_vendor_item_sku_uniq\n    ON vendor_items (vendor_id, inventory_item_id, vendor_sku)\n    WHERE vendor_sku IS NOT NULL AND btrim(vendor_sku) <> '';\n  NULL/blank-SKU rows deliberately remain unconstrained (PM: NULL-SKU behavior must not be broadened)."
+  }
+}
