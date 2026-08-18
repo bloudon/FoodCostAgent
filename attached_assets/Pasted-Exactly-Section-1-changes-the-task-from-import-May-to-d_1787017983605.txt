@@ -1,0 +1,73 @@
+Exactly. **Section 1 changes the task from “import May” to “determine whether the existing May snapshot needs migration into the newer historical-evidence model.”**
+
+A second May import is now off the table.
+
+My PM decision is:
+
+> **HOLD all May production writes until Sections 0, 2, 3, and 4 are known.**
+
+The interpretation you laid out is right:
+
+* If prod already has `historical_session_unresolved_rows`, the linked May session is `is_historical_import=1`, unapplied, and it already carries ~1,031/1,039 unresolved evidence links, then **May is already done**. No reload, no migration.
+* If the May session exists and is historical/unapplied but unresolved evidence is missing, then the right next task is a **bounded migration of the existing May session** into the new evidence model.
+* If `applied=1`, that is a different situation and we stop immediately.
+* If the unresolved-evidence table itself is absent, then we first need the schema/migration deployed before touching the May session.
+
+I’d send Replit this as the current PM position:
+
+```md
+## PM Decision — Existing May Batch Is Authoritative
+
+Section 1 confirms production already contains the authoritative May 2026 Bay Hill batch:
+
+- batchId: `fce3be2b-23b0-449a-9cd4-73788072e3e3`
+- filename: `Bay Hill Inventory May_2026.xlsx`
+- source rows: 5,358
+- valuation: $254,286.67
+- period end: 2026-06-01
+- status: approved
+- approved: 2026-08-02
+
+Therefore:
+
+> Do NOT reload May and do NOT create a second May batch/session.
+
+The remaining decision is whether the existing production May session is already compatible with the current historical-evidence model or needs a bounded migration.
+
+Return Sections 0, 2, 3, and 4 read-only.
+
+Required interpretation:
+
+### Already complete
+If:
+- unresolved-evidence schema exists
+- linked session is historical
+- session is unapplied
+- unresolved links are already present at the expected population
+
+then NO May production mutation is needed.
+
+### Migration required
+If:
+- session exists
+- session is historical/unapplied
+- unresolved links are absent or incomplete
+
+then propose migration of the EXISTING session only.
+
+No new batch.
+No new count session.
+
+### Hard stop
+If:
+- session is applied
+- source/session linkage is inconsistent
+- valuation differs from $254,286.67
+- duplicate May sessions exist
+
+STOP and escalate.
+
+No production write until PM reviews the remaining read-only evidence.
+```
+
+So yes: **we’ve now narrowed May production work to a compatibility/migration check, not an import task.**
