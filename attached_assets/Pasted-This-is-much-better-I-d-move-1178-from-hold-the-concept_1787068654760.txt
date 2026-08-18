@@ -1,0 +1,171 @@
+This is much better. I’d move #1178 from **“hold the concept” to “conditional PM approval”**, with a few important edits before Builder starts.
+
+The vendor-product-centric resolution is the right correction. The workbook gives us Vendor context + Item Code + Pack Size, so resolving the purchasing identity first and then following that to the inventory item is cleaner than trying to match directly against inventory names.
+
+There are **four things I would change**.
+
+First, the opening premise still says:
+
+> “keeps nothing about the invoice itself (no invoice or line tables)”
+
+We should not let that become a design assumption until Replit checks the current repo. We already did historical invoice work earlier. Change that sentence to something neutral like:
+
+> “The current photo-invoice workflow is optimized for single-invoice price capture and does not currently provide the staged bulk historical-import workflow needed here.”
+
+That avoids accidentally authorizing duplicate invoice infrastructure.
+
+Second, I would remove **“new tables”** from Done Looks Like:
+
+> “Approval persists invoice headers and line items durably (new tables)”
+
+should become:
+
+> “Approval persists invoice headers and line items durably using the existing invoice domain where possible; add only the minimum schema required after repo audit.”
+
+That is the biggest remaining architecture issue.
+
+Third, tighten this sentence:
+
+> “via existing ORDERLY external mappings / item code / name”
+
+because name should not appear as if it is a peer identity mechanism. You already fixed this properly in Step 2. Make Done Looks Like agree with it:
+
+> “via authoritative ORDERLY mappings and vendor-item identity, with description used only as supporting review evidence.”
+
+Fourth, I would explicitly protect **historical price chronology**. Right now Step 4 says “record dated price observations,” but it does not yet say that importing old invoices cannot become the current price simply because they were imported later.
+
+Add:
+
+```md
+Historical price observations must be ordered by their business-effective invoice date, not import/created timestamp. Importing a May invoice after an August price exists must never make the May price current solely because it was imported later.
+```
+
+## One identity nuance I want resolved
+
+This line:
+
+> item identity must flow through `inventory_item_external_mappings` … exactly as the inventory import does — the mapping row is the claim authority
+
+is correct for the **canonical inventory identity**, but now that we have made the importer vendor-product-centric, I would distinguish the two identities:
+
+```text
+Source purchasing identity:
+Vendor + property-scoped Orderly Item Code + Pack Size evidence
+        ↓
+Existing FnB vendor item / vendor-product relationship
+        ↓
+Authoritative ORDERLY external mapping
+        ↓
+Canonical inventory item
+```
+
+We don't want future code to interpret “mapping row is claim authority” as permission to skip validating that the **vendor SKU/pack we purchased** is the correct vendor product.
+
+The mapping answers:
+
+> Which canonical FnB inventory item does this Orderly source identity represent?
+
+The vendor-item relationship answers:
+
+> Which purchasable SKU/pack from this vendor was actually invoiced?
+
+We need both.
+
+## PM disposition
+
+I'd mark the task:
+
+> **CONDITIONAL GO — repo/schema audit is Step 0, then Builder may proceed if the existing domain can be reused without a parallel invoice model.**
+
+Paste-ready amendment:
+
+```md
+## PM Review — Conditional GO
+
+The revised vendor-product-centric approach is approved.
+
+Before implementation, make the following amendments.
+
+### Step 0 — Existing invoice-domain audit
+
+Before creating any invoice/header/line tables, inspect the current repo and prior historical invoice work.
+
+Determine whether existing invoice persistence can represent:
+
+- historical invoice header
+- historical invoice line
+- vendor
+- invoice number/date
+- inventory item link
+- vendor-item link
+- source provenance
+- unresolved line
+- price observation
+- accounting/category snapshot
+
+Reuse the existing invoice domain wherever possible.
+
+Only add schema for concrete missing capabilities.
+
+Do not create a parallel "bulk invoice" invoice domain.
+
+### Wording correction
+
+Replace:
+
+"keeps nothing about the invoice itself (no invoice or line tables)"
+
+with:
+
+"The current photo-invoice workflow is optimized for single-invoice price capture and does not provide the staged bulk historical-import workflow required here."
+
+Replace:
+
+"Approval persists invoice headers and line items durably (new tables)"
+
+with:
+
+"Approval persists invoice headers and line items durably using the existing invoice domain where possible, with only the minimum additional schema required."
+
+### Identity clarification
+
+Preserve two related identities:
+
+1. Purchasing identity
+   - resolved vendor
+   - property-scoped Orderly Item Code
+   - existing FnB vendor-item/vendor-product
+   - Pack Size as material cross-check evidence
+
+2. Canonical inventory identity
+   - authoritative `inventory_item_external_mappings`
+   - source ORDERLY
+   - property scoped
+   - mapping row remains claim authority for canonical inventory-item resolution
+
+Description/name may support review but must not independently authorize an automatic match.
+
+If Item Code matches but Pack Size materially conflicts with stored vendor-product geometry:
+HOLD.
+
+### Historical price chronology
+
+Historical invoice price observations are effective as of the invoice date.
+
+Import order / `createdAt` must not determine the current vendor price.
+
+Example required test:
+
+- existing August price is current
+- import May historical invoice afterward
+- May observation is retained in history
+- August remains current
+
+### Approval gate
+
+Builder may proceed after the Step 0 audit confirms the smallest schema delta.
+
+If the audit reveals an existing invoice domain incompatible with this approach, STOP and return the conflict rather than creating a second model.
+```
+
+After those edits, I like #1178. It is appropriately scoped: **import historical purchase truth, connect it to existing vendor/item identities, preserve unresolved evidence, and stop before analytics.** That's exactly the right next layer for replacing the useful part of Orderly without dragging Orderly's whole application model into FnB.
