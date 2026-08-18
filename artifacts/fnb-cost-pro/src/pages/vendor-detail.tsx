@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import type { Vendor } from "@shared/schema";
 import { formatUnitName } from "@/lib/utils";
+import { SortableTableHead, sortData, useTableSort } from "@/components/sortable-table-head";
 
 interface VendorDepositLedger {
   vendorId: string;
@@ -61,11 +62,21 @@ interface VendorItemWithDetails {
   };
 }
 
+type VendorItemSortField =
+  | "name"
+  | "sku"
+  | "price"
+  | "packSize"
+  | "status"
+  | "unit"
+  | "casePrice";
+
 export default function VendorDetail() {
   const [, params] = useRoute("/vendors/:id");
   const [, navigate] = useLocation();
   const vendorId = params?.id;
   const [searchQuery, setSearchQuery] = useState("");
+  const { sortField, sortDirection, handleSort } = useTableSort<VendorItemSortField>("name");
 
   const { data: vendor, isLoading: vendorLoading } = useQuery<Vendor>({
     queryKey: [`/api/vendors/${vendorId}`],
@@ -98,6 +109,40 @@ export default function VendorDetail() {
       return itemName.includes(query) || sku.includes(query);
     });
   }, [vendorItems, searchQuery]);
+
+  // Sorting composes on top of the search result, so the visible rows are
+  // always "filtered, then ordered". Numeric fields return numbers so the
+  // shared comparator sorts them numerically rather than lexically.
+  const sortedItems = useMemo(
+    () =>
+      sortData(filteredItems, sortField, sortDirection, (item, field) => {
+        switch (field as VendorItemSortField) {
+          case "name":
+            return item.inventoryItem?.name || "Unknown Item";
+          case "sku":
+            return item.vendorSku || "";
+          case "price":
+            return item.inventoryItem?.pricePerUnit ?? item.lastPrice ?? 0;
+          case "packSize": {
+            // Rows render as "outer × inner"; order by the total units the
+            // pack contains so 2 × 12 sorts above 1 × 6.
+            const outer = item.caseSize ?? item.inventoryItem?.caseSize;
+            const inner = item.innerPackSize ?? item.inventoryItem?.innerPackSize;
+            if (outer == null) return null;
+            return inner != null ? outer * inner : outer;
+          }
+          case "status":
+            return item.active ? "Active" : "Inactive";
+          case "unit":
+            return item.unit ? formatUnitName(item.unit.name) : "";
+          case "casePrice":
+            return item.displayCasePrice;
+          default:
+            return "";
+        }
+      }),
+    [filteredItems, sortField, sortDirection],
+  );
 
   if (!vendorId) {
     return (
@@ -165,9 +210,6 @@ export default function VendorDetail() {
                   Account: <span className="font-mono">{vendor.accountNumber}</span>
                 </span>
               )}
-              <span data-testid="text-vendor-item-count">
-                {vendorItems?.length || 0} {vendorItems?.length === 1 ? "item" : "items"}
-              </span>
             </div>
           </div>
 
@@ -231,10 +273,12 @@ export default function VendorDetail() {
           )}
 
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-              <h2 className="text-xl font-semibold">Inventory Items</h2>
-              {vendorItems && vendorItems.length > 0 && (
-                <div className="relative w-full sm:w-72">
+            <h2 className="text-xl font-semibold mb-4" data-testid="text-inventory-items-title">
+              Inventory Items ({vendorItems?.length || 0})
+            </h2>
+            {vendorItems && vendorItems.length > 0 && (
+              <div className="mb-6">
+                <div className="relative max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
                   <Input
                     placeholder="Search by name or SKU..."
@@ -244,8 +288,8 @@ export default function VendorDetail() {
                     data-testid="input-search-items"
                   />
                 </div>
-              )}
-            </div>
+              </div>
+            )}
             {vendorItems && vendorItems.length > 0 ? (
               <>
                 {searchQuery && (
@@ -253,22 +297,22 @@ export default function VendorDetail() {
                     Showing {filteredItems.length} of {vendorItems.length} items
                   </p>
                 )}
-                <div className="rounded-md border">
+                <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[30%]">Item Name</TableHead>
-                        <TableHead>SKU</TableHead>
-                        <TableHead className="text-right">Price</TableHead>
-                        <TableHead className="text-right">Pack Size</TableHead>
-                        <TableHead className="text-center">Status</TableHead>
-                        <TableHead className="text-right">Unit</TableHead>
-                        <TableHead className="text-right">Case Price</TableHead>
+                        <SortableTableHead field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="w-[30%]">Item Name</SortableTableHead>
+                        <SortableTableHead field="sku" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>SKU</SortableTableHead>
+                        <SortableTableHead field="price" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right [&>div]:justify-end">Price</SortableTableHead>
+                        <SortableTableHead field="packSize" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right [&>div]:justify-end">Pack Size</SortableTableHead>
+                        <SortableTableHead field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-center [&>div]:justify-center">Status</SortableTableHead>
+                        <SortableTableHead field="unit" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right [&>div]:justify-end">Unit</SortableTableHead>
+                        <SortableTableHead field="casePrice" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="text-right [&>div]:justify-end">Case Price</SortableTableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredItems.length > 0 ? (
-                        filteredItems.map((item) => (
+                      {sortedItems.length > 0 ? (
+                        sortedItems.map((item) => (
                           <TableRow 
                             key={item.id} 
                             className="hover-elevate cursor-pointer"
