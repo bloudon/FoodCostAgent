@@ -28,6 +28,7 @@ import {
   inventoryItemExternalMappings,
   inventoryItems,
   units,
+  vendorDepositRates,
   vendorInvoiceImportBatches,
   vendorInvoiceImportLines,
   vendorItems,
@@ -307,6 +308,145 @@ export interface LineResolution {
   derivedCasePrice: number | null;
 }
 
+// ─── Deposit-aware gap classification (pure) ─────────────────────────────────
+//
+// PM contract: deposit explanation is intentionally narrow. A gap becomes
+// explained_deposit_flow ONLY when (1) the vendor has a configured keg-deposit
+// rate, (2) the rate is effective on the invoice business date, (3) exactly
+// one effective rate applies, and (4) the gap is an exact signed integer
+// multiple of that rate. Fail closed on everything else — the normal
+// reconciliation warning remains. This is NOT a generic invoice-adjustment
+// framework: no other gap cause (freight, tax, surcharge, credit) is inferred.
+//
+// Sign contract (source-proven from the Progressive deposit ledger sheet):
+//   positive = deposit CHARGED (keg out), negative = deposit CREDITED (keg returned).
+
+export interface DepositRateWindow {
+  ratePerKeg: number;
+  effectiveFrom: string; // YYYY-MM-DD inclusive
+  effectiveTo: string | null; // YYYY-MM-DD inclusive; null = open-ended
+}
+
+export interface ExplainedDepositFlow {
+  ratePerKeg: number;
+  /** Signed dollars: + charged (kegs out), − credited (kegs returned). */
+  signedAmount: number;
+  /** Signed keg count with the same sign convention. Never zero. */
+  kegCount: number;
+}
+
+/**
+ * Classify an invoice gap against the vendor's effective-dated deposit rates.
+ * Returns null unless ALL four PM conditions hold. All arithmetic is done in
+ * integer cents so float noise can never fake or miss an exact multiple.
+ */
+export function classifyDepositGap(
+  gap: number,
+  invoiceDate: string,
+  rates: DepositRateWindow[],
+): ExplainedDepositFlow | null {
+  const gapCents = Math.round(gap * 100);
+  if (gapCents === 0) return null; // nothing to explain
+  const effective = rates.filter(r =>
+    r.effectiveFrom <= invoiceDate && (r.effectiveTo == null || invoiceDate <= r.effectiveTo),
+  );
+  // Exactly one effective rate — zero or overlapping/ambiguous rates fail closed.
+  if (effective.length !== 1) return null;
+  const rateCents = Math.round(effective[0].ratePerKeg * 100);
+  if (rateCents <= 0) return null;
+  if (gapCents % rateCents !== 0) return null;
+  const kegCount = gapCents / rateCents;
+  return {
+    ratePerKeg: rateCents / 100,
+    signedAmount: gapCents / 100,
+    kegCount,
+  };
+}
+
+// ─── Deposit-rate mutations (atomic, admin-gated at the route layer) ─────────
+//
+// Both mutations serialize per (company, vendor) with an advisory xact lock so
+// the overlap check and the write are atomic: concurrent writers can never
+// both pass validation and leave overlapping windows, which would silently
+// disable deposit classification (it fails closed on ambiguity).
+
+function windowsOverlap(
+  aFrom: string, aTo: string | null,
+  bFrom: string, bTo: string | null,
+): boolean {
+  return (aTo == null || bFrom <= aTo) && (bTo == null || aFrom <= bTo);
+}
+
+async function lockDepositRates(tx: any, companyId: string, vendorId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${companyId + ':' + vendorId + ':deposit_rates'}))`);
+}
+
+/** Create a rate window. Returns null when it would overlap an existing one. */
+export async function createVendorDepositRate(input: {
+  companyId: string;
+  vendorId: string;
+  ratePerKeg: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdBy: string | null;
+}): Promise<Record<string, unknown> | null> {
+  if (input.effectiveTo != null && input.effectiveTo < input.effectiveFrom) {
+    throw new VendorInvoiceImportError('INVALID_REQUEST', 'effectiveTo must not be before effectiveFrom.');
+  }
+  return db.transaction(async (tx: any) => {
+    await lockDepositRates(tx, input.companyId, input.vendorId);
+    const existing = await tx.select().from(vendorDepositRates)
+      .where(and(
+        eq(vendorDepositRates.companyId, input.companyId),
+        eq(vendorDepositRates.vendorId, input.vendorId),
+      ));
+    const overlaps = existing.some((r: any) =>
+      windowsOverlap(input.effectiveFrom, input.effectiveTo, r.effectiveFrom, r.effectiveTo));
+    if (overlaps) return null;
+    const [row] = await tx.insert(vendorDepositRates).values(input).returning();
+    return row;
+  });
+}
+
+/**
+ * Update a rate window's end date — the "close the open-ended rate so a
+ * successor can start" operation. Also permits reopening/extending, validated
+ * against every OTHER window for the vendor.
+ */
+export async function updateVendorDepositRateWindow(input: {
+  companyId: string;
+  vendorId: string;
+  rateId: string;
+  effectiveTo: string | null;
+}): Promise<Record<string, unknown>> {
+  return db.transaction(async (tx: any) => {
+    await lockDepositRates(tx, input.companyId, input.vendorId);
+    const rows = await tx.select().from(vendorDepositRates)
+      .where(and(
+        eq(vendorDepositRates.companyId, input.companyId),
+        eq(vendorDepositRates.vendorId, input.vendorId),
+      ));
+    const target = rows.find((r: any) => r.id === input.rateId);
+    if (!target) {
+      throw new VendorInvoiceImportError('NOT_FOUND', 'Deposit rate not found for this vendor.');
+    }
+    if (input.effectiveTo != null && input.effectiveTo < target.effectiveFrom) {
+      throw new VendorInvoiceImportError('INVALID_REQUEST', 'effectiveTo must not be before the rate\'s effectiveFrom.');
+    }
+    const overlaps = rows.some((r: any) =>
+      r.id !== input.rateId &&
+      windowsOverlap(target.effectiveFrom, input.effectiveTo, r.effectiveFrom, r.effectiveTo));
+    if (overlaps) {
+      throw new VendorInvoiceImportError('CONFLICT', 'The updated date window would overlap another deposit rate for this vendor.');
+    }
+    const [updated] = await tx.update(vendorDepositRates)
+      .set({ effectiveTo: input.effectiveTo })
+      .where(eq(vendorDepositRates.id, input.rateId))
+      .returning();
+    return updated;
+  });
+}
+
 export interface InvoiceReconciliation {
   invoiceNumber: string;
   invoiceDate: string | null;
@@ -314,6 +454,10 @@ export interface InvoiceReconciliation {
   lineSum: number;
   gap: number | null;
   reconciles: boolean;
+  /** 'reconciled' (gap ≈ 0) | 'explained_deposit_flow' | 'unreconciled'. */
+  reconciliationStatus: 'reconciled' | 'explained_deposit_flow' | 'unreconciled';
+  /** Present only when reconciliationStatus === 'explained_deposit_flow'. */
+  depositFlow: ExplainedDepositFlow | null;
 }
 
 export interface ResolutionPreview {
@@ -620,18 +764,44 @@ export async function runVendorInvoiceResolutionPreview(
       (lineSumByInvoice.get(line.invoiceNumber) ?? 0) + (line.extendedAmount ?? 0),
     );
   }
+
+  // Deposit-aware reconciliation: rates only exist for the RESOLVED vendor.
+  // No resolved vendor or no configured rate → the classifier is inert and
+  // every non-zero gap remains a normal reconciliation warning (fail closed).
+  const depositRates: DepositRateWindow[] = vendorId
+    ? (await db
+        .select({
+          ratePerKeg: vendorDepositRates.ratePerKeg,
+          effectiveFrom: vendorDepositRates.effectiveFrom,
+          effectiveTo: vendorDepositRates.effectiveTo,
+        })
+        .from(vendorDepositRates)
+        .where(and(
+          eq(vendorDepositRates.companyId, companyId),
+          eq(vendorDepositRates.vendorId, vendorId),
+        ))) as DepositRateWindow[]
+    : [];
+
   const allInvoiceNumbers = [...new Set([...lineSumByInvoice.keys(), ...totalByInvoice.keys()])];
   const reconciliation: InvoiceReconciliation[] = allInvoiceNumbers.map(inv => {
     const stated = totalByInvoice.get(inv);
     const lineSum = Math.round((lineSumByInvoice.get(inv) ?? 0) * 100) / 100;
     const gap = stated ? Math.round((stated.amount - lineSum) * 100) / 100 : null;
+    const invoiceDate = stated?.invoiceDate ?? stagedLines.find((l: any) => l.invoiceNumber === inv)?.invoiceDate ?? null;
+    const exact = gap != null && Math.abs(gap) <= 0.01;
+    const depositFlow =
+      !exact && gap != null && invoiceDate
+        ? classifyDepositGap(gap, invoiceDate, depositRates)
+        : null;
     return {
       invoiceNumber: inv,
-      invoiceDate: stated?.invoiceDate ?? stagedLines.find((l: any) => l.invoiceNumber === inv)?.invoiceDate ?? null,
+      invoiceDate,
       statedTotal: stated?.amount ?? null,
       lineSum,
       gap,
-      reconciles: gap != null && Math.abs(gap) <= 0.01,
+      reconciles: exact || depositFlow != null,
+      reconciliationStatus: exact ? 'reconciled' as const : depositFlow ? 'explained_deposit_flow' as const : 'unreconciled' as const,
+      depositFlow,
     };
   }).sort((a, b) => (a.invoiceDate ?? '').localeCompare(b.invoiceDate ?? ''));
 
@@ -785,6 +955,18 @@ export async function approveVendorInvoiceBatch(params: {
   let invoicesSkipped = 0;
   let linesPersisted = 0;
   let priceObservations = 0;
+  // Explained deposit-flow events for invoices this approval actually
+  // persisted. Written to the batch record so downstream consumers (the
+  // deposit ledger) read persisted evidence, never re-derive gaps.
+  const depositFlowEvents: Array<{
+    invoiceNumber: string;
+    invoiceDate: string;
+    sourceInvoiceId: string;
+    ratePerKeg: number;
+    signedAmount: number;
+    kegCount: number;
+    derivation: { statedTotal: number | null; lineSum: number };
+  }> = [];
 
   let lostApprovalRace = false;
   await db.transaction(async (tx: any) => {
@@ -806,6 +988,29 @@ export async function approveVendorInvoiceBatch(params: {
       throw new VendorInvoiceImportError('CONFLICT', `Batch status is "${lockedStatus}"; only pending_review batches can be approved.`);
     }
 
+    // Deposit classification must be atomic with persistence: take the SAME
+    // per-(company, vendor) advisory lock the rate mutations use, re-read the
+    // rates through this transaction, and re-classify every gap here. The
+    // preview's classification is advisory only — a rate window closed or
+    // replaced between preview and approval must not leak stale evidence
+    // into persisted deposit-flow events.
+    const approvalVendorId = preview.vendorId;
+    let txRates: DepositRateWindow[] = [];
+    if (approvalVendorId != null) {
+      await lockDepositRates(tx, companyId, approvalVendorId);
+      txRates = (await tx
+        .select({
+          ratePerKeg: vendorDepositRates.ratePerKeg,
+          effectiveFrom: vendorDepositRates.effectiveFrom,
+          effectiveTo: vendorDepositRates.effectiveTo,
+        })
+        .from(vendorDepositRates)
+        .where(and(
+          eq(vendorDepositRates.companyId, companyId),
+          eq(vendorDepositRates.vendorId, approvalVendorId),
+        ))) as DepositRateWindow[];
+    }
+
     for (const invoiceNumber of invoiceOrder) {
       const invLines = byInvoice.get(invoiceNumber)!;
       if (alreadyImported.has(invoiceNumber)) {
@@ -824,6 +1029,14 @@ export async function approveVendorInvoiceBatch(params: {
       // the DB uniqueness key is (company, source system, property, source
       // invoice id) — so the vendor must be part of the synthesized id.
       const sourceInvoiceId = `xlsx:${preview.vendorId}:${invoiceNumber}`;
+      // Re-classify under the lock using the transaction's own rate snapshot
+      // (never the preview's, which may be stale).
+      const gap = stated ? Math.round((stated.amount - lineSum) * 100) / 100 : null;
+      const exactMatch = gap != null && Math.abs(gap) <= 0.01;
+      const depositFlow =
+        !exactMatch && gap != null && invoiceDate
+          ? classifyDepositGap(gap, invoiceDate, txRates)
+          : null;
       const sourceSnapshot = {
         importKind: 'vendor_invoice_xlsx',
         batchId,
@@ -831,6 +1044,16 @@ export async function approveVendorInvoiceBatch(params: {
         invoiceNumber,
         invoiceDate,
         statedTotal: stated?.amount ?? null,
+        // Deposit-flow derivation evidence (header − product line sum), when
+        // reconciliation classified the gap as an explained deposit flow.
+        ...(depositFlow
+          ? {
+              depositFlow: {
+                ...depositFlow,
+                derivation: { statedTotal: stated?.amount ?? null, lineSum },
+              },
+            }
+          : {}),
         vendorNameDetected: batch.vendorNameDetected,
         lines: invLines.map(l => ({
           rowIndex: l.rowIndex,
@@ -871,6 +1094,17 @@ export async function approveVendorInvoiceBatch(params: {
         continue;
       }
       invoicesPersisted++;
+      if (depositFlow) {
+        depositFlowEvents.push({
+          invoiceNumber,
+          invoiceDate,
+          sourceInvoiceId,
+          ratePerKeg: depositFlow.ratePerKeg,
+          signedAmount: depositFlow.signedAmount,
+          kegCount: depositFlow.kegCount,
+          derivation: { statedTotal: stated?.amount ?? null, lineSum },
+        });
+      }
 
       for (const line of invLines) {
         const resolvedLink = line.status === 'resolved';
@@ -963,6 +1197,7 @@ export async function approveVendorInvoiceBatch(params: {
     await tx.update(vendorInvoiceImportBatches).set({
       status: 'approved',
       resolvedVendorId: preview.vendorId,
+      depositFlows: depositFlowEvents,
       approvedAt: new Date(),
       approvedBy: userId,
     }).where(eq(vendorInvoiceImportBatches.id, batchId));

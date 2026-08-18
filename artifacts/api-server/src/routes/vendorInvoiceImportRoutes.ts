@@ -9,10 +9,12 @@
  */
 import type { Express } from 'express';
 import multer from 'multer';
-import { requireAuth, requireTier } from '../auth';
+import { requireAuth, requireCompanyAdmin, requireTier } from '../auth';
 import { canAccessStore, getAccessibleStores } from '../permissions';
 import {
   approveVendorInvoiceBatch,
+  createVendorDepositRate,
+  updateVendorDepositRateWindow,
   getActiveOrderlyBinding,
   getBatchDestinationStoreId,
   listHeldLines,
@@ -22,6 +24,9 @@ import {
   VendorInvoiceImportError,
 } from '../services/orderly/vendorInvoiceImport';
 import { VendorInvoiceParseError } from '../services/orderly/vendorInvoiceXlsx';
+import { and, eq } from 'drizzle-orm';
+import { insertVendorDepositRateSchema, vendorDepositRates, vendors } from '@workspace/db';
+import { db } from '../db';
 
 const xlsxUpload = multer({
   storage: multer.memoryStorage(),
@@ -145,6 +150,118 @@ export function registerVendorInvoiceImportRoutes(app: Express) {
       } catch (err: any) {
         console.error('[VendorInvoiceImport] approve error:', err);
         res.status(errStatus(err)).json({ error: err?.message ?? 'Approval failed.' });
+      }
+    },
+  );
+
+  // ── Vendor keg-deposit rates (effective-dated) ─────────────────────────────
+  // Consumed by deposit-aware reconciliation. Company-scoped and admin-only
+  // (rates are company-wide financial configuration); writes reject
+  // overlapping windows so "exactly one effective rate" stays provable.
+  app.get(
+    '/api/vendor-invoice-import/deposit-rates/:vendorId',
+    requireAuth,
+    // @ts-ignore
+    requireCompanyAdmin,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const vendorId = String(req.params.vendorId);
+        const [vendor] = await db.select({ id: vendors.id }).from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.companyId, companyId))).limit(1);
+        if (!vendor) return res.status(404).json({ error: 'Vendor not found.' });
+        const rates = await db.select().from(vendorDepositRates)
+          .where(and(eq(vendorDepositRates.companyId, companyId), eq(vendorDepositRates.vendorId, vendorId)))
+          .orderBy(vendorDepositRates.effectiveFrom);
+        res.json(rates);
+      } catch (err: any) {
+        console.error('[VendorInvoiceImport] deposit-rates list error:', err);
+        res.status(500).json({ error: err?.message ?? 'Could not list deposit rates.' });
+      }
+    },
+  );
+
+  app.post(
+    '/api/vendor-invoice-import/deposit-rates/:vendorId',
+    requireAuth,
+    // Rates are company-wide reconciliation evidence: only company admins may
+    // configure them (store users could otherwise reshape ledger evidence).
+    // @ts-ignore
+    requireCompanyAdmin,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const vendorId = String(req.params.vendorId);
+        const [vendor] = await db.select({ id: vendors.id }).from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.companyId, companyId))).limit(1);
+        if (!vendor) return res.status(404).json({ error: 'Vendor not found.' });
+        const parsed = insertVendorDepositRateSchema.safeParse({
+          ...req.body,
+          companyId,
+          vendorId,
+          createdBy: ((req as any).user?.id as string | undefined) ?? null,
+        });
+        if (!parsed.success) {
+          return res.status(400).json({ error: 'Invalid deposit rate.', details: parsed.error.flatten() });
+        }
+        // Atomic create: overlap check + insert serialized per (company,
+        // vendor), so concurrent writers cannot both pass validation.
+        const created = await createVendorDepositRate({
+          companyId,
+          vendorId,
+          ratePerKeg: parsed.data.ratePerKeg,
+          effectiveFrom: parsed.data.effectiveFrom,
+          effectiveTo: parsed.data.effectiveTo ?? null,
+          createdBy: parsed.data.createdBy ?? null,
+        });
+        if (!created) {
+          return res.status(409).json({ error: 'The date window overlaps an existing deposit rate for this vendor. End the existing rate first (PATCH its effectiveTo).' });
+        }
+        res.status(201).json(created);
+      } catch (err: any) {
+        console.error('[VendorInvoiceImport] deposit-rates create error:', err);
+        res.status(errStatus(err)).json({ error: err?.message ?? 'Could not create deposit rate.' });
+      }
+    },
+  );
+
+  // Close (or re-open/extend) a rate window so a successor rate can start.
+  app.patch(
+    '/api/vendor-invoice-import/deposit-rates/:vendorId/:rateId',
+    requireAuth,
+    // @ts-ignore
+    requireCompanyAdmin,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const vendorId = String(req.params.vendorId);
+        const rateId = String(req.params.rateId);
+        const [vendor] = await db.select({ id: vendors.id }).from(vendors)
+          .where(and(eq(vendors.id, vendorId), eq(vendors.companyId, companyId))).limit(1);
+        if (!vendor) return res.status(404).json({ error: 'Vendor not found.' });
+        const effectiveTo = req.body?.effectiveTo ?? null;
+        if (effectiveTo != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(effectiveTo))) {
+          return res.status(400).json({ error: 'effectiveTo must be YYYY-MM-DD or null.' });
+        }
+        const updated = await updateVendorDepositRateWindow({
+          companyId,
+          vendorId,
+          rateId,
+          effectiveTo: effectiveTo == null ? null : String(effectiveTo),
+        });
+        res.json(updated);
+      } catch (err: any) {
+        console.error('[VendorInvoiceImport] deposit-rates update error:', err);
+        res.status(errStatus(err)).json({ error: err?.message ?? 'Could not update deposit rate.' });
       }
     },
   );

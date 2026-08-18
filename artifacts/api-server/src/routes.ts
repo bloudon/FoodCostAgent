@@ -1064,8 +1064,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ON vendor_invoice_import_lines(batch_id, row_index);
       `);
       console.log('[Migration] vendor_invoice_import staging tables ready');
+
+      // Deposit-rate table + deposit_flows column run in the SAME migration
+      // block, strictly AFTER the staging tables above, so the ALTER TABLE
+      // can never race the CREATE TABLE on a fresh database.
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS vendor_deposit_rates (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          vendor_id VARCHAR NOT NULL,
+          rate_per_keg REAL NOT NULL,
+          effective_from TEXT NOT NULL,
+          effective_to TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          created_by VARCHAR
+        );
+        CREATE INDEX IF NOT EXISTS vendor_deposit_rates_vendor_idx
+          ON vendor_deposit_rates(company_id, vendor_id);
+        ALTER TABLE vendor_invoice_import_batches
+          ADD COLUMN IF NOT EXISTS deposit_flows JSONB NOT NULL DEFAULT '[]'::jsonb;
+      `);
+      console.log('[Migration] vendor_deposit_rates ready');
     } catch (err) {
-      console.error('[Migration] vendor_invoice_import tables error:', err);
+      console.error('[Migration] vendor_deposit_rates error:', err);
     }
   })();
 

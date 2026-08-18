@@ -27,3 +27,4 @@
 - [Production May legacy session](prod-may-legacy-session.md) — prod May 2026 session is applied & pre-evidence-model; never reload/force_new; unwind-vs-accept is PM-gated.
 - [Invoice importer PM disposition](invoice-importer-pm-disposition.md) — importer review fixes are permanent contracts; messy-vendor rehearsal required before prod loading; catalog dedupe parked.
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
+- [Deposit-aware reconciliation](deposit-aware-reconciliation.md) — four fail-closed conditions for explained keg-deposit gaps; deposits never touch price history; ledgers consume persisted events only.

@@ -108,10 +108,22 @@ export function parseVendorInvoiceWorkbook(buffer: Buffer): VendorInvoiceParseRe
   if (!lineSheet) {
     throw new VendorInvoiceParseError('The workbook has no "Line Items" sheet. This importer expects a per-vendor invoice line-item export.');
   }
-  const totalsSheet = wb.Sheets['Invoice Totals'];
-  if (!totalsSheet) {
+  // Accept the canonical "Invoice Totals" sheet or a single unambiguous
+  // variant whose name begins with "Invoice Totals" (e.g. "Invoice Totals
+  // (Deposit Ledger)"). Fail closed when multiple candidates exist — never
+  // guess between totals sheets.
+  const totalsCandidates = wb.SheetNames.filter(
+    n => n === 'Invoice Totals' || n.startsWith('Invoice Totals'),
+  );
+  if (totalsCandidates.length === 0) {
     throw new VendorInvoiceParseError('The workbook has no "Invoice Totals" sheet, which is required for per-invoice reconciliation.');
   }
+  if (totalsCandidates.length > 1) {
+    throw new VendorInvoiceParseError(
+      `The workbook has multiple candidate totals sheets (${totalsCandidates.map(n => `"${n}"`).join(', ')}); exactly one "Invoice Totals" sheet is required.`,
+    );
+  }
+  const totalsSheet = wb.Sheets[totalsCandidates[0]];
 
   const warnings: string[] = [];
   const rawLines: Record<string, unknown>[] = XLSX.utils.sheet_to_json(lineSheet, { defval: null });

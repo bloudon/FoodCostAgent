@@ -2695,6 +2695,13 @@ export const vendorInvoiceImportBatches = pgTable("vendor_invoice_import_batches
   // Per-invoice totals from the Invoice Totals sheet: [{invoiceNumber, date, amount}]
   invoiceTotals: jsonb("invoice_totals").notNull().default(sql`'[]'::jsonb`),
   status: text("status").notNull().default("pending_review"), // pending_review | approved | rejected
+  // Persisted at approval: explained deposit-flow events derived by
+  // deposit-aware reconciliation. Array of
+  // {invoiceNumber, invoiceDate, sourceInvoiceId, ratePerKeg, signedAmount,
+  //  kegCount, derivation: {statedTotal, lineSum}}.
+  // Sign contract (source-proven): positive = deposit charged (keg out),
+  // negative = deposit credited (keg returned).
+  depositFlows: jsonb("deposit_flows").notNull().default(sql`'[]'::jsonb`),
   uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   uploadedBy: varchar("uploaded_by"),
   approvedAt: timestamp("approved_at"),
@@ -2704,6 +2711,37 @@ export const vendorInvoiceImportBatches = pgTable("vendor_invoice_import_batches
   hashIdx: index("vendor_invoice_import_batches_hash_idx").on(t.companyId, t.fileHash),
 }));
 export type VendorInvoiceImportBatch = typeof vendorInvoiceImportBatches.$inferSelect;
+
+// Per-vendor keg-deposit rates, effective-dated. Used ONLY by deposit-aware
+// invoice reconciliation: an otherwise-unexplained invoice gap can be
+// classified as explained deposit flow when it is an exact signed integer
+// multiple of the single rate effective on the invoice business date.
+// No rate configured → the feature is inert for that vendor (fail closed).
+export const vendorDepositRates = pgTable("vendor_deposit_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  vendorId: varchar("vendor_id").notNull(),
+  /** Deposit dollars per keg (e.g. 50.00). Must be > 0. */
+  ratePerKeg: real("rate_per_keg").notNull(),
+  /** Inclusive business date the rate takes effect (YYYY-MM-DD). */
+  effectiveFrom: text("effective_from").notNull(),
+  /** Inclusive end date (YYYY-MM-DD); null = open-ended. */
+  effectiveTo: text("effective_to"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: varchar("created_by"),
+}, (t) => ({
+  vendorIdx: index("vendor_deposit_rates_vendor_idx").on(t.companyId, t.vendorId),
+}));
+
+export const insertVendorDepositRateSchema = createInsertSchema(vendorDepositRates)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    ratePerKeg: z.number().positive("Deposit rate must be greater than zero"),
+    effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "effectiveFrom must be YYYY-MM-DD"),
+    effectiveTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "effectiveTo must be YYYY-MM-DD").nullable().optional(),
+  });
+export type InsertVendorDepositRate = z.infer<typeof insertVendorDepositRateSchema>;
+export type VendorDepositRate = typeof vendorDepositRates.$inferSelect;
 
 export const vendorInvoiceImportLines = pgTable("vendor_invoice_import_lines", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
