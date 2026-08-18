@@ -250,7 +250,17 @@ function strategyLabel(strategy: string): string {
 
 function formatDate(d: string | null) {
   if (!d) return "—";
-  try { return new Date(d).toLocaleDateString(); } catch { return d; }
+  try {
+    // Plain YYYY-MM-DD strings are calendar dates, not instants — parse the
+    // parts directly so the displayed date never shifts with the viewer's
+    // timezone (new Date("2026-07-31") is UTC midnight, which renders as
+    // 7/30/2026 in US timezones).
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+    if (m) {
+      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString();
+    }
+    return new Date(d).toLocaleDateString();
+  } catch { return d; }
 }
 
 // ─── Step: Batch list ─────────────────────────────────────────────────────────
@@ -833,6 +843,7 @@ export function ResolutionPreviewStep({
   // Legacy batches created before store-selection was required may need a store assigned at approval time.
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
+  const [noticesCollapsed, setNoticesCollapsed] = useState(false);
 
   const PAGE_SIZE = 100;
 
@@ -1061,6 +1072,47 @@ export function ResolutionPreviewStep({
         </Card>
       </div>
 
+      {/* Notices — collapsible as a group so the row table keeps most of the viewport */}
+      {(() => {
+        const noticeCount =
+          (s.itemsResolvedByLocationHistory > 0 ? 1 : 0) +
+          (s.itemsAmbiguous > 0 ? 1 : 0) +
+          (s.rowsRequiringReview > 0 ? 1 : 0) +
+          (preview.newLocations.length > 0 ? 1 : 0) +
+          (preview.newVendors.length > 0 ? 1 : 0);
+        if (noticeCount === 0) return null;
+        const warningCount = (s.itemsAmbiguous > 0 ? 1 : 0) + (s.rowsRequiringReview > 0 ? 1 : 0);
+        return (
+          <div className="rounded-md border">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted/40"
+              onClick={() => setNoticesCollapsed(prev => !prev)}
+              aria-expanded={!noticesCollapsed}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                {warningCount > 0 ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <Info className="h-4 w-4 text-blue-500" />
+                )}
+                {noticeCount} notice{noticeCount > 1 ? "s" : ""}
+                {noticesCollapsed && (
+                  <span className="text-muted-foreground font-normal">
+                    {[
+                      s.itemsAmbiguous > 0 ? `${s.itemsAmbiguous} ambiguous` : null,
+                      s.rowsRequiringReview > 0 ? `${s.rowsRequiringReview} fuzzy` : null,
+                      preview.newLocations.length > 0 ? `${preview.newLocations.length} new location${preview.newLocations.length > 1 ? "s" : ""}` : null,
+                      preview.newVendors.length > 0 ? `${preview.newVendors.length} new vendor${preview.newVendors.length > 1 ? "s" : ""}` : null,
+                      s.itemsResolvedByLocationHistory > 0 ? `${s.itemsResolvedByLocationHistory} auto-resolved` : null,
+                    ].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${noticesCollapsed ? "" : "rotate-180"}`} />
+            </button>
+            {!noticesCollapsed && (
+              <div className="space-y-3 px-3 pb-3">
       {/* Location-history auto-resolution callout */}
       {s.itemsResolvedByLocationHistory > 0 && (
         <Alert className="border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 dark:border-blue-900">
@@ -1123,6 +1175,11 @@ export function ResolutionPreviewStep({
           </div>
         </div>
       )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Row table — category + confidence filters + first 100 of filtered set */}
       <div>
