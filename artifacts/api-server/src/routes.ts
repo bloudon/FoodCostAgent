@@ -52,7 +52,7 @@ import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
 import { getAccessibleStores, canAccessStore } from "./permissions";
 import { db } from "./db";
-import { getOrCreateVendorItem } from "./services/vendorItemResolution";
+import { resolveVendorItemForManualCreate, resolveVendorItemForPoLine } from "./services/vendorItemCallSites";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
 import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations, voiceInterpretLogs } from "@workspace/db";
@@ -9980,27 +9980,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Shared get-or-create: a manual entry duplicating an existing
       // (vendor, item, SKU) identity resolves to the existing row instead of
       // creating a duplicate.
-      const { vendorItem, created } = await getOrCreateVendorItem(db, createData);
+      // Shared guard: resolve-or-find + conditional price stamp.
+      // Extracted to vendorItemCallSites.ts so the race guard is testable
+      // without spinning up the full route registration.
+      const { vendorItem, created } = await resolveVendorItemForManualCreate(
+        createData as any,
+        enteredCasePrice,
+        caseSize,
+      );
 
-      // A duplicate manual entry resolves to the existing row and performs NO
-      // side effects: stamping the submitted price/pack onto a row this call
-      // did not create would silently rewrite that row's pricing. The client
-      // gets the existing row with 200 (vs 201) so the distinction is visible.
       if (!created) {
         return res.status(200).json(vendorItem);
-      }
-
-      // M3A: stamp price through shared service (manual = quote source, no inventory cost update).
-      if (enteredCasePrice && enteredCasePrice > 0) {
-        await recordVendorPrice({
-          vendorItemId: vendorItem.id,
-          inventoryItemId: vendorItem.inventoryItemId ?? undefined,
-          priceBasis: "case",
-          price: enteredCasePrice,
-          caseSize,
-          source: "manual",
-          representsActualPurchase: false,
-        });
       }
 
       // Sync ONLY structural caseSize back to the linked inventory item.
@@ -13383,35 +13373,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (existingVendorItem) {
               vendorItemId = existingVendorItem.id;
             } else {
-              // Create a vendor item on the fly for this inventory item.
-              // M3A: po_create is a quote source — price fields stamped via shared
-              // service AFTER create (no direct lastPrice write on createVendorItem).
-              // Shared get-or-create (NULL-SKU path reuses any existing pair row).
-              const resolution = await getOrCreateVendorItem(db, {
-                vendorId: po.vendorId,
+              // Guard extracted to resolveVendorItemForPoLine (vendorItemCallSites.ts)
+              // so the race guard is testable without full route registration.
+              const poResult = await resolveVendorItemForPoLine({
+                vendorId:        po.vendorId,
                 inventoryItemId: line.inventoryItemId,
-                purchaseUnitId: line.unitId,
-                caseSize: 1,
-                active: 1,
+                purchaseUnitId:  line.unitId,
+                priceEach:       line.priceEach,
               });
-              const newVendorItem = resolution.vendorItem;
-              vendorItemId = newVendorItem.id;
-              // Stamp price ONLY when this call created the row. If the
-              // resolver returned an existing row (concurrent creator won),
-              // stamping with caseSize: 1 would overwrite that row's real
-              // pack-derived pricing — pre-existing rows were never stamped
-              // here before this change either.
-              if (resolution.created && line.priceEach > 0) {
-                await recordVendorPrice({
-                  vendorItemId: newVendorItem.id,
-                  inventoryItemId: line.inventoryItemId,
-                  priceBasis: "unit",
-                  price: line.priceEach,
-                  caseSize: 1,
-                  source: "po_create",
-                  representsActualPurchase: false,
-                });
-              }
+              vendorItemId = poResult.vendorItemId;
             }
           }
           
@@ -13475,35 +13445,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (existingVendorItem) {
               vendorItemId = existingVendorItem.id;
             } else {
-              // Create a vendor item on the fly for this inventory item.
-              // M3A: po_create is a quote source — price fields stamped via shared
-              // service AFTER create (no direct lastPrice write on createVendorItem).
-              // Shared get-or-create (NULL-SKU path reuses any existing pair row).
-              const resolution = await getOrCreateVendorItem(db, {
-                vendorId: po.vendorId,
+              // Guard extracted to resolveVendorItemForPoLine (vendorItemCallSites.ts)
+              // so the race guard is testable without full route registration.
+              const poResult = await resolveVendorItemForPoLine({
+                vendorId:        po.vendorId,
                 inventoryItemId: line.inventoryItemId,
-                purchaseUnitId: line.unitId,
-                caseSize: 1,
-                active: 1,
+                purchaseUnitId:  line.unitId,
+                priceEach:       line.priceEach,
               });
-              const newVendorItem = resolution.vendorItem;
-              vendorItemId = newVendorItem.id;
-              // Stamp price ONLY when this call created the row. If the
-              // resolver returned an existing row (concurrent creator won),
-              // stamping with caseSize: 1 would overwrite that row's real
-              // pack-derived pricing — pre-existing rows were never stamped
-              // here before this change either.
-              if (resolution.created && line.priceEach > 0) {
-                await recordVendorPrice({
-                  vendorItemId: newVendorItem.id,
-                  inventoryItemId: line.inventoryItemId,
-                  priceBasis: "unit",
-                  price: line.priceEach,
-                  caseSize: 1,
-                  source: "po_create",
-                  representsActualPurchase: false,
-                });
-              }
+              vendorItemId = poResult.vendorItemId;
             }
           }
           
