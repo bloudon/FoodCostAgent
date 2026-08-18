@@ -1,0 +1,74 @@
+=== Section 0: which tables exist (historical model present?) ===
+                name                | exists
+------------------------------------+--------
+ inventory_import_batches           | t
+ inventory_import_rows              | t
+ inventory_counts                   | t
+ inventory_count_lines              | t
+ historical_session_unresolved_rows | t
+(5 rows)
+
+
+=== Section 1: May 2026 import batches (item 1, 5, 6, 9) ===
+
+=== Section 2: May 2026 count sessions (items 2, 3, 4, 5, 6, 9) ===
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ set -a; source .env; set +a
+psql "$DATABASE_URL" -f artifacts/api-server/reports/bay-hill-may-gate/verify_may_production_readonly.sql
+=== Section 0: which tables exist (historical model present?) ===
+                name                | exists
+------------------------------------+--------
+ inventory_import_batches           | t
+ inventory_import_rows              | t
+ inventory_counts                   | t
+ inventory_count_lines              | t
+ historical_session_unresolved_rows | t
+(5 rows)
+
+
+=== Section 1: May 2026 import batches (item 1, 5, 6, 9) ===
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+               batch_id               |              company_id              |        original_filename         | inventory_date | inventory_date_confirmed |  status  | source_row_count | snapshot_total |         uploaded_at          |        approved_at
+--------------------------------------+--------------------------------------+----------------------------------+----------------+--------------------------+----------+------------------+----------------+------------------------------+----------------------------
+ fce3be2b-23b0-449a-9cd4-73788072e3e3 | 43abaf82-44ce-4231-9570-7a01e7c85ced | Bay Hill Inventory May_2026.xlsx | 2026-06-01     |                        1 | approved |             5358 |      254286.67 | 2026-08-02 20:15:59.38005+00 | 2026-08-02 20:18:21.901+00
+(1 row)
+
+(END)
