@@ -82,6 +82,47 @@ const xlsxUpload = multer({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Validate an inventory date string against the two-layer guard that the
+ * confirm-date route applies before any DB write.
+ *
+ * Exported so it can be unit-tested directly without an HTTP layer or DB.
+ *
+ * Layer 1 — format: must match /^\d{4}-\d{2}-\d{2}$/
+ * Layer 2 — plausibility: year 2000–2100; must be a real calendar day
+ *   (e.g. 2026-02-30 overflows into March and is rejected via ISO round-trip).
+ *
+ * @returns `{ valid: true }` or `{ valid: false, reason: string }`.
+ */
+export function validateInventoryDateString(
+  value: string | undefined,
+): { valid: true } | { valid: false; reason: string } {
+  // Layer 1: format
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { valid: false, reason: 'inventoryDate must be a YYYY-MM-DD string' };
+  }
+
+  // Layer 2: plausibility — parse at UTC midnight so the check is timezone-
+  // independent; non-calendar dates overflow into the next month and the
+  // ISO round-trip detects the mismatch.
+  const parsedDate = new Date(`${value}T00:00:00Z`);
+  const year = Number(value.slice(0, 4));
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.toISOString().slice(0, 10) !== value ||
+    year < 2000 ||
+    year > 2100
+  ) {
+    return {
+      valid: false,
+      reason:
+        'inventoryDate must be a real calendar date with a 4-digit year between 2000 and 2100',
+    };
+  }
+
+  return { valid: true };
+}
+
 /** Build the column values for one inventory_import_rows insert. */
 function rowInsertValues(r: OrderlyRow, batchId: string, sheetName: string) {
   return {
@@ -927,26 +968,9 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const { batchId } = req.params;
         const { inventoryDate } = req.body as { inventoryDate?: string };
 
-        if (!inventoryDate || !/^\d{4}-\d{2}-\d{2}$/.test(inventoryDate)) {
-          return res.status(400).json({
-            error: 'inventoryDate must be a YYYY-MM-DD string',
-          });
-        }
-
-        // Plausibility guard: reject implausible years (e.g. a 2-digit year
-        // entry like "26" arriving as "0026") and non-calendar dates.
-        const parsedDate = new Date(`${inventoryDate}T00:00:00Z`);
-        const year = Number(inventoryDate.slice(0, 4));
-        if (
-          Number.isNaN(parsedDate.getTime()) ||
-          parsedDate.toISOString().slice(0, 10) !== inventoryDate ||
-          year < 2000 ||
-          year > 2100
-        ) {
-          return res.status(400).json({
-            error:
-              'inventoryDate must be a real calendar date with a 4-digit year between 2000 and 2100',
-          });
+        const dateValidation = validateInventoryDateString(inventoryDate);
+        if (!dateValidation.valid) {
+          return res.status(400).json({ error: dateValidation.reason });
         }
 
         const [updated] = await db

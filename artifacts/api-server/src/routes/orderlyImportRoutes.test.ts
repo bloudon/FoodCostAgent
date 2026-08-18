@@ -235,3 +235,7 @@ describe('assertStoreIsApproved: approved-destination guard', () => {
     ).toThrow(/count-session store/);
   });
 });
+
+// ─── confirm-date validation ───────────────────────────────────────────────────
+// Tests for validateInventoryDateString live in orderlyImportRoutes.confirmDate.test.ts
+// which imports the exported function directly from the route module.

@@ -80,6 +80,7 @@ import {
   applyFilters,
   toggleSetValue,
 } from "@/lib/orderlyImportFilterUtils";
+import { formatDate } from "@/lib/orderlyImportUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -248,21 +249,6 @@ function strategyLabel(strategy: string): string {
     none: "—",
   };
   return map[strategy] ?? strategy;
-}
-
-function formatDate(d: string | null) {
-  if (!d) return "—";
-  try {
-    // Plain YYYY-MM-DD strings are calendar dates, not instants — parse the
-    // parts directly so the displayed date never shifts with the viewer's
-    // timezone (new Date("2026-07-31") is UTC midnight, which renders as
-    // 7/30/2026 in US timezones).
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-    if (m) {
-      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString();
-    }
-    return new Date(d).toLocaleDateString();
-  } catch { return d; }
 }
 
 // ─── Step: Batch list ─────────────────────────────────────────────────────────
