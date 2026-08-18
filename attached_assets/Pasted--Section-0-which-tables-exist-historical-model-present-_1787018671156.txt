@@ -1,0 +1,43 @@
+=== Section 0: which tables exist (historical model present?) ===
+                name                | exists
+------------------------------------+--------
+ inventory_import_batches           | t
+ inventory_import_rows              | t
+ inventory_counts                   | t
+ inventory_count_lines              | t
+ historical_session_unresolved_rows | t
+(5 rows)
+
+
+=== Section 1: May 2026 import batches (item 1, 5, 6, 9) ===
+               batch_id               |              company_id              |        original_filename         | inventory_date | inventory_date_confirmed |  status  | source_row_count | snapshot_total |         uploaded_at          |        approved_at
+--------------------------------------+--------------------------------------+----------------------------------+----------------+--------------------------+----------+------------------+----------------+------------------------------+----------------------------
+ fce3be2b-23b0-449a-9cd4-73788072e3e3 | 43abaf82-44ce-4231-9570-7a01e7c85ced | Bay Hill Inventory May_2026.xlsx | 2026-06-01     |                        1 | approved |             5358 |      254286.67 | 2026-08-02 20:15:59.38005+00 | 2026-08-02 20:18:21.901+00
+(1 row)
+
+
+=== Section 2: May 2026 count sessions (items 2, 3, 4, 5, 6, 9) ===
+              session_id              |              company_id              |               store_id               |                                 name                                  |     count_date      | applied |       applied_at        | is_historical_import | source_system |           source_batch_id            |         source_filename          | source_inventory_date | imported_snapshot_total |         counted_at
+--------------------------------------+--------------------------------------+--------------------------------------+-----------------------------------------------------------------------+---------------------+---------+-------------------------+----------------------+---------------+--------------------------------------+----------------------------------+-----------------------+-------------------------+----------------------------
+ d76d4676-0793-421f-bd11-5d7f6061a8ad | 43abaf82-44ce-4231-9570-7a01e7c85ced | ee9e1530-50db-45f4-ae61-2c45e86827f0 | Imported from Orderly — Bay Hill Inventory May_2026.xlsx — 2026-06-01 | 2026-06-01 00:00:00 |       1 | 2026-08-02 22:18:17.951 |                    0 | ORDERLY       | fce3be2b-23b0-449a-9cd4-73788072e3e3 | Bay Hill Inventory May_2026.xlsx | 2026-06-01            |               254286.67 | 2026-08-02 20:50:58.068791
+(1 row)
+
+
+=== Section 3: resolved line count + valuation per May session (items 7, 9) ===
+              session_id              | line_count | lines_valuation
+--------------------------------------+------------+-----------------
+ d76d4676-0793-421f-bd11-5d7f6061a8ad |       2513 |       254287.00
+(1 row)
+
+
+=== Section 4: unresolved historical evidence per May session (item 8) ===
+ session_id | unresolved_evidence_count
+------------+---------------------------
+(0 rows)
+
+
+=== Section 5: import rows per May batch (source-row sanity for item 9) ===
+               batch_id               | row_count | rows_total_cost
+--------------------------------------+-----------+-----------------
+ fce3be2b-23b0-449a-9cd4-73788072e3e3 |      5358 |       254287.00
+(1 row)
