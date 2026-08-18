@@ -388,7 +388,7 @@ function RecipesContent() {
       <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-recipes-title">
-            Recipes
+            Recipes {totalRecipes > 0 ? `(${totalRecipes})` : ""}
           </h1>
           {!showOnboardingButtons && (
             <p className="text-muted-foreground mt-2">

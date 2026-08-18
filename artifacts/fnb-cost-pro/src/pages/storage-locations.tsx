@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Search, Pencil, Trash2, MapPin, GripVertical, Package } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, MapPin, GripVertical, Package, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -63,9 +63,10 @@ interface SortableLocationProps {
   location: any;
   onEdit: (location: any) => void;
   onDelete: (location: any) => void;
+  hideDragHandle?: boolean;
 }
 
-function SortableLocation({ location, onEdit, onDelete }: SortableLocationProps) {
+function SortableLocation({ location, onEdit, onDelete, hideDragHandle }: SortableLocationProps) {
   const {
     attributes,
     listeners,
@@ -73,7 +74,7 @@ function SortableLocation({ location, onEdit, onDelete }: SortableLocationProps)
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: location.id });
+  } = useSortable({ id: location.id, disabled: hideDragHandle });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -86,14 +87,16 @@ function SortableLocation({ location, onEdit, onDelete }: SortableLocationProps)
       <Card className="mb-3" data-testid={`card-location-${location.id}`}>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
-            <button
-              className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded"
-              {...attributes}
-              {...listeners}
-              data-testid={`drag-handle-${location.id}`}
-            >
-              <GripVertical className="h-5 w-5 text-muted-foreground" />
-            </button>
+            {!hideDragHandle && (
+              <button
+                className="cursor-grab active:cursor-grabbing touch-none p-1 hover-elevate rounded"
+                {...attributes}
+                {...listeners}
+                data-testid={`drag-handle-${location.id}`}
+              >
+                <GripVertical className="h-5 w-5 text-muted-foreground" />
+              </button>
+            )}
             <div className="flex items-center gap-2 flex-1">
               <MapPin className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg" data-testid={`text-location-name-${location.id}`}>
@@ -134,6 +137,20 @@ export default function StorageLocations() {
   const [editingLocation, setEditingLocation] = useState<any | null>(null);
   const [deletingLocation, setDeletingLocation] = useState<any | null>(null);
   const { toast } = useToast();
+
+  // Column sort state. "manual" means use the DnD-persisted sortOrder from the API.
+  const [locSortField, setLocSortField] = useState<"manual" | "name" | "caseCounting">("manual");
+  const [locSortDirection, setLocSortDirection] = useState<"asc" | "desc">("asc");
+
+  const handleLocSort = (field: string) => {
+    const f = field as "name" | "caseCounting";
+    if (locSortField === f) {
+      setLocSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setLocSortField(f);
+      setLocSortDirection("asc");
+    }
+  };
 
   const selectedCompanyId = localStorage.getItem("selectedCompanyId");
 
@@ -294,12 +311,25 @@ export default function StorageLocations() {
     l.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isManualLocSort = locSortField === "manual";
+  const sortedLocations = !filteredLocations || isManualLocSort
+    ? filteredLocations
+    : [...filteredLocations].sort((a, b) => {
+        const av = locSortField === "name" ? a.name.toLowerCase() : (a.allowCaseCounting ?? 0);
+        const bv = locSortField === "name" ? b.name.toLowerCase() : (b.allowCaseCounting ?? 0);
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const cmp = typeof av === "number" ? (av as number) - (bv as number) : (av as string).localeCompare(bv as string);
+        return locSortDirection === "asc" ? cmp : -cmp;
+      });
+
   return (
     <div className="p-4 sm:p-8">
       <div className="mb-4 sm:mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-storage-locations-title">
-            Storage Locations
+            Storage Locations {locations && locations.length > 0 ? `(${locations.length})` : ""}
           </h1>
           <p className="text-muted-foreground mt-2">
             Drag and drop to reorder storage locations
@@ -332,6 +362,37 @@ export default function StorageLocations() {
       </div>
 
       <div className="max-w-3xl">
+        {/* Sort header row */}
+        {!isLoading && sortedLocations && sortedLocations.length > 0 && (
+          <div className="flex items-center px-3 py-2 mb-1 text-sm font-medium text-muted-foreground bg-muted/40 rounded-md border select-none">
+            <button
+              onClick={() => handleLocSort("name")}
+              className="flex items-center gap-1 flex-1 hover:text-foreground transition-colors text-left"
+              data-testid="sort-header-name"
+            >
+              Name
+              {locSortField === "name" ? (
+                locSortDirection === "asc" ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" />
+              )}
+            </button>
+            <button
+              onClick={() => handleLocSort("caseCounting")}
+              className="flex items-center justify-end gap-1 w-36 hover:text-foreground transition-colors"
+              data-testid="sort-header-caseCounting"
+            >
+              Case Counting
+              {locSortField === "caseCounting" ? (
+                locSortDirection === "asc" ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" />
+              )}
+            </button>
+            {/* space for action buttons */}
+            <div className="w-20" />
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -342,22 +403,23 @@ export default function StorageLocations() {
               </Card>
             ))}
           </div>
-        ) : filteredLocations && filteredLocations.length > 0 ? (
+        ) : sortedLocations && sortedLocations.length > 0 ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={filteredLocations.map((l) => l.id)}
+              items={sortedLocations.map((l) => l.id)}
               strategy={verticalListSortingStrategy}
             >
-              {filteredLocations.map((location) => (
+              {sortedLocations.map((location) => (
                 <SortableLocation
                   key={location.id}
                   location={location}
                   onEdit={handleEdit}
                   onDelete={setDeletingLocation}
+                  hideDragHandle={!isManualLocSort}
                 />
               ))}
             </SortableContext>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Pencil, Trash2, Tag, GripVertical, Scale, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Tag, GripVertical, Scale, RotateCcw, ChevronDown, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -158,6 +158,20 @@ export default function Categories() {
   const [deactivatingCategory, setDeactivatingCategory] = useState<any | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
+
+  // Column sort state. "manual" means use the DnD-persisted sortOrder from the API.
+  const [catSortField, setCatSortField] = useState<"manual" | "name" | "itemCount">("manual");
+  const [catSortDirection, setCatSortDirection] = useState<"asc" | "desc">("asc");
+
+  const handleCatSort = (field: string) => {
+    const f = field as "name" | "itemCount";
+    if (catSortField === f) {
+      setCatSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setCatSortField(f);
+      setCatSortDirection("asc");
+    }
+  };
 
   const handleView = (category: any) => {
     navigate(`/inventory-items?category=${category.id}`);
@@ -357,6 +371,19 @@ export default function Categories() {
     cat.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isManualCatSort = catSortField === "manual";
+  const sortedActive = isManualCatSort
+    ? filteredActive
+    : [...filteredActive].sort((a, b) => {
+        const av = catSortField === "name" ? a.name.toLowerCase() : (a.itemCount ?? 0);
+        const bv = catSortField === "name" ? b.name.toLowerCase() : (b.itemCount ?? 0);
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const cmp = typeof av === "number" ? (av as number) - (bv as number) : (av as string).localeCompare(bv as string);
+        return catSortDirection === "asc" ? cmp : -cmp;
+      });
+
   const deactivatingItemCount = deactivatingCategory ? (itemCountsData?.[deactivatingCategory.id] ?? 0) : 0;
 
   return (
@@ -364,7 +391,7 @@ export default function Categories() {
       <div className="mb-4 sm:mb-8 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight" data-testid="text-categories-title">
-            Categories
+            Categories {activeCategories.length > 0 ? `(${activeCategories.length})` : ""}
           </h1>
           {!showReviewButton && (
             <p className="text-muted-foreground mt-2">
@@ -408,6 +435,37 @@ export default function Categories() {
       </div>
 
       <div className="max-w-3xl">
+        {/* Sort header row */}
+        {!isLoading && sortedActive.length > 0 && (
+          <div className="flex items-center px-3 py-2 mb-1 text-sm font-medium text-muted-foreground bg-muted/40 rounded-md border select-none">
+            <button
+              onClick={() => handleCatSort("name")}
+              className="flex items-center gap-1 flex-1 hover:text-foreground transition-colors text-left"
+              data-testid="sort-header-name"
+            >
+              Name
+              {catSortField === "name" ? (
+                catSortDirection === "asc" ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" />
+              )}
+            </button>
+            <button
+              onClick={() => handleCatSort("itemCount")}
+              className="flex items-center justify-end gap-1 w-24 hover:text-foreground transition-colors"
+              data-testid="sort-header-itemCount"
+            >
+              Items
+              {catSortField === "itemCount" ? (
+                catSortDirection === "asc" ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />
+              ) : (
+                <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" />
+              )}
+            </button>
+            {/* space for action buttons */}
+            <div className="w-20" />
+          </div>
+        )}
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -418,24 +476,24 @@ export default function Categories() {
               </Card>
             ))}
           </div>
-        ) : filteredActive.length > 0 ? (
+        ) : sortedActive.length > 0 ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={filteredActive.map((c) => c.id)}
+              items={sortedActive.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              {filteredActive.map((category) => (
+              {sortedActive.map((category) => (
                 <SortableCategory
                   key={category.id}
                   category={category}
                   onEdit={handleEdit}
                   onDeactivate={setDeactivatingCategory}
                   onView={handleView}
-                  hideDragHandle={!!showReviewButton}
+                  hideDragHandle={!isManualCatSort || !!showReviewButton}
                 />
               ))}
             </SortableContext>
