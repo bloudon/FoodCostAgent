@@ -18,6 +18,7 @@ import { TheoreticalUsageService } from "./services/theoreticalUsage";
 import { parseCompoundPackSize } from "./integrations/csv/CsvOrderGuide";
 import { deriveUnitPrice } from "./services/orderGuideProcessor";
 import { recordVendorPrice, isPriceStale, getPriceFreshness, effectivePackQty, isIncompatibleUnit } from "./services/vendorPriceService";
+import { buildSingleItemVendorPrices } from "./services/vendorPriceComparison";
 import { updateVendorItemPackGeometry, invalidatePackGeometryForInventoryItem } from "./services/vendorPackGeometry";
 import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedLineSavings, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
@@ -8998,7 +8999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/inventory-items/:id/vendor-prices", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const inventoryItemId = req.params.id;
+      const inventoryItemId = req.params.id as string;
       
       // @ts-ignore
       const item = await storage.getInventoryItem(inventoryItemId);
@@ -9011,55 +9012,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const allVendorItems = await db
-        .select()
+        .select({
+          vi: vendorItems,
+          vendorName: vendors.name,
+          vendorCompanyId: vendors.companyId,
+        })
         .from(vendorItems)
         // @ts-ignore
-        .where(eq(vendorItems.inventoryItemId, inventoryItemId));
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        // @ts-ignore
+        .where(
+          and(
+            eq(vendorItems.inventoryItemId, inventoryItemId),
+            eq(vendors.companyId, companyId),
+            eq(vendors.active, 1),
+            eq(vendorItems.active, 1),
+            gt(vendorItems.lastPrice, 0),
+          ),
+        );
       
-      const vendors = await storage.getVendors(companyId);
       const units = await storage.getUnits();
-      
-      const vendorPrices = allVendorItems
-        // @ts-ignore
-        .filter(vi => vi.lastPrice != null)
-        // @ts-ignore
-        .map(vi => {
-          const vendor = vendors.find(v => v.id === vi.vendorId);
-          const unit = units.find(u => u.id === vi.purchaseUnitId);
-          const inventoryUnit = units.find(u => u.id === item.unitId);
-          
-          const unitPrice = vi.lastPrice;
-          const caseSize = vi.caseSize || 1;
-          const casePrice = (vi.lastCasePrice != null && vi.lastCasePrice > 0)
-            ? vi.lastCasePrice
-            : unitPrice * caseSize;
-          
-          const pricedAtDate = vi.pricedAt instanceof Date ? vi.pricedAt : vi.pricedAt ? new Date(vi.pricedAt as any) : null;
-          const { invalidPackGeometry } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", unit?.name || "");
-          return {
-            vendorItemId: vi.id,
-            vendorId: vi.vendorId,
-            vendorName: vendor?.name || 'Unknown',
-            vendorSku: vi.vendorSku,
-            casePrice: casePrice,
-            unitPrice: unitPrice,
-            caseSize: caseSize,
-            unitName: unit?.name || '',
-            lastUpdated: vi.updatedAt,
-            priceSource: vi.priceSource,
-            pricedAt: pricedAtDate ? pricedAtDate.toISOString() : null,
-            daysSincePriced: pricedAtDate
-              ? Math.floor((Date.now() - pricedAtDate.getTime()) / 86_400_000)
-              : null,
-            stale: isPriceStale(pricedAtDate),
-            freshnessStatus: getPriceFreshness(pricedAtDate),
-            confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
-            incompatibleUnit: isIncompatibleUnit(vi.packUom ?? "", inventoryUnit?.name || ""),
-            invalidPackGeometry,
-          };
-        })
-        // @ts-ignore
-        .sort((a, b) => a.casePrice - b.casePrice);
+
+      const vendorPrices = buildSingleItemVendorPrices({
+        companyId,
+        item,
+        sourceRows: allVendorItems,
+        units,
+      });
       
       res.json({
         inventoryItemId,
@@ -9235,12 +9214,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const vendorPrices = itemVis.map(({ vi, vendorName }) => {
           const unit = allUnits.find(u => u.id === vi.purchaseUnitId);
           const unitPrice = vi.lastPrice!;
-          const caseSize = vi.caseSize || 1;
+          const caseSize = vi.caseSize ?? 0;
           const casePrice =
             vi.lastCasePrice != null && vi.lastCasePrice > 0
               ? vi.lastCasePrice
-              : unitPrice * caseSize;
-          const { invalidPackGeometry: ipg } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", inventoryUnitName);
+              : unitPrice * Math.max(caseSize, 1);
+          const { invalidPackGeometry: ipg } = effectivePackQty(caseSize, vi.innerPackSize ?? 1, vi.packUom ?? "", inventoryUnitName);
           return {
             vendorItemId: vi.id,
             vendorId: vi.vendorId,

@@ -1496,7 +1496,10 @@ export default function PurchaseOrderDetail() {
                             inventoryItemId = item.inventoryItemId;
                             categoryName = item.categoryName || '-';
                             vendorSku = item.vendorSku || '-';
-                            caseSize = item.inventoryItem?.caseSize || 1;
+                            // The vendor product owns the purchasable pack. Do not
+                            // fall back to the canonical item when this supplier
+                            // has multiple legitimate SKU/pack relationships.
+                            caseSize = item.caseSize ?? item.inventoryItem?.caseSize ?? 1;
                             unitPrice = item.lastPrice ?? item.inventoryItem?.pricePerUnit ?? 0;
                             casePrice = unitPrice * caseSize;
                             lineTotal = caseQty * casePrice;

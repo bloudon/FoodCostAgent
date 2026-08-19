@@ -37,6 +37,10 @@ import {
   type VendorPriceSource,
   type RecordVendorPriceParams,
 } from "./vendorPriceService";
+import {
+  buildSingleItemVendorPrices,
+  type VendorPriceComparisonSourceRow,
+} from "./vendorPriceComparison";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -563,6 +567,116 @@ describe("Scenario 5 — Bulk comparison", () => {
     expect(routeRequest.lines[0].targetVendorItemId).toBe(targetVendorItemB);
     expect(destinationPoLine.vendorItemId).toBe(targetVendorItemB);
     expect(destinationPoLine.vendorItemId).not.toBe(sameVendorDifferentPack);
+  });
+
+  function fallbackSourceRow(
+    overrides: Partial<VendorPriceComparisonSourceRow> & {
+      vi?: Partial<VendorPriceComparisonSourceRow["vi"]>;
+    } = {},
+  ): VendorPriceComparisonSourceRow {
+    return {
+      vendorCompanyId: "company-a",
+      vendorName: "Harvill",
+      ...overrides,
+      vi: {
+        id: "vi-harvill-a",
+        vendorId: "vendor-harvill",
+        vendorSku: "SPRBR5",
+        purchaseUnitId: "unit-case",
+        lastPrice: 1.8,
+        lastCasePrice: 9,
+        caseSize: 5,
+        innerPackSize: 1,
+        packUom: "lb",
+        updatedAt: new Date(),
+        priceSource: "receipt",
+        pricedAt: new Date(),
+        ...overrides.vi,
+      },
+    };
+  }
+
+  it("single-item fallback excludes vendor products owned by another company", () => {
+    const rows = buildSingleItemVendorPrices({
+      companyId: "company-a",
+      item: { unitId: "unit-pound" },
+      units: [
+        { id: "unit-pound", name: "pound" },
+        { id: "unit-case", name: "case" },
+      ],
+      sourceRows: [
+        fallbackSourceRow(),
+        fallbackSourceRow({
+          vendorCompanyId: "company-b",
+          vendorName: "Foreign Vendor",
+          vi: {
+            id: "vi-foreign",
+            vendorId: "vendor-foreign",
+            vendorSku: "FOREIGN-SKU",
+          },
+        }),
+      ],
+    });
+
+    expect(rows.map((row) => row.vendorItemId)).toEqual(["vi-harvill-a"]);
+    expect(rows.some((row) => row.vendorSku === "FOREIGN-SKU")).toBe(false);
+  });
+
+  it("single-item fallback preserves zero pack geometry as invalid", () => {
+    const [row] = buildSingleItemVendorPrices({
+      companyId: "company-a",
+      item: { unitId: "unit-pound" },
+      units: [
+        { id: "unit-pound", name: "pound" },
+        { id: "unit-case", name: "case" },
+      ],
+      sourceRows: [
+        fallbackSourceRow({
+          vi: { caseSize: 0, lastCasePrice: null },
+        }),
+      ],
+    });
+
+    expect(row.caseSize).toBe(0);
+    expect(row.invalidPackGeometry).toBe(true);
+  });
+
+  it("single-item fallback sorts same-vendor products without losing exact identities", () => {
+    const rows = buildSingleItemVendorPrices({
+      companyId: "company-a",
+      item: { unitId: "unit-pound" },
+      units: [
+        { id: "unit-pound", name: "pound" },
+        { id: "unit-case", name: "case" },
+      ],
+      sourceRows: [
+        fallbackSourceRow({
+          vi: {
+            id: "vi-harvill-five-pound",
+            vendorSku: "SPRBR5",
+            lastPrice: 1.8,
+            lastCasePrice: 9,
+            caseSize: 5,
+          },
+        }),
+        fallbackSourceRow({
+          vi: {
+            id: "vi-harvill-twenty-five-pound",
+            vendorSku: "SPRBR",
+            lastPrice: 1.2,
+            lastCasePrice: 30,
+            caseSize: 25,
+          },
+        }),
+      ],
+    });
+
+    expect(rows.map((row) => row.vendorItemId)).toEqual([
+      "vi-harvill-twenty-five-pound",
+      "vi-harvill-five-pound",
+    ]);
+    expect(rows.map((row) => row.vendorSku)).toEqual(["SPRBR", "SPRBR5"]);
+    expect(rows.map((row) => row.caseSize)).toEqual([25, 5]);
   });
 
   // ── cross-company authorization ────────────────────────────────────────────
