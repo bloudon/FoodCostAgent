@@ -233,6 +233,13 @@ describe("post-approval review state", () => {
     // Remove the vendor-B duplicate created by the previous test so approval persists.
     await db.delete(historicalInvoices).where(eq(historicalInvoices.companyId, COMPANY_ID));
 
+    const preApproval = await runVendorInvoiceResolutionPreview(BATCH_B, COMPANY_ID);
+    expect(preApproval.lines).toHaveLength(2);
+    for (const line of preApproval.lines) {
+      expect(line.glCode).toBe("5000");
+      expect(line.category).toBe("Coffee");
+    }
+
     const result = await approveVendorInvoiceBatch({ batchId: BATCH_B, companyId: COMPANY_ID, userId: null });
     expect(result.status).toBe("approved");
     expect(result.invoicesPersisted).toBe(1);
@@ -258,10 +265,31 @@ describe("post-approval review state", () => {
     const preview = await runVendorInvoiceResolutionPreview(BATCH_B, COMPANY_ID);
     expect(preview.status).toBe("approved");
     expect(preview.alreadyImportedInvoices).toEqual([]);
+    for (const line of preview.lines) {
+      expect(line.glCode).toBe("5000");
+      expect(line.category).toBe("Coffee");
+    }
     const byCode = new Map(preview.lines.map((l: any) => [l.itemCode, l]));
     expect(byCode.get("XYZ-2")?.status).toBe("resolved");
     expect(byCode.get("XYZ-1")?.status).toBe("held");
     expect(byCode.get("XYZ-1")?.holdReason).toBe("no_vendor_item");
+
+    // Approval changes resolution metadata only. The source evidence remains
+    // unchanged on staging rows and is never projected onto master catalog rows.
+    const stagedLines = await db.select().from(vendorInvoiceImportLines)
+      .where(eq(vendorInvoiceImportLines.batchId, BATCH_B));
+    for (const line of stagedLines) {
+      expect(line.glCode).toBe("5000");
+      expect(line.category).toBe("Coffee");
+    }
+    const [masterVendorItem] = await db.select().from(vendorItems)
+      .where(eq(vendorItems.id, VENDOR_ITEM));
+    const [masterInventoryItem] = await db.select().from(inventoryItems)
+      .where(eq(inventoryItems.id, INV_ITEM));
+    expect(masterVendorItem).not.toHaveProperty("glCode");
+    expect(masterVendorItem).not.toHaveProperty("category");
+    expect(masterInventoryItem).not.toHaveProperty("glCode");
+    expect(masterInventoryItem).not.toHaveProperty("category");
   });
 });
 

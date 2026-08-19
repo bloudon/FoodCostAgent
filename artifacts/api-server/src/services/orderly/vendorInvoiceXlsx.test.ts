@@ -3,11 +3,55 @@
  * pack-size parsing, and the pack cross-check conflict rule (plan step 3).
  */
 import { describe, it, expect } from "vitest";
+import * as XLSX from "xlsx";
 import {
+  parseVendorInvoiceWorkbook,
   normalizeInvoiceDate,
   parsePackSize,
   crossCheckPackSize,
 } from "./vendorInvoiceXlsx";
+
+function buildEvidenceWorkbook(): Buffer {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([["Vendor", "Evidence Vendor"]]),
+    "Summary",
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Invoice #", "Date", "Item Code", "Item Description", "Pack Size", "Qty", "Extended $", "Category", "GL Code"],
+      ["INV-GL-1", "08/01/2026", "COKE-12", "Coca Cola 12oz", "2/12 EACH", 2, 48, "Beverages", "510200"],
+      ["INV-GL-1", "08/01/2026", "SPRITE-12", "Sprite 12oz", "2/12 EACH", 1, 24, null, null],
+    ]),
+    "Line Items",
+  );
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Invoice #", "Date", "Amount"],
+      ["INV-GL-1", "08/01/2026", 72],
+    ]),
+    "Invoice Totals",
+  );
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+describe("source accounting evidence", () => {
+  it("parses source GL Code and Category and accepts missing values", () => {
+    const parsed = parseVendorInvoiceWorkbook(buildEvidenceWorkbook());
+
+    expect(parsed.lines[0]).toMatchObject({
+      glCode: "510200",
+      category: "Beverages",
+    });
+    expect(parsed.lines[1]).toMatchObject({
+      glCode: null,
+      category: null,
+    });
+  });
+});
 
 describe("normalizeInvoiceDate", () => {
   it("parses MM/DD/YYYY", () => {

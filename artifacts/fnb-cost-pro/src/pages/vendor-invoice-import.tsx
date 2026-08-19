@@ -45,6 +45,8 @@ interface PreviewLine {
   itemCode: string | null;
   description: string | null;
   packSizeRaw: string | null;
+  category: string | null;
+  glCode: string | null;
   qty: number | null;
   extendedAmount: number | null;
   status: "resolved" | "held";
@@ -393,6 +395,8 @@ export default function VendorInvoiceImport() {
                         <TableHead>Code</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead>Pack</TableHead>
+                        <TableHead className="min-w-[140px]">Source GL Code</TableHead>
+                        <TableHead className="min-w-[160px]">Source Category</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead className="text-right">Extended</TableHead>
                         <TableHead>Match</TableHead>
@@ -412,6 +416,15 @@ export default function VendorInvoiceImport() {
                             )}
                           </TableCell>
                           <TableCell className="text-xs">{l.packSizeRaw ?? "—"}</TableCell>
+                          <TableCell
+                            className="whitespace-nowrap font-mono text-xs"
+                            data-testid={`text-source-gl-code-${l.rowIndex}`}
+                          >
+                            {l.glCode ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs" data-testid={`text-source-category-${l.rowIndex}`}>
+                            {l.category ?? "—"}
+                          </TableCell>
                           <TableCell className="text-right text-xs">{l.qty ?? "—"}</TableCell>
                           <TableCell className="text-right text-xs">{usd(l.extendedAmount)}</TableCell>
                           <TableCell className="text-xs">
