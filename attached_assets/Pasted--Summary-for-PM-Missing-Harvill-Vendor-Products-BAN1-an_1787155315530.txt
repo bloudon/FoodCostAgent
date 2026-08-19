@@ -1,0 +1,29 @@
+# Summary for PM — Missing Harvill Vendor Products (BAN1 and related)
+
+## Bottom line
+
+**#1205 should be parked.** It was designed to explain why the resolution modal shows "No existing vendor products found" — but that framing assumed Harvill's data was simply missing. It isn't. The real problem is one level up: **FnB's import kept only one vendor-product relationship per generic ingredient, when Orderly's source data has several.**
+
+## What we found
+
+For Banana, Orderly's own catalog lists **5 real suppliers** for the same generic ingredient: FreshPoint, Harvill's Produce, Cheney Brothers, Mr. Green's Produce, and Sysco — this is normal; multi-vendor sourcing for common ingredients is the norm across Bay Hill's catalog, not an anomaly.
+
+FnB's vendor_items table kept **exactly one** of those five (Mr. Green's Produce, SKU "16021" — verified as an exact match to Orderly's real record). The other four — including Harvill's — were dropped, even though **Harvill's is the vendor with actual, current invoice activity**: 101 invoice lines, $2,637.95, running through 2 days before we checked. The same shape held for Blueberries, Blackberries, and Raspberries (4 for 4 in our sample) — always FnB kept one vendor, never Harvill's, regardless of which vendor was actually being invoiced.
+
+We ruled out the two "easier" explanations first:
+- **Not a resolver bug.** We proved the search logic works correctly and is properly vendor-scoped (searching "apple" on this Harvill invoice returned only Harvill candidates). It's correctly reporting that no Harvill+Banana link exists — because it genuinely doesn't.
+- **Not missing source data.** Orderly has the full Harvill relationship, with real recent purchase history. FnB's import simply didn't bring it in.
+
+## Why #1205 is the wrong fix right now
+
+#1205 would make the "No existing vendor products found" message more informative. But a better error message doesn't help if the underlying data is genuinely absent for the specific vendor on the invoice — it would just more clearly explain a gap that shouldn't exist in the first place. Fixing the modal before fixing the import means managers would manually rebuild vendor-product links that Orderly already gave us once.
+
+## Recommended sequencing
+
+1. **First**: fix the import/vendor-seeding step so it captures all of Orderly's real vendor-product relationships per ingredient, not just one. This is squarely a Replit repo-evidence question — we don't have visibility into why the import behaves this way (arbitrary pick, last-one-wins, some other logic), only that it does.
+2. **Then**: re-run the Harvill rehearsal. Most of the 78 held codes will likely resolve automatically once Harvill's relationships are actually imported, without ever touching the modal.
+3. **Only then**: revisit #1205 for whatever residual population remains — genuine Model 1 (Orderly truly never had it) or Model 3 (invoice is first evidence) cases, which is what the modal was actually meant to handle.
+
+## Open item, not yet resolved
+
+We only confirmed the "one vendor kept, rest dropped" pattern on 4 sampled items (all landing on Mr. Green's). We haven't checked whether it's *always* Mr. Green's, or whether other held codes across the 78 land on other single vendors (Sysco, Cheney Brothers, etc.) inconsistently. That distinction matters for how Replit scopes the import fix — "always defaults to one specific vendor" vs. "keeps whichever vendor happened to process last" are different bugs with different fixes. Worth a slightly larger sample before Replit starts, if there's time before this needs to go back to them.
