@@ -1,0 +1,113 @@
+## PM + Architecture Amendment — #1204 Resolution Modal
+
+Claude review accepted.
+
+The modal remains approved, with the following four decisions fixed before implementation.
+
+### 1. Reuse existing identity/conflict classifier logic
+
+Do NOT build a fresh "is this match safe?" determination for the modal.
+
+The modal write path must reuse the same authoritative identity/conflict rules already established for Orderly resolution/remediation, including detection of:
+
+- competing external mappings
+- ambiguous identities
+- materially conflicting pack evidence
+- source/property scope conflicts
+- sibling mappings that prevent safe reassignment
+
+Interactive resolution may have a different UI, but the underlying authorization decision must not be weaker than the batch SAFE_CANDIDATE / AMBIGUOUS rules.
+
+If the existing classifier cannot be reused cleanly, extract the smallest shared decision function rather than duplicating its logic.
+
+Fail closed on ambiguity.
+
+### 2. Resolution is durable and forward-applying
+
+A confirmed resolution is not just a historical cleanup.
+
+It establishes the durable scoped source identity:
+
+vendor
++ ORDERLY/property
++ source Item Code
+→ vendor product
+→ canonical inventory item
+
+Therefore:
+
+- all currently eligible unresolved historical lines using that identity may resolve
+- future invoice imports with the same valid scoped identity should resolve automatically through the established mapping
+
+This is the intended value of the workflow.
+
+Do not create a mapping that only patches the lines currently in the database.
+
+Any future line with materially conflicting pack/source evidence must still HOLD rather than blindly inherit the mapping.
+
+### 3. Propagation remains synchronous unless evidence proves it is too large
+
+Do NOT add an async job framework preemptively.
+
+Before confirmation, calculate the eligible occurrence count.
+
+For normal populations:
+- write the durable identity once
+- update/re-evaluate affected historical line resolution in the existing transaction/service flow
+- refresh the UI
+
+If the implementation discovers that propagation size creates a real transaction/runtime problem, STOP and report measured evidence before adding async infrastructure.
+
+Do not invent an arbitrary threshold now.
+
+The durable mapping is the primary mutation; historical-line refresh is derived cleanup.
+
+### 4. Idempotency must be database-backed
+
+Reconfirming the same valid source identity → canonical identity must be a true no-op.
+
+Use the existing DB uniqueness/invariant around authoritative external mappings where possible.
+
+Required behavior:
+
+same source identity + same canonical item
+→ existing mapping returned/reused
+→ no duplicate mapping
+→ no duplicate audit side effect beyond any intentional "view/attempt" logging
+
+same source identity + different canonical item
+→ conflict / explicit reassignment workflow
+→ never silently overwrite
+
+Do not rely on a disabled Confirm button for correctness.
+
+### Historical occurrence/spend summary
+
+Keep:
+
+- occurrence count
+- historical spend
+- date range
+
+if available cheaply from the resolution preview/query.
+
+Avoid per-row N+1 aggregation.
+
+Compute as one grouped query or reuse staged/import summary data.
+
+If adding this materially complicates the read path, occurrence count is higher priority than spend display.
+
+### Modal UX remains
+
+Resolve ingredient
+→ show source evidence
+→ search/select existing item/vendor product
+→ show affected occurrence count
+→ validate identity/pack/conflicts
+→ explicit Confirm
+→ close modal and refresh resolved state
+
+No wizard.
+No item auto-create.
+No fuzzy authorization.
+No one-off line mapping.
