@@ -1,0 +1,193 @@
+I like the intent, but I’d tighten one conceptual point before giving this a GO:
+
+> **Orders and Received should be projections of the same historical invoice record, not two separate imported “entities.”**
+
+That matters because otherwise the UI can accidentally make one invoice look like both an order and a receipt, which is semantically stronger than what we actually know.
+
+What we know is:
+
+* the invoice existed,
+* it has dated source lines,
+* it was approved into historical evidence,
+* it may correspond to purchasing/receiving activity,
+* but we are explicitly **not** creating or asserting a real PO or receipt record.
+
+So my PM disposition would be:
+
+> **#1203 CONDITIONAL GO — approved as a read-only historical projection, provided the UI makes it clear that this is imported invoice history surfaced in Orders/Received context, not a reconstructed PO or receipt.**
+
+I’d amend it like this:
+
+```md
+## PM Review — #1203 Show Imported Invoices in Orders and Received
+
+### Decision
+
+CONDITIONAL GO.
+
+Approved as a read-only projection of historical invoice evidence.
+
+Do NOT model the same historical invoice as a synthetic purchase order or synthetic receipt.
+
+Orders and Received may both surface the same imported invoice, but the underlying entity remains:
+
+Historical Imported Invoice
+
+not:
+
+Purchase Order
+or
+Receipt.
+
+### Identity
+
+Use one stable imported-invoice identity from the historical invoice domain.
+
+The same imported invoice may appear in both Orders and Received views, but:
+
+- it must have the same underlying historical invoice ID
+- it must not create duplicate storage
+- it must not create separate order/receipt identities
+- opening it should use the same read-only historical detail contract
+
+### Labeling
+
+Use clear labels such as:
+
+Imported Invoice
+Historical Invoice
+Imported
+
+Avoid labels that imply:
+
+Received
+Completed Receipt
+Purchase Order
+
+unless those states actually exist in the operational domain.
+
+### Orders projection
+
+In Orders, imported invoices are historical purchasing evidence.
+
+They may participate in:
+
+- vendor filtering
+- date filtering
+- historical search
+- source invoice drill-down
+
+They may NOT expose:
+
+- edit order
+- route
+- submit
+- cancel
+- convert
+- receive
+- reorder
+- any PO mutation
+
+### Received projection
+
+In Received, imported invoices are historical receiving/purchase evidence only.
+
+They may participate in:
+
+- vendor filtering
+- date filtering
+- historical search
+- source invoice drill-down
+
+They may NOT expose:
+
+- receive
+- reopen
+- edit quantities
+- adjust inventory
+- change cost
+- delete receipt
+- post accounting
+
+Do not imply that FnB has proven the physical receipt event merely because the historical invoice exists.
+
+### Detail view
+
+Prefer one shared read-only imported-invoice detail view reused from both projections.
+
+Show:
+
+- vendor
+- invoice number
+- invoice date
+- source/import badge
+- source filename/batch where useful
+- description
+- Item Code
+- Qty
+- amount
+- raw Pack Size
+- matched vendor product / inventory item where resolved
+- resolution status
+- Source GL Code
+- Source Category
+- unresolved state
+
+Preserve missing values honestly.
+
+### Read contract
+
+Eligibility:
+
+approved historical invoice batches only.
+
+Do not show staged/rejected/unapproved imports as historical purchasing records.
+
+Read endpoint must be:
+
+- company scoped
+- store scoped
+- authorized using the same visibility boundaries as the destination workflow
+- deterministic and duplicate-safe
+
+No purchase-order/receipt write service should be reachable from this contract.
+
+### Acceptance
+
+Coca Cola acceptance should prove:
+
+- exactly 3 approved imported invoices appear when filtered appropriately
+- the same 3 historical identities appear consistently in Orders and Received
+- no duplicate entity creation
+- all source lines visible
+- unresolved evidence remains visible
+- Source GL/Category remain source evidence
+- no PO rows created
+- no receipt rows created
+- no inventory mutation
+- no price mutation
+- no accounting mutation
+
+### UX guardrail
+
+If combining live operational records and Imported records in one list creates confusing status/sort semantics, keep them visually grouped or filterable as:
+
+Live
+Imported
+
+Do not force imported invoices into live PO/receipt status enums merely to reuse the table.
+```
+
+The phrase I would change in the task is:
+
+> “Each approved historical invoice appears in Orders and Received as an Imported record”
+
+to:
+
+> **“Each approved historical invoice is surfaced as a read-only Imported Invoice projection within Orders and Received.”**
+
+Small wording difference, important domain boundary.
+
+Strategically, I like this feature. It makes the historical imports actually useful to a manager instead of burying them in an importer screen. But the UI has to communicate **“here is your past purchasing evidence”**, not **“FnB now claims this was a PO and completed receipt.”**
+
+With that clarification, I’d let it build.
