@@ -1,0 +1,89 @@
+## PM Review — #1201 Review Invoice GL Codes
+
+### Decision
+
+APPROVED.
+
+The source GL Code and Category contained in a vendor invoice are historical source evidence and should remain visible before and after approval.
+
+This task does NOT establish an FnB master accounting classification.
+
+### Accounting-data boundary
+
+Treat these as three distinct concepts:
+
+1. Source invoice classification
+   - GL Code exactly as supplied on that invoice line
+   - Category exactly as supplied
+   - immutable historical evidence
+   - may be blank
+   - never silently rewritten from current master data
+
+2. FnB operational/account mapping
+   - future company-controlled classification
+   - may eventually map source GL codes/categories to an FnB/accounting account
+   - NOT part of #1201
+
+3. Item/category override
+   - future explicit business rule only if justified
+   - must not rewrite historical invoice evidence
+   - NOT part of #1201
+
+A future current-state mapping may coexist with historical source evidence, but must never replace it.
+
+### UI
+
+For staged and approved invoice lines show:
+
+- Source GL Code
+- Source Category
+
+Use a clear empty state such as:
+
+`—`
+
+or
+
+`Not supplied`
+
+Do not present a missing source GL Code as an error unless another future accounting policy explicitly requires one.
+
+Where practical, label these fields as:
+
+`Source GL Code`
+`Source Category`
+
+rather than simply `GL Code`, so users do not assume they are FnB master classifications.
+
+### Regression contract
+
+Tests should prove:
+
+- source GL parses from XLSX
+- source Category parses from XLSX
+- both appear in pre-approval review
+- both remain visible after approval
+- missing values remain valid
+- approval does not mutate them
+- no vendor-item/inventory-item master field is modified as a side effect
+
+### PM decision brief
+
+Keep the brief short.
+
+Recommendation should be:
+
+> Retain source GL/category as immutable invoice evidence now. Do not introduce master-level GL classification until we have enough vendor/accounting evidence to define the company-level mapping contract.
+
+The future likely direction should be evaluated as:
+
+Source GL/category
+→ optional company mapping
+→ accounting/export classification
+
+not:
+
+invoice GL
+→ overwrite inventory item GL
+
+No QuickBooks/accounting architecture should be designed as part of this task.
