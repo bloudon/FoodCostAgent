@@ -1,0 +1,182 @@
+# PM Review — #1202 Decide Company Account Mapping Contract
+
+## Decision
+
+APPROVED as a decision/discovery task only.
+
+Do NOT design or implement a mapping subsystem in the abstract.
+
+The first gate is to identify the concrete business output that requires FnB-managed accounting classification.
+
+Examples might eventually include:
+
+- food/beverage spend reporting
+- department/category reporting
+- accounting export
+- GL-coded purchase history
+
+But do not assume which one is required.
+
+If no concrete consumer can currently be identified:
+
+> recommend retaining source evidence only and STOP.
+
+---
+
+## Principle 1 — Source evidence is immutable
+
+Existing invoice fields remain:
+
+- Source GL Code
+- Source Category
+
+They represent what the source system/vendor invoice said at that point in time.
+
+They are never:
+
+- overwritten by FnB classification
+- rewritten when mappings change
+- promoted silently to inventory-item master data
+
+---
+
+## Principle 2 — Prefer source-code mapping before item-level classification
+
+The default future model should evaluate:
+
+Source GL Code / Source Category
+→ company-owned mapping
+→ FnB/account classification
+
+Example conceptually:
+
+Source GL `501400`
+→ Bay Hill mapping
+→ Non-Alcoholic Beverage Expense
+
+The mapping belongs to the company, not to Orderly globally.
+
+Do not assume the same source code means the same account for another company.
+
+---
+
+## Principle 3 — Item overrides require evidence
+
+Do NOT automatically add inventory-item GL/account fields.
+
+An item-level override should exist only if real data proves that:
+
+- source classification is insufficient, AND
+- the same item consistently requires a company-specific accounting treatment independent of invoice source.
+
+If such evidence does not exist, omit item overrides from the proposed MVP.
+
+Same rule for category-level overrides.
+
+Delete unnecessary precedence layers rather than designing them preemptively.
+
+---
+
+## Candidate hierarchy to evaluate
+
+Start with the smallest model:
+
+1. Explicit company mapping for Source GL Code
+2. Optional mapping for Source Category when no usable Source GL Code exists
+3. Unmapped → REVIEW / UNCLASSIFIED
+
+Only add item/category overrides if evidence proves this hierarchy cannot support the named business output.
+
+Do not assume all three mapping layers are required.
+
+---
+
+## Conflict semantics
+
+Define these explicitly:
+
+### Mapped
+
+Exactly one applicable company mapping exists.
+
+### Unmapped
+
+No company mapping exists.
+
+Valid state.
+Historical invoice remains usable.
+Any future export requiring classification may HOLD this line.
+
+### Conflicting
+
+More than one applicable company classification claims the same source evidence.
+
+Fail closed for accounting/export classification.
+
+Do not silently choose one.
+
+### Missing source GL
+
+Not an invoice error.
+
+May fall back to Source Category only if the approved company mapping contract explicitly allows it.
+
+---
+
+## Authorization
+
+Identify the smallest role allowed to manage company mappings.
+
+Likely candidates should be evaluated against existing FnB permissions rather than creating a new role system.
+
+Ordinary invoice viewers should be able to SEE:
+
+- source evidence
+- resulting FnB classification
+
+but not necessarily CHANGE company mappings.
+
+Any mapping change must be company-scoped and auditable.
+
+---
+
+## Historical semantics
+
+Mapping changes must NOT rewrite historical source evidence.
+
+The decision brief must answer one important question:
+
+> When a company changes a mapping, should historical reporting immediately use the new mapping, or should classification be effective-dated/snapshotted?
+
+Do not assume either answer.
+
+Evaluate against the concrete reporting/export goal.
+
+Prefer the simpler current-mapping model unless historical accounting reproducibility actually requires effective dating.
+
+---
+
+## Required output
+
+Return a concise PM decision brief containing:
+
+1. Concrete business consumer requiring classification
+2. Exact immutable source evidence
+3. Smallest proposed company mapping key
+4. Proposed target classification entity
+5. Precedence/fallback rules
+6. Unmapped behavior
+7. Conflict behavior
+8. Authorized roles
+9. Audit requirements
+10. Whether mapping must be effective-dated
+11. Whether item/category overrides are actually necessary
+12. Smallest future implementation, if any
+
+Then STOP.
+
+No schema.
+No UI.
+No routes.
+No exports.
+No QuickBooks work.
