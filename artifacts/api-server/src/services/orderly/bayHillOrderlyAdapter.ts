@@ -45,6 +45,12 @@ export interface FetchBayHillHistoricalInvoicesOptions {
   fetchImplementation?: typeof fetch;
 }
 
+export interface FetchBayHillOrderlySpecsOptions {
+  session: BayHillOrderlySession;
+  /** Injectable for tests and authenticated browser/session bridges. */
+  fetchImplementation?: typeof fetch;
+}
+
 export interface BayHillOrderlyInvoiceRange {
   start: string;
   end: string;
@@ -365,4 +371,18 @@ export async function fetchBayHillOrderlyHistoricalInvoicePayload(
     session: options.session,
     fetchImplementation: options.fetchImplementation,
   });
+}
+
+/**
+ * Fetch the authoritative Bay Hill restaurant-spec catalog without invoices.
+ * The response contract remains deliberately strict: only a root array is
+ * accepted, and no source data is persisted by this adapter.
+ */
+export async function fetchBayHillOrderlySpecs(
+  options: FetchBayHillOrderlySpecsOptions,
+): Promise<unknown[]> {
+  const fetchImplementation = options.fetchImplementation ?? fetch;
+  const specsUrl = new URL(SPECS_PATH, ORDERLY_ORIGIN);
+  const specs = await fetchJson(fetchImplementation, specsUrl, options.session, 'specs');
+  return sourceArray(specs, 'specs response');
 }

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "orderly:dry-run": "esbuild src/services/orderly/bayHillOrderlyDryRun.ts --bundle --platform=node --format=esm --outfile=dist/orderly-dry-run.mjs && node --enable-source-maps dist/orderly-dry-run.mjs",
+    "orderly:adoption-preview": "esbuild src/services/orderly/orderlyVendorProductAdoptionPreviewCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-adoption-preview.mjs && node --enable-source-maps dist/orderly-adoption-preview.mjs",
     "orderly:may-backfill": "esbuild src/services/orderly/mayHistoricalSessionBackfillCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-may-backfill.mjs && node --enable-source-maps dist/orderly-may-backfill.mjs",
     "orderly:remediate": "pnpm run build && node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs"
   },
