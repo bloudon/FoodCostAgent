@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ChevronLeft, Info, Receipt } from "lucide-react";
@@ -12,7 +13,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatDateString } from "@/lib/utils";
+import {
+  ImportedInvoiceResolutionDialog,
+  type ImportedInvoiceResolutionLine,
+} from "@/components/imported-invoice-resolution-dialog";
 
 type ImportedInvoiceLine = {
   id: string;
@@ -26,6 +37,7 @@ type ImportedInvoiceLine = {
   sourceGlCode: string | null;
   sourceCategory: string | null;
   resolutionStatus: string;
+  resolvedInventoryItemId: string | null;
   resolvedInventoryItemName: string | null;
 };
 
@@ -68,11 +80,43 @@ function formatPack(pack: unknown): string {
   return values.join(", ") || "—";
 }
 
+function resolutionStatusMeta(status: string | null | undefined): {
+  label: string;
+  tooltip: string;
+  dotClassName: string;
+  actionable: boolean;
+} {
+  const normalized = status?.trim().toLowerCase() || "unresolved";
+  if (normalized === "resolved") {
+    return {
+      label: "resolved",
+      tooltip: "resolved",
+      dotClassName: "bg-emerald-500",
+      actionable: false,
+    };
+  }
+  if (normalized === "unresolved") {
+    return {
+      label: "unresolved",
+      tooltip: "unresolved · click to link ingredient",
+      dotClassName: "bg-red-500",
+      actionable: true,
+    };
+  }
+  return {
+    label: normalized,
+    tooltip: `${normalized} · needs review`,
+    dotClassName: "bg-amber-400",
+    actionable: true,
+  };
+}
+
 export default function ImportedInvoiceDetail() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const backTarget = new URLSearchParams(window.location.search).get("from") === "receiving"
     ? "/receiving"
     : "/orders";
+  const [resolutionLine, setResolutionLine] = useState<ImportedInvoiceLine | null>(null);
 
   const { data: invoice, isLoading, isError } = useQuery<ImportedInvoiceDetail>({
     queryKey: [`/api/imported-invoices/${invoiceId}`],
@@ -120,7 +164,7 @@ export default function ImportedInvoiceDetail() {
             </h1>
             <p className="text-muted-foreground mt-1 flex items-center gap-2">
               <Info className="h-4 w-4" />
-              This is a read-only historical record. It is not a purchase order or a confirmed physical receipt.
+               Source invoice evidence is read only. Resolving an ingredient only adds a durable item link.
             </p>
           </div>
         </div>
@@ -187,7 +231,7 @@ export default function ImportedInvoiceDetail() {
         <Card>
           <CardHeader>
             <CardTitle>Line Items ({invoice.lineCount})</CardTitle>
-            <CardDescription>Read-only historical imported lines</CardDescription>
+            <CardDescription>Historical source evidence is read only; unresolved ingredient links can be repaired.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table wrapperClassName="border-t max-h-[600px]">
@@ -214,8 +258,27 @@ export default function ImportedInvoiceDetail() {
                     <TableCell className="max-w-[200px] truncate" title={line.description || undefined} data-testid={`text-description-${idx}`}>
                       {line.description || "—"}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={line.resolvedInventoryItemName || undefined} data-testid={`text-resolved-item-${idx}`}>
-                      {line.resolvedInventoryItemName || "—"}
+                    <TableCell className="max-w-[220px]" title={line.resolvedInventoryItemName || undefined} data-testid={`text-resolved-item-${idx}`}>
+                      {line.resolvedInventoryItemId && line.resolvedInventoryItemName ? (
+                        <Link
+                          href={`/inventory-items/${line.resolvedInventoryItemId}`}
+                          className="font-medium text-primary underline-offset-4 hover:underline"
+                          data-testid={`link-resolved-item-${idx}`}
+                        >
+                          {line.resolvedInventoryItemName}
+                        </Link>
+                      ) : line.resolvedInventoryItemName ? (
+                        <span>{line.resolvedInventoryItemName}</span>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setResolutionLine(line)}
+                          data-testid={`button-resolve-ingredient-${idx}`}
+                        >
+                          Resolve ingredient
+                        </Button>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm" data-testid={`text-pack-${idx}`}>
                       {formatPack(line.pack)}
@@ -236,9 +299,39 @@ export default function ImportedInvoiceDetail() {
                       {formatCurrency(line.lineTotal)}
                     </TableCell>
                     <TableCell data-testid={`text-resolution-status-${idx}`}>
-                      <Badge variant="outline" className="capitalize">
-                        {line.resolutionStatus || "—"}
-                      </Badge>
+                      {(() => {
+                        const status = resolutionStatusMeta(line.resolutionStatus);
+                        const dot = (
+                          <span
+                            className={`block h-3 w-3 rounded-full ring-2 ring-background ${status.dotClassName}`}
+                            aria-label={status.label}
+                            data-testid={`dot-resolution-status-${idx}`}
+                          />
+                        );
+                        return (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                {status.actionable ? (
+                                  <button
+                                    type="button"
+                                    className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    onClick={() => setResolutionLine(line)}
+                                    aria-label={status.tooltip}
+                                  >
+                                    {dot}
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex rounded-full" role="img" aria-label={status.tooltip}>
+                                    {dot}
+                                  </span>
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent>{status.tooltip}</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })()}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -247,6 +340,14 @@ export default function ImportedInvoiceDetail() {
           </CardContent>
         </Card>
       </div>
+      <ImportedInvoiceResolutionDialog
+        open={!!resolutionLine}
+        onOpenChange={open => {
+          if (!open) setResolutionLine(null);
+        }}
+        invoiceId={invoice.id}
+        line={resolutionLine as ImportedInvoiceResolutionLine | null}
+      />
     </div>
   );
 }

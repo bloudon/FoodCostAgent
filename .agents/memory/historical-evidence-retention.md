@@ -42,6 +42,23 @@ actually belongs to the acting tenant by joining through the ownership chain (ve
 company, item → company). A stale or corrupted mapping must degrade to "unresolved", never
 resolve across a tenant boundary.
 
+## Resolve retained lines through an immutable mapping overlay
+
+Never relax the evidence-table update trigger to attach a later relationship. Store the
+confirmed source identity in paired inventory-item and vendor-product mappings, then project
+that relationship when retained invoices are read. Future imports must consume and validate
+the same pair; the vendor-product mapping is authoritative even when its catalog SKU differs
+from the source code.
+
+**Why:** historical source rows must remain unchanged, while a confirmed repair still needs
+to affect every matching retained occurrence and later imports. An inventory-only mapping
+cannot identify a non-SKU vendor product, and a vendor-only mapping cannot prove the
+canonical inventory item.
+
+**How to apply:** require company, source system, source property, source code, vendor,
+inventory ownership, and pair agreement on every read/import. Fail closed on missing,
+competing, cross-tenant, or disagreeing mappings; never backfill historical evidence rows.
+
 ## Scope every read on the full identity, not just company
 
 Completeness/report queries must filter company **and** destination store **and** source

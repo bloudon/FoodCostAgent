@@ -14,6 +14,9 @@ const authState = vi.hoisted(() => ({
 const serviceMocks = vi.hoisted(() => ({
   listImportedInvoices: vi.fn(),
   getImportedInvoiceDetail: vi.fn(),
+  previewHistoricalInvoiceLineResolution: vi.fn(),
+  searchHistoricalInvoiceResolutionCandidates: vi.fn(),
+  confirmHistoricalInvoiceLineResolution: vi.fn(),
 }));
 
 vi.mock("../auth", () => ({
@@ -29,6 +32,19 @@ vi.mock("../auth", () => ({
 }));
 
 vi.mock("../services/orderly/importedInvoiceRead", () => serviceMocks);
+vi.mock("../services/orderly/historicalInvoiceResolution", () => {
+  class HistoricalInvoiceResolutionError extends Error {
+    constructor(public code: string, message: string) {
+      super(message);
+    }
+  }
+  return {
+    HistoricalInvoiceResolutionError,
+    previewHistoricalInvoiceLineResolution: serviceMocks.previewHistoricalInvoiceLineResolution,
+    searchHistoricalInvoiceResolutionCandidates: serviceMocks.searchHistoricalInvoiceResolutionCandidates,
+    confirmHistoricalInvoiceLineResolution: serviceMocks.confirmHistoricalInvoiceLineResolution,
+  };
+});
 
 let registerHistoricalInvoiceRoutes: (app: express.Express) => void;
 
@@ -52,6 +68,9 @@ beforeEach(() => {
   };
   serviceMocks.listImportedInvoices.mockReset();
   serviceMocks.getImportedInvoiceDetail.mockReset();
+  serviceMocks.previewHistoricalInvoiceLineResolution.mockReset();
+  serviceMocks.searchHistoricalInvoiceResolutionCandidates.mockReset();
+  serviceMocks.confirmHistoricalInvoiceLineResolution.mockReset();
 });
 
 describe("historical imported invoice HTTP routes", () => {
@@ -134,5 +153,96 @@ describe("historical imported invoice HTTP routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(detail);
+  });
+
+  it("previews a selected vendor product within the authenticated invoice line", async () => {
+    const preview = {
+      impact: { occurrenceCount: 3, affectedOccurrenceCount: 2, spend: 95 },
+      classification: { status: "SAFE_CANDIDATE", canConfirm: true },
+    };
+    serviceMocks.previewHistoricalInvoiceLineResolution.mockResolvedValue(preview);
+
+    const response = await supertest(buildApp())
+      .get("/api/imported-invoices/invoice-1/lines/line-1/resolution-preview")
+      .query({ vendorItemId: "vendor-item-1" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(preview);
+    expect(serviceMocks.previewHistoricalInvoiceLineResolution).toHaveBeenCalledWith(
+      "invoice-1",
+      "line-1",
+      "vendor-item-1",
+      authState.user,
+      authState.user.companyId,
+    );
+  });
+
+  it("returns 409 when a competing mapping blocks confirmation", async () => {
+    const { HistoricalInvoiceResolutionError } = await import("../services/orderly/historicalInvoiceResolution");
+    serviceMocks.confirmHistoricalInvoiceLineResolution.mockRejectedValue(
+      new HistoricalInvoiceResolutionError("CONFLICT" as any, "A competing mapping already exists."),
+    );
+
+    const response = await supertest(buildApp())
+      .post("/api/imported-invoices/invoice-1/lines/line-1/resolve")
+      .send({ vendorItemId: "vendor-item-1", confirm: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: "A competing mapping already exists." });
+  });
+
+  it.each([
+    {
+      method: "get",
+      path: "/api/imported-invoices/invoice-1/lines/line-1/resolution-preview",
+      service: "previewHistoricalInvoiceLineResolution",
+    },
+    {
+      method: "get",
+      path: "/api/imported-invoices/invoice-1/lines/line-1/resolution-candidates",
+      service: "searchHistoricalInvoiceResolutionCandidates",
+    },
+    {
+      method: "post",
+      path: "/api/imported-invoices/invoice-1/lines/line-1/resolve",
+      service: "confirmHistoricalInvoiceLineResolution",
+    },
+  ])("returns 401 for unauthenticated $path without calling its service", async ({ method, path, service }) => {
+    authState.authenticated = false;
+    const request = method === "post"
+      ? supertest(buildApp()).post(path).send({ vendorItemId: "vendor-item-1", confirm: true })
+      : supertest(buildApp()).get(path);
+    const response = await request;
+    expect(response.status).toBe(401);
+    expect((serviceMocks as any)[service]).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      method: "get",
+      path: "/api/imported-invoices/invoice-1/lines/private-line/resolution-preview",
+      service: "previewHistoricalInvoiceLineResolution",
+    },
+    {
+      method: "get",
+      path: "/api/imported-invoices/invoice-1/lines/private-line/resolution-candidates",
+      service: "searchHistoricalInvoiceResolutionCandidates",
+    },
+    {
+      method: "post",
+      path: "/api/imported-invoices/invoice-1/lines/private-line/resolve",
+      service: "confirmHistoricalInvoiceLineResolution",
+    },
+  ])("uses a privacy-safe 404 for inaccessible $path", async ({ method, path, service }) => {
+    const { HistoricalInvoiceResolutionError } = await import("../services/orderly/historicalInvoiceResolution");
+    (serviceMocks as any)[service].mockRejectedValue(
+      new HistoricalInvoiceResolutionError("NOT_FOUND" as any, "Invoice line not found."),
+    );
+    const request = method === "post"
+      ? supertest(buildApp()).post(path).send({ vendorItemId: "vendor-item-1", confirm: true })
+      : supertest(buildApp()).get(path);
+    const response = await request;
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Invoice line not found." });
   });
 });

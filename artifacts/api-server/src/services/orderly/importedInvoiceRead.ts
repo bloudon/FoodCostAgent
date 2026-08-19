@@ -17,7 +17,10 @@ import {
   historicalInvoiceLines,
   historicalInvoices,
   inventoryItems,
+  inventoryItemExternalMappings,
   vendorInvoiceImportBatches,
+  vendorItemExternalMappings,
+  vendorItems,
   vendors,
 } from '@workspace/db';
 import { db } from '../../db';
@@ -68,6 +71,7 @@ export interface ImportedInvoiceLine {
   sourceGlCode: string | null;
   sourceCategory: string | null;
   resolutionStatus: string;
+  resolvedInventoryItemId: string | null;
   resolvedInventoryItemName: string | null;
 }
 
@@ -293,6 +297,7 @@ export async function getImportedInvoiceDetail(
       chargeAmount: historicalInvoices.chargeAmount,
       creditAmount: historicalInvoices.creditAmount,
       sourceSystem: historicalInvoices.sourceSystem,
+      sourcePropertyId: historicalInvoices.sourcePropertyId,
       sourceInvoiceId: historicalInvoices.sourceInvoiceId,
       originalFilename: vendorInvoiceImportBatches.originalFilename,
       approvedAt: vendorInvoiceImportBatches.approvedAt,
@@ -357,7 +362,8 @@ export async function getImportedInvoiceDetail(
       historicalInvoiceLines.id,
     );
 
-  // Resolve inventory item names for resolved lines.
+  // Resolve inventory item names for lines that stored a canonical pointer at
+  // import time.
   const inventoryItemIds = [
     ...new Set(lineRows.filter((l) => l.inventoryItemId).map((l) => l.inventoryItemId as string)),
   ];
@@ -375,22 +381,101 @@ export async function getImportedInvoiceDetail(
     for (const inv of invRows) invNameById.set(inv.id, inv.name);
   }
 
-  const lines: ImportedInvoiceLine[] = lineRows.map((line) => ({
-    id: line.id,
-    sourceLineId: line.sourceLineId,
-    description: line.productNameSnapshot ?? null,
-    itemCode: line.sourceExternalId ?? null,
-    quantity: line.quantity ?? null,
-    unitPrice: line.unitPrice ?? null,
-    lineTotal: line.lineTotal ?? null,
-    pack: jsonbObject(line.packSnapshot),
-    sourceGlCode: jsonbString(line.glSnapshot, 'glCode'),
-    sourceCategory: jsonbString(line.glSnapshot, 'category'),
-    resolutionStatus: line.resolutionStatus,
-    resolvedInventoryItemName: line.inventoryItemId
+  // Historical evidence rows are database-immutable. A later human-confirmed
+  // resolution therefore projects through the same paired source mappings used
+  // by future imports, rather than updating historical_invoice_lines. Require
+  // both mappings to agree on the canonical item and vendor product.
+  const unresolvedCodes = [
+    ...new Set(
+      lineRows
+        .filter(line => !line.inventoryItemId && line.sourceExternalId?.trim())
+        .map(line => line.sourceExternalId!.trim()),
+    ),
+  ];
+  const projectedByCode = new Map<string, {
+    inventoryItemId: string;
+    inventoryItemName: string;
+  }>();
+  if (row.vendorId && unresolvedCodes.length > 0) {
+    const projectedRows = await db
+      .select({
+        sourceExternalId: vendorItemExternalMappings.sourceExternalId,
+        inventoryItemId: vendorItems.inventoryItemId,
+        inventoryItemName: inventoryItems.name,
+      })
+      .from(vendorItemExternalMappings)
+      .innerJoin(
+        vendorItems,
+        eq(vendorItems.id, vendorItemExternalMappings.vendorItemId),
+      )
+      .innerJoin(
+        vendors,
+        and(
+          eq(vendors.id, vendorItems.vendorId),
+          eq(vendors.companyId, companyId),
+        ),
+      )
+      .innerJoin(
+        inventoryItems,
+        and(
+          eq(inventoryItems.id, vendorItems.inventoryItemId),
+          eq(inventoryItems.companyId, companyId),
+        ),
+      )
+      .innerJoin(
+        inventoryItemExternalMappings,
+        and(
+          eq(inventoryItemExternalMappings.companyId, vendorItemExternalMappings.companyId),
+          eq(inventoryItemExternalMappings.sourceSystem, vendorItemExternalMappings.sourceSystem),
+          eq(inventoryItemExternalMappings.sourcePropertyId, vendorItemExternalMappings.sourcePropertyId),
+          eq(inventoryItemExternalMappings.sourceExternalId, vendorItemExternalMappings.sourceExternalId),
+          eq(inventoryItemExternalMappings.inventoryItemId, vendorItems.inventoryItemId),
+        ),
+      )
+      .where(and(
+        eq(vendorItemExternalMappings.companyId, companyId),
+        eq(vendorItemExternalMappings.sourceSystem, row.sourceSystem),
+        eq(vendorItemExternalMappings.sourcePropertyId, row.sourcePropertyId),
+        eq(vendorItems.vendorId, row.vendorId),
+        sql`${vendorItemExternalMappings.sourceExternalId} in (
+          select jsonb_array_elements_text(${JSON.stringify(unresolvedCodes)}::jsonb)
+        )`,
+      ));
+    for (const projected of projectedRows) {
+      projectedByCode.set(projected.sourceExternalId, {
+        inventoryItemId: projected.inventoryItemId,
+        inventoryItemName: projected.inventoryItemName,
+      });
+    }
+  }
+
+  const lines: ImportedInvoiceLine[] = lineRows.map((line) => {
+    const storedName = line.inventoryItemId
       ? (invNameById.get(line.inventoryItemId) ?? null)
-      : null,
-  }));
+      : null;
+    const projected = !line.inventoryItemId && line.sourceExternalId
+      ? projectedByCode.get(line.sourceExternalId.trim())
+      : undefined;
+    const resolvedInventoryItemId = storedName
+      ? line.inventoryItemId
+      : projected?.inventoryItemId ?? null;
+    const resolvedInventoryItemName = storedName ?? projected?.inventoryItemName ?? null;
+    return {
+      id: line.id,
+      sourceLineId: line.sourceLineId,
+      description: line.productNameSnapshot ?? null,
+      itemCode: line.sourceExternalId ?? null,
+      quantity: line.quantity ?? null,
+      unitPrice: line.unitPrice ?? null,
+      lineTotal: line.lineTotal ?? null,
+      pack: jsonbObject(line.packSnapshot),
+      sourceGlCode: jsonbString(line.glSnapshot, 'glCode'),
+      sourceCategory: jsonbString(line.glSnapshot, 'category'),
+      resolutionStatus: resolvedInventoryItemId ? 'resolved' : line.resolutionStatus,
+      resolvedInventoryItemId,
+      resolvedInventoryItemName,
+    };
+  });
 
   return {
     id: row.id,

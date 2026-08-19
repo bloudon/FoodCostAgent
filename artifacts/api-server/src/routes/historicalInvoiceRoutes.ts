@@ -11,6 +11,12 @@ import {
   ImportedInvoiceReadError,
   listImportedInvoices,
 } from '../services/orderly/importedInvoiceRead';
+import {
+  confirmHistoricalInvoiceLineResolution,
+  HistoricalInvoiceResolutionError,
+  previewHistoricalInvoiceLineResolution,
+  searchHistoricalInvoiceResolutionCandidates,
+} from '../services/orderly/historicalInvoiceResolution';
 
 function status(error: unknown) {
   if (!(error instanceof HistoricalInvoiceImportError)) return 500;
@@ -21,6 +27,9 @@ function auth(req: any) {
 }
 
 function importedInvoiceErrStatus(error: unknown): number {
+  if (error instanceof HistoricalInvoiceResolutionError) {
+    return error.code === 'NOT_FOUND' ? 404 : error.code === 'CONFLICT' ? 409 : 400;
+  }
   if (error instanceof ImportedInvoiceReadError) {
     return error.code === 'NOT_FOUND' ? 404 : error.code === 'FORBIDDEN' ? 403 : 401;
   }
@@ -64,6 +73,63 @@ export function registerHistoricalInvoiceRoutes(app: Express) {
     } catch (error) {
       res.status(importedInvoiceErrStatus(error)).json({
         error: error instanceof Error ? error.message : 'Unable to list imported invoices.',
+      });
+    }
+  });
+
+  // @ts-ignore
+  app.get('/api/imported-invoices/:invoiceId/lines/:lineId/resolution-preview', requireAuth, requireTier('basic'), async (req: any, res: any) => {
+    try {
+      if (!req.user || !req.companyId) return res.status(401).json({ error: 'Not authenticated.' });
+      const selectedVendorItemId = typeof req.query.vendorItemId === 'string'
+        ? req.query.vendorItemId
+        : undefined;
+      res.json(await previewHistoricalInvoiceLineResolution(
+        String(req.params.invoiceId),
+        String(req.params.lineId),
+        selectedVendorItemId,
+        req.user,
+        req.companyId,
+      ));
+    } catch (error) {
+      res.status(importedInvoiceErrStatus(error)).json({
+        error: error instanceof Error ? error.message : 'Unable to preview ingredient resolution.',
+      });
+    }
+  });
+
+  // @ts-ignore
+  app.get('/api/imported-invoices/:invoiceId/lines/:lineId/resolution-candidates', requireAuth, requireTier('basic'), async (req: any, res: any) => {
+    try {
+      if (!req.user || !req.companyId) return res.status(401).json({ error: 'Not authenticated.' });
+      res.json(await searchHistoricalInvoiceResolutionCandidates(
+        String(req.params.invoiceId),
+        String(req.params.lineId),
+        typeof req.query.q === 'string' ? req.query.q : '',
+        req.user,
+        req.companyId,
+      ));
+    } catch (error) {
+      res.status(importedInvoiceErrStatus(error)).json({
+        error: error instanceof Error ? error.message : 'Unable to search ingredients.',
+      });
+    }
+  });
+
+  // @ts-ignore
+  app.post('/api/imported-invoices/:invoiceId/lines/:lineId/resolve', requireAuth, requireTier('basic'), async (req: any, res: any) => {
+    try {
+      if (!req.user || !req.companyId) return res.status(401).json({ error: 'Not authenticated.' });
+      res.json(await confirmHistoricalInvoiceLineResolution(
+        String(req.params.invoiceId),
+        String(req.params.lineId),
+        req.body ?? {},
+        req.user,
+        req.companyId,
+      ));
+    } catch (error) {
+      res.status(importedInvoiceErrStatus(error)).json({
+        error: error instanceof Error ? error.message : 'Unable to resolve ingredient.',
       });
     }
   });

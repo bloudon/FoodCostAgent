@@ -32,6 +32,7 @@ import {
   vendorDepositRates,
   vendorInvoiceImportBatches,
   vendorInvoiceImportLines,
+  vendorItemExternalMappings,
   vendorItems,
   vendors,
   type VendorInvoiceImportBatch,
@@ -50,6 +51,7 @@ import {
   type VendorInvoiceParseResult,
   type VendorInvoiceTotal,
 } from './vendorInvoiceXlsx';
+import { classifyOrderlyVendorProductIdentity } from './orderlyVendorProductIdentity';
 
 export class VendorInvoiceImportError extends Error {
   constructor(
@@ -630,6 +632,16 @@ export async function runVendorInvoiceResolutionPreview(
           active: vendorItems.active,
           pricedAt: vendorItems.pricedAt,
           updatedAt: vendorItems.updatedAt,
+          vendorId: vendorItems.vendorId,
+          brandName: vendorItems.brandName,
+          purchaseUnitId: vendorItems.purchaseUnitId,
+          lastPrice: vendorItems.lastPrice,
+          lastCasePrice: vendorItems.lastCasePrice,
+          priceSource: vendorItems.priceSource,
+          canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+          pricingBasis: vendorItems.pricingBasis,
+          isVariableWeight: vendorItems.isVariableWeight,
+          packGeometryStatus: vendorItems.packGeometryStatus,
         })
         .from(vendorItems)
         .innerJoin(inventoryItems, eq(inventoryItems.id, vendorItems.inventoryItemId))
@@ -666,6 +678,31 @@ export async function runVendorInvoiceResolutionPreview(
     list.push(m.inventoryItemId);
     mappingByCode.set(m.sourceExternalId, list);
   }
+  const vendorMappingRows = codes.length
+    ? await db
+        .select({
+          sourceExternalId: vendorItemExternalMappings.sourceExternalId,
+          vendorItemId: vendorItemExternalMappings.vendorItemId,
+        })
+        .from(vendorItemExternalMappings)
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, companyId),
+          eq(vendorItemExternalMappings.sourceSystem, 'ORDERLY'),
+          eq(vendorItemExternalMappings.sourcePropertyId, batch.sourcePropertyId),
+          sql`${vendorItemExternalMappings.sourceExternalId} in (
+            select jsonb_array_elements_text(${JSON.stringify(codes)}::jsonb)
+          )`,
+        ))
+    : [];
+  const vendorMappingByCode = new Map<string, string[]>();
+  for (const mapping of vendorMappingRows) {
+    const list = vendorMappingByCode.get(mapping.sourceExternalId) ?? [];
+    list.push(mapping.vendorItemId);
+    vendorMappingByCode.set(mapping.sourceExternalId, list);
+  }
+  const vendorItemById = new Map<string, any>(
+    vendorItemRows.map((row: any): [string, any] => [row.id, row]),
+  );
 
   // Inventory item names for description evidence.
   const invItemIds = new Set<string>();
@@ -745,33 +782,49 @@ export async function runVendorInvoiceResolutionPreview(
       continue;
     }
 
-    const candidates = vendorItemsBySku.get(code) ?? [];
-    const distinctInvIds = [...new Set(candidates.map((c: any) => c.inventoryItemId))];
+    const mappedVendorItemIds = [...new Set(vendorMappingByCode.get(code) ?? [])];
+    const mappedVendorProducts: any[] = mappedVendorItemIds
+      .map(id => vendorItemById.get(id))
+      .filter((row): row is any => row != null);
+    const candidates = [
+      ...(vendorItemsBySku.get(code) ?? []),
+      ...mappedVendorProducts,
+    ];
     const mappedInvIds = [...new Set(mappingByCode.get(code) ?? [])];
+    const pairedMappingInvalid =
+      mappedVendorItemIds.length > 0 &&
+      (
+        mappedVendorItemIds.length !== mappedVendorProducts.length ||
+        mappedVendorItemIds.length !== 1 ||
+        mappedInvIds.length !== 1 ||
+        mappedVendorProducts[0]?.inventoryItemId !== mappedInvIds[0]
+      );
+    if (pairedMappingInvalid) {
+      lines.push({ ...base, holdReason: 'mapping_vendor_item_disagree' });
+      continue;
+    }
+    const identityDecision = classifyOrderlyVendorProductIdentity({
+      candidates,
+      mappedInventoryItemIds: mappedInvIds,
+      mappedVendorItemIds,
+      sourcePackRawValues: [line.packSizeRaw],
+      sourceDescriptions: [line.description],
+    });
 
-    if (candidates.length === 0) {
+    if (identityDecision.classification === 'NO_CANDIDATE') {
       lines.push({ ...base, holdReason: 'no_vendor_item' });
       continue;
     }
-    if (distinctInvIds.length > 1) {
+    if (identityDecision.classification === 'AMBIGUOUS') {
       lines.push({ ...base, holdReason: 'ambiguous_vendor_item' });
       continue;
     }
-    // Canonical vendor-item row: active first, then most recently priced/updated.
-    const canonical = [...candidates].sort((a, b) => {
-      if ((b.active ?? 0) !== (a.active ?? 0)) return (b.active ?? 0) - (a.active ?? 0);
-      const bp = b.pricedAt?.getTime() ?? b.updatedAt?.getTime() ?? 0;
-      const ap = a.pricedAt?.getTime() ?? a.updatedAt?.getTime() ?? 0;
-      return bp - ap;
-    })[0];
+    const canonical = identityDecision.canonicalVendorItem!;
     const inventoryItemId = canonical.inventoryItemId;
 
-    // The property-scoped mapping is the claim authority for the canonical
-    // item. If a mapping exists and disagrees with the vendor item's canonical
-    // link, the line is a conflict — never silently pick one side.
     let matchStrategy: LineResolution['matchStrategy'] = 'vendor_item_code';
-    if (mappedInvIds.length > 0) {
-      if (mappedInvIds.length > 1 || mappedInvIds[0] !== inventoryItemId) {
+    if (mappedInvIds.length > 0 || mappedVendorItemIds.length > 0) {
+      if (identityDecision.reasons.some(reason => reason.includes('authoritative source mapping'))) {
         lines.push({
           ...base,
           holdReason: 'mapping_vendor_item_disagree',
@@ -784,11 +837,7 @@ export async function runVendorInvoiceResolutionPreview(
       matchStrategy = 'external_mapping';
     }
 
-    const packCheck = crossCheckPackSize(parsePackSize(line.packSizeRaw), {
-      caseSize: canonical.caseSize,
-      innerPackSize: canonical.innerPackSize,
-      packUom: canonical.packUom,
-    });
+    const packCheck = identityDecision.packCrossCheck;
     const invName = invNameById.get(inventoryItemId) ?? null;
     const descriptionAgrees =
       line.description && invName
@@ -796,10 +845,12 @@ export async function runVendorInvoiceResolutionPreview(
           normalizeDesc(line.description).includes(normalizeDesc(invName))
         : null;
 
-    if (packCheck === 'conflict') {
+    if (identityDecision.classification === 'CONFLICT') {
       lines.push({
         ...base,
-        holdReason: 'pack_conflict',
+        holdReason: identityDecision.reasons.some(reason => reason.includes('pack'))
+          ? 'pack_conflict'
+          : 'mapping_vendor_item_disagree',
         matchStrategy,
         vendorItemId: canonical.id,
         inventoryItemId,

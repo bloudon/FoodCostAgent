@@ -99,7 +99,23 @@ const mockInvoiceDetail = {
       sourceGlCode: null,
       sourceCategory: "Meat",
       resolutionStatus: "resolved",
+      resolvedInventoryItemId: "item-1",
       resolvedInventoryItemName: "Chicken"
+    },
+    {
+      id: "line-2",
+      sourceLineId: "src-line-2",
+      description: "Chicken Tenderloin",
+      itemCode: "SKU-200",
+      quantity: 2,
+      unitPrice: 10,
+      lineTotal: 20,
+      pack: { raw: "6/4 OZ" },
+      sourceGlCode: "5010",
+      sourceCategory: "Meat",
+      resolutionStatus: "unresolved",
+      resolvedInventoryItemId: null,
+      resolvedInventoryItemName: null
     }
   ]
 };
@@ -112,6 +128,63 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       const key = String(opts?.queryKey?.[0] ?? "");
       if (key === "/api/imported-invoices/inv-1") {
         return { data: mockInvoiceDetail, isLoading: false };
+      }
+      if (key.includes("/resolution-preview?vendorItemId=")) {
+        return {
+          data: {
+            impact: {
+              occurrenceCount: 2,
+              affectedOccurrenceCount: 2,
+              spend: 40,
+              dateRangeStart: "2023-09-01",
+              dateRangeEnd: "2023-10-01",
+            },
+            classification: {
+              status: "SAFE_CANDIDATE",
+              reasons: [],
+              packCrossCheck: "match",
+              canConfirm: true,
+              target: {
+                vendorItemId: "vendor-item-1",
+                inventoryItemId: "item-1",
+                inventoryItemName: "Chicken",
+              },
+            },
+            blockers: [],
+          },
+          isLoading: false,
+        };
+      }
+      if (key.includes("/resolution-preview")) {
+        return {
+          data: {
+            impact: {
+              occurrenceCount: 2,
+              affectedOccurrenceCount: 2,
+              spend: 40,
+              dateRangeStart: "2023-09-01",
+              dateRangeEnd: "2023-10-01",
+            },
+            classification: null,
+            blockers: [],
+          },
+          isLoading: false,
+        };
+      }
+      if (key.includes("/resolution-candidates")) {
+        return {
+          data: [{
+            vendorItemId: "vendor-item-1",
+            inventoryItemId: "item-1",
+            inventoryItemName: "Chicken",
+            vendorSku: "SKU-200",
+            brandName: "Farm Brand",
+            caseSize: 6,
+            innerPackSize: 4,
+            packUom: "oz",
+          }],
+          isLoading: false,
+        };
       }
       if (key.includes("/api/imported-invoices")) return { data: mockImportedInvoices, isLoading: false };
       if (key.includes("/api/orders/unified")) return { data: mockPurchaseOrders, isLoading: false };
@@ -180,7 +253,7 @@ describe("Imported Invoices UI requirements", () => {
     expect(screen.getByTestId("row-pending-order-po-1")).toBeInTheDocument();
   });
 
-  it("Detail page: renders missing source values as em dash and has no mutating controls", () => {
+  it("Detail page: links authorized resolved items and offers a focused resolver for unresolved lines", () => {
     window.history.replaceState({}, "", "/imported-invoices/inv-1?from=receiving");
     render(<ImportedInvoiceDetail />);
 
@@ -195,9 +268,34 @@ describe("Imported Invoices UI requirements", () => {
     expect(screen.getByTestId("text-pack-0")).toHaveTextContent("—");
     expect(screen.getByTestId("text-source-gl-0")).toHaveTextContent("—");
     expect(screen.getByTestId("button-back")).toHaveAttribute("href", "/receiving");
+    expect(screen.getByTestId("link-resolved-item-0")).toHaveAttribute("href", "/inventory-items/item-1");
+    expect(screen.getByTestId("dot-resolution-status-0")).toHaveClass("bg-emerald-500");
+    expect(screen.getByTestId("dot-resolution-status-1")).toHaveClass("bg-red-500");
 
-    // No mutating controls (edit/save buttons)
+    fireEvent.click(screen.getByTestId("button-resolve-ingredient-1"));
+    expect(screen.getByTestId("dialog-resolve-ingredient")).toBeInTheDocument();
+    expect(screen.getByText("Source evidence")).toBeInTheDocument();
+    expect(screen.getByText("Read only")).toBeInTheDocument();
+    expect(screen.getByTestId("text-resolution-source-pack")).toHaveTextContent("6/4 OZ");
+    expect(screen.getByTestId("resolution-impact-summary")).toHaveTextContent("Occurrences");
+    expect(screen.getByTestId("resolution-impact-summary")).toHaveTextContent("$40.00");
+
+    fireEvent.click(screen.getByTestId("candidate-vendor-item-1"));
+    expect(screen.getByText("Safe to link")).toBeInTheDocument();
+    expect(screen.getByTestId("button-confirm-resolution")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("checkbox-confirm-resolution"));
+    expect(screen.getByTestId("button-confirm-resolution")).toBeEnabled();
+
+    // Operational edit/save controls remain absent.
     expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /edit/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the resolver from the unresolved status dot", () => {
+    render(<ImportedInvoiceDetail />);
+
+    fireEvent.click(screen.getByTestId("dot-resolution-status-1"));
+
+    expect(screen.getByTestId("dialog-resolve-ingredient")).toBeInTheDocument();
   });
 });
