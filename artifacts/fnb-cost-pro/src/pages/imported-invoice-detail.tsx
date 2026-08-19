@@ -237,6 +237,7 @@ export default function ImportedInvoiceDetail() {
             <Table wrapperClassName="border-t max-h-[600px]">
               <TableHeader className="bg-muted/50 sticky top-0">
                 <TableRow>
+                  <TableHead className="w-12" />
                   <TableHead>Code</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Resolved Item</TableHead>
@@ -246,12 +247,46 @@ export default function ImportedInvoiceDetail() {
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {invoice.lines.map((line, idx) => (
                   <TableRow key={line.id} data-testid={`row-line-${idx}`}>
+                    <TableCell className="w-12" data-testid={`text-resolution-status-${idx}`}>
+                      {(() => {
+                        const status = resolutionStatusMeta(line.resolutionStatus);
+                        const dot = (
+                          <span
+                            className={`block h-3 w-3 rounded-full ring-2 ring-background ${status.dotClassName}`}
+                            aria-label={status.label}
+                            data-testid={`dot-resolution-status-${idx}`}
+                          />
+                        );
+                        return (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                {status.actionable ? (
+                                  <button
+                                    type="button"
+                                    className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    onClick={() => setResolutionLine(line)}
+                                    aria-label={status.tooltip}
+                                  >
+                                    {dot}
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex rounded-full" role="img" aria-label={status.tooltip}>
+                                    {dot}
+                                  </span>
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent>{status.tooltip}</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="font-mono text-sm" data-testid={`text-item-code-${idx}`}>
                       {line.itemCode || "—"}
                     </TableCell>
@@ -297,41 +332,6 @@ export default function ImportedInvoiceDetail() {
                     </TableCell>
                     <TableCell className="text-right font-mono font-medium" data-testid={`text-line-total-${idx}`}>
                       {formatCurrency(line.lineTotal)}
-                    </TableCell>
-                    <TableCell data-testid={`text-resolution-status-${idx}`}>
-                      {(() => {
-                        const status = resolutionStatusMeta(line.resolutionStatus);
-                        const dot = (
-                          <span
-                            className={`block h-3 w-3 rounded-full ring-2 ring-background ${status.dotClassName}`}
-                            aria-label={status.label}
-                            data-testid={`dot-resolution-status-${idx}`}
-                          />
-                        );
-                        return (
-                          <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                {status.actionable ? (
-                                  <button
-                                    type="button"
-                                    className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    onClick={() => setResolutionLine(line)}
-                                    aria-label={status.tooltip}
-                                  >
-                                    {dot}
-                                  </button>
-                                ) : (
-                                  <span className="inline-flex rounded-full" role="img" aria-label={status.tooltip}>
-                                    {dot}
-                                  </span>
-                                )}
-                              </TooltipTrigger>
-                              <TooltipContent>{status.tooltip}</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        );
-                      })()}
                     </TableCell>
                   </TableRow>
                 ))}
