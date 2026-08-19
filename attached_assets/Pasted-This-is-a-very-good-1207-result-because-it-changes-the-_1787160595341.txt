@@ -1,0 +1,194 @@
+This is a very good #1207 result because it changes the diagnosis in an important way.
+
+The original theory was:
+
+> “FnB only keeps one vendor per ingredient.”
+
+The evidence now says that is **not** the architecture bug.
+
+The actual issue is narrower:
+
+> **Approved earlier batches seeded some vendor relationships, but later source batches introduced additional legitimate vendor/SKU relationships that were never adopted into the persisted vendor catalog.**
+
+That is much better news. It means our underlying vendor-product model is capable of representing multiple suppliers correctly; we have a **cross-batch adoption gap**, not a one-vendor-per-item data-model failure.
+
+## PM disposition
+
+**#1207 ACCEPTED / CLOSED.**
+
+And I would split the next work into two independent tracks:
+
+1. **#1208 — fix the cross-shopping identity bug. GO.**
+2. **New vendor-product adoption/backfill task — GO for design/build in Dev, using the safely matched 136 missing relationships.**
+
+I would not do a full catalog rebuild based on this evidence. We have a bounded, authoritative missing population: **136 relationships across 12 vendors**. That argues strongly for a targeted adoption/backfill after fixing the importer behavior that caused the gap.
+
+### #1208 is a real bug, not optional cleanup
+
+This finding:
+
+> cross-shopping selects “current” comparison price by `vendorId` instead of `vendorItemId`
+
+needs to be fixed **before we restore the missing relationships**.
+
+Otherwise adding legitimate same-vendor products such as:
+
+* Harvill `SPRBR5` — 5 lb
+* Harvill `SPRBR` — 25 lb
+
+could make the comparison screen more wrong, not less.
+
+Routing itself sounds correctly vendor-item-centric already. Price history is correctly vendor-item-centric too. So #1208 should remain very small:
+
+```md
+## PM Decision — #1208
+
+APPROVED.
+
+Fix bulk cross-shopping so every price/comparison decision remains keyed to the exact `vendor_item_id`.
+
+Do not identify a selected product by `vendorId` once multiple vendor products from the same vendor are present.
+
+Required regression:
+
+One canonical ingredient
++ same vendor
++ two legitimate vendor_items
++ different SKU/pack
++ different price histories
+
+Prove:
+
+- each row displays the price belonging to its own vendor_item
+- price sorting does not cause one SKU to inherit another SKU's price
+- selected comparison identity remains vendor_item-specific
+- routing/PO selection preserves the exact chosen vendor_item_id
+
+No routing rewrite.
+No catalog mutation.
+```
+
+### Then repair the actual seeding gap
+
+I would create the next task around **adopting authoritative later-batch vendor relationships**, not “rebuilding the vendor catalog.”
+
+Something like:
+
+```md
+# Vendor Product Cross-Batch Adoption
+
+## Objective
+
+Fix the importer so later approved Orderly source batches can add newly evidenced vendor-product relationships to an already-existing canonical inventory item.
+
+Then backfill the 136 currently proven missing Bay Hill relationships in Dev.
+
+## Contract
+
+One canonical inventory item may have many vendor products.
+
+A later source batch may add:
+
+- a new vendor
+- a new SKU from an existing vendor
+- a new legitimate pack from an existing vendor
+
+without creating another inventory item and without replacing an existing vendor product.
+
+## Identity
+
+For each authoritative Orderly vendor-product relationship preserve:
+
+- source = ORDERLY
+- source property
+- vendor
+- source SKU / Item Code
+- packSize.id where available
+- raw/normalized pack geometry
+- canonical inventory item
+- vendor_item_id
+
+Add durable source provenance/external mapping as part of the adoption.
+
+Do not create generic vendor_items without Orderly provenance.
+
+## Dev backfill population
+
+Current proven scope:
+
+- 2,419 authoritative source relationships
+- 2,283 already persisted
+- 136 missing
+- 12 affected vendors
+
+Backfill only relationships still proven absent and equivalent at apply time.
+
+Do not recreate existing relationships.
+
+## Harvill acceptance
+
+After repair/rehearsal:
+
+- the 27 currently held Harvill source codes that have authoritative relationships should become automatically resolvable where identity/pack evidence remains valid
+- Harvill Brussels sprouts must retain both `SPRBR5` and `SPRBR` as distinct vendor products
+- no duplicate vendor_items
+- no duplicate inventory items
+- no existing vendor-product overwritten
+- price history remains attached to exact vendor_item
+- cross-shopping uses exact vendor_item after #1208
+- routing continues to preserve exact vendor_item
+
+## Sequence
+
+1. #1208 first
+2. importer cross-batch adoption fix
+3. read-only backfill preview
+4. PM review
+5. Dev apply
+6. rerun Harvill invoice resolution metrics
+
+No production action.
+```
+
+### One especially important finding
+
+You noted:
+
+> current active Bay Hill vendor-product rows have **zero external source-mapping records**.
+
+I would make fixing that part of the adoption/backfill contract.
+
+We now know that vendor-product identity matters across:
+
+* invoice resolution
+* price history
+* cross-shopping
+* routing
+
+So the restored relationships should not just be rows that happen to have the right SKU. They should carry **durable Orderly provenance**, ideally including `packSize.id` wherever we have it.
+
+That gives us something authoritative to resolve against later instead of repeatedly reconstructing identity from names/SKUs.
+
+### What happens to #1205 and the modal?
+
+Keep #1205 parked.
+
+After the 136 relationships are restored, rerun the Harvill invoice preview. We already know **27 of the 78 held codes** have evidenced missing relationships and should improve.
+
+Then look at what remains.
+
+Those residual holds will finally tell us the population the modal truly needs to solve:
+
+* source never had a vendor relationship;
+* invoice is genuinely new evidence;
+* inactive relationship;
+* pack conflict;
+* ambiguous identity.
+
+That is the right time to finish the in-stride modal behavior.
+
+So the sequence I want is:
+
+> **#1208 cross-shop fix → cross-batch vendor adoption fix/backfill → rerun Harvill → then revisit the remaining modal holds.**
+
+That is much cleaner than asking users to manually repair 78 source codes when we already know at least 27 are our own missing catalog relationships.
