@@ -1,0 +1,106 @@
+This is better. **PM decision: #1207 GO as written.**
+
+The added cross-shopping/routing compatibility check is important because this isn’t just an invoice-resolution problem anymore. If we restore all legitimate Orderly vendor-product relationships, they will also become eligible candidates for:
+
+* vendor price comparison
+* alternate-vendor sourcing
+* PO routing
+* future purchasing recommendations
+
+So we need to prove that “more vendor products per ingredient” strengthens those workflows without letting the system substitute the wrong SKU or pack.
+
+I would only add two precise guardrails before Replit runs it.
+
+```md
+## PM Approval — #1207
+
+APPROVED READ-ONLY.
+
+The expanded cross-shopping/routing scope is appropriate because restored vendor-product relationships will affect more than invoice resolution.
+
+No code or data mutation is authorized.
+
+### Cross-shopping identity guardrail
+
+The canonical inventory item is the join point for comparing alternative purchasing options, but it is NOT sufficient by itself to authorize substitution.
+
+Each comparison candidate must retain its own:
+
+- vendor_item identity
+- vendor
+- SKU
+- pack geometry
+- purchase unit
+- normalized unit basis
+- effective/current price provenance
+- freshness/eligibility state
+
+A comparison may say:
+
+"these vendor products supply the same canonical ingredient"
+
+but must never imply:
+
+"these vendor products are interchangeable"
+
+unless the existing pack/unit/price eligibility logic proves the comparison is valid.
+
+### Same-vendor multi-product case
+
+Explicitly include at least one real case where:
+
+one vendor
++ one canonical ingredient
++ multiple SKUs and/or packs
+
+exist legitimately.
+
+Prove that:
+
+- both vendor products remain distinct
+- cross-shop/routing uses the exact vendor_item identity
+- selecting one does not silently substitute the other because vendor_id matches
+- price history stays attached to the correct SKU/pack
+- routing retains the chosen vendor-product identity through PO creation
+
+### Repair recommendation must preserve provenance
+
+If the recommended repair is a backfill/rebuild from Orderly source data, every restored vendor product should retain enough source identity to prove:
+
+- which Orderly relationship created it
+- source property
+- vendor
+- source SKU
+- packSize.id where available
+- pack geometry/provenance
+
+Do not create generic vendor rows merely to improve invoice match rates.
+
+### Final report should separate three questions
+
+1. Why were vendor relationships lost?
+2. How many authoritative relationships need restoration?
+3. Can existing cross-shop/routing safely consume the restored relationships without architecture changes?
+
+If question 3 reveals a real defect, report it separately.
+
+Do not expand #1207 into a routing rewrite.
+```
+
+One thing I particularly like in the revised task is the explicit test for **multiple SKUs or packs from the same supplier for one ingredient**. That closes a hole in the earlier discussion.
+
+For example, this must remain valid:
+
+```text
+Bananas
+├─ Harvill SKU A — 40 lb case
+├─ Harvill SKU B — 10 lb pack
+├─ Sysco SKU C — 40 lb case
+└─ FreshPoint SKU D — 40 lb case
+```
+
+The canonical ingredient lets FnB understand that all four relate to **Bananas**. It does **not** make Harvill A and Harvill B the same purchasing product.
+
+That distinction is also why fixing the original seeding loss is worth doing before we go any farther with the invoice-resolution modal.
+
+So yes: **run #1207.** The result should tell us whether the next move is a targeted backfill or a controlled reconstruction of the Bay Hill vendor-product layer from Orderly’s authoritative relationships.
