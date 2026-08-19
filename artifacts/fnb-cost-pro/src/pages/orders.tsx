@@ -46,7 +46,7 @@ import { useTier } from "@/hooks/use-tier";
 
 type UnifiedOrder = {
   id: string;
-  type: "purchase" | "transfer";
+  type: "purchase" | "transfer" | "imported_invoice";
   status: string;
   createdAt: string;
   expectedDate: string | null;
@@ -57,6 +57,18 @@ type UnifiedOrder = {
   storeId?: string; // For purchase orders
   fromStoreId?: string; // For transfer orders
   toStoreId?: string; // For transfer orders
+  lineCount: number;
+  totalAmount: number;
+  invoiceNumber?: string | null; // For imported invoices
+};
+
+type ImportedInvoiceSummary = {
+  id: string;
+  invoiceNumber: string | null;
+  invoiceDate: string;
+  vendorId: string | null;
+  vendorName: string;
+  storeId: string;
   lineCount: number;
   totalAmount: number;
 };
@@ -101,6 +113,10 @@ const statusConfig: Record<string, { variant: "default" | "secondary" | "destruc
     variant: "secondary",
     className: "bg-green-500/10 text-green-700 border-green-500/20 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20"
   },
+  "historical": {
+    variant: "secondary",
+    className: "bg-slate-500/10 text-slate-700 border-slate-500/20 dark:bg-slate-500/10 dark:text-slate-400 dark:border-slate-500/20"
+  },
 };
 
 export default function Orders() {
@@ -122,6 +138,27 @@ export default function Orders() {
   const { data: orders, isLoading } = useQuery<UnifiedOrder[]>({
     queryKey: ["/api/orders/unified"],
   });
+
+  const { data: importedInvoices, isLoading: isLoadingImported } = useQuery<ImportedInvoiceSummary[]>({
+    queryKey: ["/api/imported-invoices"],
+  });
+
+  const allOrders: UnifiedOrder[] = [
+    ...(orders || []),
+    ...(importedInvoices || []).map((inv) => ({
+      id: inv.id,
+      type: "imported_invoice" as const,
+      status: "historical",
+      createdAt: inv.invoiceDate,
+      expectedDate: null,
+      completedAt: null,
+      vendorName: inv.vendorName,
+      storeId: inv.storeId,
+      lineCount: inv.lineCount,
+      totalAmount: inv.totalAmount,
+      invoiceNumber: inv.invoiceNumber,
+    })),
+  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
@@ -231,12 +268,13 @@ export default function Orders() {
     },
   });
 
-  const filteredOrders = orders?.filter((order) => {
+  const filteredOrders = allOrders.filter((order) => {
     const createdDate = new Date(order.createdAt).toLocaleDateString();
     const expectedDate = formatDateString(order.expectedDate);
     
     const matchesSearch = order.vendorName?.toLowerCase().includes(search.toLowerCase()) ||
       order.id?.toLowerCase().includes(search.toLowerCase()) ||
+      order.invoiceNumber?.toLowerCase().includes(search.toLowerCase()) ||
       createdDate.toLowerCase().includes(search.toLowerCase()) ||
       expectedDate.toLowerCase().includes(search.toLowerCase());
     const matchesType = selectedType === "all" || order.type === selectedType;
@@ -250,6 +288,7 @@ export default function Orders() {
     // For store filter, compare by store ID from header context
     const matchesStore = !selectedStoreId || 
       (order.type === "purchase" && order.storeId === selectedStoreId) ||
+      (order.type === "imported_invoice" && order.storeId === selectedStoreId) ||
       (order.type === "transfer" && (order.fromStoreId === selectedStoreId || order.toStoreId === selectedStoreId));
       
     return matchesSearch && matchesType && matchesVendor && matchesStatus && matchesStore;
@@ -262,7 +301,7 @@ export default function Orders() {
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-orders-title">Orders</h1>
             <p className="text-muted-foreground mt-1">
-              Create, manage, and receive purchase orders from vendors
+              Manage live orders and review read-only imported invoice history
             </p>
           </div>
           <Button asChild data-testid="button-create-order">
@@ -439,6 +478,7 @@ export default function Orders() {
               <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="purchase">Purchase Orders</SelectItem>
               <SelectItem value="transfer">Transfer Orders</SelectItem>
+              <SelectItem value="imported_invoice">Imported Invoices</SelectItem>
             </SelectContent>
           </Select>
           <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -452,11 +492,12 @@ export default function Orders() {
               <SelectItem value="in_transit">In Transit</SelectItem>
               <SelectItem value="received">Received</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="historical">Historical</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {isLoading ? (
+        {isLoading || isLoadingImported ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading orders...</div>
           </div>
@@ -477,7 +518,7 @@ export default function Orders() {
                   <TableHead className="w-[100px]">Number</TableHead>
                   <TableHead className="w-[80px]">Type</TableHead>
                   <TableHead>Details</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Date</TableHead>
                   <TableHead>Expected</TableHead>
                   <TableHead className="text-right">Items</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -487,7 +528,7 @@ export default function Orders() {
               </TableHeader>
               <TableBody>
                 {filteredOrders.map((order, index) => {
-                  const createdDate = new Date(order.createdAt);
+                  const createdDate = order.type === "imported_invoice" ? null : new Date(order.createdAt);
                   const expectedDate = order.expectedDate ? new Date(order.expectedDate) : null;
 
                   // Determine navigation URL based on order type and status
@@ -496,6 +537,8 @@ export default function Orders() {
                     targetUrl = order.status === "pending"
                       ? `/purchase-orders/${order.id}`
                       : `/receiving/${order.id}`;
+                  } else if (order.type === 'imported_invoice') {
+                    targetUrl = `/imported-invoices/${order.id}?from=orders`;
                   } else {
                     // Transfer orders
                     targetUrl = `/transfer-orders/${order.id}`;
@@ -509,21 +552,25 @@ export default function Orders() {
                       onClick={() => setLocation(targetUrl)}
                     >
                       <TableCell className="font-mono text-sm">
-                        #{order.id.slice(0, 8)}
+                        {order.type === 'imported_invoice' && order.invoiceNumber
+                          ? order.invoiceNumber
+                          : `#${order.id.slice(0, 8)}`}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {order.type}
+                          {order.type === 'imported_invoice' ? 'Imported Invoice' : order.type}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{order.vendorName}</div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {createdDate.toLocaleDateString()}
+                        {order.type === "imported_invoice"
+                          ? formatDateString(order.createdAt)
+                          : createdDate?.toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {expectedDate ? expectedDate.toLocaleDateString() : '-'}
+                        {expectedDate ? expectedDate.toLocaleDateString() : '—'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {order.lineCount}
@@ -551,6 +598,14 @@ export default function Orders() {
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
+                        ) : order.type === 'imported_invoice' ? (
+                          <Badge
+                            variant={statusConfig[order.status]?.variant || "secondary"}
+                            className={statusConfig[order.status]?.className || ""}
+                            data-testid={`badge-status-${order.id}`}
+                          >
+                            Historical
+                          </Badge>
                         ) : (
                           <Badge 
                             variant={statusConfig[order.status]?.variant || "secondary"}
@@ -563,7 +618,19 @@ export default function Orders() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {order.type === "purchase" ? (
+                          {order.type === 'imported_invoice' ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`button-view-imported-invoice-${order.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLocation(`/imported-invoices/${order.id}?from=orders`);
+                              }}
+                            >
+                              View details
+                            </Button>
+                          ) : order.type === "purchase" ? (
                             <>
                               {order.status === "pending" ? (
                                 <Button 

@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDateString } from "@/lib/utils";
+import { useStoreContext } from "@/hooks/use-store-context";
 
 type PurchaseOrderDisplay = {
   id: string;
@@ -41,6 +42,17 @@ type Vendor = {
   name: string;
 };
 
+type ImportedInvoiceSummary = {
+  id: string;
+  invoiceNumber: string | null;
+  invoiceDate: string;
+  vendorId: string | null;
+  vendorName: string;
+  storeId: string;
+  lineCount: number;
+  totalAmount: number;
+};
+
 const statusColors: Record<string, string> = {
   "pending": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
   "ordered": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
@@ -51,9 +63,14 @@ export default function Receiving() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVendor, setSelectedVendor] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const { selectedStoreId } = useStoreContext();
 
-  const { data: purchaseOrders, isLoading } = useQuery<PurchaseOrderDisplay[]>({
+  const { data: purchaseOrders, isLoading: isLoadingOrders } = useQuery<PurchaseOrderDisplay[]>({
     queryKey: ["/api/purchase-orders"],
+  });
+
+  const { data: importedInvoices, isLoading: isLoadingImported } = useQuery<ImportedInvoiceSummary[]>({
+    queryKey: ["/api/imported-invoices"],
   });
 
   const { data: vendors } = useQuery<Vendor[]>({
@@ -67,6 +84,20 @@ export default function Receiving() {
     const matchesVendor = selectedVendor === "all" || order.vendorId === selectedVendor;
     const matchesStatus = selectedStatus === "all" || order.status === selectedStatus;
     return matchesSearch && matchesVendor && matchesStatus;
+  }) || [];
+
+  const filteredImportedInvoices = importedInvoices?.filter((inv) => {
+    const matchesSearch = inv.vendorName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      inv.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      inv.id?.toLowerCase().includes(searchQuery.toLowerCase());
+    const selectedVendorName = vendors?.find((vendor) => vendor.id === selectedVendor)?.name.toLowerCase();
+    const matchesVendor = selectedVendor === "all"
+      || inv.vendorId === selectedVendor
+      || (!inv.vendorId && !!selectedVendorName && inv.vendorName.toLowerCase() === selectedVendorName);
+    const matchesStore = !selectedStoreId || inv.storeId === selectedStoreId;
+    // Historical status only shows when 'all' or a custom historical status is selected
+    const matchesStatus = selectedStatus === "all" || selectedStatus === "historical";
+    return matchesSearch && matchesVendor && matchesStore && matchesStatus;
   }) || [];
 
   const { sortField, sortDirection, handleSort } = useTableSort("createdAt", "desc");
@@ -99,7 +130,7 @@ export default function Receiving() {
               Receiving
             </h1>
             <p className="text-muted-foreground mt-2">
-              Receive purchase orders and update inventory levels
+              Receive live purchase orders and review read-only imported invoice history
             </p>
           </div>
         </div>
@@ -137,13 +168,14 @@ export default function Receiving() {
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="ordered">Ordered</SelectItem>
               <SelectItem value="received">Received</SelectItem>
+              <SelectItem value="historical">Historical</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-6">
-        {isLoading ? (
+        {isLoadingOrders || isLoadingImported ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-muted-foreground">Loading orders...</div>
           </div>
@@ -261,8 +293,70 @@ export default function Receiving() {
               </Card>
             )}
 
+            {/* Historical Imported Invoices */}
+            {filteredImportedInvoices.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="mb-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                      Historical Imported Invoices
+                      <Badge variant="secondary" className="bg-slate-500/10 text-slate-700 dark:bg-slate-500/10 dark:text-slate-400 font-normal">
+                        Read-only
+                      </Badge>
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      These are approved invoice records imported historically and do not prove stock was physically received in this system.
+                    </p>
+                  </div>
+                  <Table wrapperClassName="rounded-md border max-h-[400px]">
+                    <TableHeader className="sticky top-0 z-10 bg-card">
+                      <TableRow>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Items</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredImportedInvoices.map((inv) => (
+                        <TableRow key={inv.id} data-testid={`row-historical-invoice-${inv.id}`}>
+                          <TableCell className="font-mono">{inv.invoiceNumber || inv.id.slice(0, 8)}</TableCell>
+                          <TableCell className="font-medium">{inv.vendorName}</TableCell>
+                          <TableCell>{inv.invoiceDate ? formatDateString(inv.invoiceDate) : "—"}</TableCell>
+                          <TableCell className="text-right">{inv.lineCount}</TableCell>
+                          <TableCell className="text-right font-mono">
+                            ${inv.totalAmount.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-slate-500/10 text-slate-700 border-slate-500/20 dark:text-slate-400">
+                              Historical
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              asChild
+                              data-testid={`button-view-historical-invoice-${inv.id}`}
+                            >
+                              <Link href={`/imported-invoices/${inv.id}?from=receiving`}>
+                                View details
+                              </Link>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Empty State */}
-            {pendingOrders.length === 0 && receivedOrders.length === 0 && (
+            {pendingOrders.length === 0 && receivedOrders.length === 0 && filteredImportedInvoices.length === 0 && (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <PackageCheck className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold mb-1">No orders found</h3>

@@ -63,7 +63,9 @@ import RecipeImport from "@/pages/recipe-import";
 import Orders from "@/pages/orders";
 import PurchaseOrders from "@/pages/purchase-orders";
 import PurchaseOrderDetail from "@/pages/purchase-order-detail";
+import Receiving from "@/pages/receiving";
 import ReceivingDetail from "@/pages/receiving-detail";
+import ImportedInvoiceDetail from "@/pages/imported-invoice-detail";
 import TransferOrders from "@/pages/transfer-orders";
 import TransferOrderDetail from "@/pages/transfer-order-detail";
 import VarianceReport from "@/pages/variance-report";
@@ -624,7 +626,9 @@ function ProtectedLayoutContent() {
               <Route path="/orders" component={Orders} />
               <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
               <Route path="/purchase-orders"><Redirect to="/orders" /></Route>
+              <Route path="/receiving" component={Receiving} />
               <Route path="/receiving/:poId" component={ReceivingDetail} />
+              <Route path="/imported-invoices/:invoiceId" component={ImportedInvoiceDetail} />
               <Route path="/transfer-orders/:id" component={TransferOrderDetail} />
               <Route path="/transfer-orders" component={TransferOrders} />
               <Route path="/variance" component={VarianceReport} />
