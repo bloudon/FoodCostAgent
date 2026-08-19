@@ -2,6 +2,7 @@ import { and, count, eq } from 'drizzle-orm';
 import {
   historicalInvoiceLines,
   historicalInvoices,
+  companyStores,
   importSourcePropertyBindings,
   inventoryImportBatches,
   inventoryImportRows,
@@ -35,6 +36,7 @@ export class OrderlyVendorProductAdoptionPreviewError extends Error {
       | 'BINDING_NOT_FOUND'
       | 'BINDING_AMBIGUOUS'
       | 'SOURCE_VENDOR_CONFLICT'
+      | 'BINDING_STORE_INVALID'
       | 'CATALOG_MUTATED'
       | 'PM_APPLY_HELD',
     message: string,
@@ -144,8 +146,8 @@ function geometrySignature(row: ApprovedImportEvidence): string | null {
   const outer = finitePositive(row.caseQuantity);
   const inner = finitePositive(row.innerPackQuantity);
   const uom = normalizeName(row.baseUnit);
-  if (outer == null || !uom) return null;
-  return `${outer}|${inner ?? ''}|${uom}`;
+  if (outer == null || inner == null || !uom) return null;
+  return `${outer}|${inner}|${uom}`;
 }
 
 function sourceSupplierNames(entries: readonly NormalizedPackSizeEntry[]): Map<string, string> {
@@ -396,6 +398,20 @@ async function loadPreviewInputs(
     );
   }
   const binding = bindings[0];
+  const boundStores = await runner
+    .select({ id: companyStores.id })
+    .from(companyStores)
+    .where(and(
+      eq(companyStores.id, binding.destinationStoreId),
+      eq(companyStores.companyId, binding.companyId),
+      eq(companyStores.status, 'active'),
+    ));
+  if (boundStores.length !== 1) {
+    throw new OrderlyVendorProductAdoptionPreviewError(
+      'BINDING_STORE_INVALID',
+      'The active Bay Hill binding destination store is not an active store in the bound company.',
+    );
+  }
 
   const [approvedBatches, localVendors, existingVendorItems, mappings, approvedEvidence] = await Promise.all([
     runner
@@ -536,9 +552,11 @@ async function loadPreviewInputs(
       inventoryItemId: row.inventoryItemId,
       vendorSku: row.vendorSku,
       normalizedSku: normalizeSku(row.vendorSku) || null,
-      caseSize: approvedGeometry?.caseQuantity ?? (signatures.size > 1 ? null : row.caseSize),
-      innerPackSize: approvedGeometry?.innerPackQuantity ?? (signatures.size > 1 ? null : row.innerPackSize),
-      packUom: approvedGeometry?.baseUnit ?? (signatures.size > 1 ? null : row.packUom),
+      // Geometry is authoritative only when one approved source identity proves
+      // it. Mutable vendor_items fields never fill a gap in the preview.
+      caseSize: approvedGeometry?.caseQuantity ?? null,
+      innerPackSize: approvedGeometry?.innerPackQuantity ?? null,
+      packUom: approvedGeometry?.baseUnit ?? null,
       active: row.active,
     };
   });

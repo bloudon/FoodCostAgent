@@ -530,6 +530,15 @@ describe('classifyOrderlyVendorProductAdoption', () => {
     expect(r.proposedVendorItem).toBeNull();
   });
 
+  it('holds a source relationship with incomplete pack geometry', () => {
+    const entries = normalizeOrderlyRestaurantSpecs([makeSpec('s1', [
+      makePs({ id: 'ps-partial', pack: 6, size: null, uom: 'LB' }),
+    ])], PROP, { requireRawGeometry: true });
+    const r = classifyOrderlyVendorProductAdoption(entries, baseSnap(), OPTS).relationships[0];
+    expect(r.classification).toBe('otherwise_held');
+    expect(r.reasons.join(' ')).toMatch(/complete positive outer\/inner\/UOM/i);
+  });
+
   // ── proposedPriceObservationCount always 0 ────────────────────────────────
 
   it('proposedPriceObservationCount is always 0; catalog prices tracked separately', () => {

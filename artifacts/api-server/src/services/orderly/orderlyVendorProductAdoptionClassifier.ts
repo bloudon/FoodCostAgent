@@ -282,7 +282,13 @@ function probePackGeometry(
   src: NormalizedPackGeometry,
   vi: SnapshotVendorItemRow,
 ): 'equivalent' | 'conflict' | 'unverifiable' {
-  if (src.outerCount == null) return 'unverifiable';
+  if (
+    src.outerCount == null
+    || src.innerSize == null
+    || !src.normalizedUom
+    || src.outerCount <= 0
+    || src.innerSize <= 0
+  ) return 'unverifiable';
 
   const viOuter = vi.caseSize;
   const viInner = vi.innerPackSize;
@@ -586,6 +592,19 @@ export function classifyOrderlyVendorProductAdoption(
   function classifyEntry(entry: NormalizedPackSizeEntry): AdoptionClassificationResult {
     if (entry.active === false) {
       return hold(entry, null, 'The authoritative Orderly relationship is inactive.');
+    }
+    if (
+      entry.normalizedPackGeometry.outerCount == null
+      || entry.normalizedPackGeometry.outerCount <= 0
+      || entry.normalizedPackGeometry.innerSize == null
+      || entry.normalizedPackGeometry.innerSize <= 0
+      || !entry.normalizedPackGeometry.normalizedUom
+    ) {
+      return hold(
+        entry,
+        null,
+        'The authoritative Orderly relationship lacks complete positive outer/inner/UOM pack geometry.',
+      );
     }
 
     // Resolve vendor — fail to otherwise_held on unknown, ambiguous handled above at snapshot level
