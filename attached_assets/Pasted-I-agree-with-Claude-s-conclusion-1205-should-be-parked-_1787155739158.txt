@@ -1,0 +1,171 @@
+I agree with Claude’s conclusion. **#1205 should be parked.** The modal is not the primary defect; it is accurately exposing a bad vendor-product seed state.
+
+The key product finding is bigger:
+
+> **FnB imported the ingredient identity, but failed to preserve all of Orderly’s valid vendor-product relationships for that ingredient.**
+
+That means Harvill’s “BAN1” is not something a manager should have to reconstruct manually if Orderly already supplied it.
+
+The 4/4 sample is enough to justify a focused Replit investigation, but I would **not yet let them implement a fix based only on “it always kept Mr. Green’s.”** We should first determine the actual failure mode across a larger sample, because the fix is different if this is:
+
+* first-row-wins,
+* last-row-wins,
+* one arbitrary `packSizes[]` selection,
+* dedupe on ingredient without vendor identity,
+* or importer logic that only creates one `vendor_item` per canonical inventory item.
+
+So my PM decision is:
+
+> **PARK #1205. Open a bounded root-cause/import-repair task first.**
+
+I’d send Replit this:
+
+```md
+# PM Decision — Vendor-Product Seeding Defect
+
+## Decision
+
+PARK #1205.
+
+The resolver/modal is behaving correctly.
+
+The underlying defect is that FnB failed to preserve all valid Orderly vendor-product relationships for a canonical ingredient.
+
+Orderly evidence shows common ingredients can legitimately have multiple suppliers/vendor products.
+
+Example: Banana has at least:
+
+- FreshPoint
+- Harvill's Produce
+- Cheney Brothers
+- Mr. Green's Produce
+- Sysco
+
+FnB retained only one vendor-product row.
+
+Harvill's is absent despite current invoice activity.
+
+Do not ask managers to manually recreate vendor relationships that Orderly already supplied.
+
+---
+
+# New objective — find and fix vendor-product seeding loss
+
+## Step 1 — Expand the read-only sample
+
+Before changing code, inspect a representative sample of at least 15–20 held Harvill Item Codes across produce categories.
+
+For each report:
+
+- canonical inventory item
+- all Orderly source vendor-product relationships
+- vendor names
+- source SKU / Item Code
+- packSize.id where available
+- pack geometry
+- which vendor_items FnB created
+- which were omitted
+- source/import ordering if relevant
+
+Determine whether the retained vendor product is:
+
+- always one specific vendor
+- first encountered
+- last encountered
+- arbitrary
+- based on a hidden filter
+- caused by an incorrect uniqueness/get-or-create assumption
+
+Return the dominant failure mode.
+
+---
+
+## Step 2 — Trace the importer code path
+
+Identify the exact current code that converts:
+
+Orderly ingredient/spec
++ packSizes[]
+→ FnB inventory item
++ vendor_items
+
+Answer:
+
+1. Does it iterate every packSizes[] relationship?
+2. Does it create one vendor_item per real vendor-product relationship?
+3. Is any map/dedupe keyed only by inventory item?
+4. Does get-or-create collapse distinct vendors?
+5. Does later processing overwrite an earlier vendor relationship?
+6. Is vendor identity included in the key at every stage?
+
+Do not modify code until the precise loss point is identified.
+
+---
+
+## Step 3 — Define the correct contract
+
+Expected contract:
+
+One canonical inventory ingredient
+may have
+many vendor products.
+
+Each distinct valid Orderly vendor relationship should survive independently.
+
+Conceptually:
+
+inventory item
+→ FreshPoint SKU/pack
+→ Harvill SKU/pack
+→ Cheney SKU/pack
+→ Mr. Green SKU/pack
+→ Sysco SKU/pack
+
+Do NOT create duplicate inventory items.
+
+Do NOT collapse different vendors into one vendor_item.
+
+Do NOT merge separate vendor SKUs/packs merely because they point to the same ingredient.
+
+---
+
+## Step 4 — Quantify blast radius
+
+Return:
+
+- affected inventory items
+- missing vendor-product relationships
+- affected vendors
+- Harvill missing relationships
+- how many of the 78 unresolved Harvill Item Codes would become resolvable if corrected
+- whether the same defect affects other vendors already imported
+
+This is important before deciding whether to repair only Harvill or rebuild the Bay Hill vendor-product catalog from authoritative Orderly source data.
+
+---
+
+## Step 5 — Recommend smallest repair
+
+Return one of:
+
+A. importer code fix + targeted backfill of missing vendor relationships
+
+B. importer fix + full Bay Hill vendor-product rebuild from authoritative Orderly catalog
+
+C. another bounded repair supported by evidence
+
+Do not implement the backfill/rebuild until PM reviews the counts and identity rules.
+
+No inventory-item creation.
+No invoice-line one-off mapping.
+No production writes.
+No #1205 UX work yet.
+```
+
+My expectation is that **a targeted backfill may not be enough** if this is systemic across the Bay Hill catalog. If the source API truly has the full `spec → packSizes[]` relationship graph and our seed/import only retained one child relationship per ingredient, the cleaner repair may be:
+
+> fix the importer, then rebuild/reconcile the vendor-product layer from the authoritative Orderly catalog while preserving canonical inventory identities.
+
+That would also explain a lot of the Harvill unresolved population and probably improve future invoice matching dramatically.
+
+So I would **not spend time making the empty-state prettier yet.** First fix the catalog translation that made the empty state appear.
