@@ -688,6 +688,16 @@ export default function Vendors() {
               <Upload className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Import Order Guide</span>
             </Button>
+            <Button
+              asChild
+              variant="outline"
+              data-testid="button-import-vendor-invoices"
+            >
+              <Link href="/vendor-invoice-import">
+                <Upload className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Import Vendor Invoices</span>
+              </Link>
+            </Button>
             <Button onClick={handleCreateClick} data-testid="button-create-vendor">
               <Plus className="h-4 w-4 mr-2" />
               New Vendor
