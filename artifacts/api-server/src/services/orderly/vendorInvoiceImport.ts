@@ -44,7 +44,7 @@ import { recordVendorPrice } from '../vendorPriceService';
 import {
   crossCheckPackSize,
   parsePackSize,
-  parseVendorInvoiceWorkbook,
+  parseVendorInvoiceWorkbookAuto,
   VENDOR_INVOICE_PARSER_VERSION,
   VendorInvoiceParseError,
   type PackCrossCheck,
@@ -175,7 +175,10 @@ export async function stageVendorInvoiceUpload(params: {
   }
 
   // Parse BEFORE any write — a parse failure leaves the DB untouched.
-  const parsed = parseVendorInvoiceWorkbook(buffer);
+  // Auto-detects format: multi-sheet (canonical Orderly bulk export) or
+  // single-sheet (Cheney Brothers per-invoice format). The detected format
+  // is advisory; parsing fails closed for unrecognised shapes.
+  const parsed = parseVendorInvoiceWorkbookAuto(buffer);
 
   // Vendor detection is advisory at staging; unique case-insensitive name match.
   let resolvedVendorId: string | null = null;
