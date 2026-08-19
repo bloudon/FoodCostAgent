@@ -1,0 +1,177 @@
+## PM Review — #1210
+
+### Decision
+
+APPROVED to:
+
+1. implement the cross-batch adoption behavior in Dev
+2. produce the bounded read-only adoption preview
+
+HOLD the Dev APPLY until PM reviews that preview.
+
+#1209 must be merged and Reviewer/QA PASS before #1210 adoption APPLY.
+
+---
+
+## 1. Adoption happens from authoritative source evidence, not merely because a row is "later"
+
+The defect is cross-batch adoption, but chronology is not authority.
+
+A missing vendor product may be adopted only when current source evidence proves:
+
+- canonical inventory item
+- Orderly source/property
+- vendor identity
+- source SKU / Item Code
+- purchasing/pack identity
+- no conflicting existing vendor product/source mapping
+
+Do not create a vendor product simply because a later batch contains a superficially similar row.
+
+If the later batch is still pending, it may contribute to the READ-ONLY preview, but it must not become persisted catalog truth merely because it was parsed.
+
+The actual adoption point must respect the approved import/batch lifecycle.
+
+---
+
+## 2. Preserve vendor-product source identity explicitly
+
+This repair should address the finding from #1207 that current Bay Hill vendor products have no durable external source mappings.
+
+For adopted relationships, persist the strongest authoritative Orderly identity available.
+
+Preferred when available:
+
+ORDERLY
++ sourcePropertyId
++ packSize.id
+→ exact vendor_item_id
+
+Also retain:
+
+- vendor
+- source SKU
+- raw pack
+- normalized pack geometry
+- canonical inventory item
+
+If `packSize.id` is unavailable for a particular source relationship, do NOT manufacture one.
+
+Use the reviewed fallback identity contract and clearly classify that relationship as lacking the strongest source identifier.
+
+The preview must report:
+
+- relationships with packSize.id
+- relationships without packSize.id
+- any identity conflicts
+
+---
+
+## 3. Do not invent historical price evidence
+
+Creating the missing vendor-product relationship and importing price history are separate facts.
+
+If authoritative source evidence includes a dated price observation under an already-approved price-history contract, preserve it normally.
+
+Otherwise:
+
+> create/adopt the vendor-product relationship without manufacturing historical price observations.
+
+Do not use catalog adoption as permission to overwrite current price or fabricate price chronology.
+
+Existing #1178 historical-price rules remain controlling.
+
+---
+
+## 4. Preview must classify outcomes, not just say "136 will be created"
+
+Revalidate the entire proposed population against current Dev state after #1209/#1194.
+
+Return:
+
+- authoritative relationships considered
+- already present
+- safe new vendor products
+- safe new same-vendor alternate SKU/pack products
+- existing vendor product but missing provenance mapping only
+- conflicting source identity
+- pack/geometry conflict
+- missing canonical inventory identity
+- otherwise held
+- total proposed new vendor_items
+- total proposed new external mappings
+- proposed price observations, if any
+
+The prior:
+
+136 missing / 12 vendors
+
+is an expectation, not authorization.
+
+Current evidence decides the APPLY population.
+
+---
+
+## Harvill acceptance
+
+The post-apply Harvill rehearsal should answer:
+
+Before:
+- 78 distinct held source codes
+
+Of those:
+- 27 currently have evidenced missing Harvill relationships
+
+After adoption report:
+
+- how many of those 27 now resolve automatically
+- how many still hold
+- exact reason for each residual class
+- overall Harvill line match rate before/after
+- dollars resolved before/after
+
+Do not force all 27 to resolve just to hit the expected number.
+
+A code remains held if current pack/source evidence fails the approved contract.
+
+---
+
+## Same-vendor alternate product acceptance
+
+Use the real Brussels sprouts case:
+
+Harvill `SPRBR5` — 1/5 LB
+Harvill `SPRBR` — 1/25 LB
+
+Required outcome:
+
+- one canonical Brussels sprouts inventory item
+- two distinct Harvill vendor_item identities
+- distinct SKU and pack geometry
+- distinct provenance
+- no overwrite/collapse
+- cross-shopping shows each exact product correctly after #1209
+- routing preserves the selected vendor_item_id
+
+This should be a permanent regression fixture.
+
+---
+
+## No collateral catalog mutation
+
+#1210 may:
+
+- create proven missing vendor_items
+- create/recover approved source-provenance mappings
+
+#1210 may NOT:
+
+- create inventory items
+- merge existing vendor products
+- delete vendor products
+- rewrite existing SKU/pack identity
+- repair unrelated catalog records
+- change invoice source evidence
+- perform production work
+
+If an existing relationship conflicts with authoritative Orderly evidence, HOLD and report it.

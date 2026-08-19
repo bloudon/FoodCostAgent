@@ -9026,6 +9026,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map(vi => {
           const vendor = vendors.find(v => v.id === vi.vendorId);
           const unit = units.find(u => u.id === vi.purchaseUnitId);
+          const inventoryUnit = units.find(u => u.id === item.unitId);
           
           const unitPrice = vi.lastPrice;
           const caseSize = vi.caseSize || 1;
@@ -9036,6 +9037,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const pricedAtDate = vi.pricedAt instanceof Date ? vi.pricedAt : vi.pricedAt ? new Date(vi.pricedAt as any) : null;
           const { invalidPackGeometry } = effectivePackQty(vi.caseSize || 1, vi.innerPackSize ?? 1, vi.packUom ?? "", unit?.name || "");
           return {
+            vendorItemId: vi.id,
             vendorId: vi.vendorId,
             vendorName: vendor?.name || 'Unknown',
             vendorSku: vi.vendorSku,
@@ -9052,6 +9054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             stale: isPriceStale(pricedAtDate),
             freshnessStatus: getPriceFreshness(pricedAtDate),
             confirmed: vi.priceSource === "receipt" || vi.priceSource === "invoice_scan",
+            incompatibleUnit: isIncompatibleUnit(vi.packUom ?? "", inventoryUnit?.name || ""),
             invalidPackGeometry,
           };
         })
@@ -9096,21 +9099,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk vendor price comparison — one query for all items on a PO
+  // Bulk vendor price comparison — one comparison entry per selected vendor
+  // product. The exact vendor_item ID is the selection identity; vendorId is
+  // only display/grouping data because one vendor may have multiple products
+  // for the same canonical inventory item.
   // @ts-ignore
   app.get("/api/vendor-prices/bulk", requireAuth, async (req, res) => {
     try {
       const companyId = (req as any).companyId;
-      const idsParam = req.query.inventoryItemIds as string;
-      const currentVendorId = req.query.vendorId as string | undefined;
+      const currentVendorItemIdsParam = req.query.currentVendorItemIds as string;
 
-      if (!idsParam) return res.json({ data: {} });
-      const inventoryItemIds = idsParam.split(",").filter(Boolean).slice(0, 200);
-      if (inventoryItemIds.length === 0) return res.json({ data: {} });
+      if (!currentVendorItemIdsParam) return res.json({ data: {} });
+      const currentVendorItemIds = [...new Set(
+        currentVendorItemIdsParam.split(",").filter(Boolean).slice(0, 200)
+      )];
+      if (currentVendorItemIds.length === 0) return res.json({ data: {} });
 
-      // M3A Step 10: verify every requested inventory item belongs to the caller's company.
-      // Return 403 immediately if any foreign ID is detected.
-      const ownedRows = await db
+      // Resolve every selected source product through its company-owned
+      // vendor. This also prevents a caller from using an inventory-item ID
+      // as a substitute for the selected vendor product.
+      const currentSourceRows = await db
+        .select({ vi: vendorItems, vendorName: vendors.name })
+        .from(vendorItems)
+        // @ts-ignore
+        .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+        .where(
+          and(
+            // @ts-ignore
+            inArray(vendorItems.id, currentVendorItemIds),
+            // @ts-ignore
+            eq(vendors.companyId, companyId),
+          )
+        );
+      if (currentSourceRows.length !== currentVendorItemIds.length) {
+        return res.status(403).json({
+          error: "One or more selected vendor products do not belong to your company",
+        });
+      }
+      const inventoryItemIds = [...new Set(currentSourceRows.map((row: any) => row.vi.inventoryItemId))];
+      const ownedInventoryRows = await db
         .select({ id: inventoryItems.id })
         .from(inventoryItems)
         .where(
@@ -9118,15 +9145,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // @ts-ignore
             inArray(inventoryItems.id, inventoryItemIds),
             // @ts-ignore
-            eq(inventoryItems.companyId, companyId)
+            eq(inventoryItems.companyId, companyId),
           )
         );
-      // @ts-ignore
-      const ownedSet = new Set(ownedRows.map(r => r.id));
-      const foreignIds = inventoryItemIds.filter(id => !ownedSet.has(id));
-      if (foreignIds.length > 0) {
+      if (ownedInventoryRows.length !== inventoryItemIds.length) {
         return res.status(403).json({
-          error: "One or more inventory items do not belong to your company",
+          error: "One or more selected vendor products reference an inventory item outside your company",
         });
       }
 
@@ -9159,6 +9183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result: Record<string, {
         vendorPrices: {
+          vendorItemId: string;
           vendorId: string;
           vendorName: string;
           vendorSku: string | null;
@@ -9175,9 +9200,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           incompatibleUnit: boolean;
           invalidPackGeometry: boolean;
         }[];
+        inventoryItemId: string;
+        currentVendorItemId: string;
         cheaperAvailable: boolean;
         savingsPerCase: number;
         bestVendorName: string | null;
+        bestVendorItemId: string | null;
       }> = {};
 
       // Fetch inventory item unit names for incompatible-unit detection
@@ -9192,7 +9220,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (unit) itemUnitMap.set(row.id, unit.name);
       }
 
-      for (const itemId of inventoryItemIds) {
+      for (const sourceRow of currentSourceRows) {
+        const currentVendorItemId = sourceRow.vi.id;
+        const itemId = sourceRow.vi.inventoryItemId;
         // All vendor rows for this item (including legacy_unknown — shown in UI)
         const itemVis = allVendorItems.filter(
           // @ts-ignore
@@ -9235,7 +9265,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }).sort((a, b) => a.unitPrice - b.unitPrice);
 
         if (vendorPrices.length < 2) {
-          result[itemId] = { vendorPrices, cheaperAvailable: false, savingsPerCase: 0, bestVendorName: null };
+          result[currentVendorItemId] = {
+            inventoryItemId: itemId,
+            currentVendorItemId,
+            vendorPrices,
+            cheaperAvailable: false,
+            savingsPerCase: 0,
+            bestVendorName: null,
+            bestVendorItemId: null,
+          };
           continue;
         }
 
@@ -9247,30 +9285,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           vp => vp.priceSource !== "legacy_unknown" && !vp.stale && !vp.incompatibleUnit && !vp.invalidPackGeometry
         );
 
-        const currentPrice = currentVendorId
-          // @ts-ignore
-          ? eligiblePrices.find(vp => vp.vendorId === currentVendorId)?.unitPrice ?? null
-          : null;
-        const bestEligible = eligiblePrices[0];
+        const currentVP = eligiblePrices.find((vp: any) => vp.vendorItemId === currentVendorItemId) ?? null;
+        const crossVendorPrices = currentVP
+          ? eligiblePrices.filter((vp: any) => vp.vendorId !== currentVP.vendorId)
+          : [];
+        const bestEligible = crossVendorPrices[0] ?? null;
+        const currentPrice = currentVP?.unitPrice ?? null;
         const bestPrice = bestEligible?.unitPrice ?? null;
         const cheaperAvailable =
           currentPrice !== null &&
           bestPrice !== null &&
           bestPrice < currentPrice - 0.0001;
-        const currentVP = currentVendorId
-          // @ts-ignore
-          ? eligiblePrices.find(vp => vp.vendorId === currentVendorId)
-          : null;
         const savingsPerCase =
           cheaperAvailable && currentVP && bestEligible
             ? (currentVP.unitPrice - bestEligible.unitPrice) * bestEligible.caseSize
             : 0;
 
-        result[itemId] = {
+        result[currentVendorItemId] = {
+          inventoryItemId: itemId,
+          currentVendorItemId,
           vendorPrices,
           cheaperAvailable,
           savingsPerCase,
           bestVendorName: cheaperAvailable && bestEligible ? bestEligible.vendorName : null,
+          bestVendorItemId: cheaperAvailable && bestEligible ? bestEligible.vendorItemId : null,
         };
       }
 

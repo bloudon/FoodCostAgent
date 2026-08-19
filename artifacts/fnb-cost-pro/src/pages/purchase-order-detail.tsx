@@ -119,6 +119,7 @@ type VendorPriceComparison = {
   inventoryItemId: string;
   inventoryItemName: string;
   vendorPrices: {
+    vendorItemId: string;
     vendorId: string;
     vendorName: string;
     vendorSku: string | null;
@@ -132,6 +133,8 @@ type VendorPriceComparison = {
     daysSincePriced: number | null;
     stale: boolean;
     confirmed: boolean;
+    incompatibleUnit: boolean;
+    invalidPackGeometry: boolean;
   }[];
 };
 
@@ -148,16 +151,20 @@ type BulkVendorPrice = {
   pricedAt: string | null;
   daysSincePriced: number | null;
   stale: boolean;
+  freshnessStatus: string;
   confirmed: boolean;
   incompatibleUnit: boolean;
   invalidPackGeometry: boolean;
 };
 
 type BulkComparisonEntry = {
+  inventoryItemId: string;
+  currentVendorItemId: string;
   vendorPrices: BulkVendorPrice[];
   cheaperAvailable: boolean;
   savingsPerCase: number;
   bestVendorName: string | null;
+  bestVendorItemId: string | null;
 };
 
 type BulkComparisonResult = {
@@ -198,7 +205,10 @@ export default function PurchaseOrderDetail() {
   const [notes, setNotes] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [compareItemId, setCompareItemId] = useState<string | null>(null);
+  const [compareSelection, setCompareSelection] = useState<{
+    inventoryItemId: string;
+    currentVendorItemId: string;
+  } | null>(null);
   const [routeLoadingVendorItemId, setRouteLoadingVendorItemId] = useState<string | null>(null);
   const [routeSuccess, setRouteSuccess] = useState<{ routedLines: number; affectedPOIds: string[] } | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -296,36 +306,37 @@ export default function PurchaseOrderDetail() {
     (usageData || []).map(item => [item.inventoryItemId, item])
   );
 
-  // Fetch vendor price comparison for selected item
+  // Fetch vendor price comparison for the selected source product's inventory item.
   const { data: vendorPriceComparison } = useQuery<VendorPriceComparison>({
-    queryKey: [`/api/inventory-items/${compareItemId}/vendor-prices`],
-    enabled: !!compareItemId,
+    queryKey: [`/api/inventory-items/${compareSelection?.inventoryItemId}/vendor-prices`],
+    enabled: !!compareSelection,
   });
 
-  // Bulk price comparison — fires once we know which items are on this PO and which vendor it's for
-  const bulkComparisonIds = !isMiscGrocery && selectedVendor && (vendorItems?.length ?? 0) > 0
-    ? vendorItems!.map(vi => vi.inventoryItemId).join(",")
+  // Each source vendor product gets its own comparison entry. This preserves
+  // identity when one vendor has multiple legitimate SKUs/packs for one item.
+  const bulkComparisonVendorItemIds = !isMiscGrocery && selectedVendor && (vendorItems?.length ?? 0) > 0
+    ? vendorItems!.map(vi => vi.id).join(",")
     : "";
   const { data: bulkComparison } = useQuery<BulkComparisonResult>({
-    queryKey: [`/api/vendor-prices/bulk`, bulkComparisonIds, selectedVendor],
+    queryKey: [`/api/vendor-prices/bulk`, bulkComparisonVendorItemIds],
     queryFn: () =>
-      fetch(`/api/vendor-prices/bulk?inventoryItemIds=${encodeURIComponent(bulkComparisonIds)}&vendorId=${encodeURIComponent(selectedVendor)}`, { credentials: "include" })
+      fetch(`/api/vendor-prices/bulk?currentVendorItemIds=${encodeURIComponent(bulkComparisonVendorItemIds)}`, { credentials: "include" })
         .then(r => r.json()),
-    enabled: bulkComparisonIds.length > 0 && !!selectedVendor,
+    enabled: bulkComparisonVendorItemIds.length > 0,
     staleTime: 60_000,
   });
 
-  // Lookup helper: given an inventoryItemId, return its bulk comparison entry
-  const getComparison = (inventoryItemId: string): BulkComparisonEntry | undefined =>
-    bulkComparison?.data?.[inventoryItemId];
+  // The exact selected vendor-item identity is the response key.
+  const getComparison = (currentVendorItemId: string): BulkComparisonEntry | undefined =>
+    bulkComparison?.data?.[currentVendorItemId];
 
   // Compute items whose price from the selected vendor is stale or unconfirmed
   type StalePriceItem = { inventoryItemId: string; itemName: string; stale: boolean; confirmed: boolean; daysSincePriced: number | null };
   const itemsWithStalePrices: StalePriceItem[] = (!isMiscGrocery && bulkComparison && vendorItems)
     ? vendorItems.reduce<StalePriceItem[]>((acc, vi) => {
-        const entry = bulkComparison.data?.[vi.inventoryItemId];
+        const entry = bulkComparison.data?.[vi.id];
         if (!entry) return acc;
-        const vp = entry.vendorPrices.find(p => p.vendorId === selectedVendor);
+        const vp = entry.vendorPrices.find(p => p.vendorItemId === vi.id);
         if (!vp) return acc;
         if (vp.stale || !vp.confirmed) {
           acc.push({
@@ -1152,7 +1163,7 @@ export default function PurchaseOrderDetail() {
                                 )}
                               </button>
                               {!isMiscGrocery && !isReceived && (() => {
-                                const cmp = getComparison(inventoryItemId);
+                                const cmp = getComparison(itemId);
                                 const hasCheaper = cmp?.cheaperAvailable === true;
                                 return (
                                   <Button
@@ -1161,9 +1172,9 @@ export default function PurchaseOrderDetail() {
                                     className="h-6 w-6 shrink-0"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setCompareItemId(inventoryItemId);
+                                      setCompareSelection({ inventoryItemId, currentVendorItemId: itemId });
                                     }}
-                                    data-testid={`button-compare-${inventoryItemId}`}
+                                    data-testid={`button-compare-${itemId}`}
                                     title={hasCheaper
                                       ? `Cheaper at ${cmp!.bestVendorName} — save $${cmp!.savingsPerCase.toFixed(2)}/case`
                                       : "Compare vendor prices"}
@@ -1516,7 +1527,7 @@ export default function PurchaseOrderDetail() {
                                   )}
                                 </button>
                                 {!isMiscGrocery && !isReceived && (() => {
-                                  const cmp = getComparison(inventoryItemId);
+                                  const cmp = getComparison(itemId);
                                   const hasCheaper = cmp?.cheaperAvailable === true;
                                   return (
                                     <Button
@@ -1525,9 +1536,9 @@ export default function PurchaseOrderDetail() {
                                       className="h-6 w-6 shrink-0"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setCompareItemId(inventoryItemId);
+                                        setCompareSelection({ inventoryItemId, currentVendorItemId: itemId });
                                       }}
-                                      data-testid={`button-compare-${inventoryItemId}`}
+                                      data-testid={`button-compare-${itemId}`}
                                       title={hasCheaper
                                         ? `Cheaper at ${cmp!.bestVendorName} — save $${cmp!.savingsPerCase.toFixed(2)}/case`
                                         : "Compare vendor prices"}
@@ -2048,9 +2059,9 @@ export default function PurchaseOrderDetail() {
       </Dialog>
 
       {/* Vendor Price Comparison Dialog */}
-      <Dialog open={!!compareItemId} onOpenChange={(open) => {
+      <Dialog open={!!compareSelection} onOpenChange={(open) => {
         if (!open) {
-          setCompareItemId(null);
+          setCompareSelection(null);
           setRouteSuccess(null);
           setRouteError(null);
           setRouteLoadingVendorItemId(null);
@@ -2088,7 +2099,7 @@ export default function PurchaseOrderDetail() {
                               className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                               data-testid={`link-affected-po-${poId}`}
                               onClick={() => {
-                                setCompareItemId(null);
+                                setCompareSelection(null);
                                 setRouteSuccess(null);
                               }}
                             >
@@ -2103,7 +2114,7 @@ export default function PurchaseOrderDetail() {
                   <div className="flex justify-end pt-1">
                     <Button
                       onClick={() => {
-                        setCompareItemId(null);
+                        setCompareSelection(null);
                         setRouteSuccess(null);
                       }}
                       data-testid="button-routing-done"
@@ -2117,7 +2128,8 @@ export default function PurchaseOrderDetail() {
 
             // Prefer bulk comparison data (richer: includes staleness + confirmed).
             // Fall back to single-item endpoint data if bulk entry is unavailable.
-            const bulkEntry = compareItemId ? bulkComparison?.data?.[compareItemId] : undefined;
+            const currentVendorItemId = compareSelection?.currentVendorItemId;
+            const bulkEntry = currentVendorItemId ? bulkComparison?.data?.[currentVendorItemId] : undefined;
             const prices =
               (bulkEntry?.vendorPrices && bulkEntry.vendorPrices.length > 0
                 ? bulkEntry.vendorPrices
@@ -2131,9 +2143,10 @@ export default function PurchaseOrderDetail() {
               );
             }
 
-            // Find the PO line for this item so we can pass poLineId to the routing endpoint
+            // Find the exact source-product PO line. Two products from one
+            // vendor can share an inventory item but must never be conflated.
             const comparePOLine = purchaseOrder?.lines?.find(
-              (l) => l.inventoryItemId === compareItemId
+              (l) => l.vendorItemId === currentVendorItemId
             );
             const canRoute =
               !isNew &&
@@ -2147,16 +2160,21 @@ export default function PurchaseOrderDetail() {
               vp.priceSource !== "legacy_unknown" &&
               !vp.stale;
 
-            const currentVendorRow = prices.find(vp => vp.vendorId === selectedVendor);
-            const bestRow = prices[0];
-            const isBestAlready = bestRow.vendorId === selectedVendor;
-            const savings = currentVendorRow && !isBestAlready
-              ? currentVendorRow.casePrice - bestRow.casePrice
+            const currentVendorRow = prices.find(vp => vp.vendorItemId === currentVendorItemId);
+            const bestRow = currentVendorRow
+              ? prices.find(vp => vp.vendorItemId === bulkEntry?.bestVendorItemId)
+                ?? prices.filter(vp => vp.vendorId !== currentVendorRow.vendorId && isRowEligible(vp))[0]
+              : undefined;
+            const isBestAlready = !currentVendorRow || !bestRow || currentVendorRow.unitPrice <= bestRow.unitPrice + 0.0001;
+            const savings = currentVendorRow && bestRow && !isBestAlready
+              ? (currentVendorRow.unitPrice - bestRow.unitPrice) * bestRow.caseSize
               : 0;
 
-            // Count eligible alternatives (exclude current vendor — no point routing to same vendor)
+            // Cross-shopping routes only to a different vendor. Other products
+            // from the current vendor remain visible but cannot be substituted
+            // merely because they share an inventory-item ID.
             const eligibleAlternatives = prices.filter(
-              vp => vp.vendorId !== selectedVendor && isRowEligible(vp)
+              vp => !!currentVendorRow && vp.vendorId !== currentVendorRow.vendorId && isRowEligible(vp)
             );
 
             return (
@@ -2212,9 +2230,10 @@ export default function PurchaseOrderDetail() {
                     </TableHeader>
                     <TableBody>
                       {prices.map((vp, index) => {
-                        const isLowestPrice = index === 0;
-                        const isCurrentVendor = vp.vendorId === selectedVendor;
                         const bulkVp = vp as BulkVendorPrice;
+                        const isLowestPrice = index === 0;
+                        const isCurrentProduct = bulkVp.vendorItemId === currentVendorItemId;
+                        const isSameVendorProduct = !!currentVendorRow && bulkVp.vendorId === currentVendorRow.vendorId;
                         const isStale = bulkVp.stale ?? (bulkVp.daysSincePriced != null && bulkVp.daysSincePriced > 14);
                         const isConfirmed = bulkVp.confirmed ?? false;
                         const eligible = isRowEligible(bulkVp);
@@ -2236,23 +2255,23 @@ export default function PurchaseOrderDetail() {
 
                         return (
                           <TableRow
-                            key={vp.vendorId}
+                            key={bulkVp.vendorItemId}
                             className={isLowestPrice ? "bg-green-50 dark:bg-green-950/20" : ""}
-                            data-testid={`row-vendor-price-${vp.vendorId}`}
+                            data-testid={`row-vendor-price-${bulkVp.vendorItemId}`}
                           >
                             <TableCell className="font-medium">
                               <div className="flex flex-wrap items-center gap-1">
-                                <span className={isCurrentVendor ? "underline decoration-dotted" : ""} title={isCurrentVendor ? "Current PO vendor" : undefined}>
+                                <span className={isCurrentProduct ? "underline decoration-dotted" : ""} title={isCurrentProduct ? "Current PO product" : undefined}>
                                   {vp.vendorName}
                                 </span>
                                 {isLowestPrice && (
-                                  <Badge variant="default" className="ml-1" data-testid={`badge-best-price-${vp.vendorId}`}>Best Price</Badge>
+                                  <Badge variant="default" className="ml-1" data-testid={`badge-best-price-${bulkVp.vendorItemId}`}>Best Price</Badge>
                                 )}
-                                {isCurrentVendor && !isLowestPrice && (
+                                {isCurrentProduct && !isLowestPrice && (
                                   <Badge variant="outline" className="ml-1">Current</Badge>
                                 )}
                                 {isConfirmed && (
-                                  <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${vp.vendorId}`}>
+                                  <Badge variant="outline" className="ml-1 border-green-500 text-green-700 dark:text-green-400" data-testid={`badge-confirmed-${bulkVp.vendorItemId}`}>
                                     <CheckCircle2 className="h-3 w-3 mr-1" />
                                     Paid Price
                                   </Badge>
@@ -2271,7 +2290,7 @@ export default function PurchaseOrderDetail() {
                             <TableCell className="text-right font-mono font-semibold">
                               ${vp.casePrice.toFixed(2)}
                             </TableCell>
-                            <TableCell data-testid={`text-price-source-${vp.vendorId}`}>
+                            <TableCell data-testid={`text-price-source-${bulkVp.vendorItemId}`}>
                               {(() => {
                                 const src = bulkVp.priceSource;
                                 if (!src) return <span className="text-muted-foreground text-sm">-</span>;
@@ -2296,7 +2315,7 @@ export default function PurchaseOrderDetail() {
                             <TableCell className="text-right">
                               {bulkVp.pricedAt ? (
                                 <div className={`flex items-center justify-end gap-1 text-xs ${isStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                                  {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vp.vendorId}`} />}
+                                  {isStale && <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${bulkVp.vendorItemId}`} />}
                                   <span title={isStale ? `Price is ${bulkVp.daysSincePriced} days old — may be stale` : undefined}>
                                     {new Date(bulkVp.pricedAt).toLocaleDateString()}
                                     {isStale && bulkVp.daysSincePriced != null && (
@@ -2306,21 +2325,23 @@ export default function PurchaseOrderDetail() {
                                 </div>
                               ) : (
                                 <div className="flex items-center justify-end gap-1 text-xs text-amber-600 dark:text-amber-400" title="No pricing date recorded">
-                                  <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${vp.vendorId}`} />
+                                  <AlertTriangle className="h-3 w-3 shrink-0" data-testid={`icon-stale-${bulkVp.vendorItemId}`} />
                                   <span>Unknown</span>
                                 </div>
                               )}
                             </TableCell>
                             {canRoute && (
                               <TableCell className="text-right">
-                                {isCurrentVendor ? (
+                                {isCurrentProduct ? (
                                   <span className="text-xs text-muted-foreground">Current</span>
+                                ) : isSameVendorProduct ? (
+                                  <span className="text-xs text-muted-foreground">Same vendor product</span>
                                 ) : eligible ? (
                                   <Button
                                     size="sm"
                                     variant="default"
                                     disabled={anyRowLoading}
-                                    data-testid={`button-route-to-${vp.vendorId}`}
+                                    data-testid={`button-route-to-${bulkVp.vendorItemId}`}
                                     onClick={() => {
                                       if (!comparePOLine) return;
                                       setRouteLoadingVendorItemId(bulkVp.vendorItemId);
@@ -2340,7 +2361,7 @@ export default function PurchaseOrderDetail() {
                                     )}
                                   </Button>
                                 ) : (
-                                  <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-ineligible-${vp.vendorId}`}>
+                                  <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-ineligible-${bulkVp.vendorItemId}`}>
                                     {ineligibilityReason ?? "Ineligible"}
                                   </Badge>
                                 )}

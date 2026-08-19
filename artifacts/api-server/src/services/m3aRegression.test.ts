@@ -450,6 +450,7 @@ describe("Scenario 5 — Bulk comparison", () => {
   // ── data types mirroring the bulk endpoint response ───────────────────────
 
   interface VendorPriceRow {
+    vendorItemId?: string;
     vendorId: string;
     vendorName: string;
     unitPrice: number;
@@ -477,11 +478,13 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   function cheaperAvailable(
     rows: VendorPriceRow[],
-    currentVendorId: string
+    currentVendorItemId: string
   ): { cheaperAvailable: boolean; savingsPerCase: number; bestVendorName: string | null } {
     const eligible = eligibleForRecommendation(rank(rows));
-    const currentRow = eligible.find(r => r.vendorId === currentVendorId);
-    const bestRow    = eligible[0];
+    const currentRow = eligible.find(r => r.vendorItemId === currentVendorItemId);
+    const bestRow = currentRow
+      ? eligible.find(r => r.vendorId !== currentRow.vendorId)
+      : undefined;
     const cheaper    =
       currentRow != null &&
       bestRow != null &&
@@ -507,10 +510,10 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   it("cheaperAvailable uses unit price comparison, not case price", () => {
     const rows: VendorPriceRow[] = [
-      { vendorId: "current", vendorName: "Current Co", unitPrice: 2.00, casePrice: 40, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
-      { vendorId: "better",  vendorName: "Better Co",  unitPrice: 1.50, casePrice: 60, caseSize: 40, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "current-vi", vendorId: "current", vendorName: "Current Co", unitPrice: 2.00, casePrice: 40, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "better-vi", vendorId: "better",  vendorName: "Better Co",  unitPrice: 1.50, casePrice: 60, caseSize: 40, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
     ];
-    const result = cheaperAvailable(rows, "current");
+    const result = cheaperAvailable(rows, "current-vi");
     expect(result.cheaperAvailable).toBe(true);
     expect(result.bestVendorName).toBe("Better Co");
     // Savings = (2.00 - 1.50) × 40 = $20 per case
@@ -519,10 +522,47 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   it("cheaperAvailable=false when current vendor IS the cheapest", () => {
     const rows: VendorPriceRow[] = [
-      { vendorId: "current", vendorName: "Best Co",  unitPrice: 1.0, casePrice: 20, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
-      { vendorId: "other",   vendorName: "Other Co", unitPrice: 2.0, casePrice: 40, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "current-vi", vendorId: "current", vendorName: "Best Co",  unitPrice: 1.0, casePrice: 20, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "other-vi",   vendorId: "other",   vendorName: "Other Co", unitPrice: 2.0, casePrice: 40, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
     ];
-    expect(cheaperAvailable(rows, "current").cheaperAvailable).toBe(false);
+    expect(cheaperAvailable(rows, "current-vi").cheaperAvailable).toBe(false);
+  });
+
+  it("preserves same-vendor SKU/pack identity through sorting, comparison, and routing payloads", () => {
+    // Real-world shape: one canonical Brussels sprouts ingredient can have two
+    // Harvill products. The lower-priced 25-lb pack must not replace the
+    // selected 5-lb pack just because the vendor ID is the same.
+    const sourceVendorItemA = "vi-harvill-sprbr5";
+    const sameVendorDifferentPack = "vi-harvill-sprbr";
+    const targetVendorItemB = "vi-alt-brussels-25";
+    const rows: VendorPriceRow[] = [
+      { vendorItemId: sourceVendorItemA, vendorId: "harvill", vendorName: "Harvill", unitPrice: 1.8, casePrice: 9, caseSize: 5, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: sameVendorDifferentPack, vendorId: "harvill", vendorName: "Harvill", unitPrice: 1.2, casePrice: 30, caseSize: 25, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: targetVendorItemB, vendorId: "alternate", vendorName: "Alternate Foods", unitPrice: 1.5, casePrice: 30, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+    ];
+
+    const ranked = rank(rows);
+    expect(ranked.map(row => row.vendorItemId)).toEqual([
+      sameVendorDifferentPack,
+      targetVendorItemB,
+      sourceVendorItemA,
+    ]);
+
+    // Exact source selection still resolves its own price, then recommends the
+    // lowest eligible product from another vendor—not Harvill's other pack.
+    const comparison = cheaperAvailable(rows, sourceVendorItemA);
+    expect(comparison.cheaperAvailable).toBe(true);
+    expect(comparison.bestVendorName).toBe("Alternate Foods");
+
+    const selectedAlternative = ranked.find(row => row.vendorItemId === targetVendorItemB)!;
+    const routeRequest = {
+      lines: [{ poLineId: "po-line-source-a", targetVendorItemId: selectedAlternative.vendorItemId }],
+    };
+    const destinationPoLine = { vendorItemId: routeRequest.lines[0].targetVendorItemId };
+
+    expect(routeRequest.lines[0].targetVendorItemId).toBe(targetVendorItemB);
+    expect(destinationPoLine.vendorItemId).toBe(targetVendorItemB);
+    expect(destinationPoLine.vendorItemId).not.toBe(sameVendorDifferentPack);
   });
 
   // ── cross-company authorization ────────────────────────────────────────────
@@ -554,8 +594,8 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   it("legacy_unknown row appears in data but excluded from cheaperAvailable", () => {
     const rows: VendorPriceRow[] = [
-      { vendorId: "current", vendorName: "Current Co", unitPrice: 3.0, casePrice: 60, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
-      { vendorId: "legacy",  vendorName: "Old Co",     unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "legacy_unknown", pricedAt: null, stale: true, incompatibleUnit: false },
+      { vendorItemId: "current-vi", vendorId: "current", vendorName: "Current Co", unitPrice: 3.0, casePrice: 60, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "legacy-vi",  vendorId: "legacy",  vendorName: "Old Co",     unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "legacy_unknown", pricedAt: null, stale: true, incompatibleUnit: false },
     ];
     // All rows in data
     expect(rank(rows)).toHaveLength(2);
@@ -564,7 +604,7 @@ describe("Scenario 5 — Bulk comparison", () => {
     expect(eligible).toHaveLength(1);
     expect(eligible[0].vendorId).toBe("current");
     // No cheaperAvailable because only one eligible vendor
-    expect(cheaperAvailable(rows, "current").cheaperAvailable).toBe(false);
+    expect(cheaperAvailable(rows, "current-vi").cheaperAvailable).toBe(false);
   });
 
   // ── stale prices excluded ──────────────────────────────────────────────────
@@ -572,13 +612,13 @@ describe("Scenario 5 — Bulk comparison", () => {
   it("stale price (>14 days) excluded from cheaperAvailable", () => {
     const staleDate = new Date(Date.now() - 15 * 86400_000);
     const rows: VendorPriceRow[] = [
-      { vendorId: "current", vendorName: "Active Co", unitPrice: 2.5, casePrice: 50, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
-      { vendorId: "stale",   vendorName: "Stale Co",  unitPrice: 1.0, casePrice: 20, caseSize: 20, priceSource: "receipt", pricedAt: staleDate, stale: true,  incompatibleUnit: false },
+      { vendorItemId: "current-vi", vendorId: "current", vendorName: "Active Co", unitPrice: 2.5, casePrice: 50, caseSize: 20, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "stale-vi",   vendorId: "stale",   vendorName: "Stale Co",  unitPrice: 1.0, casePrice: 20, caseSize: 20, priceSource: "receipt", pricedAt: staleDate, stale: true,  incompatibleUnit: false },
     ];
     const eligible = eligibleForRecommendation(rows);
     expect(eligible).toHaveLength(1);
     expect(eligible[0].vendorId).toBe("current");
-    expect(cheaperAvailable(rows, "current").cheaperAvailable).toBe(false);
+    expect(cheaperAvailable(rows, "current-vi").cheaperAvailable).toBe(false);
   });
 
   it("price from today is not stale", () => {
@@ -595,10 +635,10 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   it("invalidPackGeometry price excluded from cheaperAvailable", () => {
     const rows: VendorPriceRow[] = [
-      { vendorId: "current", vendorName: "Current Co", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
-      { vendorId: "bad",     vendorName: "Bad Geo Co", unitPrice: 1.0, casePrice: 10, caseSize: 0,  priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
+      { vendorItemId: "current-vi", vendorId: "current", vendorName: "Current Co", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
+      { vendorItemId: "bad-vi",     vendorId: "bad",     vendorName: "Bad Geo Co", unitPrice: 1.0, casePrice: 10, caseSize: 0,  priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false, invalidPackGeometry: true },
     ];
-    const result = cheaperAvailable(rows, "current");
+    const result = cheaperAvailable(rows, "current-vi");
     expect(result.cheaperAvailable).toBe(false); // bad-geometry row must not trigger switch recommendation
   });
 
@@ -606,8 +646,8 @@ describe("Scenario 5 — Bulk comparison", () => {
 
   it("incompatibleUnit=true row still appears in vendorPrices data", () => {
     const rows: VendorPriceRow[] = [
-      { vendorId: "A", vendorName: "Kg Vendor", unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: true },
-      { vendorId: "B", vendorName: "Lb Vendor", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
+      { vendorItemId: "A-vi", vendorId: "A", vendorName: "Kg Vendor", unitPrice: 1.0, casePrice: 10, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: true },
+      { vendorItemId: "B-vi", vendorId: "B", vendorName: "Lb Vendor", unitPrice: 2.0, casePrice: 20, caseSize: 10, priceSource: "receipt", pricedAt: new Date(), stale: false, incompatibleUnit: false },
     ];
     expect(rank(rows)).toHaveLength(2); // both present — UI decides how to handle
     expect(rank(rows)[0].incompatibleUnit).toBe(true); // flagged row shown first by unit price
@@ -625,7 +665,7 @@ describe("Scenario 5 — Bulk comparison", () => {
     expect(eligible).toHaveLength(1);
     expect(eligible[0].vendorId).toBe("B");
     // No cheaperAvailable — only one eligible vendor
-    expect(cheaperAvailable(rows, "B").cheaperAvailable).toBe(false);
+    expect(cheaperAvailable(rows, "B-vi").cheaperAvailable).toBe(false);
   });
 
   // ── zero-price rows excluded upstream ─────────────────────────────────────
