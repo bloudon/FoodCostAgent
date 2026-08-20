@@ -69,6 +69,9 @@ Use the current pnpm-monorepo scripts, not the historical
 and uses an obsolete npm layout; it is not an approved deployment method for
 this rollout.
 
+For the copy/paste operator handoff and expected sanitized output, use
+`reports/orderly-vendor-product-adoption-vps-operator-commands.md`.
+
 The reviewed application commit predates this operator tooling. Before switching
 the VPS application checkout to the reviewed application SHA, transfer the three
 files in `scripts/vps/` to an operator-owned directory outside `APP_DIR` (for
