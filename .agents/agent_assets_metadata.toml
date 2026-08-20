@@ -42,3 +42,10 @@ uri = "file://reports/orderly-vendor-product-adoption-manifest-24472.json"
 type = "unspecified"
 title = "Orderly evidence-freeze manifest — property 24472"
 description = "Read-only deterministic manifest for the 3,435 PM-approved safe candidates. APPLY remains disabled."
+
+[[outputs]]
+id = "LypueONaNDdinh5tfM0km"
+uri = "file://reports/orderly-vendor-product-adoption-active-status-overlay-24472.json"
+type = "unspecified"
+title = "Orderly active-status overlay — property 24472"
+description = "Read-only status overlay for the frozen 3,435 candidates. It does not alter the manifest or enable APPLY."

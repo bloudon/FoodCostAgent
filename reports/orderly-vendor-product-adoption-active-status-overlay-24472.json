@@ -1,0 +1,1051 @@
+{
+  "generatedAt": "2026-08-20T00:52:34.050Z",
+  "rawSourceFileSha256": "945c8fea3d3cc16b476cfd7208b1a0e38877b6a816a9cba8761193b658d9f2a8",
+  "overlayFormat": "orderly-active-status-overlay-v1",
+  "manifestId": "orderly-adoption-evidence-v1:08047d80abef1790e2afb553e8c91d89481e892f2012313ee4cf3c50c6f90137",
+  "manifestSha256": "08047d80abef1790e2afb553e8c91d89481e892f2012313ee4cf3c50c6f90137",
+  "sourceStatusField": "packSize.isActive",
+  "sourceStatusCoverage": {
+    "trueCount": 0,
+    "falseCount": 5746,
+    "absentOrNullCount": 0
+  },
+  "candidateStatusCoverage": {
+    "true": {
+      "candidateCount": 0,
+      "createVendorItemAndMappingCount": 0,
+      "createMappingOnlyCount": 0,
+      "vendors": [],
+      "harvill": {
+        "candidateCount": 0,
+        "createVendorItemAndMappingCount": 0,
+        "createMappingOnlyCount": 0,
+        "currentlyUnresolvedSourceCodes": []
+      }
+    },
+    "false": {
+      "candidateCount": 3435,
+      "createVendorItemAndMappingCount": 1896,
+      "createMappingOnlyCount": 1539,
+      "vendors": [
+        {
+          "supplierId": "40",
+          "supplierName": "Sysco",
+          "candidateCount": 1226,
+          "createVendorItemAndMappingCount": 514,
+          "createMappingOnlyCount": 712
+        },
+        {
+          "supplierId": "32976",
+          "supplierName": "Harvill's Produce Co., Inc.",
+          "candidateCount": 350,
+          "createVendorItemAndMappingCount": 229,
+          "createMappingOnlyCount": 121
+        },
+        {
+          "supplierId": "144",
+          "supplierName": "Cheney Brothers",
+          "candidateCount": 327,
+          "createVendorItemAndMappingCount": 259,
+          "createMappingOnlyCount": 68
+        },
+        {
+          "supplierId": "6510",
+          "supplierName": "Mr. Green's Produce",
+          "candidateCount": 308,
+          "createVendorItemAndMappingCount": 222,
+          "createMappingOnlyCount": 86
+        },
+        {
+          "supplierId": "52",
+          "supplierName": "Halperns",
+          "candidateCount": 249,
+          "createVendorItemAndMappingCount": 135,
+          "createMappingOnlyCount": 114
+        },
+        {
+          "supplierId": "338",
+          "supplierName": "Samuels and Son Seafood Company",
+          "candidateCount": 212,
+          "createVendorItemAndMappingCount": 158,
+          "createMappingOnlyCount": 54
+        },
+        {
+          "supplierId": "25636",
+          "supplierName": "GFs Store",
+          "candidateCount": 160,
+          "createVendorItemAndMappingCount": 141,
+          "createMappingOnlyCount": 19
+        },
+        {
+          "supplierId": "1457",
+          "supplierName": "Amazon",
+          "candidateCount": 70,
+          "createVendorItemAndMappingCount": 30,
+          "createMappingOnlyCount": 40
+        },
+        {
+          "supplierId": "18275",
+          "supplierName": "Empress Sissi",
+          "candidateCount": 56,
+          "createVendorItemAndMappingCount": 3,
+          "createMappingOnlyCount": 53
+        },
+        {
+          "supplierId": "40096",
+          "supplierName": "Reyes Beer Division (PA)",
+          "candidateCount": 48,
+          "createVendorItemAndMappingCount": 22,
+          "createMappingOnlyCount": 26
+        },
+        {
+          "supplierId": "343",
+          "supplierName": "AUI Fine Foods",
+          "candidateCount": 42,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 41
+        },
+        {
+          "supplierId": "1728",
+          "supplierName": "Publix",
+          "candidateCount": 30,
+          "createVendorItemAndMappingCount": 22,
+          "createMappingOnlyCount": 8
+        },
+        {
+          "supplierId": "41564",
+          "supplierName": "De Romo's Gourmet Market & Restaurant",
+          "candidateCount": 29,
+          "createVendorItemAndMappingCount": 16,
+          "createMappingOnlyCount": 13
+        },
+        {
+          "supplierId": "487",
+          "supplierName": "Gordon Food Service",
+          "candidateCount": 28,
+          "createVendorItemAndMappingCount": 27,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "33200",
+          "supplierName": "Olde Hearth Bread Company",
+          "candidateCount": 27,
+          "createVendorItemAndMappingCount": 8,
+          "createMappingOnlyCount": 19
+        },
+        {
+          "supplierId": "162",
+          "supplierName": "R.L. Schreiber",
+          "candidateCount": 25,
+          "createVendorItemAndMappingCount": 21,
+          "createMappingOnlyCount": 4
+        },
+        {
+          "supplierId": "357",
+          "supplierName": "Chef's Warehouse",
+          "candidateCount": 24,
+          "createVendorItemAndMappingCount": 11,
+          "createMappingOnlyCount": 13
+        },
+        {
+          "supplierId": "6486",
+          "supplierName": "City Beverages",
+          "candidateCount": 23,
+          "createVendorItemAndMappingCount": 8,
+          "createMappingOnlyCount": 15
+        },
+        {
+          "supplierId": "1398",
+          "supplierName": "Breakthru Beverage",
+          "candidateCount": 21,
+          "createVendorItemAndMappingCount": 5,
+          "createMappingOnlyCount": 16
+        },
+        {
+          "supplierId": "6963",
+          "supplierName": "Southern Glazer's",
+          "candidateCount": 17,
+          "createVendorItemAndMappingCount": 4,
+          "createMappingOnlyCount": 13
+        },
+        {
+          "supplierId": "60",
+          "supplierName": "GFI - Gourmet Foods International",
+          "candidateCount": 13,
+          "createVendorItemAndMappingCount": 7,
+          "createMappingOnlyCount": 6
+        },
+        {
+          "supplierId": "41477",
+          "supplierName": "Pinkney Transportation LLC",
+          "candidateCount": 12,
+          "createVendorItemAndMappingCount": 8,
+          "createMappingOnlyCount": 4
+        },
+        {
+          "supplierId": "402",
+          "supplierName": "Community Coffee",
+          "candidateCount": 11,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 10
+        },
+        {
+          "supplierId": "40934",
+          "supplierName": "Fungi Jon",
+          "candidateCount": 11,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 9
+        },
+        {
+          "supplierId": "43660",
+          "supplierName": "RLB Transport",
+          "candidateCount": 11,
+          "createVendorItemAndMappingCount": 6,
+          "createMappingOnlyCount": 5
+        },
+        {
+          "supplierId": "174",
+          "supplierName": "Edward Don & Company",
+          "candidateCount": 10,
+          "createVendorItemAndMappingCount": 6,
+          "createMappingOnlyCount": 4
+        },
+        {
+          "supplierId": "320",
+          "supplierName": "Coca Cola",
+          "candidateCount": 9,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 8
+        },
+        {
+          "supplierId": "24245",
+          "supplierName": "Progressive Distribution",
+          "candidateCount": 6,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 6
+        },
+        {
+          "supplierId": "39086",
+          "supplierName": "Truly Good Foods",
+          "candidateCount": 6,
+          "createVendorItemAndMappingCount": 6,
+          "createMappingOnlyCount": 0
+        },
+        {
+          "supplierId": "41010",
+          "supplierName": "Peninsula Foodservice",
+          "candidateCount": 5,
+          "createVendorItemAndMappingCount": 3,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "41480",
+          "supplierName": "Arnold Palmer Snacks",
+          "candidateCount": 5,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "9014",
+          "supplierName": "AZ Southeast Distributors",
+          "candidateCount": 5,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 5
+        },
+        {
+          "supplierId": "970",
+          "supplierName": "Albert Uster Fine Foods",
+          "candidateCount": 5,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "27299",
+          "supplierName": "Pastry Chef Resource",
+          "candidateCount": 4,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "28296",
+          "supplierName": "Golden Malted",
+          "candidateCount": 4,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "41912",
+          "supplierName": "Pensato USA, LLC",
+          "candidateCount": 4,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "41990",
+          "supplierName": "Muse Gelato",
+          "candidateCount": 4,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "46865",
+          "supplierName": "Busy Bean Coffee",
+          "candidateCount": 4,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 4
+        },
+        {
+          "supplierId": "10137",
+          "supplierName": "Lumi Company, LLC",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "23805",
+          "supplierName": "Tropical Nut & Fruit Co.",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "41153",
+          "supplierName": "Stormberg Foods LLC",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "41628",
+          "supplierName": "Denise Candy Snacks Inc.",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "41638",
+          "supplierName": "Font Group of America Corp.",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 3
+        },
+        {
+          "supplierId": "456",
+          "supplierName": "D'artagnan",
+          "candidateCount": 3,
+          "createVendorItemAndMappingCount": 2,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "20203",
+          "supplierName": "Ambrosia Market",
+          "candidateCount": 2,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "206",
+          "supplierName": "Republic National Distributing Company",
+          "candidateCount": 2,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "41479",
+          "supplierName": "Bomb Branding, LLC",
+          "candidateCount": 2,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "440",
+          "supplierName": "Winebow",
+          "candidateCount": 2,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 2
+        },
+        {
+          "supplierId": "47910",
+          "supplierName": "Gotcha Snacks LLC",
+          "candidateCount": 2,
+          "createVendorItemAndMappingCount": 1,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "20637",
+          "supplierName": "Terroir Selections",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "3232",
+          "supplierName": "Webstaurant",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "38936",
+          "supplierName": "Healthy Truth, LLC",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "47834",
+          "supplierName": "French Patisserie LLC",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "5179",
+          "supplierName": "Sprouts",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        },
+        {
+          "supplierId": "9371",
+          "supplierName": "Chocolate Accents",
+          "candidateCount": 1,
+          "createVendorItemAndMappingCount": 0,
+          "createMappingOnlyCount": 1
+        }
+      ],
+      "harvill": {
+        "candidateCount": 350,
+        "createVendorItemAndMappingCount": 229,
+        "createMappingOnlyCount": 121,
+        "currentlyUnresolvedSourceCodes": [
+          {
+            "sourceCode": "APRDRY",
+            "lineCount": 2,
+            "dollars": 103.3,
+            "earliestInvoiceDate": "2026-07-03",
+            "latestInvoiceDate": "2026-07-17",
+            "candidatePackSizeIds": [
+              "2543063"
+            ]
+          },
+          {
+            "sourceCode": "ASP11LG",
+            "lineCount": 13,
+            "dollars": 596.3,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-08-11",
+            "candidatePackSizeIds": [
+              "1528516"
+            ]
+          },
+          {
+            "sourceCode": "AV048",
+            "lineCount": 7,
+            "dollars": 303.4,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-07-31",
+            "candidatePackSizeIds": [
+              "3134299"
+            ]
+          },
+          {
+            "sourceCode": "avo48",
+            "lineCount": 9,
+            "dollars": 422.2,
+            "earliestInvoiceDate": "2026-05-14",
+            "latestInvoiceDate": "2026-08-13",
+            "candidatePackSizeIds": [
+              "2542239"
+            ]
+          },
+          {
+            "sourceCode": "BAN1",
+            "lineCount": 18,
+            "dollars": 445.6,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542846"
+            ]
+          },
+          {
+            "sourceCode": "BAN10",
+            "lineCount": 2,
+            "dollars": 17.1,
+            "earliestInvoiceDate": "2026-07-02",
+            "latestInvoiceDate": "2026-07-31",
+            "candidatePackSizeIds": [
+              "2543047"
+            ]
+          },
+          {
+            "sourceCode": "BAN1GT",
+            "lineCount": 1,
+            "dollars": 24.9,
+            "earliestInvoiceDate": "2026-07-22",
+            "latestInvoiceDate": "2026-07-22",
+            "candidatePackSizeIds": [
+              "3074528"
+            ]
+          },
+          {
+            "sourceCode": "BERBB",
+            "lineCount": 23,
+            "dollars": 770.25,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2814223"
+            ]
+          },
+          {
+            "sourceCode": "BERBKB",
+            "lineCount": 21,
+            "dollars": 625.5,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2814219"
+            ]
+          },
+          {
+            "sourceCode": "BROCR",
+            "lineCount": 15,
+            "dollars": 564.5,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "1760927"
+            ]
+          },
+          {
+            "sourceCode": "BROLINI",
+            "lineCount": 1,
+            "dollars": 33.85,
+            "earliestInvoiceDate": "2026-08-07",
+            "latestInvoiceDate": "2026-08-07",
+            "candidatePackSizeIds": [
+              "1557968"
+            ]
+          },
+          {
+            "sourceCode": "CABGRSH",
+            "lineCount": 3,
+            "dollars": 72.75,
+            "earliestInvoiceDate": "2026-07-21",
+            "latestInvoiceDate": "2026-08-13",
+            "candidatePackSizeIds": [
+              "2543048"
+            ]
+          },
+          {
+            "sourceCode": "CABRDEA",
+            "lineCount": 2,
+            "dollars": 3.31,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-06-20",
+            "candidatePackSizeIds": [
+              "2568167"
+            ]
+          },
+          {
+            "sourceCode": "CABRDLB",
+            "lineCount": 1,
+            "dollars": 10.2,
+            "earliestInvoiceDate": "2026-07-10",
+            "latestInvoiceDate": "2026-07-10",
+            "candidatePackSizeIds": [
+              "3443597"
+            ]
+          },
+          {
+            "sourceCode": "CAR25",
+            "lineCount": 6,
+            "dollars": 137.2,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-07-31",
+            "candidatePackSizeIds": [
+              "1507130"
+            ]
+          },
+          {
+            "sourceCode": "CAU",
+            "lineCount": 5,
+            "dollars": 167.1,
+            "earliestInvoiceDate": "2026-05-08",
+            "latestInvoiceDate": "2026-08-07",
+            "candidatePackSizeIds": [
+              "1760929"
+            ]
+          },
+          {
+            "sourceCode": "CAU3",
+            "lineCount": 2,
+            "dollars": 35,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-05-05",
+            "candidatePackSizeIds": [
+              "2639149"
+            ]
+          },
+          {
+            "sourceCode": "cel36hf",
+            "lineCount": 1,
+            "dollars": 17.45,
+            "earliestInvoiceDate": "2026-07-16",
+            "latestInvoiceDate": "2026-07-16",
+            "candidatePackSizeIds": [
+              "1638419"
+            ]
+          },
+          {
+            "sourceCode": "EPL10",
+            "lineCount": 1,
+            "dollars": 13.6,
+            "earliestInvoiceDate": "2026-05-27",
+            "latestInvoiceDate": "2026-05-27",
+            "candidatePackSizeIds": [
+              "3403093"
+            ]
+          },
+          {
+            "sourceCode": "HERBARR15",
+            "lineCount": 14,
+            "dollars": 264.35,
+            "earliestInvoiceDate": "2026-05-07",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542871"
+            ]
+          },
+          {
+            "sourceCode": "herbbas",
+            "lineCount": 12,
+            "dollars": 138.6,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-08-10",
+            "candidatePackSizeIds": [
+              "1507120"
+            ]
+          },
+          {
+            "sourceCode": "HERBCHOLB",
+            "lineCount": 1,
+            "dollars": 11.7,
+            "earliestInvoiceDate": "2026-05-08",
+            "latestInvoiceDate": "2026-05-08",
+            "candidatePackSizeIds": [
+              "3163626"
+            ]
+          },
+          {
+            "sourceCode": "HERBCHQLB",
+            "lineCount": 2,
+            "dollars": 17.85,
+            "earliestInvoiceDate": "2026-06-17",
+            "latestInvoiceDate": "2026-07-31",
+            "candidatePackSizeIds": [
+              "2570276"
+            ]
+          },
+          {
+            "sourceCode": "HERBD8",
+            "lineCount": 2,
+            "dollars": 22.5,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-06-18",
+            "candidatePackSizeIds": [
+              "2542901",
+              "2542902",
+              "2563939"
+            ]
+          },
+          {
+            "sourceCode": "herbdlb",
+            "lineCount": 2,
+            "dollars": 30,
+            "earliestInvoiceDate": "2026-07-06",
+            "latestInvoiceDate": "2026-08-07",
+            "candidatePackSizeIds": [
+              "2621101"
+            ]
+          },
+          {
+            "sourceCode": "herbmint4",
+            "lineCount": 12,
+            "dollars": 64.05,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-07-31",
+            "candidatePackSizeIds": [
+              "2570272"
+            ]
+          },
+          {
+            "sourceCode": "HERBOR4",
+            "lineCount": 1,
+            "dollars": 5,
+            "earliestInvoiceDate": "2026-06-22",
+            "latestInvoiceDate": "2026-06-22",
+            "candidatePackSizeIds": [
+              "2543034",
+              "2552149"
+            ]
+          },
+          {
+            "sourceCode": "herbrmb",
+            "lineCount": 1,
+            "dollars": 9.65,
+            "earliestInvoiceDate": "2026-06-26",
+            "latestInvoiceDate": "2026-06-26",
+            "candidatePackSizeIds": [
+              "2660099"
+            ]
+          },
+          {
+            "sourceCode": "HERBSAGEEA",
+            "lineCount": 1,
+            "dollars": 1.9,
+            "earliestInvoiceDate": "2026-07-06",
+            "latestInvoiceDate": "2026-07-06",
+            "candidatePackSizeIds": [
+              "2552187",
+              "2888551"
+            ]
+          },
+          {
+            "sourceCode": "HERBTHY",
+            "lineCount": 9,
+            "dollars": 109.35,
+            "earliestInvoiceDate": "2026-05-08",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542799"
+            ]
+          },
+          {
+            "sourceCode": "LEM165",
+            "lineCount": 8,
+            "dollars": 385.8,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-07-07",
+            "candidatePackSizeIds": [
+              "2542873"
+            ]
+          },
+          {
+            "sourceCode": "LEM200HF",
+            "lineCount": 5,
+            "dollars": 116,
+            "earliestInvoiceDate": "2026-06-23",
+            "latestInvoiceDate": "2026-08-10",
+            "candidatePackSizeIds": [
+              "2562516"
+            ]
+          },
+          {
+            "sourceCode": "LETGRMASIAN",
+            "lineCount": 1,
+            "dollars": 24.85,
+            "earliestInvoiceDate": "2026-05-19",
+            "latestInvoiceDate": "2026-05-19",
+            "candidatePackSizeIds": [
+              "3179536"
+            ]
+          },
+          {
+            "sourceCode": "LETLF",
+            "lineCount": 9,
+            "dollars": 319.4,
+            "earliestInvoiceDate": "2026-05-05",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542878"
+            ]
+          },
+          {
+            "sourceCode": "LETLFRD12",
+            "lineCount": 2,
+            "dollars": 70.15,
+            "earliestInvoiceDate": "2026-05-15",
+            "latestInvoiceDate": "2026-05-27",
+            "candidatePackSizeIds": [
+              "3389019"
+            ]
+          },
+          {
+            "sourceCode": "LETROM",
+            "lineCount": 1,
+            "dollars": 48.45,
+            "earliestInvoiceDate": "2026-05-19",
+            "latestInvoiceDate": "2026-05-19",
+            "candidatePackSizeIds": [
+              "1557940"
+            ]
+          },
+          {
+            "sourceCode": "LIME200HF",
+            "lineCount": 6,
+            "dollars": 100.65,
+            "earliestInvoiceDate": "2026-05-09",
+            "latestInvoiceDate": "2026-08-10",
+            "candidatePackSizeIds": [
+              "2562518",
+              "2798252"
+            ]
+          },
+          {
+            "sourceCode": "MELHD6",
+            "lineCount": 30,
+            "dollars": 894.1,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542210",
+              "2942470"
+            ]
+          },
+          {
+            "sourceCode": "oni jum",
+            "lineCount": 2,
+            "dollars": 61.25,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-06-24",
+            "candidatePackSizeIds": [
+              "1928481"
+            ]
+          },
+          {
+            "sourceCode": "ONIGRI12",
+            "lineCount": 8,
+            "dollars": 70.25,
+            "earliestInvoiceDate": "2026-05-05",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2571606"
+            ]
+          },
+          {
+            "sourceCode": "onijum",
+            "lineCount": 11,
+            "dollars": 320.8,
+            "earliestInvoiceDate": "2026-05-08",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "1507114"
+            ]
+          },
+          {
+            "sourceCode": "ONIJUMHF",
+            "lineCount": 1,
+            "dollars": 23.15,
+            "earliestInvoiceDate": "2026-07-17",
+            "latestInvoiceDate": "2026-07-17",
+            "candidatePackSizeIds": [
+              "3341285"
+            ]
+          },
+          {
+            "sourceCode": "ORA24",
+            "lineCount": 11,
+            "dollars": 212.75,
+            "earliestInvoiceDate": "2026-05-13",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542844"
+            ]
+          },
+          {
+            "sourceCode": "pepgr",
+            "lineCount": 1,
+            "dollars": 32,
+            "earliestInvoiceDate": "2026-06-29",
+            "latestInvoiceDate": "2026-06-29",
+            "candidatePackSizeIds": [
+              "1527869"
+            ]
+          },
+          {
+            "sourceCode": "PEPHABLB",
+            "lineCount": 1,
+            "dollars": 6.85,
+            "earliestInvoiceDate": "2026-07-16",
+            "latestInvoiceDate": "2026-07-16",
+            "candidatePackSizeIds": [
+              "2542896"
+            ]
+          },
+          {
+            "sourceCode": "PEPPAB5",
+            "lineCount": 1,
+            "dollars": 12,
+            "earliestInvoiceDate": "2026-08-07",
+            "latestInvoiceDate": "2026-08-07",
+            "candidatePackSizeIds": [
+              "2649896"
+            ]
+          },
+          {
+            "sourceCode": "PEPRD5",
+            "lineCount": 1,
+            "dollars": 26.5,
+            "earliestInvoiceDate": "2026-07-20",
+            "latestInvoiceDate": "2026-07-20",
+            "candidatePackSizeIds": [
+              "3263999"
+            ]
+          },
+          {
+            "sourceCode": "PEPY",
+            "lineCount": 3,
+            "dollars": 68.45,
+            "earliestInvoiceDate": "2026-07-27",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2542900"
+            ]
+          },
+          {
+            "sourceCode": "potblcr",
+            "lineCount": 2,
+            "dollars": 107,
+            "earliestInvoiceDate": "2026-07-22",
+            "latestInvoiceDate": "2026-08-07",
+            "candidatePackSizeIds": [
+              "2608144"
+            ]
+          },
+          {
+            "sourceCode": "POTSW10",
+            "lineCount": 3,
+            "dollars": 27.6,
+            "earliestInvoiceDate": "2026-06-22",
+            "latestInvoiceDate": "2026-07-10",
+            "candidatePackSizeIds": [
+              "2542213"
+            ]
+          },
+          {
+            "sourceCode": "ROOTGIN1",
+            "lineCount": 6,
+            "dollars": 25.05,
+            "earliestInvoiceDate": "2026-05-07",
+            "latestInvoiceDate": "2026-08-13",
+            "candidatePackSizeIds": [
+              "2542867"
+            ]
+          },
+          {
+            "sourceCode": "spinbaby",
+            "lineCount": 13,
+            "dollars": 342,
+            "earliestInvoiceDate": "2026-05-02",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "1527868"
+            ]
+          },
+          {
+            "sourceCode": "SPRBR",
+            "lineCount": 4,
+            "dollars": 158.1,
+            "earliestInvoiceDate": "2026-05-14",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2926909"
+            ]
+          },
+          {
+            "sourceCode": "SQUY",
+            "lineCount": 2,
+            "dollars": 37.5,
+            "earliestInvoiceDate": "2026-07-17",
+            "latestInvoiceDate": "2026-07-21",
+            "candidatePackSizeIds": [
+              "2562628"
+            ]
+          },
+          {
+            "sourceCode": "squyhf",
+            "lineCount": 9,
+            "dollars": 104.2,
+            "earliestInvoiceDate": "2026-05-05",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2562630"
+            ]
+          },
+          {
+            "sourceCode": "SQUZ",
+            "lineCount": 2,
+            "dollars": 34.25,
+            "earliestInvoiceDate": "2026-07-17",
+            "latestInvoiceDate": "2026-07-27",
+            "candidatePackSizeIds": [
+              "2562647"
+            ]
+          },
+          {
+            "sourceCode": "SQUZ5",
+            "lineCount": 1,
+            "dollars": 14.6,
+            "earliestInvoiceDate": "2026-07-20",
+            "latestInvoiceDate": "2026-07-20",
+            "candidatePackSizeIds": [
+              "3264001"
+            ]
+          },
+          {
+            "sourceCode": "squzhf",
+            "lineCount": 7,
+            "dollars": 75.7,
+            "earliestInvoiceDate": "2026-05-05",
+            "latestInvoiceDate": "2026-08-17",
+            "candidatePackSizeIds": [
+              "2562644"
+            ]
+          },
+          {
+            "sourceCode": "TOMROMAS",
+            "lineCount": 6,
+            "dollars": 70.75,
+            "earliestInvoiceDate": "2026-05-01",
+            "latestInvoiceDate": "2026-07-28",
+            "candidatePackSizeIds": [
+              "3124911"
+            ]
+          },
+          {
+            "sourceCode": "TOMTOML.B",
+            "lineCount": 1,
+            "dollars": 2.7,
+            "earliestInvoiceDate": "2026-06-24",
+            "latestInvoiceDate": "2026-06-24",
+            "candidatePackSizeIds": [
+              "3432518"
+            ]
+          }
+        ]
+      }
+    },
+    "absentOrNull": {
+      "candidateCount": 0,
+      "createVendorItemAndMappingCount": 0,
+      "createMappingOnlyCount": 0,
+      "vendors": [],
+      "harvill": {
+        "candidateCount": 0,
+        "createVendorItemAndMappingCount": 0,
+        "createMappingOnlyCount": 0,
+        "currentlyUnresolvedSourceCodes": []
+      }
+    }
+  },
+  "investigationFinding": "The supplied export reports isActive=false for every source packSize. This observation alone does not establish whether false means discontinued, hidden, unavailable, or an export-context flag. Do not infer current purchasing availability or activate new FnB vendor products from this source field until Orderly semantics are evidenced.",
+  "recommendedApplyTreatment": [
+    "Keep the existing approved manifest unchanged.",
+    "Do not create any new vendor_item as active based on the current export.",
+    "Do not change an existing vendor_item active state when creating a mapping-only provenance link.",
+    "Require a separately evidenced PM decision on Orderly isActive semantics before any APPLY design assigns active=0 or active=1 to newly created vendor items."
+  ]
+}

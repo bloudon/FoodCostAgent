@@ -1,0 +1,91 @@
+I’m very close to approving the Dev APPLY, but I found **one material gap that needs to be answered first**.
+
+The manifest itself is strong: it freezes the property, raw source hash, logical fingerprint, unchanged catalog counts, and the exact 3,435 safe candidates, split into 1,896 create+mapping and 1,539 mapping-only actions.  It also has the right fail-closed revalidation rules and keeps all held populations outside the manifest. 
+
+But I searched the full manifest for `isActive`, and it is **not present**. 
+
+That matters because Claude already found that several of the Harvill relationships we specifically care about—BAN1, blueberries, blackberries, raspberries, Yukon potatoes—exist in Orderly with `isActive: false`.
+
+So before APPLY, we need to answer:
+
+> **What does Orderly `packSize.isActive = false` mean, and how does #1210 treat it?**
+
+I do **not** want 1,896 vendor products created as active FnB purchasing options if some significant subset is explicitly inactive in Orderly.
+
+My PM status is therefore:
+
+> **#1216 evidence freeze: ACCEPTED.**
+> **Dev APPLY: HOLD for one narrow active-status classification.**
+
+Send Replit this:
+
+```md
+## PM Gate Before #1210 Dev APPLY — Orderly Active Status
+
+The #1216 manifest/evidence freeze is ACCEPTED.
+
+One source field is not represented in the frozen candidate evidence:
+
+`packSize.isActive`
+
+Claude's source review previously proved several important Harvill relationships exist in Orderly with:
+
+`isActive: false`
+
+Before APPLY, run a READ-ONLY classification over the exact 3,435 frozen candidates.
+
+Return:
+
+1. candidates where Orderly `isActive = true`
+2. candidates where Orderly `isActive = false`
+3. candidates where active status is absent/null, if any
+
+Break each down by:
+
+- CREATE_VENDOR_ITEM_AND_MAPPING
+- CREATE_MAPPING_ONLY
+- vendor
+- Harvill subset
+- currently unresolved Harvill source codes
+
+### Required semantic investigation
+
+Determine from repo/source evidence what Orderly `packSize.isActive` means.
+
+Specifically:
+
+- Does false mean discontinued/no longer purchasable?
+- Does false mean merely hidden/inactive in Orderly while historical purchases remain valid?
+- Can an inactive relationship still have recent invoice activity?
+- Does FnB currently have an equivalent vendor-product active/inactive field?
+
+Do not guess from the field name.
+
+### No silent activation
+
+Until this is resolved:
+
+Do NOT create a new FnB vendor product as active solely because the relationship is otherwise a safe identity match.
+
+If Orderly inactive status represents current purchasing availability, the future apply contract must preserve that state.
+
+A historical source relationship may still deserve a provenance mapping without becoming an active cross-shop/routing candidate.
+
+### Manifest
+
+Do not mutate the approved manifest yet.
+
+Return the active-status overlay and recommended apply treatment first.
+
+No writes.
+```
+
+I suspect the eventual answer may be something like:
+
+* **active Orderly relationship** → create active vendor product + mapping;
+* **inactive historical relationship** → preserve provenance / possibly create inactive vendor product, but keep it out of cross-shopping/routing;
+* existing `mapping_only_gap` → mapping can probably be added without changing the existing FnB product’s active state.
+
+But I don’t want to make that contract until we know what `isActive` actually means in Orderly.
+
+That is the only blocker I see. Once this is answered, I expect the Dev APPLY decision to be straightforward.
