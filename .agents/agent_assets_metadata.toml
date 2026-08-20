@@ -56,3 +56,10 @@ uri = "file://reports/orderly-vendor-product-adoption-post-apply-verification-24
 type = "unspecified"
 title = "Orderly DEV APPLY — PM verification"
 description = "Manifest-bound, read-only verification of the completed DEV-only vendor-product adoption and Harvill resolution lift."
+
+[[outputs]]
+id = "APQBW8ujl_YujKmSoGq7J"
+uri = "file://reports/orderly-vendor-product-adoption-idempotency-24472.json"
+type = "unspecified"
+title = "Orderly DEV APPLY — idempotency proof"
+description = "Read-only, manifest-bound proof that a repeat run would create no vendor products or mappings."
