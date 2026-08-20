@@ -38,3 +38,4 @@
 - [Orderly production preflight boundary](orderly-production-preflight-boundary.md) — readiness proves scope/evidence/environment only; live classifications remain a separate PM-authorized production preview.
 - [VPS production operator boundary](vps-production-operator-boundary.md) — Replit supplies checksum-pinned commands and sanitized evidence expectations; the production operator executes on the VPS.
 - [Production database source-of-truth](production-db-source-of-truth.md) — Replit’s production query target may differ from the VPS app database; operator evidence decides VPS invariants.
+- [Vendor-item legacy reference contract](vendor-item-legacy-reference-contract.md) — only the reviewed invoice-import reference may be absent on restored production; every other reference drift stops classification.
