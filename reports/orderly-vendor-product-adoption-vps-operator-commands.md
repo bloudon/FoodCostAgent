@@ -105,7 +105,7 @@ bash "$OPERATOR_DIR/deploy-reviewed-orderly-preflight.sh"
 The script:
 
 - refuses a dirty checkout;
-- fetches and verifies `origin/main` is exactly the reviewed SHA;
+- fetches and verifies the reviewed SHA is present in `origin/main` history;
 - checks out that immutable SHA;
 - installs the frozen pnpm lockfile with build-time devDependencies even
   when `NODE_ENV=production`;
