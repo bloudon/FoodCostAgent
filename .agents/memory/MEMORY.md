@@ -34,3 +34,4 @@
 - [Orderly active-status gate](orderly-active-status-gate.md) — an all-false source `isActive` field is not an availability decision; preserve the PM gate until source semantics are evidenced.
 - [Post-apply migration metrics](post-apply-migration-metrics.md) — compare the frozen baseline to a fresh projection; a post-mutation projection resets its own “newly resolvable” delta.
 - [Manifest-based idempotency](manifest-based-idempotency.md) — prove reruns with frozen mapping and vendor-product identity, not a source projection that can hold geometry-absent rows.
+- [Orderly adoption root cause](orderly-adoption-root-cause.md) — missing relationships came from cross-batch adoption loss; the catalog intentionally supports many vendors and many vendor packs per ingredient.
