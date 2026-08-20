@@ -1,0 +1,81 @@
+{
+  "reportVersion": "orderly-adoption-production-preflight-v1",
+  "mode": "production-readiness-preflight",
+  "exampleOnly": true,
+  "isProductionPreview": false,
+  "writesExecuted": 0,
+  "databaseWritesExecuted": 0,
+  "generatedAt": "<timestamp>",
+  "evidence": {
+    "manifestId": "orderly-adoption-evidence-v1:<reviewed-manifest-sha256>",
+    "manifestSha256": "<reviewed-manifest-sha256>",
+    "rawSourceFileSha256": "<reviewed-raw-source-sha256>",
+    "canonicalSourceFingerprint": "<reviewed-logical-source-sha256>",
+    "normalizedRelationshipCount": 3435,
+    "candidateCount": 3323
+  },
+  "scope": {
+    "companyId": "<reviewed-production-company-id>",
+    "storeId": "<reviewed-production-store-id>",
+    "sourceSystem": "ORDERLY",
+    "sourcePropertyId": "24472"
+  },
+  "bindingId": "<reviewed-production-binding-id>",
+  "build": {
+    "gitSha": "<reviewed-git-sha>",
+    "apiVersion": "<reviewed-api-version>",
+    "buildId": "api@<reviewed-api-version>:<reviewed-git-sha>",
+    "workingTreeClean": true,
+    "liveApiBuild": {
+      "buildId": "<approved-live-api-build-id>",
+      "buildInfoUrl": "http://127.0.0.1:<active-api-port>/api/build-info",
+      "checkedAt": "<timestamp>"
+    }
+  },
+  "database": {
+    "driver": "<credential-redacted-driver>",
+    "host": "<reviewed-production-db-host>",
+    "port": "<reviewed-production-db-port>",
+    "database": "<reviewed-production-db-name>",
+    "sslmode": "<sslmode>"
+  },
+  "schema": {
+    "tables": [
+      "<required-table-names>"
+    ],
+    "columns": [
+      "<required-table-and-column-names>"
+    ],
+    "indexes": [
+      "import_source_property_unique",
+      "vendor_item_ext_mappings_source_idx",
+      "vendor_items_vendor_item_sku_uniq"
+    ]
+  },
+  "catalog": {
+    "before": {
+      "inventoryItemCount": "<count>",
+      "vendorItemCount": "<count>",
+      "vendorItemMappingCount": "<count>",
+      "priceHistoryCount": "<count>"
+    },
+    "after": {
+      "inventoryItemCount": "<same-count>",
+      "vendorItemCount": "<same-count>",
+      "vendorItemMappingCount": "<same-count>",
+      "priceHistoryCount": "<same-count>"
+    },
+    "unchanged": true
+  },
+  "integrity": {
+    "duplicateSkuIdentities": 0,
+    "duplicateMappings": 0,
+    "orphanMappings": 0
+  },
+  "frozenMappingEvidence": {
+    "exactFrozenTarget": "<read-only-count>",
+    "mappingMissing": "<read-only-count>",
+    "mappingTargetMismatch": "<read-only-count>"
+  },
+  "nextAllowedStep": "Obtain PM authorization, then run the separately-authorized production preview during the writer-quiescence window."
+}

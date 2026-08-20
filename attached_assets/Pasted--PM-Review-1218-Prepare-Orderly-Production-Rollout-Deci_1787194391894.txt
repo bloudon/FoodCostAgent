@@ -1,0 +1,233 @@
+# PM Review — #1218 Prepare Orderly Production Rollout
+
+## Decision
+
+APPROVED WITH SCOPE CLARIFICATION.
+
+Proceed with #1218 as a production-readiness / operator-package task only.
+
+No production access or mutation is authorized.
+
+## Primary objective
+
+#1218 must prove that we have a safe, repeatable operator path from:
+
+accepted DEV evidence
+→ production environment verification
+→ read-only production preview
+→ PM approval
+→ bounded production APPLY
+→ post-apply verification
+→ July inventory validation
+
+It must NOT execute any of those production stages.
+
+## Important clarification — Preflight vs Production Preview
+
+Keep these as separate stages.
+
+### Production preflight
+
+The preflight may verify:
+
+- deployed build identity
+- database identity
+- company/store scope
+- required schema and constraints
+- manifest/source evidence identity
+- raw-source hash
+- canonical source fingerprint
+- existing mapping table integrity
+- duplicate reliable vendor-product identities
+- duplicate ORDERLY property + packSize.id mappings
+- orphan mappings
+- catalog counts
+- whether prerequisites for the real production preview are satisfied
+- zero-write catalog fingerprint before/after
+
+It may also report high-level readiness expectations.
+
+### Production preview
+
+The production preview is a later, separately executed read-only step against the actual VPS production database.
+
+That later preview is what should produce the authoritative production classifications:
+
+- CREATE_VENDOR_ITEM_AND_MAPPING
+- CREATE_MAPPING_ONLY
+- ALREADY_SATISFIED
+- DRIFTED_HOLD
+
+Do not present a #1218 preflight projection as if it were the actual production preview.
+
+## Required production evidence contract
+
+The runbook/preflight must bind to:
+
+- source system: ORDERLY
+- property: `24472`
+- exact approved manifest ID/hash
+- raw source-file SHA
+- canonical logical source fingerprint
+- approved company identity
+- approved store identity
+- exact deployed build/version
+- exact database identity
+- required schema/migration state
+
+Any mismatch must STOP.
+
+No "close enough" or fallback behavior.
+
+## Build identity
+
+Do not rely only on package version numbers.
+
+The runbook must define one reproducible build identity, preferably:
+
+- git commit SHA / deployment commit
+- migration/schema version
+- application build identifier
+
+The operator must be able to prove the VPS is running the reviewed code before production preview or APPLY.
+
+## Database identity
+
+Preflight must prevent accidental execution against:
+
+- DEV
+- staging
+- another customer/company database
+- another Bay Hill store/company scope
+- an unexpected DB host/name
+
+Return sanitized database identity evidence sufficient for the operator and PM to verify the target without exposing credentials.
+
+## Recovery point
+
+The runbook must require a verified production DB backup immediately before any future mutation stage.
+
+Define:
+
+- backup command
+- backup filename/timestamp convention
+- verification that file exists and is non-zero
+- optional restore validation/check command if practical
+- exact point in the runbook where the backup becomes mandatory
+
+#1218 documents this only.
+
+Do not take a production backup from Replit.
+
+## Writer quiescence
+
+The future APPLY runbook must explicitly address application writers.
+
+Before production mutation, define how the operator ensures no competing writer can modify the affected catalog/mapping state during the bounded APPLY.
+
+Prefer the smallest practical quiescence window.
+
+Do not design broad downtime if a narrower write lock/maintenance window is sufficient.
+
+## #1209 prerequisite
+
+The remaining live browser exact-vendor-product test must be listed as a production authorization prerequisite:
+
+comparison dialog
+→ select alternate vendor product
+→ route
+→ prove exact selected vendor_item_id reached routed PO/audit result
+
+#1218 may document the requirement.
+
+It must not bypass or fabricate data to complete it.
+
+## Production APPLY safeguards
+
+The future runbook must preserve the DEV contract:
+
+- safe candidates only
+- drift held, never repaired
+- no inventory-item creation
+- no vendor creation
+- no pack overwrite
+- no price/current-price mutation
+- no price-history observations
+- no invoice-line resolution
+- no fuzzy matching
+- no lifecycle interpretation
+- no #1217 conflict remediation
+- no operation outside the approved production manifest
+
+## Post-APPLY verification
+
+The runbook must require:
+
+- vendor_items before/after
+- ORDERLY mappings before/after
+- inventory items unchanged
+- vendors unchanged
+- price history unchanged
+- duplicate vendor-product identities = 0
+- duplicate ORDERLY property + packSize.id mappings = 0
+- orphan mappings = 0
+- idempotency / zero additional-write proof
+- same-vendor alternate SKU/pack regression
+- Harvill actual resolution metrics
+
+## Functional smoke test
+
+Include a small post-apply operator smoke test around known multi-vendor examples:
+
+- Banana
+- Potatoes - Yukon
+- Brussels sprouts
+
+Verify:
+
+- multiple vendor products attach to the same canonical item
+- alternate packs remain distinct
+- cross-shopping can see the expanded vendor graph
+- exact vendor_item identity remains preserved
+- stale/missing pricing does not bypass routing safeguards
+
+## July inventory gate
+
+July inventory remains after production catalog adoption.
+
+The runbook should document the sequence only:
+
+production adoption accepted
+→ post-apply verification accepted
+→ July inventory import
+→ valuation reconciliation
+→ canonical identity/storage-location verification
+→ May/June/July continuity check
+
+Do not execute July entry under #1218.
+
+## #1217
+
+The 112 held conflicts remain explicitly non-blocking and out of scope.
+
+Do not resolve them in #1218.
+
+## Deliverables
+
+Return:
+
+1. production-readiness runbook
+2. read-only preflight command/tool
+3. example sanitized preflight report
+4. refusal-condition matrix
+5. zero-write proof
+6. focused test results
+7. API typecheck result
+8. exact list of PM/operator prerequisites required before running the real production preview
+
+Then STOP.
+
+No VPS action.
+No production database access.
+No production preview.
+No production APPLY.

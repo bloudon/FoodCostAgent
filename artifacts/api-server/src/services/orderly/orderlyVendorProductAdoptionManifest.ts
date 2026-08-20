@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import type {
   AdoptionClassificationResult,
   AdoptionClassifierSummary,
+  NormalizedPackSizeEntry,
 } from './orderlyVendorProductAdoptionClassifier';
 import type {
   OrderlyVendorProductAdoptionPreviewReport,
@@ -143,8 +144,8 @@ function scalar(value: unknown): JsonPrimitive {
   return String(value);
 }
 
-function sourceIdentitySortKey(relationship: AdoptionClassificationResult): string {
-  const entry = relationship.entry;
+function sourceIdentitySortKey(entry: Pick<NormalizedPackSizeEntry,
+  'packSizeId' | 'fallbackIdentity' | 'supplierId' | 'normalizedSku' | 'specId'>): string {
   return [
     entry.packSizeId ?? entry.fallbackIdentity?.key ?? '',
     entry.supplierId ?? '',
@@ -153,13 +154,13 @@ function sourceIdentitySortKey(relationship: AdoptionClassificationResult): stri
   ].join('\u0000');
 }
 
-function logicalSourceRelationship(relationship: AdoptionClassificationResult) {
-  const entry = relationship.entry;
+function logicalSourceRelationship(
+  entry: NormalizedPackSizeEntry,
+  sourcePropertyId: string,
+) {
   return {
     sourceSystem: 'ORDERLY',
-    sourcePropertyId: relationship.proposedMapping?.sourcePropertyId
-      ?? entry.fallbackIdentity?.sourcePropertyId
-      ?? '24472',
+    sourcePropertyId,
     packSizeIdentity: entry.packSizeId ?? entry.fallbackIdentity?.key ?? null,
     specId: entry.specId,
     supplierId: entry.supplierId,
@@ -181,16 +182,41 @@ function logicalSourceRelationship(relationship: AdoptionClassificationResult) {
   };
 }
 
-export function canonicalSourceFingerprint(
-  classifier: Pick<AdoptionClassifierSummary, 'relationships'>,
+/**
+ * Computes the logical source fingerprint from raw normalized entries only.
+ * Production preflight uses this instead of invoking the catalog classifier,
+ * so it proves source evidence identity without becoming a production preview.
+ */
+export function canonicalOrderlySourceFingerprint(
+  entries: readonly NormalizedPackSizeEntry[],
+  sourcePropertyId: string,
 ): string {
-  const relationships = [...classifier.relationships]
+  const relationships = [...entries]
     .sort((a, b) => sourceIdentitySortKey(a).localeCompare(sourceIdentitySortKey(b)))
-    .map(logicalSourceRelationship);
+    .map(entry => logicalSourceRelationship(entry, sourcePropertyId));
   return sha256(canonicalJson({
     format: 'orderly-logical-relationship-v1',
     relationships,
   }));
+}
+
+export function canonicalSourceFingerprint(
+  classifier: Pick<AdoptionClassifierSummary, 'relationships'>,
+): string {
+  const sourceProperties = new Set(classifier.relationships.map(relationship =>
+    relationship.proposedMapping?.sourcePropertyId
+      ?? relationship.entry.fallbackIdentity?.sourcePropertyId
+      ?? '24472',
+  ));
+  if (sourceProperties.size !== 1) {
+    throw new OrderlyAdoptionManifestError(
+      'Canonical source fingerprint requires one source-property identity.',
+    );
+  }
+  return canonicalOrderlySourceFingerprint(
+    classifier.relationships.map(relationship => relationship.entry),
+    [...sourceProperties][0],
+  );
 }
 
 function freezeCandidate(relationship: AdoptionClassificationResult): OrderlyAdoptionFrozenCandidate {
@@ -301,7 +327,7 @@ export function createOrderlyAdoptionEvidenceManifest(input: {
 
   const candidates = report.classifier.relationships
     .filter(relationship => SAFE_CLASSES.has(relationship.classification))
-    .sort((a, b) => sourceIdentitySortKey(a).localeCompare(sourceIdentitySortKey(b)))
+    .sort((a, b) => sourceIdentitySortKey(a.entry).localeCompare(sourceIdentitySortKey(b.entry)))
     .map(freezeCandidate);
   const createVendorItemAndMapping = candidates.filter(candidate => candidate.vendorItemTarget.kind === 'proposed').length;
   const createMappingOnly = candidates.filter(candidate => candidate.vendorItemTarget.kind === 'existing').length;
