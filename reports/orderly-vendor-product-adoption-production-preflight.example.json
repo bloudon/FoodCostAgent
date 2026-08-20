@@ -27,7 +27,7 @@
     "buildId": "api@<reviewed-api-version>:<reviewed-git-sha>",
     "workingTreeClean": true,
     "liveApiBuild": {
-      "buildId": "<approved-live-api-build-id>",
+      "buildId": "api@<reviewed-api-version>:<reviewed-git-sha>",
       "buildInfoUrl": "http://127.0.0.1:<active-api-port>/api/build-info",
       "checkedAt": "<timestamp>"
     }

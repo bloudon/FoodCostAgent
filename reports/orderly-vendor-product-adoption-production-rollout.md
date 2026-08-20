@@ -62,6 +62,42 @@ recorded. Supply absolute paths to the reviewed immutable manifest and raw
 Orderly source export. Do not place source session headers or credentials in a
 shell command or report.
 
+## VPS operator scripts
+
+Use the current pnpm-monorepo scripts, not the historical
+`.migration-backup/scripts/deploy-vps.sh`. The historical script pulls a branch
+and uses an obsolete npm layout; it is not an approved deployment method for
+this rollout.
+
+The reviewed application commit predates this operator tooling. Before switching
+the VPS application checkout to the reviewed application SHA, transfer the three
+files in `scripts/vps/` to an operator-owned directory outside `APP_DIR` (for
+example, `/secure/orderly-operator-scripts`) and verify their SHA-256 values.
+The approved transfer checksums are in `scripts/vps/SHA256SUMS`; run
+`sha256sum -c SHA256SUMS` from the copied directory before execution.
+They are deployment tools, not application source, and must not be copied into
+or generated inside the pinned application checkout.
+
+1. Run `bash /secure/orderly-operator-scripts/deploy-reviewed-orderly-preflight.sh`
+   on the VPS with
+   `APP_DIR`, `API_PORT`, and (when non-default) `PM2_NAME` and `VPS_ENV_FILE`.
+   It refuses a dirty checkout, verifies `origin/main` is the exact reviewed
+   Git SHA, installs the frozen lockfile with required build-time
+   devDependencies even when `NODE_ENV=production`, builds the full workspace,
+   persists the reviewed `APP_BUILD_ID`, refreshes the existing PM2 process
+   environment, and confirms `/api/build-info`. It never calls `db:push`.
+   Application startup performs its reviewed idempotent schema checks; the
+   subsequent preflight is the structural verification that those required
+   schema objects are present.
+2. Export the reviewed evidence and target identity values, then run
+   `bash /secure/orderly-operator-scripts/run-orderly-production-preflight.sh`.
+   It invokes only the dedicated read-only production-preflight CLI and writes
+   both its operator report and a credential-safe summary whose database host,
+   database name, and binding identifier are hashed.
+3. Return the sanitized summary to PM and stop. A passing preflight is never
+   authorization for preview, APPLY, recovery-point work, writer quiescence,
+   conflict remediation, or July inventory work.
+
 ```bash
 NODE_ENV=production pnpm --filter @workspace/api-server run orderly:adoption-production-preflight -- \
   --manifest /secure/reviewed/orderly-vendor-product-adoption-manifest-24472.json \
