@@ -82,12 +82,15 @@ git switch --detach "$REVIEWED_GIT_SHA"
   || die "Checkout does not match the reviewed Git commit."
 [[ -z "$(git status --porcelain)" ]] || die "Checkout became dirty after switching revisions."
 
-# VPS shells commonly export NODE_ENV=production, but this exact workspace build
-# needs TypeScript/esbuild and other development tools. Install them explicitly;
-# runtime pruning is intentionally omitted so a later reviewed build remains
-# reproducible without changing the dependency set behind PM2's back.
+# VPS shells commonly export NODE_ENV=production, but the API bundle needs
+# esbuild and other development tools. Install them explicitly; runtime pruning
+# is intentionally omitted so a later reviewed build remains reproducible
+# without changing the dependency set behind PM2's back. The existing PM2
+# process runs only artifacts/api-server/dist/index.mjs, so build that workspace
+# alone. Do not invoke the root recursive build: it also builds the web and Expo
+# workspaces, neither of which is a VPS runtime artifact.
 pnpm install --frozen-lockfile --prod=false
-pnpm run build
+pnpm --filter @workspace/api-server run build
 
 # dotenv does not override a value already held by PM2. Persist the reviewed
 # identity in the dotenv file and refresh the existing process environment in
