@@ -89,7 +89,54 @@ If the checkout is dirty, the PM2 process is missing, or the PM2 entrypoint is
 the legacy `dist/index.js`, stop. Do not stash, overwrite, create a second
 process, or change the PM2 definition under this preflight.
 
-## 3. Deploy the reviewed code and allowed startup schema checks
+## 3. Preserve known VPS-local files without deletion
+
+This step is authorized only for the known VPS-local files discovered during
+inspection. It records their metadata, keeps them in place, and uses the
+checkout-local Git exclude list so the exact-SHA deployment guard can still
+detect tracked source changes. It does not delete, expose, copy, or alter
+dotenv contents, uploads, backups, or investigation evidence.
+
+Run on the VPS after confirming there are no tracked changes:
+
+```bash
+cd "$APP_DIR"
+
+git diff --quiet && git diff --cached --quiet || {
+  echo "STOP: tracked source changes require separate review."
+  exit 1
+}
+
+export PRESERVATION_DIR="$HOME/costpro-vps-preflight-preservation-$(date -u +%Y%m%dT%H%M%SZ)"
+umask 077
+mkdir -p "$PRESERVATION_DIR"
+
+git status --porcelain=v1 > "$PRESERVATION_DIR/git-status-before.txt"
+while IFS= read -r -d '' path; do
+  stat -c '%F|%U:%G|%s|%n' -- "$path"
+done < <(git ls-files --others --exclude-standard -z) \
+  > "$PRESERVATION_DIR/untracked-file-metadata.txt"
+
+cat >> .git/info/exclude <<'EOF'
+# Reviewed VPS-local preservation entries for Orderly production preflight.
+/.env
+/.env.*
+/uploads/
+/artifacts/api-server/bay-hill-remainder-analysis.json
+/bay-hill-batch1-forensics.json
+/bay-hill-policy-preflight-after-stop.json
+/report.json
+EOF
+
+git status --short
+```
+
+Expected result: the final `git status --short` is empty or contains only
+unrecognized paths. If any path still appears, stop and return only its
+filename and the two preservation metadata files for review. Do not use `git
+clean`, `git reset --hard`, `git stash`, or an unrestricted cleanup command.
+
+## 4. Deploy the reviewed code and allowed startup schema checks
 
 Run on the VPS:
 
@@ -137,7 +184,7 @@ Expected deployment output:
 }
 ```
 
-## 4. Run the read-only production preflight
+## 5. Run the read-only production preflight
 
 First place the immutable reviewed manifest and exact raw Orderly source export
 on the VPS. Their paths must be absolute and must not contain credentials or
@@ -190,7 +237,7 @@ Expected CLI summary:
 The candidate count is evidence-driven; the operator must return the actual
 value from the run, not this example value.
 
-## 5. Return sanitized evidence and hard stop
+## 6. Return sanitized evidence and hard stop
 
 Return only the sanitized file:
 
