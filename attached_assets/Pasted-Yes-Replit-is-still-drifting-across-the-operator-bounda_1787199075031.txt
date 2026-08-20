@@ -1,0 +1,90 @@
+Yes — Replit is still drifting across the operator boundary.
+
+The key line is:
+
+> “I can run the reviewed #1220 sequence now…”
+
+That is **not authorized**.
+
+The whole point of #1221 was to convert this into an operator handoff because Replit should not be initiating SSH/VPS control or asking for production connection details/secrets. Its job is now complete: provide the commands, checksums, expected outputs, and stop conditions. You run them.
+
+My disposition:
+
+> **Replit must stop requesting VPS access.**
+> **#1221 remains complete as operator handoff.**
+> **#1222 remains unapproved.**
+> **Next action belongs to you as production operator, not Replit.**
+
+Send this back:
+
+```md
+# PM Correction — Production Operator Boundary
+
+STOP.
+
+Replit is NOT authorized to connect to, control, or request access to the production VPS.
+
+The operator boundary established in #1221 remains in force.
+
+Do NOT request:
+
+- SSH credentials
+- VPS connection details
+- database credentials
+- production secrets
+- secure-secret flow access for the VPS
+- permission to execute the operator runbook remotely
+
+#1221 was completed specifically as an OPERATOR HANDOFF.
+
+Its deliverable is:
+
+- checksum-pinned scripts
+- exact copy/paste VPS commands
+- expected sanitized output
+- hard stop conditions
+
+That task does NOT authorize Replit to run those commands.
+
+## Current responsibility split
+
+### Replit
+- maintain the reviewed operator package
+- answer questions about the commands
+- interpret returned sanitized output
+- make code corrections only if the operator preflight exposes a defect
+
+### Production operator
+- connect to VPS
+- verify deployed state
+- deploy the reviewed SHA if required
+- set/verify APP_BUILD_ID
+- run the zero-write production preflight
+- return the sanitized report
+
+## Authorization status
+
+#1221:
+COMPLETE — operator handoff.
+
+#1222:
+UNAPPROVED.
+
+Production preview:
+NOT AUTHORIZED.
+
+Production APPLY:
+NOT AUTHORIZED.
+
+## Next action
+
+Do not perform any further production-access actions.
+
+Wait for the production operator to return the sanitized #1220/#1221 preflight output for PM review.
+```
+
+And I would make this a durable Replit rule:
+
+> **Replit is the dev/build system. The VPS is operator-controlled infrastructure. Replit never self-promotes from “provide commands” to “run commands” without an explicit new PM authorization.**
+
+That should stop this loop.
