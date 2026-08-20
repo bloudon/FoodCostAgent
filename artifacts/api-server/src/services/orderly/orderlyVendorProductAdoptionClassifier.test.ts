@@ -53,6 +53,7 @@ function baseSnap(o: Partial<AdoptionClassifierSnapshot> = {}): AdoptionClassifi
     vendors: [{ vendorId: 'vendor-1', companyId: CO, supplierExternalId: 'sup-1', vendorName: 'Sysco' }],
     approvedCanonicalItemIds: [{ inventoryItemId: 'item-1', companyId: CO }],
     vendorItems: [],
+    approvedSourceItemEvidence: [],
     vendorItemExternalMappings: [],
     purchaseUnitEvidence: [],
     ...o,
@@ -537,6 +538,26 @@ describe('classifyOrderlyVendorProductAdoption', () => {
     const r = classifyOrderlyVendorProductAdoption(entries, baseSnap(), OPTS).relationships[0];
     expect(r.classification).toBe('otherwise_held');
     expect(r.reasons.join(' ')).toMatch(/complete positive outer\/inner\/UOM/i);
+  });
+
+  it('infers canonical identity from exact approved-import evidence when no vendor item exists', () => {
+    const entries = normalize([makeSpec('s1', [
+      makePs({ id: 'ps-approved-evidence', itemCode: 'NEW-SKU', pack: 1, size: 25, uom: 'POUND' }),
+    ])]);
+    const snap = baseSnap({
+      approvedSourceItemEvidence: [{
+        vendorId: 'vendor-1',
+        companyId: CO,
+        inventoryItemId: 'item-1',
+        normalizedSku: 'new-sku',
+        caseSize: 1,
+        innerPackSize: 25,
+        packUom: 'LB',
+      }],
+    });
+    const r = classifyOrderlyVendorProductAdoption(entries, snap, OPTS).relationships[0];
+    expect(r.classification).toBe('safe_new_vendor_product');
+    expect(r.inferredCanonicalItemId).toBe('item-1');
   });
 
   // ── proposedPriceObservationCount always 0 ────────────────────────────────

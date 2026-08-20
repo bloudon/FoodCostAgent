@@ -20,6 +20,7 @@ import {
   type AdoptionClassifierSnapshot,
   type AdoptionClassifierSummary,
   type NormalizedPackSizeEntry,
+  type SnapshotApprovedSourceItemEvidence,
   type SnapshotVendorItemRow,
   type SnapshotVendorRow,
 } from './orderlyVendorProductAdoptionClassifier';
@@ -138,6 +139,27 @@ function normalizeSku(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase();
 }
 
+function normalizeGeometryUom(value: string | null | undefined): string {
+  const normalized = normalizeName(value);
+  const aliases: Record<string, string> = {
+    pound: 'lb',
+    pounds: 'lb',
+    lbs: 'lb',
+    ounce: 'oz',
+    ounces: 'oz',
+    each: 'ea',
+    piece: 'ea',
+    pieces: 'ea',
+    gallon: 'gal',
+    gallons: 'gal',
+    quart: 'qt',
+    quarts: 'qt',
+    pint: 'pt',
+    pints: 'pt',
+  };
+  return aliases[normalized] ?? normalized;
+}
+
 function finitePositive(value: number | null | undefined): number | null {
   return value != null && Number.isFinite(value) && value > 0 ? value : null;
 }
@@ -145,7 +167,7 @@ function finitePositive(value: number | null | undefined): number | null {
 function geometrySignature(row: ApprovedImportEvidence): string | null {
   const outer = finitePositive(row.caseQuantity);
   const inner = finitePositive(row.innerPackQuantity);
-  const uom = normalizeName(row.baseUnit);
+  const uom = normalizeGeometryUom(row.baseUnit);
   if (outer == null || inner == null || !uom) return null;
   return `${outer}|${inner}|${uom}`;
 }
@@ -534,7 +556,33 @@ async function loadPreviewInputs(
     evidenceByIdentity.set(key, rows);
   }
 
-  let geometryEvidenceConflictCount = 0;
+  const approvedSourceItemEvidence: SnapshotApprovedSourceItemEvidence[] = [];
+  const geometryConflictKeys = new Set<string>();
+  for (const [key, evidence] of evidenceByIdentity) {
+    const signatures = new Map<string, ApprovedImportEvidence>();
+    for (const candidate of evidence) {
+      const signature = geometrySignature(candidate);
+      if (signature) signatures.set(signature, candidate);
+    }
+    if (signatures.size > 1) {
+      geometryConflictKeys.add(key);
+      continue;
+    }
+    if (signatures.size !== 1) continue;
+    const [vendorId, inventoryItemId, normalizedSku] = key.split('|');
+    const geometry = [...signatures.values()][0];
+    approvedSourceItemEvidence.push({
+      vendorId,
+      companyId: binding.companyId,
+      inventoryItemId,
+      normalizedSku,
+      caseSize: geometry.caseQuantity!,
+      innerPackSize: geometry.innerPackQuantity!,
+      packUom: geometry.baseUnit!,
+    });
+  }
+
+  const geometryEvidenceConflictCount = geometryConflictKeys.size;
   const snapshotVendorItems: SnapshotVendorItemRow[] = existingVendorItems.map((row: any) => {
     const key = `${row.vendorId}|${row.inventoryItemId}|${normalizeSku(row.vendorSku)}`;
     const evidence = evidenceByIdentity.get(key) ?? [];
@@ -543,7 +591,6 @@ async function loadPreviewInputs(
       const signature = geometrySignature(candidate);
       if (signature) signatures.set(signature, candidate);
     }
-    if (signatures.size > 1) geometryEvidenceConflictCount++;
     const approvedGeometry = signatures.size === 1 ? [...signatures.values()][0] : null;
     return {
       vendorItemId: row.vendorItemId,
@@ -571,6 +618,7 @@ async function loadPreviewInputs(
       companyId: binding.companyId,
     })),
     vendorItems: snapshotVendorItems,
+    approvedSourceItemEvidence,
     vendorItemExternalMappings: mappings.map((row: any) => ({
       ...row,
       identityKind: row.sourceExternalId.startsWith('fallback|') ? 'fallback' as const : 'packSizeId' as const,

@@ -79,6 +79,20 @@ export interface SnapshotVendorItemRow {
   active: number | null;
 }
 
+/**
+ * Immutable approved-import evidence. This supports canonical inference before
+ * a current vendor_item exists, without trusting mutable catalog geometry.
+ */
+export interface SnapshotApprovedSourceItemEvidence {
+  vendorId: string;
+  companyId: string;
+  inventoryItemId: string;
+  normalizedSku: string;
+  caseSize: number;
+  innerPackSize: number;
+  packUom: string;
+}
+
 export interface SnapshotVendorItemExternalMapping {
   vendorItemId: string;
   sourceSystem: string;
@@ -109,6 +123,7 @@ export interface AdoptionClassifierSnapshot {
   vendors: readonly SnapshotVendorRow[];
   approvedCanonicalItemIds: readonly SnapshotApprovedCanonicalItem[];
   vendorItems: readonly SnapshotVendorItemRow[];
+  approvedSourceItemEvidence: readonly SnapshotApprovedSourceItemEvidence[];
   vendorItemExternalMappings: readonly SnapshotVendorItemExternalMapping[];
   /** Retained for future geometry-proof extensions; not consumed today. */
   purchaseUnitEvidence: readonly SnapshotPurchaseUnitEvidence[];
@@ -202,6 +217,28 @@ function normLower(v: unknown): string | null {
   return s == null ? null : s.toLowerCase();
 }
 
+function normUom(v: unknown): string | null {
+  const normalized = normLower(v);
+  if (!normalized) return null;
+  const aliases: Record<string, string> = {
+    pound: 'lb',
+    pounds: 'lb',
+    lbs: 'lb',
+    ounce: 'oz',
+    ounces: 'oz',
+    each: 'ea',
+    piece: 'ea',
+    pieces: 'ea',
+    gallon: 'gal',
+    gallons: 'gal',
+    quart: 'qt',
+    quarts: 'qt',
+    pint: 'pt',
+    pints: 'pt',
+  };
+  return aliases[normalized] ?? normalized;
+}
+
 function derivePackGeometry(
   pack: unknown,
   size: unknown,
@@ -210,7 +247,7 @@ function derivePackGeometry(
 ): NormalizedPackGeometry {
   let outerCount: number | null = null;
   let innerSize: number | null = null;
-  let normalizedUom: string | null = normLower(uom);
+  let normalizedUom: string | null = normUom(uom);
   let rawPackString: string | null = null;
 
   const packNum = pack != null ? Number(pack) : NaN;
@@ -231,12 +268,12 @@ function derivePackGeometry(
       if (m1) {
         outerCount = Number(m1[1]);
         innerSize = Number(m1[2]);
-        normalizedUom = normLower(m1[3]) ?? normalizedUom;
+        normalizedUom = normUom(m1[3]) ?? normalizedUom;
       } else {
         const m2 = /^(\d+(?:\.\d+)?)\s*([A-Za-z ]+)$/.exec(desc);
         if (m2) {
           outerCount = Number(m2[1]);
-          normalizedUom = normLower(m2[2]) ?? normalizedUom;
+          normalizedUom = normUom(m2[2]) ?? normalizedUom;
         }
       }
     }
@@ -292,7 +329,7 @@ function probePackGeometry(
 
   const viOuter = vi.caseSize;
   const viInner = vi.innerPackSize;
-  const viUom = normLower(vi.packUom);
+  const viUom = normUom(vi.packUom);
 
   if (viOuter == null || viOuter <= 0) return 'unverifiable';
 
@@ -580,6 +617,30 @@ export function classifyOrderlyVendorProductAdoption(
         }
         // 'unverifiable' or 'conflict' → do not count this vi
       }
+
+       // Approved import rows are immutable canonical evidence even where the
+       // equivalent vendor_item was never created. The source property and
+       // company are already scoped while constructing this snapshot.
+       for (const evidence of snapshot.approvedSourceItemEvidence) {
+         if (
+           evidence.vendorId !== sibVendorId
+           || evidence.normalizedSku !== (sib.normalizedSku ?? '')
+           || !approvedCanonicalIds.has(evidence.inventoryItemId)
+         ) continue;
+         const proof = probePackGeometry(sib.normalizedPackGeometry, {
+           vendorItemId: `approved-source:${evidence.vendorId}:${evidence.normalizedSku}:${evidence.inventoryItemId}`,
+           vendorId: evidence.vendorId,
+           companyId: evidence.companyId,
+           inventoryItemId: evidence.inventoryItemId,
+           vendorSku: evidence.normalizedSku,
+           normalizedSku: evidence.normalizedSku,
+           caseSize: evidence.caseSize,
+           innerPackSize: evidence.innerPackSize,
+           packUom: evidence.packUom,
+           active: 1,
+         });
+         if (proof === 'equivalent') candidates.add(evidence.inventoryItemId);
+       }
     }
 
     if (candidates.size === 0) return { inventoryItemId: null, conflict: false };

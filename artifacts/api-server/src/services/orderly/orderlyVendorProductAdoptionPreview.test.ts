@@ -34,6 +34,7 @@ const snapshot: AdoptionClassifierSnapshot = {
     packUom: 'LB',
     active: 1,
   }],
+  approvedSourceItemEvidence: [],
   vendorItemExternalMappings: [],
   purchaseUnitEvidence: [],
 };
