@@ -1,7 +1,9 @@
 {
-  "generatedAt": "2026-08-20T00:13:33.555Z",
+  "generatedAt": "2026-08-20T00:40:36.102Z",
   "sourceAcquisition": "file",
   "sourcePayloadSha256": "56e6f9620fb57e32fbdb8761ba04a68ccecbc549b8628a6d2b32ccbfaf448976",
+  "canonicalSourceJsonSha256": "56e6f9620fb57e32fbdb8761ba04a68ccecbc549b8628a6d2b32ccbfaf448976",
+  "rawSourceFileSha256": "945c8fea3d3cc16b476cfd7208b1a0e38877b6a816a9cba8761193b658d9f2a8",
   "mode": "read-only",
   "sourceSystem": "ORDERLY",
   "sourcePropertyId": "24472",

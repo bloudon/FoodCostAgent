@@ -18,3 +18,12 @@ the exact approved evidence with stable source-vendor identity and binds the
 APPLY request to a fresh fingerprint/hash of the PM-reviewed source snapshot.
 Do not use current parsed-row values or display-name matching alone to authorize
 writes.
+
+For Orderly evidence, retain two separate hashes: a raw-file SHA-256 for chain
+of custody and a canonical logical-source fingerprint for authorization. The
+logical fingerprint must sort normalized relationship projections and object
+keys, so harmless formatting or source-array ordering does not change it.
+Freeze only safe candidates; held rows belong in the accompanying evidence
+summary, not in the mutation manifest. A future apply must verify the
+deterministic manifest ID/hash, property, logical source fingerprint, and a
+fresh per-candidate DB revalidation before doing anything.

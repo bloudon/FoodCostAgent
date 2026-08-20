@@ -1,0 +1,131 @@
+# PM Approval — #1216 Freeze Reviewed Orderly Evidence
+
+## Decision
+
+APPROVED READ-ONLY.
+
+Build the immutable safe-candidate manifest and revalidation contract.
+
+Do NOT enable or execute catalog APPLY.
+
+## Reviewed population
+
+Authoritative preview:
+
+- 5,746 Orderly vendor-product relationships
+- 3,435 safe candidate mappings
+- 1,896 proposed new vendor_item rows
+- 1,539 mapping-only gaps
+
+Held and excluded:
+
+- 82 pack-geometry conflicts
+- 2,100 missing canonical inventory identity
+- 129 supplier-not-in-company-vendor-snapshot
+- 0 conflicting source identities
+
+The 129 otherwise-held relationships are accepted as a HOLD class:
+
+- supplier 4121: 114
+- supplier 73: 13
+- supplier 44468: 2
+
+No attempt to create those vendors is authorized.
+
+## Evidence-freeze contract
+
+Freeze each safe candidate using stable logical source identity, including:
+
+- source system = ORDERLY
+- source property = 24472
+- packSize.id
+- source supplier/vendor identity
+- source SKU / Item Code
+- raw pack evidence
+- normalized pack geometry used for classification
+- canonical inventory_item_id
+- existing/proposed vendor_item_id
+- classification
+- proposed provenance mapping identity
+
+The manifest must be deterministic.
+
+## Hash/fingerprint rule
+
+Do not rely solely on the raw JSON file byte SHA-256 for APPLY authorization.
+
+We have already observed different raw-file hashes reported across handling of the source artifact.
+
+Maintain both:
+
+1. raw source-file SHA-256 for chain-of-custody evidence
+2. canonical logical fingerprint generated from a deterministic serialization of the reviewed source relationships
+
+The canonical fingerprint should be insensitive to harmless JSON formatting or object-key ordering, but sensitive to any substantive source relationship change.
+
+Document the canonicalization rule.
+
+Future APPLY must verify:
+
+- expected property
+- expected manifest identity
+- canonical logical fingerprint
+- current DB-state revalidation
+
+If substantive source evidence changed, refuse APPLY and require a fresh preview.
+
+## Safe manifest only
+
+The apply manifest should contain only currently safe candidates.
+
+Do not put held rows into the mutation manifest merely with a "skip" flag.
+
+Keep held populations in the accompanying evidence report.
+
+## Current-state revalidation
+
+The future APPLY contract must recheck every candidate against current Dev DB state.
+
+Expected outcomes per candidate:
+
+- CREATE_VENDOR_ITEM_AND_MAPPING
+- CREATE_MAPPING_ONLY
+- ALREADY_SATISFIED
+- DRIFTED/HOLD
+
+Any drift must fail closed for that candidate.
+
+Do not force the original 3,435 count.
+
+## No mutation
+
+#1216 may create report/manifest artifacts only.
+
+It may NOT:
+
+- insert/update/delete vendor_items
+- create mappings
+- create vendors
+- create inventory items
+- change prices
+- write price history
+- resolve invoice lines
+- enable #1210 APPLY
+
+## Deliverable
+
+Return:
+
+- manifest ID
+- candidate count
+- create-vendor-item count
+- mapping-only count
+- raw file SHA
+- canonical source fingerprint
+- canonicalization method
+- held-population summary
+- deterministic manifest hash
+- revalidation rules
+- proof that catalog/database fingerprints remained unchanged
+
+Then STOP for PM review.
