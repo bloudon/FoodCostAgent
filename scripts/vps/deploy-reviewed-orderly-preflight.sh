@@ -61,7 +61,7 @@ cd "$APP_DIR"
 # Do not replace or create a PM2 process. The current process must already be
 # bound to this checkout; a changed PM2 process definition is a separate ops
 # change and must be reviewed independently.
-pm2 jlist | APP_DIR="$APP_DIR" PM2_NAME="$PM2_NAME" node --input-type=module -e '
+pm2 jlist | env APP_DIR="$APP_DIR" PM2_NAME="$PM2_NAME" node --input-type=module -e '
   import fs from "node:fs";
   import path from "node:path";
   const apps = JSON.parse(fs.readFileSync(0, "utf8"));
