@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import {
   ShoppingCart,
   PackageCheck,
@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useTier } from "@/hooks/use-tier";
-import { useAuth } from "@/lib/auth-context";
 import { useStoreContext } from "@/hooks/use-store-context";
 
 // ---------------------------------------------------------------------------
@@ -38,68 +37,6 @@ interface Vendor {
   id: string;
   name: string;
   active: number;
-}
-
-// ---------------------------------------------------------------------------
-// Secondary tabs
-// ---------------------------------------------------------------------------
-
-function SecondaryTabs({
-  activeHref,
-  showReceiving,
-  showTransfers,
-}: {
-  activeHref: string;
-  showReceiving: boolean;
-  showTransfers: boolean;
-}) {
-  const tabs = [
-    { label: "Overview", href: "/order" },
-    { label: "Orders", href: "/orders" },
-    { label: "Vendors", href: "/vendors" },
-    ...(showReceiving ? [{ label: "Receiving", href: "/orders" }] : []),
-    { label: "Update Vendor Prices", href: "/order-guide-scan" },
-    ...(showTransfers ? [{ label: "Transfers", href: "/transfer-orders" }] : []),
-  ];
-
-  // De-duplicate hrefs that appear more than once (Receiving + Purchase Orders share the same path)
-  const seen = new Set<string>();
-  const dedupedTabs = tabs.filter((t) => {
-    if (seen.has(t.href + t.label)) return false;
-    seen.add(t.href + t.label);
-    return true;
-  });
-
-  return (
-    <div
-      className="sticky top-0 z-40 border-b bg-background"
-      data-testid="order-secondary-tabs"
-    >
-      <div className="flex overflow-x-auto px-4 md:px-6">
-        {dedupedTabs.map((tab) => {
-          const isActive =
-            tab.href === "/order"
-              ? activeHref === "/order"
-              : activeHref.startsWith(tab.href);
-          return (
-            <Link
-              key={tab.label}
-              href={tab.href}
-              className={cn(
-                "flex-shrink-0 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap",
-                isActive
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-              data-testid={`tab-order-${tab.label.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -191,17 +128,9 @@ function statusLabel(status: string): string {
 // ---------------------------------------------------------------------------
 
 export default function OrderLanding() {
-  const [location] = useLocation();
-  const { user } = useAuth();
   const { stores, selectedStoreId } = useStoreContext();
   const { hasFeature } = useTier();
-
-  const role = user?.role ?? "store_user";
-  const isManager =
-    role === "store_manager" || role === "company_admin" || role === "global_admin";
-  const hasMultipleStores = stores.length > 1;
-  const showReceiving = isManager;
-  const showTransfers = hasMultipleStores && hasFeature("transfer_orders");
+  const showTransfers = stores.length > 1 && hasFeature("transfer_orders");
 
   const isAllStores = !selectedStoreId || selectedStoreId === "all";
   const ordersUrl = isAllStores
@@ -230,14 +159,8 @@ export default function OrderLanding() {
     .slice(0, 5);
 
   return (
-    <div className="flex flex-col h-full">
-      <SecondaryTabs
-        activeHref={location}
-        showReceiving={showReceiving}
-        showTransfers={showTransfers}
-      />
-
-      <div className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
+    <div className="flex min-h-full flex-col">
+      <div className="flex-1 p-4 md:p-6 space-y-6">
         {/* Page heading */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order</h1>

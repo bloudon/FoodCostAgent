@@ -13,6 +13,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppSidebar } from "@/components/app-sidebar";
+import { OrderingSectionNav, isOrderingRoute } from "@/components/ordering-nav";
 import { GlobalAdminHeader } from "@/components/global-admin-header";
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 // App version — keep in sync with package.json
@@ -582,8 +583,10 @@ function ProtectedLayoutContent() {
 
           <PosDisconnectedBanner />
 
-          <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-            <Switch>
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {isOrderingRoute(location) && <OrderingSectionNav />}
+            <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+              <Switch>
               <Route path="/" component={Dashboard} />
               <Route path="/companies/:id" component={CompanyDetail} />
               <Route path="/companies" component={Companies} />
@@ -667,7 +670,8 @@ function ProtectedLayoutContent() {
                 <Route path="/extension-pilot" component={ExtensionPilot} />
               )}
               <Route component={NotFound} />
-            </Switch>
+              </Switch>
+            </div>
           </main>
 
           <footer className="shrink-0 border-t px-4 py-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-center" data-testid="app-footer-version">

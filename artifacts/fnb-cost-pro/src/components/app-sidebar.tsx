@@ -35,6 +35,7 @@ import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useCompany } from "@/hooks/use-company";
 import { useTier } from "@/hooks/use-tier";
 import { cn } from "@/lib/utils";
+import { isOrderingRoute } from "@/components/ordering-nav";
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -65,15 +66,7 @@ function getActiveSection(loc: string): string {
 
   if (loc === "/waste" || loc.startsWith("/waste/")) return "waste";
 
-  if (
-    loc === "/order" ||
-    loc.startsWith("/orders") ||
-    loc.startsWith("/purchase-orders") ||
-    loc.startsWith("/vendors") ||
-    loc.startsWith("/receiving") ||
-    loc.startsWith("/transfer-orders") ||
-    loc.startsWith("/order-guide")
-  ) return "order";
+  if (isOrderingRoute(loc)) return "order";
 
   if (
     loc === "/prep" ||
