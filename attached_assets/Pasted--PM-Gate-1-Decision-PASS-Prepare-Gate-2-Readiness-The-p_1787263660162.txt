@@ -1,0 +1,93 @@
+# PM Gate 1 Decision — PASS / Prepare Gate 2 Readiness
+
+The production read-only classifier completed successfully.
+
+## Production baseline
+
+- vendor_items: 11,350
+- duplicate groups: 2,430
+- excess rows: 6,039
+- Class A: 2,429 groups / 6,038 excess rows
+- Class B: 1 group / 1 excess row
+- Class C: 0
+- Class D: 0
+- Class E: 0
+
+Harvill:
+- 129 duplicate groups
+- 244 proposed Class A deletions
+
+All proposed Class A loser rows currently have zero references from the
+enumerated relational reference consumers.
+
+Gate 1 is ACCEPTED.
+
+Gate 2 mutation is NOT YET authorized.
+
+## Final read-only readiness questions
+
+### 1. Inspect the single Class B group
+
+Vendor: Sysco
+SKU: 7664436
+Rows: 2
+
+Conflict:
+- total_units_per_case
+- canonical_qty_per_purchase_unit
+
+Return, for both rows:
+
+- vendor_item_id
+- inventory_item_id
+- raw and normalized pack geometry
+- purchase unit
+- case_size
+- inner_pack_size
+- canonical_qty_per_purchase_unit
+- pricing_basis
+- variable-weight state
+- current/last pricing metadata
+- external mappings
+- downstream references
+- active/config fields
+- any source provenance available
+
+Determine whether repo/source evidence identifies one row as stale or
+incorrect.
+
+Do not merge or alter either row.
+
+### 2. Close the edi_messages.payload_json soft-reference question
+
+Read production `edi_messages.payload_json` only.
+
+Determine whether vendor_item IDs are actually persisted in existing payloads.
+
+Specifically test whether any of the 6,038 proposed Class A loser IDs occur in
+persisted EDI payloads.
+
+Return:
+
+- total edi_messages inspected
+- payloads containing any vendor-item identity
+- payloads containing proposed loser IDs
+- distinct proposed loser IDs referenced
+- representative structural paths only; do not dump sensitive payload content
+
+If no persisted vendor-item IDs exist, explicitly close this soft-reference
+risk.
+
+If loser IDs are persisted, STOP and report the exact reference contract needed
+before remediation.
+
+## No writes
+
+No duplicate deletion.
+No reference repointing.
+No index creation.
+No schema change.
+No Orderly preview/APPLY.
+No PM2 action.
+
+Return the two readiness findings and STOP.
