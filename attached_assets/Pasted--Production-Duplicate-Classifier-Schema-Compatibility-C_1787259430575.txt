@@ -1,0 +1,64 @@
+# Production Duplicate Classifier — Schema Compatibility Correction
+
+The checksum-verified read-only classifier reached the real VPS database and failed closed before classification.
+
+Observed:
+
+[Classifier] READ-ONLY run against database='fnbcostpro'
+[Classifier] FAIL CLOSED — reference column set drifted.
+
+unexpected in DB: []
+missing from DB:
+["vendor_invoice_import_lines.resolved_vendor_item_id"]
+
+## PM disposition
+
+Do NOT add or migrate this column on production merely to make the classifier run.
+
+Production is intentionally still on the restored pre-uniqueness application/schema state.
+
+The classifier must support the legitimate pre-remediation production schema while remaining fail-closed.
+
+## Required correction
+
+Investigate why the classifier requires:
+
+`vendor_invoice_import_lines.resolved_vendor_item_id`
+
+and establish from repo/schema history whether this is:
+
+1. a column introduced by a later application/schema state not yet deployed to production, or
+2. a truly required precondition for safe duplicate remediation.
+
+If it is a later/optional reference consumer, update the classifier so that:
+
+- absence of this exact known column is explicitly recognized as a supported legacy production state;
+- its reference count is reported as `not_present` / `0 applicable`, not silently ignored;
+- unexpected reference columns/tables still fail closed;
+- existing known reference consumers are still fully enumerated;
+- no DB writes or schema changes occur.
+
+Do NOT broadly loosen schema validation.
+
+Do NOT switch to "whatever columns happen to exist" discovery without an explicit reviewed contract.
+
+## Evidence required
+
+Return:
+
+- schema/history evidence showing when `resolved_vendor_item_id` was introduced or expected;
+- explanation of why its absence does or does not affect safe duplicate classification;
+- corrected classifier behavior for this exact legacy state;
+- tests for:
+  - legacy state with the column absent → PASS with explicit report notation;
+  - newer state with the column present → PASS and references counted;
+  - unexpected schema/reference drift → FAIL CLOSED;
+- clean-clone runtime test;
+- independent review;
+- updated wrapper/checksum if changed;
+- exact published commit SHA.
+
+No VPS access.
+No schema migration.
+No duplicate remediation.
+No preview/APPLY.
