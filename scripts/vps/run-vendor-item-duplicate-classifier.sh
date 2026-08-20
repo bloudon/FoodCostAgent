@@ -53,8 +53,8 @@ mkdir -p "$VENDOR_ITEM_DUPLICATE_REPORT_DIR"
 
 VENDOR_ITEM_DUPLICATE_REPORT_DIR="$VENDOR_ITEM_DUPLICATE_REPORT_DIR" \
 DOTENV_CONFIG_PATH="$VPS_ENV_FILE" \
-pnpm exec tsx --require dotenv/config \
-  artifacts/api-server/src/services/orderly/vendorItemDuplicateClassifierCli.ts
+pnpm --filter @workspace/api-server exec tsx --require dotenv/config \
+  src/services/orderly/vendorItemDuplicateClassifierCli.ts
 
 [[ -z "$(git status --porcelain)" ]] \
   || die "Classifier changed the checkout; STOP and review before any other action."

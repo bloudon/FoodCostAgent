@@ -341,6 +341,9 @@ importers:
       swagger-ui-express:
         specifier: ^5.0.1
         version: 5.0.1(express@5.2.1)
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
       ws:
         specifier: ^8.21.2
         version: 8.21.2
