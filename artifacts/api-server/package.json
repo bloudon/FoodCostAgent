@@ -11,6 +11,8 @@
     "test": "vitest run",
     "orderly:dry-run": "esbuild src/services/orderly/bayHillOrderlyDryRun.ts --bundle --platform=node --format=esm --outfile=dist/orderly-dry-run.mjs && node --enable-source-maps dist/orderly-dry-run.mjs",
     "orderly:adoption-preview": "esbuild src/services/orderly/orderlyVendorProductAdoptionPreviewCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-adoption-preview.mjs && node --enable-source-maps dist/orderly-adoption-preview.mjs",
+    "orderly:adoption-apply": "esbuild src/services/orderly/orderlyVendorProductAdoptionApplyCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-adoption-apply.mjs && node --enable-source-maps dist/orderly-adoption-apply.mjs",
+    "orderly:adoption-post-apply-verify": "esbuild src/services/orderly/orderlyVendorProductAdoptionPostApplyVerificationCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-adoption-post-apply-verify.mjs && node --enable-source-maps dist/orderly-adoption-post-apply-verify.mjs",
     "orderly:active-status-overlay": "esbuild src/services/orderly/orderlyVendorProductActiveStatusOverlayCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-active-status-overlay.mjs && node --enable-source-maps dist/orderly-active-status-overlay.mjs",
     "orderly:may-backfill": "esbuild src/services/orderly/mayHistoricalSessionBackfillCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-may-backfill.mjs && node --enable-source-maps dist/orderly-may-backfill.mjs",
     "orderly:remediate": "pnpm run build && node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs"

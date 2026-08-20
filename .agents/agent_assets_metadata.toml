@@ -49,3 +49,10 @@ uri = "file://reports/orderly-vendor-product-adoption-active-status-overlay-2447
 type = "unspecified"
 title = "Orderly active-status overlay — property 24472"
 description = "Read-only status overlay for the frozen 3,435 candidates. It does not alter the manifest or enable APPLY."
+
+[[outputs]]
+id = "XauLB8g6yvr-QAVq5a64S"
+uri = "file://reports/orderly-vendor-product-adoption-post-apply-verification-24472.json"
+type = "unspecified"
+title = "Orderly DEV APPLY — PM verification"
+description = "Manifest-bound, read-only verification of the completed DEV-only vendor-product adoption and Harvill resolution lift."

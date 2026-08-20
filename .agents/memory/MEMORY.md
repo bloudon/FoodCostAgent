@@ -32,3 +32,4 @@
 - [Vendor-item dup program closure](vendor-item-dup-closure.md) — PM-closed; orphan cleanup stays bounded/read-only-first, NULL-SKU stays unconstrained, prod needs cleanup before deploy; assignment ≠ lifted PM hold.
 - [Orderly adoption evidence freeze](orderly-adoption-evidence-freeze.md) — preview may read approved parsed rows; any future APPLY must freeze immutable vendor-stable evidence and bind a fresh review snapshot.
 - [Orderly active-status gate](orderly-active-status-gate.md) — an all-false source `isActive` field is not an availability decision; preserve the PM gate until source semantics are evidenced.
+- [Post-apply migration metrics](post-apply-migration-metrics.md) — compare the frozen baseline to a fresh projection; a post-mutation projection resets its own “newly resolvable” delta.

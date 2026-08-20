@@ -1,0 +1,107 @@
+# Next Step — #1210 Bounded Dev APPLY
+
+## PM direction
+
+Proceed with the previously approved DEV-ONLY APPLY against the exact frozen #1216 manifest.
+
+Do not add any new fuzzy-matching, chef-matriculation, lifecycle, or production scope.
+
+## Bound manifest
+
+`orderly-adoption-evidence-v1:08047d80abef1790e2afb553e8c91d89481e892f2012313ee4cf3c50c6f90137`
+
+Reviewed maximum population:
+
+- 3,435 safe candidates
+- 1,896 CREATE_VENDOR_ITEM_AND_MAPPING
+- 1,539 CREATE_MAPPING_ONLY
+
+These are maximum reviewed counts, not forced outcomes.
+
+## Pre-write gates
+
+Before writes:
+
+1. verify property `24472`
+2. verify exact manifest ID/hash
+3. verify canonical logical source fingerprint
+4. rerun current DB-state revalidation
+5. fail closed on any source fingerprint mismatch
+6. move any changed candidate to `DRIFTED_HOLD`
+
+Allowed candidate outcomes only:
+
+- CREATE_VENDOR_ITEM_AND_MAPPING
+- CREATE_MAPPING_ONLY
+- ALREADY_SATISFIED
+- DRIFTED_HOLD
+
+## Write boundaries
+
+May:
+
+- create missing safe vendor_items
+- create missing ORDERLY provenance mappings
+
+May NOT:
+
+- create inventory items
+- create vendors
+- merge/delete vendor products
+- alter existing pack geometry
+- alter existing active state
+- derive behavior from Orderly `isActive`
+- update current prices
+- create price-history observations
+- resolve invoice lines directly
+- touch held relationships
+- act outside the frozen manifest
+
+For newly created vendor_items, use the existing FnB creation default. Active/inactive lifecycle is explicitly post-migration scope.
+
+## Post-APPLY verification
+
+Return:
+
+### Catalog counts
+- vendor_items before / after
+- mappings before / after
+- new vendor_items created
+- mappings created
+- ALREADY_SATISFIED
+- DRIFTED_HOLD + reasons
+- inventory item count unchanged
+- vendor count unchanged
+- price-history count unchanged
+
+### Integrity
+- duplicate reliable vendor-product identities = 0
+- duplicate ORDERLY property + packSize.id mappings = 0
+- orphan mappings = 0
+- same-vendor alternate SKU/pack products remain distinct
+
+### Harvill rerun
+Report actual post-apply:
+
+- catalog-resolvable lines
+- line-match rate
+- newly resolvable lines
+- newly resolvable dollars
+- residual source codes
+- residual hold reasons
+
+### Permanent regression
+Confirm:
+
+- `SPRBR5` — 1/5 LB
+- `SPRBR` — 1/25 LB
+
+remain distinct Harvill vendor products on the same canonical inventory item.
+
+## Environment
+
+DEV ONLY.
+
+No production/VPS action.
+
+Stop after APPLY + verification for PM review.
