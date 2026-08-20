@@ -1,0 +1,160 @@
+This is the first #1210 report that is strong enough to make the real PM decision from.
+
+My call is:
+
+> **Do not approve APPLY yet.**
+> **Accept the preview and source population as authoritative for this review cycle.**
+> **Next step is to freeze the reviewed evidence and define the apply manifest around the 3,435 safe candidates only.**
+
+The numbers materially changed from the earlier estimate, so Replit is right to throw out `2,419 / 2,283 / 136`. The live source says the real universe is much larger: 5,746 source relationships, with **3,435 safe candidate mappings** and **1,896 actual new vendor-item rows** proposed.
+
+That is no longer a “small backfill.” It is still bounded and evidence-driven, but it is a substantial catalog adoption.
+
+A few important observations:
+
+* The Harvill improvement is compelling: **60.37% → 92.44%**, recovering **348 lines / $8,831.31** without touching invoice history.
+* The **2,100 missing canonical inventory identities** are the dominant held class. That should remain out of scope for #1210 apply.
+* The **82 pack conflicts** absolutely stay held.
+* The **129 otherwise-held** relationships need explicit reason counts before we sign off.
+* All 5,746 having `packSize.id` is excellent — that gives us a clean provenance key and means we do not need fallback identity logic for this apply population.
+
+One thing I would challenge in their recommendation:
+
+> “Obtain PM acceptance of the 2,311 held/conflicting relationships that will remain untouched.”
+
+I do **not** need to individually “accept” 2,311 bad/held rows before approving the safe subset. I only need to understand and approve the **hold policy** by class.
+
+So I would send back this:
+
+```md
+## PM Decision — #1210 Live Preview Accepted / APPLY Still HOLD
+
+### Preview disposition
+
+ACCEPTED.
+
+The live Orderly payload for property 24472 is now the authoritative source for this review cycle.
+
+Discard the earlier estimated population.
+
+Current reviewed source:
+
+- 5,746 authoritative Orderly vendor-product relationships
+- 3,435 safe candidate mappings
+- 1,896 proposed new vendor_item rows
+- 1,539 mapping-only gaps
+- 82 pack-geometry conflicts
+- 2,100 missing canonical inventory identity
+- 129 otherwise held
+- 0 source-identity conflicts
+- 0 proposed price observations
+
+Harvill projection:
+
+- 655 → 1,003 catalog-resolvable lines
+- 60.37% → 92.44%
+- 348 newly resolvable lines
+- $8,831.31 newly resolvable dollars
+- 60 newly resolvable source codes
+- 18 residual source codes
+
+No writes occurred.
+
+### APPLY remains HOLD
+
+Do not implement or execute adoption yet.
+
+Next step is an evidence-freeze / apply-manifest task.
+
+### Required evidence freeze
+
+Freeze the exact reviewed source snapshot using:
+
+- property 24472
+- source payload SHA-256
+- exact source relationship identities
+- source vendor identity
+- source SKU
+- packSize.id
+- canonical inventory identity
+- classification outcome
+- proposed vendor_item identity
+- proposed provenance mapping identity
+
+The future APPLY must be bound to this reviewed evidence.
+
+If the source snapshot/fingerprint changes, APPLY must refuse and require a fresh preview.
+
+### Apply population
+
+The future APPLY may operate only on relationships currently classified as safe:
+
+- safe new vendor products
+- safe same-vendor alternate products
+- mapping-only gaps
+
+Held classes remain untouched:
+
+- pack-geometry conflicts
+- missing canonical inventory identity
+- otherwise held
+- any newly discovered conflict/drift
+
+Do not attempt to “fix” held rows during APPLY.
+
+### Held-population review
+
+PM does not need row-by-row acceptance of all 2,311 held relationships.
+
+Return only a concise breakdown of the 129 `otherwise held` relationships by exact reason so the hold policy is understandable.
+
+The following classes are already acceptable to remain held:
+
+- 82 pack-geometry conflicts
+- 2,100 missing canonical inventory identity
+
+### Apply design requirements
+
+Future APPLY must:
+
+- revalidate each candidate against current DB state
+- create only missing vendor_items
+- create only missing provenance mappings
+- never create inventory items
+- never overwrite existing vendor products
+- never merge vendor products
+- never alter current price
+- never create price-history observations
+- preserve same-vendor alternate SKUs/packs distinctly
+- be idempotent
+- stop/hold any candidate whose evidence changed since preview
+- produce before/after counts and zero-orphan verification
+
+### Harvill acceptance after Dev apply
+
+Report:
+
+- line match rate
+- resolved lines
+- resolved dollars
+- residual source codes
+- residual hold reasons
+
+Expected projection is evidence only, not a forced target.
+
+### Status
+
+#1210 preview: ACCEPTED
+#1210 APPLY: HOLD
+Next task: freeze reviewed evidence + propose bounded Dev apply manifest
+```
+
+One more thing: the source hash you pasted from Replit is **different from the SHA Claude reported earlier**. That may be totally benign if the downloaded file was reserialized, normalized, or saved differently before Replit hashed it, but before we bind APPLY to a fingerprint I would want that explained once.
+
+Not a blocker to the preview result, but the future freeze should use **one canonical byte representation** and one agreed hash source. Otherwise we risk rejecting the same logical payload because formatting changed.
+
+So the next move is not “apply 3,435.” It is:
+
+> **freeze → manifest → revalidate → then approve Dev apply.**
+
+That keeps this from becoming another remediation saga while still letting us safely recover the catalog relationships that the source clearly supports.
