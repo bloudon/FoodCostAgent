@@ -9,6 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db } from "../../db";
 import { sql } from "drizzle-orm";
 import {
@@ -19,55 +20,71 @@ import {
   type ReferenceCounts,
   type ClassifiedGroup,
 } from "./vendorItemDuplicateClassifier";
+import {
+  referenceKey,
+  validateReferenceColumnCompatibility,
+  VENDOR_ITEM_REFERENCE_SOURCES,
+} from "./vendorItemDuplicateReferenceCompatibility";
 
 function rowsOf(r: any): any[] {
   return Array.isArray(r) ? r : r.rows;
 }
 
-/**
- * DB/schema reference columns holding vendor_items ids. Enumerated dynamically
- * from the live schema; the classifier fails closed if this set differs from
- * the hand-audited expectation (which also drives the repo-level audit).
- */
-const EXPECTED_REFERENCE_COLUMNS = new Set([
-  "historical_invoice_lines.vendor_item_id",
-  "inventory_item_price_history.vendor_item_id",
-  "po_lines.vendor_item_id",
-  "po_routing_audit.vendor_item_id",
-  "po_routing_audit.source_vendor_item_id",
-  "receipt_lines.vendor_item_id",
-  "vendor_invoice_import_lines.resolved_vendor_item_id",
-  "vendor_item_external_mappings.vendor_item_id",
-]);
+type QueryExecutor = {
+  execute(query: any): Promise<any>;
+};
 
-async function enumerateReferenceColumns(): Promise<string[]> {
-  const r = await db.execute(sql`
+type ClassifierRuntime = {
+  execute?: QueryExecutor["execute"];
+  classify?: typeof classifyGroups;
+  emitReport?: (report: any) => { jsonPath: string; mdPath: string };
+  log?: (message: string) => void;
+  error?: (message: string) => void;
+};
+
+function writeReport(report: any): { jsonPath: string; mdPath: string } {
+  const configuredOutDir = process.env.VENDOR_ITEM_DUPLICATE_REPORT_DIR;
+  if (configuredOutDir && !path.isAbsolute(configuredOutDir)) {
+    throw new Error("VENDOR_ITEM_DUPLICATE_REPORT_DIR must be an absolute path when set.");
+  }
+  const outDir = configuredOutDir
+    ? path.resolve(configuredOutDir)
+    : path.resolve(import.meta.dirname, "../../../reports");
+  fs.mkdirSync(outDir, { recursive: true });
+  const jsonPath = path.join(outDir, "vendor-item-duplicate-classification.json");
+  fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2));
+
+  const mdPath = path.join(outDir, "vendor-item-duplicate-classification.md");
+  fs.writeFileSync(mdPath, renderMarkdown(report));
+  return { jsonPath, mdPath };
+}
+
+/**
+ * Runs the read-only classifier. The schema/reference guard is deliberately
+ * first: before vendor_items, external mappings, reference counts, duplicate
+ * classification, or report emission can occur.
+ */
+export async function runVendorItemDuplicateClassifier(runtime: ClassifierRuntime = {}) {
+  const execute = runtime.execute ?? ((query: any) => db.execute(query));
+  const classify = runtime.classify ?? classifyGroups;
+  const emitReport = runtime.emitReport ?? writeReport;
+  const log = runtime.log ?? console.log;
+
+  const dbIdent = rowsOf(await execute(sql`SELECT current_database() AS db, inet_server_addr()::text AS addr`))[0] ?? {};
+  log(`[Classifier] READ-ONLY run against database='${dbIdent.db}'`);
+
+  // ── Fail-closed reference enumeration ──────────────────────────────────────
+  const liveRefCols = rowsOf(await execute(sql`
     SELECT table_name, column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND column_name LIKE '%vendor_item%'
       AND table_name <> 'vendor_items'
-    ORDER BY table_name, column_name`);
-  return rowsOf(r).map((x: any) => `${x.table_name}.${x.column_name}`);
-}
-
-async function main() {
-  const dbIdent = rowsOf(await db.execute(sql`SELECT current_database() AS db, inet_server_addr()::text AS addr`))[0] ?? {};
-  console.log(`[Classifier] READ-ONLY run against database='${dbIdent.db}'`);
-
-  // ── Fail-closed reference enumeration ──────────────────────────────────────
-  const liveRefCols = await enumerateReferenceColumns();
-  const unexpected = liveRefCols.filter((c) => !EXPECTED_REFERENCE_COLUMNS.has(c));
-  const missing = [...EXPECTED_REFERENCE_COLUMNS].filter((c) => !liveRefCols.includes(c));
-  if (unexpected.length > 0 || missing.length > 0) {
-    console.error(`[Classifier] FAIL CLOSED — reference column set drifted.`);
-    console.error(`  unexpected in DB: ${JSON.stringify(unexpected)}`);
-    console.error(`  missing from DB:  ${JSON.stringify(missing)}`);
-    process.exit(2);
-  }
+    ORDER BY table_name, column_name`)).map((x: any) => `${x.table_name}.${x.column_name}`);
+  const referenceCompatibility = validateReferenceColumnCompatibility(liveRefCols);
 
   // ── Load vendor items ──────────────────────────────────────────────────────
-  const items: ClassifierVendorItemRow[] = rowsOf(await db.execute(sql`
+  const items: ClassifierVendorItemRow[] = rowsOf(await execute(sql`
     SELECT id, vendor_id AS "vendorId", inventory_item_id AS "inventoryItemId",
            vendor_sku AS "vendorSku", brand_name AS "brandName",
            purchase_unit_id AS "purchaseUnitId", case_size AS "caseSize",
@@ -79,28 +96,18 @@ async function main() {
            pack_geometry_status AS "packGeometryStatus"
     FROM vendor_items`));
 
-  const mappings: ExternalMappingRow[] = rowsOf(await db.execute(sql`
+  const mappings: ExternalMappingRow[] = rowsOf(await execute(sql`
     SELECT vendor_item_id AS "vendorItemId", source_system AS "sourceSystem",
            source_property_id AS "sourcePropertyId", source_external_id AS "sourceExternalId"
     FROM vendor_item_external_mappings`));
 
   // ── Reference counts per vendor item, per table ────────────────────────────
-  const refSources: Array<[string, string]> = [
-    ["historical_invoice_lines", "vendor_item_id"],
-    ["inventory_item_price_history", "vendor_item_id"],
-    ["po_lines", "vendor_item_id"],
-    ["po_routing_audit", "vendor_item_id"],
-    ["po_routing_audit", "source_vendor_item_id"],
-    ["receipt_lines", "vendor_item_id"],
-    ["vendor_invoice_import_lines", "resolved_vendor_item_id"],
-    ["vendor_item_external_mappings", "vendor_item_id"],
-  ];
   const referenceCounts: ReferenceCounts = new Map();
   const refTotalsByTable: Record<string, number> = {};
-  for (const [table, col] of refSources) {
-    const key = `${table}.${col}`;
-    const r = rowsOf(await db.execute(sql.raw(
-      `SELECT ${col} AS id, count(*)::int AS n FROM ${table} WHERE ${col} IS NOT NULL GROUP BY ${col}`,
+  for (const source of referenceCompatibility.presentSources) {
+    const key = referenceKey(source);
+    const r = rowsOf(await execute(sql.raw(
+      `SELECT ${source.column} AS id, count(*)::int AS n FROM ${source.table} WHERE ${source.column} IS NOT NULL GROUP BY ${source.column}`,
     )));
     refTotalsByTable[key] = 0;
     for (const row of r) {
@@ -109,10 +116,11 @@ async function main() {
       m.set(key, (m.get(key) ?? 0) + row.n);
       referenceCounts.set(row.id, m);
     }
+    referenceCompatibility.sourceCompatibility[key].applicableReferences = refTotalsByTable[key];
   }
 
   // ── Classify ───────────────────────────────────────────────────────────────
-  const groups = classifyGroups({ rows: items, mappings, referenceCounts });
+  const groups = classify({ rows: items, mappings, referenceCounts });
 
   const byClass = (c: string) => groups.filter((g) => g.class === c);
   const excessRows = groups.reduce((s, g) => s + g.size - 1, 0);
@@ -137,7 +145,7 @@ async function main() {
   }
 
   // Vendor scoping + Harvill's callout
-  const vendorRows = rowsOf(await db.execute(sql`SELECT id, name, company_id AS "companyId" FROM vendors`));
+  const vendorRows = rowsOf(await execute(sql`SELECT id, name, company_id AS "companyId" FROM vendors`));
   const vendorName = new Map<string, string>(vendorRows.map((v: any) => [v.id, v.name]));
   const harvill = vendorRows.find((v: any) => /harvill/i.test(v.name));
   const harvillGroups = harvill ? groups.filter((g) => g.key.vendorId === harvill.id) : [];
@@ -162,7 +170,7 @@ async function main() {
   })();
 
   // Constraint diagnostics: does one vendor+SKU ever span multiple inventory items?
-  const skuSpansItems = rowsOf(await db.execute(sql`
+  const skuSpansItems = rowsOf(await execute(sql`
     SELECT count(*)::int AS n FROM (
       SELECT vendor_id, vendor_sku
       FROM vendor_items
@@ -225,6 +233,7 @@ async function main() {
       : null,
     references: {
       dbSchemaColumns: liveRefCols,
+      sourceCompatibility: referenceCompatibility.sourceCompatibility,
       totalsByColumn: refTotalsByTable,
       loserReferencesToRepointByColumn: loserRefsByTable,
       repoLevelSoftReferences:
@@ -257,23 +266,10 @@ async function main() {
     groups,
   };
 
-  const configuredOutDir = process.env.VENDOR_ITEM_DUPLICATE_REPORT_DIR;
-  if (configuredOutDir && !path.isAbsolute(configuredOutDir)) {
-    throw new Error("VENDOR_ITEM_DUPLICATE_REPORT_DIR must be an absolute path when set.");
-  }
-  const outDir = configuredOutDir
-    ? path.resolve(configuredOutDir)
-    : path.resolve(import.meta.dirname, "../../../reports");
-  fs.mkdirSync(outDir, { recursive: true });
-  const jsonPath = path.join(outDir, "vendor-item-duplicate-classification.json");
-  fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2));
-
-  const md = renderMarkdown(report);
-  const mdPath = path.join(outDir, "vendor-item-duplicate-classification.md");
-  fs.writeFileSync(mdPath, md);
-  console.log(md);
-  console.log(`\n[Classifier] Full JSON: ${jsonPath}\n[Classifier] Markdown:  ${mdPath}`);
-  process.exit(0);
+  const { jsonPath, mdPath } = emitReport(report);
+  log(renderMarkdown(report));
+  log(`\n[Classifier] Full JSON: ${jsonPath}\n[Classifier] Markdown:  ${mdPath}`);
+  return report;
 }
 
 function renderMarkdown(r: any): string {
@@ -325,7 +321,7 @@ ${r.harvills ? `| Metric | Value |
 
 ## Reference inventory (dynamically enumerated, fail-closed)
 DB/schema columns holding vendor_items ids (bucket 1):
-${r.references.dbSchemaColumns.map((x: string) => `- \`${x}\` — total rows: ${r.references.totalsByColumn[x] ?? 0}, held by would-be losers: ${r.references.loserReferencesToRepointByColumn[x] ?? 0}`).join("\n")}
+${Object.entries(r.references.sourceCompatibility).map(([x, status]: [string, any]) => `- \`${x}\` — present: ${status.present}; applicable references: ${status.applicableReferences}; compatibility: ${status.compatibilityState}; held by would-be losers: ${r.references.loserReferencesToRepointByColumn[x] ?? 0}`).join("\n")}
 
 Repo-level soft references (bucket 2): ${r.references.repoLevelSoftReferences}
 
@@ -351,7 +347,23 @@ ${r.heldGroupSamples.map((g: any) => `- [${g.class}] ${g.vendor} · sku=${JSON.s
 `;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+/**
+ * Maps a fail-closed guard failure to a non-zero process result without making
+ * test processes terminate. The operator command still receives a non-zero
+ * exit code and no report is emitted when the guard rejects the schema.
+ */
+export async function executeVendorItemDuplicateClassifier(runtime: ClassifierRuntime = {}): Promise<number> {
+  try {
+    await runVendorItemDuplicateClassifier(runtime);
+    return 0;
+  } catch (error) {
+    (runtime.error ?? console.error)(String(error));
+    process.exitCode = 1;
+    return 1;
+  }
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  void executeVendorItemDuplicateClassifier();
+}
