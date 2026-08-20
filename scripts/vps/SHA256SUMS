@@ -1,3 +1,4 @@
 3751cb85235a5b7df5eabb05de6a4929d119ffb5b1b8bdce463767a1a9902ff9  deploy-reviewed-orderly-preflight.sh
 82c03010e2d5855911cdcc85c3fe630e467718e8272d1a5bd0d60820999e1eb9  run-orderly-production-preflight.sh
 b080ccac9332726b36e4ea2242604d130a586e79a3d1c757c336b1787e68dce6  summarize-orderly-production-preflight.mjs
+32e5d75d9b185bee3844e740cc5d0dc46b6d4c5821d6a4fa8fd6df2b235e86fb  run-vendor-item-duplicate-classifier.sh

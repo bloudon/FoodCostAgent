@@ -257,7 +257,13 @@ async function main() {
     groups,
   };
 
-  const outDir = path.resolve(import.meta.dirname, "../../../reports");
+  const configuredOutDir = process.env.VENDOR_ITEM_DUPLICATE_REPORT_DIR;
+  if (configuredOutDir && !path.isAbsolute(configuredOutDir)) {
+    throw new Error("VENDOR_ITEM_DUPLICATE_REPORT_DIR must be an absolute path when set.");
+  }
+  const outDir = configuredOutDir
+    ? path.resolve(configuredOutDir)
+    : path.resolve(import.meta.dirname, "../../../reports");
   fs.mkdirSync(outDir, { recursive: true });
   const jsonPath = path.join(outDir, "vendor-item-duplicate-classification.json");
   fs.writeFileSync(jsonPath, JSON.stringify(report, null, 2));
