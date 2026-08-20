@@ -75,8 +75,8 @@ pm2 jlist | APP_DIR="$APP_DIR" PM2_NAME="$PM2_NAME" node --input-type=module -e 
 git fetch --prune origin
 git cat-file -e "${REVIEWED_GIT_SHA}^{commit}" \
   || die "Reviewed Git commit is unavailable from the configured remote."
-[[ "$(git rev-parse origin/main)" = "$REVIEWED_GIT_SHA" ]] \
-  || die "origin/main is not the reviewed Git commit; refusing branch drift."
+git merge-base --is-ancestor "$REVIEWED_GIT_SHA" origin/main \
+  || die "Reviewed Git commit is not contained in origin/main history."
 git switch --detach "$REVIEWED_GIT_SHA"
 [[ "$(git rev-parse HEAD)" = "$REVIEWED_GIT_SHA" ]] \
   || die "Checkout does not match the reviewed Git commit."
