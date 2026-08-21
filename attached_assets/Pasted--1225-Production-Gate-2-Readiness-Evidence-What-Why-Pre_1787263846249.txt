@@ -1,0 +1,79 @@
+# #1225 — Production Gate 2 Readiness Evidence
+
+## What & Why
+
+Prepare a READ-ONLY operator-safe readiness tool for the two remaining production questions before Gate 2 remediation:
+
+1. inspect the single Sysco Class B duplicate group for SKU `7664436`;
+2. scan production `edi_messages.payload_json` using the exact 6,038 production Class A loser IDs generated from the production classifier report.
+
+The production VPS report is authoritative. Do not reuse Dev loser IDs or Dev duplicate manifests.
+
+## Done looks like
+
+The tool runs against the VPS production database and emits a sanitized structured report containing:
+
+### Sysco Class B evidence
+For both rows:
+- vendor_item_id
+- inventory_item_id
+- raw and normalized pack geometry
+- purchase_unit_id / unit identity
+- case_size
+- inner_pack_size
+- canonical_qty_per_purchase_unit
+- pricing_basis
+- is_variable_weight
+- active
+- brand/config fields
+- current/last price metadata
+- external mappings
+- downstream reference counts
+- source provenance available from current schema
+
+No winner/loser decision is made automatically.
+
+### EDI soft-reference evidence
+Using the exact production Class A loser IDs derived from the production classifier:
+- total edi_messages inspected
+- messages containing any vendor-item identity
+- messages containing any proposed loser ID
+- distinct proposed loser IDs referenced
+- representative JSON structural paths only
+- no raw payload bodies or sensitive content
+
+If any proposed loser IDs are persisted, return the required reference contract and STOP.
+
+If none are persisted, explicitly close the EDI soft-reference risk for this production loser set.
+
+## Compatibility
+
+The tool must support the same reviewed legacy production schema as #1224.
+
+`vendor_invoice_import_lines.resolved_vendor_item_id` remains an approved optional legacy reference.
+
+Do not use the existing Gate 2 merge CLI as a substitute.
+
+## Safety
+
+READ ONLY.
+
+No:
+- duplicate deletion
+- reference repointing
+- uniqueness index creation
+- schema migration
+- PM2 restart
+- Orderly preview/APPLY
+- mutation of any production row
+
+Fail closed on unexpected schema/reference drift.
+
+## Verification
+
+- focused tests
+- API typecheck/build
+- clean isolated checkout
+- checksum-pinned operator wrapper
+- independent review
+- exact published commit SHA

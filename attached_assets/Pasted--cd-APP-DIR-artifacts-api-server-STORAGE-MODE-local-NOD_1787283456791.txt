@@ -1,0 +1,37 @@
+
+cd "$APP_DIR/artifacts/api-server"
+STORAGE_MODE=local NODE_ENV=production node --enable-source-maps \
+  dist/orderly-adoption-production-preflight.mjs \
+  --manifest "$ORDERLY_MANIFEST_PATH" \
+  --source "$ORDERLY_SOURCE_PATH" \
+  --out "$ORDERLY_PREFLIGHT_OUT" \
+  --expected-company-id "$ORDERLY_EXPECTED_COMPANY_ID" \
+  --expected-store-id "$ORDERLY_EXPECTED_STORE_ID" \
+  --expected-db-host "$ORDERLY_EXPECTED_DB_HOST" \
+  --expected-db-port "$ORDERLY_EXPECTED_DB_PORT" \
+  --expected-db-name "$ORDERLY_EXPECTED_DB_NAME" \
+  --expected-git-sha b6bc86aeea7e6ab38b8e02cbb4d436c945cda945 \
+  --expected-api-version 1.15.0 \
+  --expected-build-id "api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945" \
+  --api-port "$API_PORT"
+
+node /tmp/fnb-orderly-preflight/summarize-orderly-production-preflight.mjs \
+  "$ORDERLY_PREFLIGHT_OUT" \
+  "${ORDERLY_PREFLIGHT_OUT%.json}.sanitized.json"
+
+printf 'Sanitized preflight report: %s\n' "${ORDERLY_PREFLIGHT_OUT%.json}.sanitized.json"
+printf 'STOP: production preview, APPLY, backups, writer quiescence, and July work are not authorized by this script.\n'
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+{
+  "mode": "production-readiness-preflight",
+  "isProductionPreview": false,
+  "writesExecuted": 0,
+  "manifestId": "orderly-adoption-evidence-v1:08047d80abef1790e2afb553e8c91d89481e892f2012313ee4cf3c50c6f90137",
+  "candidateCount": 3435,
+  "catalogUnchanged": true,
+  "outputPath": "/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-033635.json",
+  "nextAllowedStep": "Obtain PM authorization, then run the separately-authorized production preview during the writer-quiescence window."
+}
+Sanitized preflight report: /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-033635.sanitized.json
+STOP: production preview, APPLY, backups, writer quiescence, and July work are not authorized by this script.
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro/artifacts/api-server$

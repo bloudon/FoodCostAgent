@@ -1,0 +1,99 @@
+I’d approve this task with one naming correction and two guardrail tweaks.
+
+First, renumber it. We already used #1225 for the production Gate 2 readiness evidence. This should be #1226 — Resolve Sysco Provenance and Prepare Gate 2.
+
+Second, I would tighten the “Done looks like” language so the package cannot accidentally turn into an executable cleanup tool during this task. Third, I’d explicitly require the accepted production report hash/path identity to be embedded into the package so there is no ambiguity about which loser set it was derived from.
+
+Paste-ready version:
+
+# #1226 - Resolve Sysco Provenance and Prepare Gate 2
+
+
+## What & Why
+
+
+Produce the evidence needed to resolve the final production-held Sysco duplicate group and prepare the reviewed production Gate 2 execution package without running any cleanup.
+
+
+The package must bind only to the accepted production classifier evidence and make any future maintenance-window mutation fail closed on evidence, schema, database, or source-report drift.
+
+
+## Done looks like
+
+
+- A checksum-pinned, read-only VPS operator command produces a sanitized chronology for both approved Sysco vendor-item IDs and SKU `7664436`, including available:
+  - price history
+  - order-guide/import evidence
+  - source metadata
+  - pack-normalization evidence
+  - source/batch identities
+
+
+- The chronology reaches exactly one evidence result:
+  - 12 EA authoritative/current
+  - 1 EA authoritative/current
+  - pack changed over time
+  - distinct legitimate current products
+  - insufficient evidence
+
+
+- Price arithmetic may be reported as supporting context, but it must never elect the winner.
+
+
+- The held Class B group remains excluded from every future mutation set unless a later explicit PM decision authorizes its disposition.
+
+
+- A reviewed **non-executable** Gate 2 package derives the exact 6,038 accepted production Class A loser IDs from the external production classifier report.
+
+
+- The package records and verifies the exact accepted production evidence identity, including:
+  - source report path/name
+  - report database identity
+  - accepted baseline counts
+  - report content hash/fingerprint
+  - exact loser-set fingerprint
+
+
+- The package retains the approved legacy-optional rule for:
+  `vendor_invoice_import_lines.resolved_vendor_item_id`
+
+
+- Any other missing or unexpected reference consumer remains fail-closed.
+
+
+- The package records only groups authorized by accepted production evidence and defines:
+  - survivor IDs
+  - loser IDs
+  - transactional reference repoints
+  - audit/provenance handling
+  - before/after counts
+  - catalog/valuation invariants
+  - drift checks
+  - recovery requirements
+  - idempotency anchor and rerun behavior
+
+
+- The package itself cannot perform production mutation.
+
+
+- Tests cover:
+  - read-only provenance collection
+  - source-schema compatibility
+  - no winner inference from price arithmetic
+  - external-report binding
+  - report/loser-set fingerprinting
+  - legacy-schema handling
+  - schema/database/group/geometry/reference drift refusal
+  - package idempotency
+  - zero-write behavior
+
+
+- The production provenance report and final Gate 2 package are returned for PM review, then execution stops.
+
+
+## Out of scope
+
+
+- Running a VPS command or querying the live VPS database from Replit.
+
+The main addition I care about is the report fingerprint + loser-set fingerprint. At this point we have enough production-specific evidence that the future mutation should be cryptographically bound to exactly what we reviewed, not merely to counts like “6,038 losers.”

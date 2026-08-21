@@ -1,0 +1,75 @@
+
+BUILD_OK
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+ℹ️ Redis cache not configured (REDIS_URL not set)
+{
+  "mode": "read-only",
+  "sourceSystem": "ORDERLY",
+  "sourcePropertyId": "24472",
+  "sourceAcquisition": "file",
+  "rawSourceFileSha256": "945c8fea3d3cc16b476cfd7208b1a0e38877b6a816a9cba8761193b658d9f2a8",
+  "canonicalSourceJsonSha256": "56e6f9620fb57e32fbdb8761ba04a68ccecbc549b8628a6d2b32ccbfaf448976",
+  "canonicalLogicalSourceFingerprint": "cae8aa4cc621e61fc6b8bcfe596d2e243fb5c9583006556743b1939988e6403b",
+  "manifestId": "orderly-adoption-evidence-v1:e53acfaa529114c60620bb1399f2b04e862c10a207a764027857504f19c7c774",
+  "manifestSha256": "e53acfaa529114c60620bb1399f2b04e862c10a207a764027857504f19c7c774",
+  "totalRelationships": 5746,
+  "withPackSizeId": 5746,
+  "withoutPackSizeId": 0,
+  "classCounts": {
+    "already_present": 0,
+    "safe_new_vendor_product": 0,
+    "safe_same_vendor_alternate_product": 0,
+    "mapping_only_gap": 0,
+    "conflicting_source_identity": 0,
+    "pack_geometry_conflict": 0,
+    "missing_canonical_inventory_identity": 5617,
+    "otherwise_held": 129
+  },
+  "proposedNewVendorItems": 0,
+  "proposedMappings": 0,
+  "proposedPriceObservations": 0,
+  "harvill": {
+    "vendorId": "25ab4568-240f-4fc5-8878-a1b193dc93ff",
+    "totalHistoricalLines": 0,
+    "totalHistoricalDollars": 0,
+    "unresolvedLinesBefore": 0,
+    "unresolvedDistinctCodesBefore": 0,
+    "unresolvedDollarsBefore": 0,
+    "catalogResolvableLinesBefore": 0,
+    "catalogResolvableDollarsBefore": 0,
+    "catalogResolvableLinesAfter": 0,
+    "catalogResolvableDollarsAfter": 0,
+    "overallLineMatchRateBefore": 0,
+    "overallLineMatchRateAfter": 0,
+    "newlyResolvableDistinctCodes": 0,
+    "newlyResolvableLines": 0,
+    "newlyResolvableDollars": 0,
+    "residualDistinctCodes": 0,
+    "residuals": []
+  },
+  "mutationCheck": {
+    "before": {
+      "inventoryItemCount": 5399,
+      "vendorItemCount": 2644,
+      "vendorItemMappingCount": 0,
+      "priceHistoryCount": 0
+    },
+    "after": {
+      "inventoryItemCount": 5399,
+      "vendorItemCount": 2644,
+      "vendorItemMappingCount": 0,
+      "priceHistoryCount": 0
+    },
+    "unchanged": true
+  },
+  "applyGate": {
+    "status": "PM_HELD",
+    "writesExecuted": 0
+  },
+  "reportPath": "/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preview-20260821-034159.json",
+  "manifestPath": "/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preview-20260821-034159.manifest.json"
+}
+Preview report:   /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preview-20260821-034159.json
+Preview manifest: /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preview-20260821-034159.manifest.json
+STOP: preview complete. Return evidence to PM for GO/HOLD on APPLY. APPLY is not authorized by this script.
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro/artifacts/api-server$

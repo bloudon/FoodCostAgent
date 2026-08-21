@@ -1,0 +1,33 @@
+
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3698
+    throw new OrderlyProductionPreflightError(
+          ^
+
+OrderlyProductionPreflightError: [ORDERLY_PRODUCTION_PREFLIGHT_REFUSED] Missing required production schema table(s): price_history.
+    at assertRequiredSchema (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3698:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3895:20
+    at async NodePgSession.transaction (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:259:19)
+    at async file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:4045:14 {
+  code: 'ORDERLY_PRODUCTION_PREFLIGHT_REFUSED'
+}
+
+Node.js v20.20.2
+node:internal/fs/promises:637
+  return new FileHandle(await PromisePrototypeThen(
+                        ^
+
+Error: ENOENT: no such file or directory, open '/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-033142.json'
+    at async open (node:internal/fs/promises:637:25)
+    at async readFile (node:internal/fs/promises:1249:14)
+    at async file:///tmp/fnb-orderly-preflight/summarize-orderly-production-preflight.mjs:9:27 {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-033142.json'
+}
+
+Node.js v20.20.2
+Sanitized preflight report: /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-033142.sanitized.json
+STOP: production preview, APPLY, backups, writer quiescence, and July work are not authorized by this script.

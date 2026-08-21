@@ -1,0 +1,38 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ ^[[200~_DBURL="$(grep '^DATABASE_URL=' "${APP_DIR}/.env" | head -1 | cut -d= -f2-)"
+_ROW="$(psql "$_DBURL" --no-align --tuples-only --field-separator='|' -c "
+  SELECT c.id, s.id
+  FROM import_source_property_bindings b
+  INNER JOIN companies      c ON c.id = b.company_id
+  INNER JOIN company_stores s ON s.id = b.destination_store_id
+  WHERE b.source_system      = 'ORDERLY'
+    AND b.source_property_id = '24472'
+    AND b.active             = 1;")"
+_COUNT="$(printf '%s\n' "$_ROW" | grep -c '|' || true)"
+[ "$_COUNT" -eq 1 ] || {
+  printf 'REFUSED: expected exactly 1 active ORDERLY 24472 binding, got %s\n' "$_COUNT" >&2
+  exit 1
+}
+export ORDERLY_EXPECTED_COMPANY_ID="$(printf '%s\n' "$_ROW" | cut -d'|' -f1 | tr -d ' \t')"
+export ORDERLY_EXPECTED_STORE_ID="$(printf '%s\n'   "$_ROW" | cut -d'|' -f2 | tr -d ' \t')"
+printf 'ORDERLY_EXPECTED_COMPANY_ID=%s\n' "$ORDERLY_EXPECTED_COMPANY_ID"
+printf 'ORDERLY_EXPECTED_STORE_ID=%s\n'   "$ORDERLY_EXPE_DBURL="$(grep '^DATABASE_URL=' "${APP_DIR}/.env" | head -1 | cut -d= -f2-)"'^DATABASE_URL=' "${APP_DIR}/.env" | head -1 | cut -d= -f2-)"
+_ROW="$(psql "$_DBURL" --no-align --tuples-only --field-separator='|' -c "
+  SELECT c.id, s.id
+  FROM import_source_property_bindings b
+  INNER JOIN companies      c ON c.id = b.company_id
+  INNER JOIN company_stores s ON s.id = b.destination_store_id
+  WHERE b.source_system      = 'ORDERLY'
+    AND b.source_property_id = '24472'
+    AND b.active             = 1;")"
+_COUNT="$(printf '%s\n' "$_ROW" | grep -c '|' || true)"
+[ "$_COUNT" -eq 1 ] || {
+  printf 'REFUSED: expected exactly 1 active ORDERLY 24472 binding, got %s\n' "$_COUNT" >&2
+  exit 1
+}
+export ORDERLY_EXPECTED_COMPANY_ID="$(printf '%s\n' "$_ROW" | cut -d'|' -f1 | tr -d ' \t')"
+export ORDERLY_EXPECTED_STORE_ID="$(printf '%s\n'   "$_ROW" | cut -d'|' -f2 | tr -d ' \t')"
+printf 'ORDERLY_EXPECTED_COMPANY_ID=%s\n' "$ORDERLY_EXPECTED_COMPANY_ID"
+printf 'ORDERLY_EXPECTED_STORE_ID=%s\n'   "$ORDERLY_EXPECTED_STORE_ID"
+ORDERLY_EXPECTED_COMPANY_ID=43abaf82-44ce-4231-9570-7a01e7c85ced
+ORDERLY_EXPECTED_STORE_ID=ee9e1530-50db-45f4-ae61-2c45e86827f0

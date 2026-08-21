@@ -1,0 +1,89 @@
+# #1226 — Resolve Final Sysco Duplicate Provenance
+
+## PM Decision
+
+Production Gate 2 readiness is accepted for all Class A rows.
+
+Approved production baseline:
+
+- 2,430 duplicate groups
+- 6,039 excess rows
+- 2,429 Class A groups
+- 6,038 Class A loser rows
+- EDI soft-reference risk: CLOSED
+- one remaining Class B group:
+  - Sysco
+  - SKU 7664436
+  - inventory item 2030960c-3c95-49fd-8ccc-56eae6b5e615
+
+Do NOT execute Gate 2 cleanup yet.
+
+The goal is to resolve this final Class B group so production cleanup,
+uniqueness enforcement, and the reviewed build can occur in one controlled
+maintenance window.
+
+## Read-only provenance investigation
+
+For both vendor_item rows:
+
+- 04f822ba-fb2d-479e-9f9b-6aefc4b0af90
+- ca185955-ce85-4c92-be7e-875974c0100d
+
+Trace all available production provenance that may establish the correct
+current pack identity.
+
+Inspect, where present:
+
+- inventory_item_price_history
+- order-guide/import staging/history
+- import batch rows
+- raw source pack descriptions
+- source SKU / supplier product metadata
+- priced_at / effective dates
+- historical case and unit prices
+- any previous pack normalization evidence
+- any source file/batch identity that created or last updated each row
+
+Return chronology, not just current values.
+
+Specifically determine whether production evidence supports one of:
+
+A. 12 EA is authoritative/current and 1 EA is stale/incorrect
+B. 1 EA is authoritative/current and 12 EA is stale/incorrect
+C. pack configuration legitimately changed over time
+D. both represent legitimate current supplier products despite sharing SKU
+E. insufficient evidence
+
+Do not infer a winner from price arithmetic alone.
+
+## Also prepare — but DO NOT RUN — final Gate 2 package
+
+Prepare a bounded production remediation package based only on the accepted
+production report.
+
+It must:
+
+- regenerate/verify the exact production loser set
+- merge only reviewed groups
+- repoint all enumerated relational references transactionally
+- preserve audit/provenance semantics
+- verify valuation/catalog invariants
+- produce before/after counts
+- be idempotent on rerun
+- support the approved legacy schema where
+  vendor_invoice_import_lines.resolved_vendor_item_id may be absent
+- fail closed if production has drifted from the accepted baseline
+
+Do not reuse the Dev manifest.
+
+## Execution remains HOLD
+
+No production deletes.
+No repointing.
+No uniqueness index.
+No schema migration.
+No PM2 change.
+No Orderly preview/APPLY.
+
+Return the Sysco provenance finding and reviewed Gate 2 execution package,
+then STOP.

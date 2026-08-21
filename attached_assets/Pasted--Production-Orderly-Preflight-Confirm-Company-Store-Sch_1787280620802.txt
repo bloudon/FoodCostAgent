@@ -1,0 +1,64 @@
+# Production Orderly Preflight — Confirm Company/Store Schema + Operator Commands
+
+We are ready to run the zero-write Orderly production preflight against Bay Hill.
+
+Current production state:
+- reviewed build is live and verified
+- Git SHA: `b6bc86aeea7e6ab38b8e02cbb4d436c945cda945`
+- API version: `1.15.0`
+- build ID: `api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945`
+- PM2 process: `fnbcostpro`
+- API port: `3004`
+- vendor duplicate cleanup is complete
+- live Class A duplicates: `0`
+- live Class B duplicates: `0`
+
+The approved Orderly evidence is present:
+
+Source:
+`/home/administrator/apps/CostPro/fnbcostpro/attached_assets/allSpecsForRestaurant_24472_raw_1787184647052.json`
+
+Raw source SHA:
+`945c8fea3d3cc16b476cfd7208b1a0e38877b6a816a9cba8761193b658d9f2a8`
+
+Manifest:
+`/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-vendor-product-adoption-manifest-24472.json`
+
+Manifest logical identity:
+`08047d80abef1790e2afb553e8c91d89481e892f2012313ee4cf3c50c6f90137`
+
+Canonical source fingerprint:
+`cae8aa4cc621e61fc6b8bcfe596d2e243fb5c9583006556743b1939988e6403b`
+
+The production wrapper requires:
+
+- ORDERLY_EXPECTED_COMPANY_ID
+- ORDERLY_EXPECTED_STORE_ID
+- ORDERLY_EXPECTED_DB_HOST
+- ORDERLY_EXPECTED_DB_PORT
+- ORDERLY_EXPECTED_DB_NAME
+
+I tried querying a `stores` table directly, but production has no relation named `stores`.
+
+## Please confirm from the actual application schema
+
+1. What database table/entity represents the company?
+2. What database table/entity represents the target Bay Hill store/location used by the Orderly adoption code?
+3. What are the exact schema/table/column names used by:
+   - `ORDERLY_EXPECTED_COMPANY_ID`
+   - `ORDERLY_EXPECTED_STORE_ID`
+4. Provide one production-safe READ-ONLY `psql` query that returns:
+   - Bay Hill company ID
+   - Bay Hill target store/location ID
+   - human-readable names for both
+
+Also inspect `orderlyVendorProductAdoptionProductionPreflight.ts` and confirm exactly what those two IDs are compared against. We want the IDs required by the code, not an inferred business location.
+
+Then provide the final paste-ready VPS commands to set:
+
+```bash
+ORDERLY_EXPECTED_COMPANY_ID=
+ORDERLY_EXPECTED_STORE_ID=
+ORDERLY_EXPECTED_DB_HOST=
+ORDERLY_EXPECTED_DB_PORT=
+ORDERLY_EXPECTED_DB_NAME=fnbcostpro

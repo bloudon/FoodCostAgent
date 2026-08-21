@@ -1,0 +1,22 @@
+
+
+
+  dist/orderly-adoption-production-preflight.mjs  195.7kb
+
+⚡ Done in 34ms
+[DB] Using Neon serverless PostgreSQL driver
+file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3999
+  if (!allowed.has(key)) throw new Error(`Unknown option --${key}.`);
+                               ^
+
+Error: Unknown option --.
+    at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3999:32
+    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v20.20.2
+/home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/api-server@1.15.0 orderly:adoption-production-preflight: `esbuild src/services/orderly/orderlyVendorProductAdoptionProductionPreflightCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-adoption-production-preflight.mjs && node --enable-source-maps dist/orderly-adoption-production-preflight.mjs -- --manifest /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-vendor-product-adoption-manifest-24472.json --source /home/administrator/apps/CostPro/fnbcostpro/attached_assets/allSpecsForRestaurant_24472_raw_1787184647052.json --out /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-025934.json --expected-company-id 43abaf82-44ce-4231-9570-7a01e7c85ced --expected-store-id ee9e1530-50db-45f4-ae61-2c45e86827f0 --expected-db-host 127.0.0.1 --expected-db-port 5432 --expected-db-name fnbcostpro --expected-git-sha b6bc86aeea7e6ab38b8e02cbb4d436c945cda945 --expected-api-version 1.15.0 --expected-build-id api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945 --api-port 3004`
+Exit status 1
+administrator@vps-BLOUD-Soft:~/apps/CostPro/f

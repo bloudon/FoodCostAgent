@@ -1,0 +1,59 @@
+
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro/artifacts/api-server$ export ORDERLY_PREFLIGHT_OUT="/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-$(date +%Y%m%d-%H%M%S).json"
+mkdir -p "$(dirname "$ORDERLY_PREFLIGHT_OUT")"
+
+cd "$APP_DIR/artifacts/api-server"
+
+STORAGE_MODE=local NODE_ENV=production node --enable-source-maps \
+  dist/orderly-adoption-production-preflight.mjs \
+  --manifest "$ORDERLY_MANIFEST_PATH" \
+  --source "$ORDERLY_SOURCE_PATH" \
+  --out "$ORDERLY_PREFLIGHT_OUT" \
+  --expected-company-id "$ORDERLY_EXPECTED_COMPANY_ID" \
+  --expected-store-id "$ORDERLY_EXPECTED_STORE_ID" \
+  --expected-db-host "$ORDERLY_EXPECTED_DB_HOST" \
+  --expected-db-port "$ORDERLY_EXPECTED_DB_PORT" \
+  --expected-db-name "$ORDERLY_EXPECTED_DB_NAME" \
+  --expected-git-sha b6bc86aeea7e6ab38b8e02cbb4d436c945cda945 \
+  --expected-api-version 1.15.0 \
+  --expected-build-id "api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945" \
+  --api-port "$API_PORT"
+
+node /tmp/fnb-orderly-preflight/summarize-orderly-production-preflight.mjs \
+  "$ORDERLY_PREFLIGHT_OUT" \
+  "${ORDERLY_PREFLIGHT_OUT%.json}.sanitized.json"
+
+printf 'Sanitized preflight report: %s\n' "${ORDERLY_PREFLIGHT_OUT%.json}.sanitized.json"
+printf 'STOP: production preview, APPLY, backups, writer quiescence, and July work are not authorized by this script.\n'
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3698
+    throw new OrderlyProductionPreflightError(
+          ^
+
+OrderlyProductionPreflightError: [ORDERLY_PRODUCTION_PREFLIGHT_REFUSED] Missing required production schema table(s): price_history.
+    at assertRequiredSchema (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3698:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:3895:20
+    at async NodePgSession.transaction (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:259:19)
+    at async file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/orderly-adoption-production-preflight.mjs:4045:14 {
+  code: 'ORDERLY_PRODUCTION_PREFLIGHT_REFUSED'
+}
+
+Node.js v20.20.2
+node:internal/fs/promises:637
+  return new FileHandle(await PromisePrototypeThen(
+                        ^
+
+Error: ENOENT: no such file or directory, open '/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-032316.json'
+    at async open (node:internal/fs/promises:637:25)
+    at async readFile (node:internal/fs/promises:1249:14)
+    at async file:///tmp/fnb-orderly-preflight/summarize-orderly-production-preflight.mjs:9:27 {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-032316.json'
+}
+
+Node.js v20.20.2
+Sanitized preflight report: /home/administrator/costpro-classifier-source-d0b126c/reports/orderly-production-preflight-20260821-032316.sanitized.json
+STOP: production preview, APPLY, backups, writer quiescence, and July work are not authorized by this script.
