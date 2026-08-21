@@ -418,7 +418,7 @@ async function main(): Promise<number> {
     let result;
     try {
       // expectPromotion=false: all reviewed groups are Class A, no B→A promotion.
-      result = await applyGroup(group.key, false);
+      result = await applyGroup(group.key, false, presentSources);
     } catch (e: any) {
       result = {
         key: group.key,

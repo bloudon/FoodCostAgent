@@ -4,7 +4,12 @@
  */
 import { describe, it, expect } from "vitest";
 import { classifyGroups, type ClassifierVendorItemRow } from "./vendorItemDuplicateClassifier";
-import { provePromotion, type UnitInfoResolver } from "./vendorItemDuplicateMerge";
+import {
+  countReferences,
+  provePromotion,
+  REFERENCE_SOURCES,
+  type UnitInfoResolver,
+} from "./vendorItemDuplicateMerge";
 
 let seq = 0;
 function row(overrides: Partial<ClassifierVendorItemRow> = {}): ClassifierVendorItemRow {
@@ -108,5 +113,68 @@ describe("provePromotion (PM Preflight 1)", () => {
     const proof = provePromotion(groupOf(members), members, lbUnits);
     expect(proof.promoted).toBe(false);
     expect(proof.reason).toContain("not a Class B group");
+  });
+});
+
+// ── countReferences — source set propagation ──────────────────────────────────
+// Regression for the Gate 2 legacy-column bug:
+// applyGroup on the legacy production schema
+// (vendor_invoice_import_lines.resolved_vendor_item_id absent) must not query
+// the absent column. The fix adds an optional `sources` parameter to
+// countReferences (and applyGroup) so the apply CLI can pass only the
+// presentSources returned by validateReferenceColumnCompatibility.
+
+const OPTIONAL_SOURCE_KEY = "vendor_invoice_import_lines.resolved_vendor_item_id";
+// The 7 required sources — the legacy-optional column excluded.
+const REQUIRED_SOURCES = REFERENCE_SOURCES.filter(
+  (s) => `${s.table}.${s.column}` !== OPTIONAL_SOURCE_KEY,
+);
+
+describe("countReferences — source set propagation", () => {
+  // PM verification 1: legacy schema (absent column) — applyGroup succeeds and
+  // absent source is never queried.
+  it("legacy schema: queries exactly the provided 7 required sources, absent optional never hit", async () => {
+    let callCount = 0;
+    const mockEx = { execute: async () => { callCount++; return { rows: [] }; } };
+
+    await countReferences(mockEx, ["vi-1"], REQUIRED_SOURCES);
+
+    expect(REQUIRED_SOURCES).toHaveLength(REFERENCE_SOURCES.length - 1); // confirms 7
+    expect(callCount).toBe(REQUIRED_SOURCES.length); // exactly 7 — absent column skipped
+  });
+
+  // PM verification 2: newer schema (column present) — counted and repointed normally.
+  it("newer schema: queries all 8 sources when fully provided (optional column present)", async () => {
+    let callCount = 0;
+    const mockEx = { execute: async () => { callCount++; return { rows: [] }; } };
+
+    await countReferences(mockEx, ["vi-1"], REFERENCE_SOURCES);
+
+    expect(callCount).toBe(REFERENCE_SOURCES.length); // 8
+  });
+
+  // Backward compat: default (no sources arg) still uses all REFERENCE_SOURCES.
+  it("default call (no sources arg) is backward compatible and queries all REFERENCE_SOURCES", async () => {
+    let callCount = 0;
+    const mockEx = { execute: async () => { callCount++; return { rows: [] }; } };
+
+    await countReferences(mockEx, ["vi-1"]);
+
+    expect(callCount).toBe(REFERENCE_SOURCES.length);
+  });
+
+  // PM verification 3: any other missing required source fails closed at the
+  // validateReferenceColumnCompatibility preflight layer (tested in
+  // vendorItemDuplicateGate2ApplyCli.test.ts "fails closed when a required
+  // reference column is absent"). countReferences itself trusts its caller.
+
+  it("returns counted references correctly for the provided sources", async () => {
+    const singleSource = [REQUIRED_SOURCES[0]];
+    const mockEx = { execute: async () => ({ rows: [{ id: "vi-1", n: 5 }] }) };
+
+    const result = await countReferences(mockEx, ["vi-1"], singleSource);
+
+    const key = `${singleSource[0].table}.${singleSource[0].column}`;
+    expect(result.get("vi-1")?.get(key)).toBe(5);
   });
 });

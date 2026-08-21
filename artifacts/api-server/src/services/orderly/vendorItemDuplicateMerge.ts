@@ -140,10 +140,11 @@ export async function assertReferenceColumnsUnchanged(ex: Executor): Promise<voi
 export async function countReferences(
   ex: Executor,
   vendorItemIds: string[],
+  sources: ReadonlyArray<{ table: string; column: string }> = REFERENCE_SOURCES,
 ): Promise<ReferenceCounts> {
   const out: ReferenceCounts = new Map();
   if (vendorItemIds.length === 0) return out;
-  for (const { table, column } of REFERENCE_SOURCES) {
+  for (const { table, column } of sources) {
     const rows = rowsOf(
       await ex.execute(sql`
         SELECT ${sql.raw(column)} AS id, count(*)::int AS n
@@ -336,7 +337,11 @@ export type GroupApplyResult =
  * under-lock evidence gathered inside this transaction, never from the
  * dry-run snapshot (PM clarification).
  */
-export async function applyGroup(key: GroupKey, expectPromotion: boolean): Promise<GroupApplyResult> {
+export async function applyGroup(
+  key: GroupKey,
+  expectPromotion: boolean,
+  referenceSources: ReadonlyArray<{ table: string; column: string }> = REFERENCE_SOURCES,
+): Promise<GroupApplyResult> {
   // SERIALIZABLE: the audited reference columns carry no FK constraints, so a
   // concurrent writer inserting a reference to a loser between our conservation
   // check and the delete would otherwise commit an orphan silently. Under
@@ -368,7 +373,7 @@ export async function applyGroup(key: GroupKey, expectPromotion: boolean): Promi
 
     const ids = members.map((m) => m.id);
     const mappings = await loadMappings(tx, ids);
-    const refs = await countReferences(tx, ids);
+    const refs = await countReferences(tx, ids, referenceSources);
 
     // Re-classify under lock — the sole authorization.
     const groups = classifyGroups({ rows: members, mappings, referenceCounts: refs });
@@ -405,7 +410,7 @@ export async function applyGroup(key: GroupKey, expectPromotion: boolean): Promi
 
     // Repoint anything that appeared since dry-run (expected zero, never assumed).
     const refsRepointed: Record<string, number> = {};
-    for (const { table, column } of REFERENCE_SOURCES) {
+    for (const { table, column } of referenceSources) {
       const r = await tx.execute(sql`
         UPDATE ${sql.raw(table)} SET ${sql.raw(column)} = ${survivorId}
         WHERE ${sql.raw(column)} IN ${idSet(loserIds)}`);
@@ -414,7 +419,7 @@ export async function applyGroup(key: GroupKey, expectPromotion: boolean): Promi
     }
 
     // Verify conservation THROUGH THE TX HANDLE before deleting.
-    const afterRefs = await countReferences(tx, [survivorId, ...loserIds]);
+    const afterRefs = await countReferences(tx, [survivorId, ...loserIds], referenceSources);
     const after = perColumnTotals(afterRefs, [survivorId, ...loserIds]);
     for (const col of new Set([...Object.keys(before), ...Object.keys(after)])) {
       if ((before[col] ?? 0) !== (after[col] ?? 0)) {
@@ -441,7 +446,7 @@ export async function applyGroup(key: GroupKey, expectPromotion: boolean): Promi
 
     // Belt-and-braces: after deletion, re-verify no reference to a loser is
     // visible through this tx handle before sealing with the audit row.
-    const postDelete = await countReferences(tx, loserIds);
+    const postDelete = await countReferences(tx, loserIds, referenceSources);
     if (postDelete.size > 0) {
       throw new Error(`References to deleted losers appeared post-delete (${[...postDelete.keys()].join(", ")}) — rolling back group`);
     }
