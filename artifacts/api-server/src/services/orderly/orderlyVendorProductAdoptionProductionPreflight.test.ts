@@ -184,7 +184,7 @@ describe('Orderly adoption production preflight safety gates', () => {
   it('uses one read-only transaction and reports zero database writes', async () => {
     const tables = [
       'company_stores', 'import_source_property_bindings', 'inventory_import_batches',
-      'inventory_import_rows', 'inventory_items', 'price_history', 'vendors',
+      'inventory_import_rows', 'inventory_items', 'vendors',
       'vendor_items', 'vendor_item_external_mappings',
     ].map(table_name => ({ table_name }));
     const columns = [
@@ -232,10 +232,10 @@ describe('Orderly adoption production preflight safety gates', () => {
         },
       ] },
       { rows: [{ id: 'reviewed-binding' }] },
-      ...Array.from({ length: 4 }, () => ({ rows: [{ value: 1 }] })),
+      ...Array.from({ length: 3 }, () => ({ rows: [{ value: 1 }] })),
       ...Array.from({ length: 3 }, () => ({ rows: [{ value: 0 }] })),
       { rows: [] },
-      ...Array.from({ length: 4 }, () => ({ rows: [{ value: 1 }] })),
+      ...Array.from({ length: 3 }, () => ({ rows: [{ value: 1 }] })),
     ];
     const execute = vi.fn(async () => {
       const response = responses.shift();
@@ -248,7 +248,7 @@ describe('Orderly adoption production preflight safety gates', () => {
     };
 
     const report = await runOrderlyProductionPreflight(validInput(), runner as never);
-    expect(execute.mock.calls).toHaveLength(17);
+    expect(execute.mock.calls).toHaveLength(15);
     expect(report.writesExecuted).toBe(0);
     expect(report.databaseWritesExecuted).toBe(0);
     expect(report.catalog.unchanged).toBe(true);

@@ -214,7 +214,6 @@ const REQUIRED_TABLES = [
   'inventory_import_batches',
   'inventory_import_rows',
   'inventory_items',
-  'price_history',
   'vendors',
   'vendor_items',
   'vendor_item_external_mappings',
@@ -231,6 +230,8 @@ const REQUIRED_COLUMNS: Array<[string, string]> = [
   ['inventory_import_batches', 'source_property_binding_id'],
   ['inventory_import_batches', 'source_property_id'],
   ['inventory_import_rows', 'resolved_inventory_item_id'],
+  // price_history does not exist — the actual table is inventory_item_price_history
+  // and has no company_id column; it is not part of the Orderly adoption scope.
   ['vendors', 'company_id'],
   ['vendor_items', 'vendor_id'],
   ['vendor_items', 'inventory_item_id'],
@@ -397,7 +398,7 @@ async function assertScopeBinding(runner: Runner, scope: ProductionPreflightScop
 }
 
 async function readCatalogFingerprint(runner: Runner, companyId: string) {
-  const [inventoryItemCount, vendorItemCount, mappingCount, priceHistoryCount] = await Promise.all([
+  const [inventoryItemCount, vendorItemCount, mappingCount] = await Promise.all([
     numberOf(await runner.execute(sql`SELECT COUNT(*)::int AS value FROM inventory_items WHERE company_id = ${companyId}`)),
     numberOf(await runner.execute(sql`
       SELECT COUNT(*)::int AS value FROM vendor_items vi
@@ -408,9 +409,8 @@ async function readCatalogFingerprint(runner: Runner, companyId: string) {
       SELECT COUNT(*)::int AS value FROM vendor_item_external_mappings
       WHERE company_id = ${companyId} AND source_system = 'ORDERLY'
     `)),
-    numberOf(await runner.execute(sql`SELECT COUNT(*)::int AS value FROM price_history WHERE company_id = ${companyId}`)),
   ]);
-  return { inventoryItemCount, vendorItemCount, vendorItemMappingCount: mappingCount, priceHistoryCount };
+  return { inventoryItemCount, vendorItemCount, vendorItemMappingCount: mappingCount };
 }
 
 export function assertCatalogFingerprintStable(
