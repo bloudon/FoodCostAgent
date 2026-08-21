@@ -5,3 +5,4 @@ b080ccac9332726b36e4ea2242604d130a586e79a3d1c757c336b1787e68dce6  summarize-orde
 1ba75aced85934aea80417842a67e797544dfe4678c4d587fd3be29abc678356  run-vendor-item-gate2-readiness.sh
 11db0c9fbf4f3703b0bd805a5ad5ec29ff227323dafda3f4acdb839ebfd1f868  build-vendor-item-gate2-package.sh
 872cb9c9b36fce565de1aba21c3f8069566243fe66993c1bd20690d9d8a09c6f  run-sysco-duplicate-provenance.sh
+3653857c3eb5a60c677564457d32421358333ceb84ec84de6a1c109d7c7da3f9  run-vendor-item-gate2-apply.sh
