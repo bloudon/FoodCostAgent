@@ -854,6 +854,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   })();
 
+  // ── Orderly source-pack identity evidence and comparable variants ─────────
+  (async function migrateOrderlyPackIdentityTables() {
+    try {
+      await db.execute(sql`
+        -- This migration runs alongside older startup migrations. Create the
+        -- pre-existing mapping table defensively so a clean database cannot
+        -- race the resolution-table migration and skip source-pack evidence.
+        CREATE TABLE IF NOT EXISTS inventory_item_external_mappings (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          inventory_item_id VARCHAR NOT NULL,
+          source_system TEXT NOT NULL,
+          source_property_id TEXT NOT NULL DEFAULT '',
+          source_external_id TEXT NOT NULL,
+          source_description TEXT,
+          match_strategy TEXT,
+          confidence_score REAL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          confirmed_at TIMESTAMPTZ,
+          confirmed_by VARCHAR,
+          UNIQUE (company_id, source_system, source_property_id, source_external_id)
+        );
+        ALTER TABLE inventory_item_external_mappings
+          ADD COLUMN IF NOT EXISTS case_quantity REAL,
+          ADD COLUMN IF NOT EXISTS inner_pack_quantity REAL,
+          ADD COLUMN IF NOT EXISTS base_unit_quantity REAL,
+          ADD COLUMN IF NOT EXISTS base_unit TEXT;
+
+        CREATE TABLE IF NOT EXISTS inventory_item_relationships (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          company_id VARCHAR NOT NULL,
+          inventory_item_id VARCHAR NOT NULL,
+          related_inventory_item_id VARCHAR NOT NULL,
+          relationship_type TEXT NOT NULL,
+          source_system TEXT,
+          source_property_id TEXT,
+          source_external_id TEXT,
+          confidence_score REAL,
+          confirmed_at TIMESTAMPTZ,
+          confirmed_by VARCHAR,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CHECK (inventory_item_id <> related_inventory_item_id),
+          UNIQUE (company_id, inventory_item_id, related_inventory_item_id, relationship_type)
+        );
+        CREATE INDEX IF NOT EXISTS inventory_item_relationships_item_idx
+          ON inventory_item_relationships(company_id, inventory_item_id);
+        CREATE INDEX IF NOT EXISTS inventory_item_relationships_related_item_idx
+          ON inventory_item_relationships(company_id, related_inventory_item_id);
+      `);
+      console.log("[Migration] orderly source-pack evidence and comparable item relationships ready");
+    } catch (err) {
+      console.error("[Migration] orderly_pack_identity_tables error:", err);
+    }
+  })();
+
   // ── Historical invoice retention (Orderly exit) ───────────────────────────
   // Immutable invoice evidence is intentionally isolated from live purchasing,
   // receiving, AP, and QuickBooks tables.

@@ -25,6 +25,7 @@ import {
   inventoryLocations,
   inventoryItemLocationAssignments,
   inventoryItemExternalMappings,
+  inventoryItemRelationships,
   inventoryImportBatches,
   inventoryImportRows,
   importSourcePropertyBindings,
@@ -54,9 +55,10 @@ import {
   type MatchableLocation,
   type LocationAssignment,
 } from './OrderlyMatcher';
+import { comparePackGeometry, type SourcePackGeometry } from './packGeometry';
 import type { InventoryImportRow } from '@workspace/db';
 import { storage } from '../../storage';
-import { getOrCreateVendorItem } from '../vendorItemResolution';
+import { getOrCreateVendorItem, VendorItemPackConflictError } from '../vendorItemResolution';
 import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -64,8 +66,16 @@ import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
 /** Per-row user override. rowIndex is the key. */
 export interface RowDecision {
   rowIndex: number;
-  /** Force a specific inventoryItemId (overrides matching). null = skip this row. */
+  /**
+   * Explicit handling for an exact-name Orderly re-code candidate. A compatible
+   * link reuses one inventory identity; a separate variant creates a new item
+   * and records a comparable pack relationship instead.
+   */
+  action?: 'link_existing' | 'create_variant';
+  /** Existing field retained for legacy/manual match overrides and link_existing. */
   inventoryItemId?: string | null;
+  /** The existing comparable item for create_variant. Never becomes this code's mapping. */
+  comparableInventoryItemId?: string | null;
   /** Force a specific vendorId. null = skip vendor creation. */
   vendorId?: string | null;
   /** Skip this row entirely — don't create or link anything. */
@@ -112,7 +122,9 @@ export interface ResolutionPreviewResult {
     sourceCategory: string | null;
     caseQuantity: number | null;
     innerPackQuantity: number | null;
+    baseUnitQuantity: number | null;
     baseUnit: string | null;
+    packParseStatus: string | null;
     packagePrice: number | null;
     totalCost: number | null;
     itemMatch: MatchResult;
@@ -162,10 +174,38 @@ type IdentityPreviewRow = Pick<
   | 'cleanedDescription'
   | 'caseQuantity'
   | 'innerPackQuantity'
+  | 'baseUnitQuantity'
   | 'baseUnit'
   | 'totalCost'
   | 'itemMatch'
 >;
+
+function sourcePackGeometry(row: Pick<
+  ResolutionPreviewResult['rows'][number],
+  'caseQuantity' | 'innerPackQuantity' | 'baseUnitQuantity' | 'baseUnit'
+>): SourcePackGeometry {
+  return {
+    caseQuantity: row.caseQuantity,
+    innerPackQuantity: row.innerPackQuantity,
+    baseUnitQuantity: row.baseUnitQuantity,
+    baseUnit: row.baseUnit,
+  };
+}
+
+function assessCandidatePackCompatibility(
+  source: SourcePackGeometry,
+  evidences: SourcePackGeometry[],
+): { status: 'compatible' | 'incompatible' | 'unknown'; reason: string } {
+  if (evidences.length === 0) {
+    return { status: 'unknown', reason: 'the candidate has no confirmed source-pack evidence' };
+  }
+  const results = evidences.map(evidence => comparePackGeometry(source, evidence));
+  const compatible = results.find(result => result.status === 'compatible');
+  if (compatible) return { status: compatible.status, reason: compatible.reason };
+  const incompatible = results.find(result => result.status === 'incompatible');
+  if (incompatible) return { status: incompatible.status, reason: incompatible.reason };
+  return { status: 'unknown', reason: results[0]?.reason ?? 'pack evidence is unavailable' };
+}
 
 function isReliableItemCode(row: Pick<IdentityPreviewRow, 'sourceItemCode' | 'itemCodeStatus'>): boolean {
   return row.itemCodeStatus === 'valid' && Boolean(row.sourceItemCode?.trim());
@@ -498,6 +538,10 @@ export async function runResolutionPreview(
         .select({
           sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
           inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
+          caseQuantity: inventoryItemExternalMappings.caseQuantity,
+          innerPackQuantity: inventoryItemExternalMappings.innerPackQuantity,
+          baseUnitQuantity: inventoryItemExternalMappings.baseUnitQuantity,
+          baseUnit: inventoryItemExternalMappings.baseUnit,
         })
         .from(inventoryItemExternalMappings)
         .where(
@@ -526,6 +570,18 @@ export async function runResolutionPreview(
   const extMappingLookup = new Map<string, string>(
     externalMappings.map((m: { sourceExternalId: string; inventoryItemId: string }): [string, string] => [m.sourceExternalId, m.inventoryItemId]),
   );
+  const packEvidenceByItemId = new Map<string, SourcePackGeometry[]>();
+  for (const mapping of externalMappings as Array<{
+    inventoryItemId: string;
+    caseQuantity: number | null;
+    innerPackQuantity: number | null;
+    baseUnitQuantity: number | null;
+    baseUnit: string | null;
+  }>) {
+    const evidences = packEvidenceByItemId.get(mapping.inventoryItemId) ?? [];
+    evidences.push(mapping);
+    packEvidenceByItemId.set(mapping.inventoryItemId, evidences);
+  }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
   // @ts-ignore
@@ -623,10 +679,16 @@ export async function runResolutionPreview(
           it => normalizeForMatch(it.name) === normalizedDesc,
         );
         if (nameExactMatch) {
+          const packAssessment = assessCandidatePackCompatibility(
+            sourcePackGeometry(row as any),
+            packEvidenceByItemId.get(nameExactMatch.id) ?? [],
+          );
           itemMatch = {
             ...itemMatch,
             possibleRecode: true,
             possibleRecodeMatchedId: nameExactMatch.id,
+            packCompatibility: packAssessment.status,
+            packCompatibilityReason: packAssessment.reason,
           };
         }
       }
@@ -677,7 +739,9 @@ export async function runResolutionPreview(
       sourceCategory: (row as any).sourceCategory ?? null,
       caseQuantity: row.caseQuantity,
       innerPackQuantity: row.innerPackQuantity,
+      baseUnitQuantity: row.baseUnitQuantity,
       baseUnit: row.baseUnit,
+      packParseStatus: row.packParseStatus,
       packagePrice: row.packagePrice,
       totalCost: row.totalCost,
       itemMatch: { ...rawMatch, candidates, matchedItem, possibleRecodeItem },
@@ -1051,12 +1115,27 @@ export async function applyBatchApproval(
   const decisionMap = new Map<number, RowDecision>(
     rowDecisions.map(d => [d.rowIndex, d]),
   );
+  for (const decision of rowDecisions) {
+    if (
+      decision.action !== undefined &&
+      decision.action !== 'link_existing' &&
+      decision.action !== 'create_variant'
+    ) {
+      throw new ImportApprovalError('INVALID_REQUEST', `Unsupported row decision action on row ${decision.rowIndex}.`);
+    }
+    if (decision.action === 'link_existing' && !decision.inventoryItemId) {
+      throw new ImportApprovalError('INVALID_REQUEST', `A compatible link decision on row ${decision.rowIndex} needs an inventory item.`);
+    }
+    if (decision.action === 'create_variant' && !decision.comparableInventoryItemId) {
+      throw new ImportApprovalError('INVALID_REQUEST', `A separate-variant decision on row ${decision.rowIndex} needs a comparable item.`);
+    }
+  }
 
   // ── Validate override IDs belong to this company ─────────────────────────
   // Security: a caller must not be able to cross-tenant link by supplying
   // foreign company item/vendor IDs in rowDecisions.
   const overrideItemIds = rowDecisions
-    .map(d => d.inventoryItemId)
+    .flatMap(d => [d.inventoryItemId, d.comparableInventoryItemId])
     .filter((id): id is string => typeof id === 'string');
   const overrideVendorIds = rowDecisions
     .map(d => d.vendorId)
@@ -1102,6 +1181,68 @@ export async function applyBatchApproval(
 
   // ── Run matching (outside transaction) ──────────────────────────────────
   const preview = await runResolutionPreview(batchId, companyId);
+  const previewRowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const recodeDecisionByReliableCode = new Map<string, RowDecision>();
+  for (const decision of rowDecisions.filter(decision => decision.action !== undefined)) {
+    const row = previewRowsByIndex.get(decision.rowIndex);
+    if (!row || !isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
+      throw new ImportApprovalError(
+        'INVALID_REQUEST',
+        `A re-code action may only be recorded for a staged row with a new reliable Orderly Item Code (row ${decision.rowIndex}).`,
+      );
+    }
+    const code = row.sourceItemCode!.trim();
+    const existing = recodeDecisionByReliableCode.get(code);
+    if (
+      existing &&
+      (
+        existing.action !== decision.action ||
+        existing.inventoryItemId !== decision.inventoryItemId ||
+        existing.comparableInventoryItemId !== decision.comparableInventoryItemId
+      )
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `All rows for reliable Orderly Item Code ${code} must use the same re-code decision.`,
+      );
+    }
+    recodeDecisionByReliableCode.set(code, decision);
+  }
+
+  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode)) {
+    const code = row.sourceItemCode!.trim();
+    const decision = recodeDecisionByReliableCode.get(code);
+    if (!decision) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Orderly Item Code ${code} has an exact-name re-code candidate and requires an explicit link or separate-variant decision before approval.`,
+      );
+    }
+    const expectedCandidateId = row.itemMatch.possibleRecodeMatchedId;
+    if (decision.action === 'link_existing') {
+      if (decision.inventoryItemId !== expectedCandidateId) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly Item Code ${code} can only link to its reviewed re-code candidate.`,
+        );
+      }
+      if (row.itemMatch.packCompatibility !== 'compatible') {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly Item Code ${code} cannot link to the existing inventory item because its pack is ${row.itemMatch.packCompatibility ?? 'unknown'}: ${row.itemMatch.packCompatibilityReason ?? 'no compatible pack evidence'}.`,
+        );
+      }
+    } else if (
+      decision.action !== 'create_variant' ||
+      decision.comparableInventoryItemId !== expectedCandidateId
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Orderly Item Code ${code} must create a separate variant of its reviewed candidate when it is not safely re-coded.`,
+      );
+    }
+  }
+
   if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
     const details = preview.identitySummary.conflictingReliableCodeGroups
       .map(group => `${group.sourceItemCode} (rows ${group.rowIndexes.join(', ')}: ${group.reasons.join('; ')})`)
@@ -1140,6 +1281,32 @@ export async function applyBatchApproval(
   // ── Apply everything in one transaction ─────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await db.transaction(async (tx: any) => {
+    // The preview and authorization checks intentionally run before the write
+    // transaction, but approval itself must be single-writer. Locking the batch
+    // row makes a second caller wait, then observe the committed approved
+    // status instead of repeating vendor/location/item side effects.
+    const [lockedBatch] = await tx
+      .select({ status: inventoryImportBatches.status })
+      .from(inventoryImportBatches)
+      .where(
+        and(
+          // @ts-ignore
+          eq(inventoryImportBatches.id, batchId),
+          // @ts-ignore
+          eq(inventoryImportBatches.companyId, companyId),
+        ),
+      )
+      .for('update');
+    if (!lockedBatch) {
+      throw new ImportApprovalError('NOT_FOUND', 'Batch not found');
+    }
+    if (lockedBatch.status === 'approved') {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        'Batch has already been approved — use the history view to see results.',
+      );
+    }
+
     let itemsCreated = 0, itemsLinked = 0;
     let vendorsCreated = 0, vendorsLinked = 0;
     let locationsCreated = 0, locationsLinked = 0;
@@ -1205,7 +1372,12 @@ export async function applyBatchApproval(
     async function claimReliableCodeItemId(
       code: string,
       resolveCandidate: () => Promise<{ itemId: string; created: boolean }>,
-      mappingEvidence: { description: string | null; strategy: string; score: number | null },
+      mappingEvidence: {
+        description: string | null;
+        strategy: string;
+        score: number | null;
+        geometry: SourcePackGeometry;
+      },
     ): Promise<{ itemId: string; created: boolean }> {
       const committed = committedCodeItemIds.get(code);
       if (committed) return { itemId: committed, created: false };
@@ -1221,6 +1393,10 @@ export async function applyBatchApproval(
           sourcePropertyId: approvedSourcePropertyId,
           sourceExternalId: code,
           sourceDescription: mappingEvidence.description,
+          caseQuantity: mappingEvidence.geometry.caseQuantity ?? null,
+          innerPackQuantity: mappingEvidence.geometry.innerPackQuantity ?? null,
+          baseUnitQuantity: mappingEvidence.geometry.baseUnitQuantity ?? null,
+          baseUnit: mappingEvidence.geometry.baseUnit ?? null,
           matchStrategy: mappingEvidence.strategy,
           confidenceScore: mappingEvidence.score,
           confirmedAt: new Date(),
@@ -1348,6 +1524,9 @@ export async function applyBatchApproval(
       const reliableCode = isReliableItemCode(rowPreview)
         ? rowPreview.sourceItemCode!.trim()
         : null;
+      const identityDecision = reliableCode
+        ? (recodeDecisionByReliableCode.get(reliableCode) ?? dec)
+        : dec;
       const groupedExistingItemId = reliableCode
         ? (reliableCodeExistingItemIds.get(reliableCode) ?? null)
         : null;
@@ -1379,9 +1558,14 @@ export async function applyBatchApproval(
       const resolveRowCandidate = async (): Promise<{ itemId: string | null; created: boolean }> => {
         if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
           const cachedItemId = reliableCodeItemIds.get(reliableCode) ?? null;
+          const requestedExistingItemId = identityDecision?.action === 'link_existing'
+            ? identityDecision.inventoryItemId
+            : identityDecision?.action === undefined
+              ? identityDecision?.inventoryItemId
+              : undefined;
           if (
-            dec?.inventoryItemId !== undefined &&
-            (dec.inventoryItemId ?? null) !== cachedItemId
+            requestedExistingItemId !== undefined &&
+            (requestedExistingItemId ?? null) !== cachedItemId
           ) {
             throw new ImportApprovalError(
               'CONFLICT',
@@ -1391,9 +1575,14 @@ export async function applyBatchApproval(
           return { itemId: cachedItemId, created: false };
         }
         if (groupedExistingItemId) {
+          const requestedExistingItemId = identityDecision?.action === 'link_existing'
+            ? identityDecision.inventoryItemId
+            : identityDecision?.action === undefined
+              ? identityDecision?.inventoryItemId
+              : undefined;
           if (
-            dec?.inventoryItemId !== undefined &&
-            (dec.inventoryItemId ?? null) !== groupedExistingItemId
+            requestedExistingItemId !== undefined &&
+            (requestedExistingItemId ?? null) !== groupedExistingItemId
           ) {
             throw new ImportApprovalError(
               'CONFLICT',
@@ -1402,9 +1591,15 @@ export async function applyBatchApproval(
           }
           return { itemId: groupedExistingItemId, created: false };
         }
-        if (dec?.inventoryItemId !== undefined) {
+        if (identityDecision?.action === 'create_variant') {
+          return { itemId: await insertNewItem(), created: true };
+        }
+        if (identityDecision?.action === 'link_existing') {
+          return { itemId: identityDecision.inventoryItemId!, created: false };
+        }
+        if (identityDecision?.inventoryItemId !== undefined) {
           // User override (validated to belong to this company above)
-          return { itemId: dec.inventoryItemId ?? null, created: false };
+          return { itemId: identityDecision.inventoryItemId ?? null, created: false };
         }
         const m = rowPreview.itemMatch;
         if (!m.requiresReview && m.matchedId !== null) {
@@ -1446,6 +1641,7 @@ export async function applyBatchApproval(
             description: rowPreview.cleanedDescription,
             strategy: rowPreview.itemMatch.strategy,
             score: rowPreview.itemMatch.score ?? null,
+            geometry: sourcePackGeometry(rowPreview),
           },
         );
         resolvedItemId = claim.itemId;
@@ -1466,6 +1662,47 @@ export async function applyBatchApproval(
         }
       }
       if (reliableCode) reliableCodeItemIds.set(reliableCode, resolvedItemId);
+
+      // A separate pack variant is related for catalog review but never used as
+      // this source code's identity. Store symmetric edges so either inventory
+      // item can surface its comparable packs without a directional assumption.
+      if (
+        resolvedItemId &&
+        identityDecision?.action === 'create_variant' &&
+        identityDecision.comparableInventoryItemId &&
+        resolvedItemId !== identityDecision.comparableInventoryItemId
+      ) {
+        const comparableItemId = identityDecision.comparableInventoryItemId;
+        await tx
+          .insert(inventoryItemRelationships)
+          .values([
+            {
+              companyId,
+              inventoryItemId: resolvedItemId,
+              relatedInventoryItemId: comparableItemId,
+              relationshipType: 'pack_variant',
+              sourceSystem: 'ORDERLY',
+              sourcePropertyId: approvedSourcePropertyId,
+              sourceExternalId: rowPreview.sourceItemCode?.trim() ?? null,
+              confidenceScore: null,
+              confirmedAt: new Date(),
+              confirmedBy: userId,
+            },
+            {
+              companyId,
+              inventoryItemId: comparableItemId,
+              relatedInventoryItemId: resolvedItemId,
+              relationshipType: 'pack_variant',
+              sourceSystem: 'ORDERLY',
+              sourcePropertyId: approvedSourcePropertyId,
+              sourceExternalId: rowPreview.sourceItemCode?.trim() ?? null,
+              confidenceScore: null,
+              confirmedAt: new Date(),
+              confirmedBy: userId,
+            },
+          ])
+          .onConflictDoNothing();
+      }
 
       // Track distinct resolved items for store_inventory_items upsert below
       if (resolvedItemId) {
@@ -1512,6 +1749,10 @@ export async function applyBatchApproval(
             sourcePropertyId: approvedSourcePropertyId,
             sourceExternalId: rowPreview.sourceItemCode.trim(),
             sourceDescription: rowPreview.cleanedDescription,
+            caseQuantity: rowPreview.caseQuantity,
+            innerPackQuantity: rowPreview.innerPackQuantity,
+            baseUnitQuantity: rowPreview.baseUnitQuantity,
+            baseUnit: rowPreview.baseUnit,
             matchStrategy: rowPreview.itemMatch.strategy,
             confidenceScore: rowPreview.itemMatch.score ?? null,
             confirmedAt: new Date(),
@@ -1575,18 +1816,29 @@ export async function applyBatchApproval(
         // (vendor, item, SKU) identity instead of the old blind
         // onConflictDoNothing (which was a silent no-op before the
         // uniqueness index existed and produced thousands of duplicates).
-        const resolution = await getOrCreateVendorItem(tx as unknown as typeof db, {
-          vendorId: resolvedVendorId,
-          inventoryItemId: resolvedItemId,
-          vendorSku: rowPreview.sourceItemCode,
-          purchaseUnitId: eachUnitId,
-          caseSize: rowPreview.caseQuantity ?? 1,
-          lastPrice: rowPreview.packagePrice ?? 0,
-          lastCasePrice: rowPreview.packagePrice ?? 0,
-          priceSource: 'order_guide_import',
-          pricedAt: new Date(),
-          active: 1,
-        });
+        let resolution;
+        try {
+          resolution = await getOrCreateVendorItem(tx as unknown as typeof db, {
+            vendorId: resolvedVendorId,
+            inventoryItemId: resolvedItemId,
+            vendorSku: rowPreview.sourceItemCode,
+            purchaseUnitId: eachUnitId,
+            caseSize: rowPreview.caseQuantity ?? 1,
+            lastPrice: rowPreview.packagePrice ?? 0,
+            lastCasePrice: rowPreview.packagePrice ?? 0,
+            priceSource: 'order_guide_import',
+            pricedAt: new Date(),
+            active: 1,
+          });
+        } catch (error) {
+          if (error instanceof VendorItemPackConflictError) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Vendor SKU ${rowPreview.sourceItemCode ?? '(blank)'} already exists with an incompatible case size; create or review a separate pack variant instead.`,
+            );
+          }
+          throw error;
+        }
         if (resolution.created) vendorItemsCreated++;
       }
 

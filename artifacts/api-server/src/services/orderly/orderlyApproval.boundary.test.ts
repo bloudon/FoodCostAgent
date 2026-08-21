@@ -252,6 +252,31 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
     expect(afterSecond?.targetStoreId).toBe(afterFirst?.targetStoreId);
     expect(afterSecond?.approvedAt?.toISOString()).toBe(afterFirst?.approvedAt?.toISOString());
   });
+
+  it('serializes concurrent approval calls so only one can apply the batch', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+    });
+    const before = await countDomainRecords(ID.companyA);
+
+    const results = await Promise.allSettled([
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ]);
+
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(result => result.status === 'rejected')).toHaveLength(1);
+    const rejected = results.find(result => result.status === 'rejected');
+    expect(rejected).toMatchObject({ reason: expect.objectContaining({ code: 'CONFLICT' }) });
+
+    const after = await snapshotBatch(batchId);
+    expect(after?.status).toBe('approved');
+    const domainAfter = await countDomainRecords(ID.companyA);
+    expect(domainAfter.items).toBe(before.items + 1);
+  });
 });
 
 // ─── 2/3/6. Authorization rejections ──────────────────────────────────────────

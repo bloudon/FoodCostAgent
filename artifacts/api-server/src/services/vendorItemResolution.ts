@@ -39,6 +39,31 @@ export interface VendorItemResolution {
   created: boolean;
 }
 
+export class VendorItemPackConflictError extends Error {
+  constructor(
+    public readonly vendorItemId: string,
+    public readonly existingCaseSize: number | null,
+    public readonly requestedCaseSize: number | null,
+  ) {
+    super("A vendor SKU already exists with incompatible pack geometry.");
+    this.name = "VendorItemPackConflictError";
+  }
+}
+
+function assertCompatibleCaseSize(existing: VendorItem, requested: InsertVendorItem): void {
+  const existingCaseSize = existing.caseSize;
+  const requestedCaseSize = requested.caseSize;
+  if (
+    typeof existingCaseSize === "number" &&
+    typeof requestedCaseSize === "number" &&
+    Number.isFinite(existingCaseSize) &&
+    Number.isFinite(requestedCaseSize) &&
+    Math.abs(existingCaseSize - requestedCaseSize) > Math.max(existingCaseSize, requestedCaseSize) * 0.01
+  ) {
+    throw new VendorItemPackConflictError(existing.id, existingCaseSize, requestedCaseSize);
+  }
+}
+
 export async function getOrCreateVendorItem(
   executor: Executor,
   values: InsertVendorItem,
@@ -57,7 +82,10 @@ export async function getOrCreateVendorItem(
       eq(vendorItems.vendorSku, values.vendorSku),
     );
     const [existing] = await executor.select().from(vendorItems).where(identity).limit(1);
-    if (existing) return { vendorItem: existing, created: false };
+    if (existing) {
+      assertCompatibleCaseSize(existing, values);
+      return { vendorItem: existing, created: false };
+    }
 
     // Targetless ON CONFLICT DO NOTHING: Postgres arbiter inference rejects a
     // drizzle-rendered target for the partial index (42P10). The only other
@@ -74,6 +102,7 @@ export async function getOrCreateVendorItem(
     // Lost the race — the winner's row is the identity now.
     const [winner] = await executor.select().from(vendorItems).where(identity).limit(1);
     if (!winner) throw new Error("vendor item insert conflicted but no existing row found");
+    assertCompatibleCaseSize(winner, values);
     return { vendorItem: winner, created: false };
   }
 
@@ -83,7 +112,10 @@ export async function getOrCreateVendorItem(
     eq(vendorItems.inventoryItemId, inventoryItemId),
   );
   const [existing] = await executor.select().from(vendorItems).where(pair).limit(1);
-  if (existing) return { vendorItem: existing, created: false };
+  if (existing) {
+    assertCompatibleCaseSize(existing, values);
+    return { vendorItem: existing, created: false };
+  }
 
   const [created] = await executor.insert(vendorItems).values(values).returning();
   return { vendorItem: created, created: true };

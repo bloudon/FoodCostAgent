@@ -43,11 +43,11 @@ export function uniqueCategories(rows: RowPreviewLike[]): string[] {
  * Filters preview rows by the currently-selected category and confidence Sets.
  * An empty Set means "no filter active" (all rows pass that dimension).
  */
-export function applyFilters(
-  rows: RowPreviewLike[],
+export function applyFilters<T extends RowPreviewLike>(
+  rows: T[],
   selectedCategories: ReadonlySet<string>,
   selectedConfidences: ReadonlySet<string>
-): RowPreviewLike[] {
+): T[] {
   return rows.filter(r => {
     const catOk =
       selectedCategories.size === 0 ||

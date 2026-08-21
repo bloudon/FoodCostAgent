@@ -15,6 +15,7 @@ import {
   inventoryImportBatches,
   inventoryImportRows,
   inventoryItemExternalMappings,
+  inventoryItemRelationships,
   inventoryItemLocationAssignments,
   inventoryItems,
   inventoryLocations,
@@ -64,6 +65,7 @@ type SourceRow = {
   location: string;
   caseQuantity?: number;
   innerPackQuantity?: number | null;
+  baseUnitQuantity?: number | null;
   baseUnit?: string | null;
   totalCost?: number;
 };
@@ -98,7 +100,8 @@ async function stageBatch(
     rawDescription: row.description,
     cleanedDescription: row.description,
     caseQuantity: row.caseQuantity ?? 6,
-    innerPackQuantity: row.innerPackQuantity ?? null,
+    innerPackQuantity: row.innerPackQuantity ?? 1,
+    baseUnitQuantity: row.baseUnitQuantity ?? 1,
     baseUnit: row.baseUnit ?? 'ML',
     packagePrice: 30,
     totalCost: row.totalCost ?? 30,
@@ -173,6 +176,7 @@ afterAll(async () => {
   await db.delete(storeInventoryItems).where(eq(storeInventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemLocationAssignments).where(eq(inventoryItemLocationAssignments.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, ID.company)).catch(() => {});
+  await db.delete(inventoryItemRelationships).where(eq(inventoryItemRelationships.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, ID.company)).catch(() => {});
   await db.delete(importSourcePropertyBindings).where(eq(importSourcePropertyBindings.companyId, ID.company)).catch(() => {});
@@ -271,7 +275,14 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       { code: '7000001', description: 'Known Product Reserve', location: 'Liquor Cage' },
       { code: '7000001', description: 'Known Product', location: 'Pool Cafe' },
     ], '2026-08-15');
-    const result = await applyBatchApproval(groupedBatch, approvalAuth);
+    const preview = await runResolutionPreview(groupedBatch, ID.company);
+    const recodeCandidateId = preview.rows[1].itemMatch.possibleRecodeMatchedId;
+    expect(recodeCandidateId).toBe(knownRow.resolvedInventoryItemId);
+    const result = await applyBatchApproval(groupedBatch, approvalAuth, [{
+      rowIndex: preview.rows[1].rowIndex,
+      action: 'link_existing',
+      inventoryItemId: recodeCandidateId,
+    }]);
     expect(result.itemsCreated).toBe(0);
 
     const rows = await db
@@ -394,6 +405,36 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         yieldPercent: 100,
       })
       .returning({ id: inventoryItems.id });
+    // Existing catalog items need confirmed source-pack evidence before a new
+    // source code can be linked to them as a re-code.
+    await db.insert(inventoryItemExternalMappings).values([
+      {
+        companyId: ID.company,
+        inventoryItemId: itemA.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `prior-alpha-${RUN}`,
+        sourceDescription: 'Divergent Match Alpha',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'ML',
+        matchStrategy: 'manual',
+      },
+      {
+        companyId: ID.company,
+        inventoryItemId: itemB.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `prior-beta-${RUN}`,
+        sourceDescription: 'Divergent Match Beta',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'ML',
+        matchStrategy: 'manual',
+      },
+    ]);
 
     const [batchA, batchB] = await Promise.all([
       stageBatch([{ code, description: 'Divergent Match Alpha', location: 'Liquor Cage' }], '2026-12-31'),
@@ -404,8 +445,16 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     // rejection) stops a future failure in one approval from being masked
     // while the postconditions below still happen to hold.
     const settled = await Promise.allSettled([
-      applyBatchApproval(batchA, approvalAuth),
-      applyBatchApproval(batchB, approvalAuth),
+      applyBatchApproval(batchA, approvalAuth, [{
+        rowIndex: 1,
+        action: 'link_existing',
+        inventoryItemId: itemA.id,
+      }]),
+      applyBatchApproval(batchB, approvalAuth, [{
+        rowIndex: 1,
+        action: 'link_existing',
+        inventoryItemId: itemB.id,
+      }]),
     ]);
     expect(settled.map(r => r.status)).toEqual(['fulfilled', 'fulfilled']);
 
@@ -563,5 +612,122 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryItems)
       .where(eq(inventoryItems.companyId, ID.company));
     expect(after).toEqual(before); // conflict review must not mutate inventory identities
+  });
+
+  it('keeps an incompatible Casamigos pack as a separate comparable variant', async () => {
+    const mayBatch = await stageBatch([
+      {
+        code: '446128',
+        description: "Casamigo's Blanco",
+        location: 'Liquor Cage',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LT',
+      },
+    ], '2026-05-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    expect(mayRow.resolvedInventoryItemId).toBeTruthy();
+
+    const juneBatch = await stageBatch([
+      {
+        code: '446117',
+        description: "Casamigo's Blanco",
+        location: 'Liquor Cage',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: 'ML',
+      },
+    ], '2026-06-30');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0].itemMatch.packCompatibility).toBe('incompatible');
+
+    await expect(applyBatchApproval(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_existing',
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+
+    await applyBatchApproval(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+    const [juneRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+    expect(juneRow.resolvedInventoryItemId).toBeTruthy();
+    expect(juneRow.resolvedInventoryItemId).not.toBe(mayRow.resolvedInventoryItemId);
+
+    const links = await db
+      .select({
+        inventoryItemId: inventoryItemRelationships.inventoryItemId,
+        relatedInventoryItemId: inventoryItemRelationships.relatedInventoryItemId,
+      })
+      .from(inventoryItemRelationships)
+      .where(eq(inventoryItemRelationships.companyId, ID.company));
+    expect(links).toEqual(expect.arrayContaining([
+      {
+        inventoryItemId: juneRow.resolvedInventoryItemId,
+        relatedInventoryItemId: mayRow.resolvedInventoryItemId,
+      },
+      {
+        inventoryItemId: mayRow.resolvedInventoryItemId,
+        relatedInventoryItemId: juneRow.resolvedInventoryItemId,
+      },
+    ]));
+  });
+
+  it('accepts a true Red Breast 750 ml re-code only with an explicit compatible link', async () => {
+    const mayBatch = await stageBatch([
+      {
+        code: '86276',
+        description: 'Red Breast Irish Whiskey 12Yr',
+        location: 'Liquor Cage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2026-05-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+
+    const juneBatch = await stageBatch([
+      {
+        code: '417747',
+        description: 'Red Breast Irish Whiskey 12Yr',
+        location: 'Liquor Cage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2026-06-30');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0].itemMatch.packCompatibility).toBe('compatible');
+
+    await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({
+      code: 'CONFLICT',
+    });
+    await applyBatchApproval(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_existing',
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+    const [juneRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+    expect(juneRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
   });
 });

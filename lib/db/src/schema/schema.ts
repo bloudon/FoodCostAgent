@@ -414,6 +414,38 @@ export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 
+// Comparable inventory identities are intentionally separate from duplicate
+// remediation. A pack variant can be related for review/navigation while each
+// item retains its own count, valuation, vendor pack, and source-code identity.
+export const inventoryItemRelationships = pgTable("inventory_item_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  relatedInventoryItemId: varchar("related_inventory_item_id").notNull(),
+  relationshipType: text("relationship_type").notNull(), // pack_variant | comparable
+  sourceSystem: text("source_system"),
+  sourcePropertyId: text("source_property_id"),
+  sourceExternalId: text("source_external_id"),
+  confidenceScore: real("confidence_score"),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmedBy: varchar("confirmed_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  uniqueRelationship: unique().on(
+    t.companyId,
+    t.inventoryItemId,
+    t.relatedInventoryItemId,
+    t.relationshipType,
+  ),
+  itemIdx: index("inventory_item_relationships_item_idx").on(t.companyId, t.inventoryItemId),
+  relatedItemIdx: index("inventory_item_relationships_related_item_idx").on(t.companyId, t.relatedInventoryItemId),
+}));
+
+export const insertInventoryItemRelationshipSchema = createInsertSchema(inventoryItemRelationships)
+  .omit({ id: true, createdAt: true });
+export type InsertInventoryItemRelationship = z.infer<typeof insertInventoryItemRelationshipSchema>;
+export type InventoryItemRelationship = typeof inventoryItemRelationships.$inferSelect;
+
 // Inventory Item Units — per-item recipe/issue unit whitelist with item-specific
 // conversion factors. Lets recipes call for an apple in EA, LB, OZ, or CS even
 // though the inventory unit is, say, LB.
@@ -2632,6 +2664,13 @@ export const inventoryItemExternalMappings = pgTable("inventory_item_external_ma
   sourcePropertyId: text("source_property_id").notNull().default(""),
   sourceExternalId: text("source_external_id").notNull(), // item code from source system
   sourceDescription: text("source_description"),       // description snapshot for drift detection
+  // Immutable source pack evidence captured when the mapping is confirmed.
+  // This makes later new-code comparisons safe without treating a display name
+  // or GL code as a product identity.
+  caseQuantity: real("case_quantity"),
+  innerPackQuantity: real("inner_pack_quantity"),
+  baseUnitQuantity: real("base_unit_quantity"),
+  baseUnit: text("base_unit"),
   matchStrategy: text("match_strategy"),               // "code" | "name_pack" | "fuzzy" | "manual"
   confidenceScore: real("confidence_score"),           // 0–1 match confidence at time of mapping
   createdAt: timestamp("created_at").notNull().defaultNow(),

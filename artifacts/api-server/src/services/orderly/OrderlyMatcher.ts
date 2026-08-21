@@ -36,6 +36,13 @@ export interface MatchResult {
    * this row's cleaned description.  Populated only when possibleRecode is true.
    */
   possibleRecodeMatchedId?: string | null;
+  /**
+   * Pack-evidence assessment for an exact-name, new-code candidate. This is
+   * advisory in preview but enforced again by approval before a new source code
+   * can be mapped to an existing inventory identity.
+   */
+  packCompatibility?: 'compatible' | 'incompatible' | 'unknown';
+  packCompatibilityReason?: string | null;
 }
 
 export interface MatchableItem {
