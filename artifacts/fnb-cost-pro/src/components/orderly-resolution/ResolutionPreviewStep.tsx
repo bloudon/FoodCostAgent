@@ -65,7 +65,8 @@ import type {
   DuplicateDateWarning, 
   ResolutionPreview, 
   CandidateDetail,
-  MatchResult 
+  MatchResult,
+  PackEvidence,
 } from "@/pages/orderly-import";
 
 type RecodeDecision = {
@@ -93,7 +94,8 @@ function MatchStatusBadge({ confidence, strategy, possibleRecode }: { confidence
   return <Badge variant="outline" className="shadow-none font-medium">{confidence}</Badge>;
 }
 
-function StrategyLabel({ strategy }: { strategy: string }) {
+function StrategyLabel({ strategy, possibleRecode = false }: { strategy: string; possibleRecode?: boolean }) {
+  if (possibleRecode) return <span className="text-muted-foreground">Same name, new code</span>;
   const map: Record<string, string> = {
     external_mapping: "Prior mapping",
     item_code: "Item code",
@@ -102,6 +104,96 @@ function StrategyLabel({ strategy }: { strategy: string }) {
     none: "—",
   };
   return <span className="text-muted-foreground">{map[strategy] ?? strategy}</span>;
+}
+
+type PackGeometry = Pick<PackEvidence, "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit">;
+
+function formatPackGeometry(pack: PackGeometry | null | undefined): string {
+  if (!pack) return "Not confirmed";
+  const caseQuantity = pack.caseQuantity && pack.caseQuantity > 0 ? pack.caseQuantity : null;
+  const innerPackQuantity = pack.innerPackQuantity && pack.innerPackQuantity > 0 ? pack.innerPackQuantity : null;
+  const baseUnitQuantity = pack.baseUnitQuantity && pack.baseUnitQuantity > 0 ? pack.baseUnitQuantity : null;
+  const baseUnit = pack.baseUnit?.trim() || null;
+
+  if (baseUnitQuantity != null && baseUnit) {
+    const parts = caseQuantity != null ? [String(caseQuantity)] : [];
+    if (innerPackQuantity != null && innerPackQuantity !== 1) parts.push(String(innerPackQuantity));
+    parts.push(`${baseUnitQuantity} ${baseUnit}`);
+    return parts.join(" × ");
+  }
+  if (caseQuantity != null) return `${caseQuantity} count (unit detail unavailable)`;
+  return "Not confirmed";
+}
+
+function packDecisionCopy(status: MatchResult["packCompatibility"]): string {
+  if (status === "compatible") return "Same physical pack — you may link this new code to the existing item.";
+  if (status === "incompatible") return "Different physical pack — linking is blocked. Create a separate variant instead.";
+  return "Pack evidence is incomplete — do not assume these are the same product; create a separate variant unless you can verify it.";
+}
+
+function PackComparison({
+  source,
+  candidate,
+  status,
+  reason,
+  compact = false,
+}: {
+  source: PackGeometry;
+  candidate: PackEvidence | null | undefined;
+  status: MatchResult["packCompatibility"];
+  reason?: string | null;
+  compact?: boolean;
+}) {
+  const tone = status === "compatible"
+    ? "border-emerald-200 bg-emerald-50/60 text-emerald-900"
+    : status === "incompatible"
+      ? "border-red-200 bg-red-50/70 text-red-900"
+      : "border-slate-200 bg-slate-50 text-slate-800";
+  const label = status === "compatible" ? "Same pack" : status === "incompatible" ? "Different pack" : "Pack unknown";
+
+  if (compact) {
+    return (
+      <div className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+        <Badge
+          variant="outline"
+          className={`mr-1 h-4 px-1 text-[9px] leading-none ${
+            status === "compatible"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : status === "incompatible"
+                ? "border-red-300 bg-red-50 text-red-800"
+                : "border-slate-300 bg-slate-50 text-slate-700"
+          }`}
+        >
+          {label}
+        </Badge>
+        <span className="font-medium text-foreground">Pack check:</span>{" "}
+        {formatPackGeometry(source)} <span aria-hidden="true">→</span> {formatPackGeometry(candidate)}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`rounded-md border p-3 ${tone}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Package className="h-4 w-4 shrink-0" />
+        <span className="text-xs font-semibold">Pack comparison</span>
+        <Badge variant="outline" className="bg-background/70 border-current text-[10px]">{label}</Badge>
+      </div>
+      <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide opacity-70">Incoming Orderly row</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(source)}</div>
+        </div>
+        <span className="hidden sm:block text-muted-foreground" aria-hidden="true">→</span>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide opacity-70">Existing catalog evidence</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(candidate)}</div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed">{packDecisionCopy(status)}</p>
+      {reason && <p className="mt-1 text-[11px] leading-relaxed opacity-80">Why: {reason}</p>}
+    </div>
+  );
 }
 
 // ─── Candidate picker (for ambiguous / likely / possibleRecode rows) ───
@@ -118,7 +210,7 @@ function CandidatePicker({
   onDecision: (rowIndex: number, value: DecisionValue | undefined) => void;
 }) {
   const match = row.itemMatch;
-  const { confidence, candidates = [], matchedItem, possibleRecode, possibleRecodeItem, packCompatibility, packCompatibilityReason } = match;
+  const { confidence, candidates = [], matchedItem, possibleRecode, possibleRecodeItem, packCompatibility, packCompatibilityReason, candidatePackEvidence } = match;
 
   function ItemChip({ item, selected, onClick, disabled = false, badge }: { item: CandidateDetail; selected: boolean; onClick: () => void; disabled?: boolean; badge?: React.ReactNode }) {
     return (
@@ -181,6 +273,13 @@ function CandidatePicker({
           </div>
         </div>
 
+        <PackComparison
+          source={row}
+          candidate={candidatePackEvidence}
+          status={packCompatibility}
+          reason={packCompatibilityReason}
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <ItemChip
             item={possibleRecodeItem}
@@ -222,12 +321,6 @@ function CandidatePicker({
           </button>
         </div>
 
-        {packCompatibilityReason && (
-          <div className="text-xs px-3 py-2 rounded bg-background border border-border text-muted-foreground flex gap-2">
-            <Info className="h-4 w-4 shrink-0" />
-            <span>{packCompatibilityReason}</span>
-          </div>
-        )}
       </div>
     );
   }
@@ -926,10 +1019,18 @@ export function ResolutionPreviewStep({
                                        Action Required
                                      </span>
                                   )}
+                                  {row.itemMatch.possibleRecode && (
+                                    <PackComparison
+                                      source={row}
+                                      candidate={row.itemMatch.candidatePackEvidence}
+                                      status={row.itemMatch.packCompatibility}
+                                      compact
+                                    />
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs">
-                                <StrategyLabel strategy={row.itemMatch.strategy} />
+                                <StrategyLabel strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
                               </TableCell>
                             </TableRow>
                             {isExpanded && (

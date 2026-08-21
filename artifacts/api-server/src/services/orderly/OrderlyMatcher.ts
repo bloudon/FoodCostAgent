@@ -13,6 +13,13 @@
 export type MatchStrategy = 'external_mapping' | 'item_code' | 'name_pack' | 'fuzzy' | 'location_history' | 'none';
 export type MatchConfidence = 'high' | 'medium' | 'low' | 'ambiguous' | 'none';
 
+export interface PackEvidence {
+  caseQuantity: number | null;
+  innerPackQuantity: number | null;
+  baseUnitQuantity: number | null;
+  baseUnit: string | null;
+}
+
 export interface MatchResult {
   strategy: MatchStrategy;
   confidence: MatchConfidence;
@@ -43,6 +50,12 @@ export interface MatchResult {
    */
   packCompatibility?: 'compatible' | 'incompatible' | 'unknown';
   packCompatibilityReason?: string | null;
+  /**
+   * The catalog pack evidence selected for the compatibility assessment.
+   * Preview clients use this to show the exact incoming-versus-catalog pack
+   * comparison that also gates a link_existing decision.
+   */
+  candidatePackEvidence?: PackEvidence | null;
 }
 
 export interface MatchableItem {

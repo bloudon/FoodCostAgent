@@ -646,6 +646,12 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ], '2026-06-30');
     const preview = await runResolutionPreview(juneBatch, ID.company);
     expect(preview.rows[0].itemMatch.packCompatibility).toBe('incompatible');
+    expect(preview.rows[0].itemMatch.candidatePackEvidence).toMatchObject({
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+    });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth, [{
       rowIndex: 1,
@@ -715,6 +721,12 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ], '2026-06-30');
     const preview = await runResolutionPreview(juneBatch, ID.company);
     expect(preview.rows[0].itemMatch.packCompatibility).toBe('compatible');
+    expect(preview.rows[0].itemMatch.candidatePackEvidence).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({
       code: 'CONFLICT',

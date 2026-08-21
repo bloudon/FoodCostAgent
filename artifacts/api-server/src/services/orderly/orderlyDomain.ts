@@ -54,6 +54,7 @@ import {
   type MatchableVendor,
   type MatchableLocation,
   type LocationAssignment,
+  type PackEvidence,
 } from './OrderlyMatcher';
 import { comparePackGeometry, type SourcePackGeometry } from './packGeometry';
 import type { InventoryImportRow } from '@workspace/db';
@@ -192,19 +193,52 @@ function sourcePackGeometry(row: Pick<
   };
 }
 
+function toPreviewPackEvidence(geometry: SourcePackGeometry): PackEvidence {
+  return {
+    caseQuantity: geometry.caseQuantity ?? null,
+    innerPackQuantity: geometry.innerPackQuantity ?? null,
+    baseUnitQuantity: geometry.baseUnitQuantity ?? null,
+    baseUnit: geometry.baseUnit ?? null,
+  };
+}
+
 function assessCandidatePackCompatibility(
   source: SourcePackGeometry,
   evidences: SourcePackGeometry[],
-): { status: 'compatible' | 'incompatible' | 'unknown'; reason: string } {
+): {
+  status: 'compatible' | 'incompatible' | 'unknown';
+  reason: string;
+  candidatePackEvidence: PackEvidence | null;
+} {
   if (evidences.length === 0) {
-    return { status: 'unknown', reason: 'the candidate has no confirmed source-pack evidence' };
+    return {
+      status: 'unknown',
+      reason: 'the candidate has no confirmed source-pack evidence',
+      candidatePackEvidence: null,
+    };
   }
-  const results = evidences.map(evidence => comparePackGeometry(source, evidence));
-  const compatible = results.find(result => result.status === 'compatible');
-  if (compatible) return { status: compatible.status, reason: compatible.reason };
-  const incompatible = results.find(result => result.status === 'incompatible');
-  if (incompatible) return { status: incompatible.status, reason: incompatible.reason };
-  return { status: 'unknown', reason: results[0]?.reason ?? 'pack evidence is unavailable' };
+  const results = evidences.map(evidence => ({ evidence, comparison: comparePackGeometry(source, evidence) }));
+  const compatible = results.find(result => result.comparison.status === 'compatible');
+  if (compatible) {
+    return {
+      status: compatible.comparison.status,
+      reason: compatible.comparison.reason,
+      candidatePackEvidence: toPreviewPackEvidence(compatible.evidence),
+    };
+  }
+  const incompatible = results.find(result => result.comparison.status === 'incompatible');
+  if (incompatible) {
+    return {
+      status: incompatible.comparison.status,
+      reason: incompatible.comparison.reason,
+      candidatePackEvidence: toPreviewPackEvidence(incompatible.evidence),
+    };
+  }
+  return {
+    status: 'unknown',
+    reason: results[0]?.comparison.reason ?? 'pack evidence is unavailable',
+    candidatePackEvidence: results[0] ? toPreviewPackEvidence(results[0].evidence) : null,
+  };
 }
 
 function isReliableItemCode(row: Pick<IdentityPreviewRow, 'sourceItemCode' | 'itemCodeStatus'>): boolean {
@@ -689,6 +723,7 @@ export async function runResolutionPreview(
             possibleRecodeMatchedId: nameExactMatch.id,
             packCompatibility: packAssessment.status,
             packCompatibilityReason: packAssessment.reason,
+            candidatePackEvidence: packAssessment.candidatePackEvidence,
           };
         }
       }

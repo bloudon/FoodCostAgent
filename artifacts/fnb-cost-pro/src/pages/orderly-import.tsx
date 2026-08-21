@@ -105,6 +105,13 @@ export interface CandidateDetail {
   comparableVariants?: { id: string; name: string; caseSize: number | null }[];
 }
 
+export interface PackEvidence {
+  caseQuantity: number | null;
+  innerPackQuantity: number | null;
+  baseUnitQuantity: number | null;
+  baseUnit: string | null;
+}
+
 export interface MatchResult {
   strategy: string;
   confidence: string;
@@ -123,6 +130,7 @@ export interface MatchResult {
   possibleRecodeMatchedId?: string | null;
   packCompatibility?: 'compatible' | 'incompatible' | 'unknown' | null;
   packCompatibilityReason?: string | null;
+  candidatePackEvidence?: PackEvidence | null;
 }
 
 export interface RowPreview {
@@ -134,6 +142,10 @@ export interface RowPreview {
   supplierRaw: string | null;
   sourceCategory: string | null;
   caseQuantity: number | null;
+  innerPackQuantity: number | null;
+  baseUnitQuantity: number | null;
+  baseUnit: string | null;
+  packParseStatus: string | null;
   packagePrice: number | null;
   totalCost: number | null;
   itemMatch: MatchResult;
