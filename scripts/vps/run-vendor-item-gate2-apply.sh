@@ -104,14 +104,12 @@ done
 cd "$APP_DIR"
 [[ -z "$(git status --porcelain)" ]] \
   || die "Checkout is dirty; apply only from one exact reviewed source state."
-readonly APPLY_GIT_SHA
-APPLY_GIT_SHA="$(git rev-parse --verify HEAD)"
+readonly APPLY_GIT_SHA="$(git rev-parse --verify HEAD)"
 
 # ── Package database cross-check ─────────────────────────────────────────────
 # Verify the operator-stated VENDOR_ITEM_GATE2_EXPECT_DB matches the
 # database identity bound into the Gate 2 package before any CLI call.
-readonly PKG_DATABASE
-PKG_DATABASE="$(node -e "process.stdout.write(
+readonly PKG_DATABASE="$(node -e "process.stdout.write(
   JSON.parse(require('fs').readFileSync('$VENDOR_ITEM_GATE2_PACKAGE_PATH','utf8'))
     .sourceClassifierReport.database
 )")"
@@ -147,10 +145,10 @@ set -e
 # ── Parse and verify dry-run counts ──────────────────────────────────────────
 _jq() { node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync('$DRY_RUN_REPORT','utf8'))$1))"; }
 
-readonly DRY_LIVE_CLASS_A; DRY_LIVE_CLASS_A="$(_jq '.currentState.classA')"
-readonly DRY_PKG_GROUPS;   DRY_PKG_GROUPS="$(_jq '.packageScope.reviewedGroups')"
-readonly DRY_PKG_LOSERS;   DRY_PKG_LOSERS="$(_jq '.packageScope.loserRows')"
-readonly DRY_PKG_ID;       DRY_PKG_ID="$(_jq '.packageId')"
+readonly DRY_LIVE_CLASS_A="$(_jq '.currentState.classA')"
+readonly DRY_PKG_GROUPS="$(_jq '.packageScope.reviewedGroups')"
+readonly DRY_PKG_LOSERS="$(_jq '.packageScope.loserRows')"
+readonly DRY_PKG_ID="$(_jq '.packageId')"
 
 printf '[Gate2-Apply] Package ID:  %s\n' "$DRY_PKG_ID"
 printf '[Gate2-Apply] Package scope: %s groups, %s loser rows\n' "$DRY_PKG_GROUPS" "$DRY_PKG_LOSERS"
@@ -199,16 +197,16 @@ set -e
 # ── Parse and verify apply results ───────────────────────────────────────────
 _aq() { node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync('$APPLY_REPORT','utf8'))$1))"; }
 
-readonly APPLY_APPLIED;  APPLY_APPLIED="$(_aq '.apply.groupsApplied')"
-readonly APPLY_ALREADY;  APPLY_ALREADY="$(_aq '.apply.groupsAlreadyRemediated')"
-readonly APPLY_STOPPED;  APPLY_STOPPED="$(_aq '.apply.groupsStopped')"
-readonly APPLY_DELETED;  APPLY_DELETED="$(_aq '.apply.rowsDeleted')"
-readonly APPLY_ORPHAN;   APPLY_ORPHAN="$(node -e "
+readonly APPLY_APPLIED="$(_aq '.apply.groupsApplied')"
+readonly APPLY_ALREADY="$(_aq '.apply.groupsAlreadyRemediated')"
+readonly APPLY_STOPPED="$(_aq '.apply.groupsStopped')"
+readonly APPLY_DELETED="$(_aq '.apply.rowsDeleted')"
+readonly APPLY_ORPHAN="$(node -e "
   const r=JSON.parse(require('fs').readFileSync('$APPLY_REPORT','utf8'));
   const v=r.apply.zeroOrphanVerification;
   process.stdout.write(typeof v==='string'?v:JSON.stringify(v));
 ")"
-readonly APPLY_CLEARED;  APPLY_CLEARED="$(_aq '.apply.classAGroupsCleared')"
+readonly APPLY_CLEARED="$(_aq '.apply.classAGroupsCleared')"
 
 printf '[Gate2-Apply] Results: applied=%s alreadyRemediated=%s stopped=%s rowsDeleted=%s\n' \
   "$APPLY_APPLIED" "$APPLY_ALREADY" "$APPLY_STOPPED" "$APPLY_DELETED"
