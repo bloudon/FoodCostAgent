@@ -34,17 +34,18 @@ import { db } from "../../db";
 import { classifyGroups } from "./vendorItemDuplicateClassifier";
 import {
   applyGroup,
-  assertReferenceColumnsUnchanged,
-  countReferences,
   ediPreflight,
   ensureAuditTable,
   loadAllVendorItems,
   loadMappings,
-  REFERENCE_SOURCES,
   rowsOf,
   type GroupKey,
 } from "./vendorItemDuplicateMerge";
 import { canonicalJson, sha256 } from "./vendorItemDuplicateGate2Package";
+import {
+  referenceKey,
+  validateReferenceColumnCompatibility,
+} from "./vendorItemDuplicateReferenceCompatibility";
 import { EXPECTED_PRODUCTION_CLASS_A_LOSER_COUNT } from "./vendorItemDuplicateGate2Readiness";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -295,15 +296,49 @@ async function main(): Promise<number> {
     }
   }
 
-  // Reference column schema drift check — fail closed.
-  await assertReferenceColumnsUnchanged(db as any);
-  console.log("[Gate2-Apply] Reference column schema: UNCHANGED (matches reviewed contract)");
+  // Reference column schema — use the same approved legacy-compatibility contract
+  // as the production classifier and readiness tooling.
+  // vendor_invoice_import_lines.resolved_vendor_item_id may be absent as
+  // legacy_optional_absent on restored production. All other drift is fail-closed.
+  const liveRefCols = rowsOf(
+    await db.execute(sql`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND column_name LIKE '%vendor_item%'
+        AND table_name <> 'vendor_items'
+      ORDER BY table_name, column_name`),
+  ).map((x: any) => `${x.table_name}.${x.column_name}`);
+  const { sourceCompatibility, presentSources } = validateReferenceColumnCompatibility(liveRefCols);
+  for (const [refKey, compat] of Object.entries(sourceCompatibility)) {
+    console.log(`[Gate2-Apply] Ref ${refKey}: ${compat.compatibilityState}`);
+  }
 
   // Live classification for count verification and EDI preflight.
+  // Build reference counts using only presentSources — absent legacy-optional columns
+  // are skipped, avoiding "column does not exist" on the legacy production schema.
   const items = await loadAllVendorItems(db as any);
   const ids = items.map((i) => i.id);
   const mappings = await loadMappings(db as any, ids);
-  const refs = await countReferences(db as any, ids);
+  const refs: Map<string, Map<string, number>> = new Map();
+  for (const source of presentSources) {
+    const tableColKey = referenceKey(source);
+    const rows = rowsOf(
+      await db.execute(
+        sql.raw(
+          `SELECT ${source.column} AS id, count(*)::int AS n ` +
+            `FROM ${source.table} ` +
+            `WHERE ${source.column} IS NOT NULL ` +
+            `GROUP BY ${source.column}`,
+        ),
+      ),
+    ) as Array<{ id: string; n: number }>;
+    for (const row of rows) {
+      const m = refs.get(row.id) ?? new Map<string, number>();
+      m.set(tableColKey, (m.get(tableColKey) ?? 0) + row.n);
+      refs.set(row.id, m);
+    }
+  }
   const liveGroups = classifyGroups({ rows: items, mappings, referenceCounts: refs });
   const liveClassA = liveGroups.filter((g) => g.class === "A");
   const liveClassB = liveGroups.filter((g) => g.class === "B");
@@ -408,9 +443,10 @@ async function main(): Promise<number> {
   }
 
   // ── Post-apply: zero-orphan verification ───────────────────────────────────
+  // Use presentSources (same as preflight) to avoid querying absent legacy-optional columns.
   const mergeCausedOrphans: Record<string, number> = {};
   const legacyOrphans: Record<string, number> = {};
-  for (const { table, column } of REFERENCE_SOURCES) {
+  for (const { table, column } of presentSources) {
     const rows = rowsOf(
       await db.execute(
         sql.raw(
@@ -436,10 +472,29 @@ async function main(): Promise<number> {
   // ── Post-apply: re-classify to verify Class A cleared ──────────────────────
   const itemsAfter = await loadAllVendorItems(db as any);
   const idsAfter = itemsAfter.map((i) => i.id);
+  const refsAfter: Map<string, Map<string, number>> = new Map();
+  for (const source of presentSources) {
+    const tableColKey = referenceKey(source);
+    const rows = rowsOf(
+      await db.execute(
+        sql.raw(
+          `SELECT ${source.column} AS id, count(*)::int AS n ` +
+            `FROM ${source.table} ` +
+            `WHERE ${source.column} IS NOT NULL ` +
+            `GROUP BY ${source.column}`,
+        ),
+      ),
+    ) as Array<{ id: string; n: number }>;
+    for (const row of rows) {
+      const m = refsAfter.get(row.id) ?? new Map<string, number>();
+      m.set(tableColKey, (m.get(tableColKey) ?? 0) + row.n);
+      refsAfter.set(row.id, m);
+    }
+  }
   const groupsAfter = classifyGroups({
     rows: itemsAfter,
     mappings: await loadMappings(db as any, idsAfter),
-    referenceCounts: await countReferences(db as any, idsAfter),
+    referenceCounts: refsAfter,
   });
   const remainingByClass = groupsAfter.reduce<Record<string, number>>((acc, g) => {
     acc[g.class] = (acc[g.class] ?? 0) + 1;

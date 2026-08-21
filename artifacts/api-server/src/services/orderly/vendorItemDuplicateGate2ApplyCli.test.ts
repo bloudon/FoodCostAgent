@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { loadAndValidatePackage, SYSCO_HELD_VENDOR_ITEM_IDS } from "./vendorItemDuplicateGate2ApplyCli";
 import { canonicalJson, sha256 } from "./vendorItemDuplicateGate2Package";
 import { EXPECTED_PRODUCTION_CLASS_A_LOSER_COUNT } from "./vendorItemDuplicateGate2Readiness";
+import {
+  referenceKey,
+  ReferenceSchemaCompatibilityError,
+  VENDOR_ITEM_REFERENCE_SOURCES,
+  validateReferenceColumnCompatibility,
+} from "./vendorItemDuplicateReferenceCompatibility";
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -257,5 +263,53 @@ describe("loadAndValidatePackage", () => {
     const r2 = loadAndValidatePackage(PKG_PATH, APP_ROOT, standardReader(json));
     expect(r1.pkg.packageId).toBe(r2.pkg.packageId);
     expect(r1.loserSet.size).toBe(r2.loserSet.size);
+  });
+});
+
+// ── Reference schema preflight — apply CLI contract ──────────────────────────
+// These tests verify the three cases the apply CLI preflight must handle via
+// validateReferenceColumnCompatibility (the same function used by the
+// classifier and readiness CLIs).
+
+const OPTIONAL_REF_KEY = "vendor_invoice_import_lines.resolved_vendor_item_id";
+const REQUIRED_COLS = VENDOR_ITEM_REFERENCE_SOURCES
+  .filter((s) => !s.legacyOptional)
+  .map(referenceKey);
+const ALL_COLS = VENDOR_ITEM_REFERENCE_SOURCES.map(referenceKey);
+
+describe("apply CLI reference schema preflight", () => {
+  it("accepts the legacy production schema (resolved_vendor_item_id absent) and marks it legacy_optional_absent", () => {
+    // Verification 1: legacy production fixture with this exact column absent → PASS
+    const result = validateReferenceColumnCompatibility(REQUIRED_COLS);
+    expect(result.sourceCompatibility[OPTIONAL_REF_KEY].compatibilityState).toBe(
+      "legacy_optional_absent",
+    );
+    expect(result.presentSources.map(referenceKey)).not.toContain(OPTIONAL_REF_KEY);
+  });
+
+  it("accepts a newer schema (resolved_vendor_item_id present) and includes it in presentSources", () => {
+    // Verification 2: newer fixture with column present → PASS and reference counted/repointable
+    const result = validateReferenceColumnCompatibility(ALL_COLS);
+    expect(result.sourceCompatibility[OPTIONAL_REF_KEY].compatibilityState).toBe(
+      "current_present",
+    );
+    expect(result.presentSources.map(referenceKey)).toContain(OPTIONAL_REF_KEY);
+  });
+
+  it("fails closed for any unexpected reference column", () => {
+    // Verification 3: unexpected reference drift → FAIL CLOSED
+    expect(() =>
+      validateReferenceColumnCompatibility([
+        ...REQUIRED_COLS,
+        "unexpected_table.vendor_item_id",
+      ]),
+    ).toThrow(ReferenceSchemaCompatibilityError);
+  });
+
+  it("fails closed when a required reference column is absent", () => {
+    // Verification 3 (required missing): → FAIL CLOSED
+    expect(() =>
+      validateReferenceColumnCompatibility(REQUIRED_COLS.slice(1)),
+    ).toThrow(ReferenceSchemaCompatibilityError);
   });
 });
