@@ -25,6 +25,7 @@ function parseArgs(argv: string[]): Args {
   const args: Args = {};
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
+    if (arg === '--') continue; // pnpm/npm pass-through separator — skip, not an option
     if (!arg.startsWith('--')) throw new Error(`Unexpected argument: ${arg}`);
     const key = arg.slice(2);
     const next = argv[index + 1];
