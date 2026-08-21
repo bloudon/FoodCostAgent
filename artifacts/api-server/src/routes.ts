@@ -43,6 +43,7 @@ import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
 import { registerChatLogsRoutes } from "./routes/chatLogsRoutes";
 import { registerPendingUserAssignRoutes } from "./routes/pendingUserAssignRoute";
+import healthRouter from "./routes/health";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
 import { normalizeImageForStorage, normalizeImageForVision, UnsupportedImageError } from "./lib/imageNormalization";
@@ -182,6 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', (_req, res) => {
     res.status(200).json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() });
   });
+  app.use('/api', healthRouter);
 
   // Extension Pilot — browser-extension price sync routes
   const extensionRouter = Router();
