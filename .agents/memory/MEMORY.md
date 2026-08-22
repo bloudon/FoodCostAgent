@@ -30,6 +30,7 @@
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
 - [Drizzle array params](drizzle-array-params.md) — arrays bound into sql templates become ROW expressions capped at 1664; pass one jsonb param and unnest instead.
 - [Deposit-aware reconciliation](deposit-aware-reconciliation.md) — four fail-closed conditions for explained keg-deposit gaps; deposits never touch price history; ledgers consume persisted events only.
+- [Controlled ledger resets](controlled-ledger-resets.md) — reset immutable deposit evidence only through transaction-local authorization, never by disabling its guard.
 - [Vendor-item dup program closure](vendor-item-dup-closure.md) — PM-closed; orphan cleanup stays bounded/read-only-first, NULL-SKU stays unconstrained, prod needs cleanup before deploy; assignment ≠ lifted PM hold.
 - [Orderly adoption evidence freeze](orderly-adoption-evidence-freeze.md) — preview may read approved parsed rows; any future APPLY must freeze immutable vendor-stable evidence and bind a fresh review snapshot.
 - [Orderly active-status gate](orderly-active-status-gate.md) — an all-false source `isActive` field is not an availability decision; preserve the PM gate until source semantics are evidenced.
