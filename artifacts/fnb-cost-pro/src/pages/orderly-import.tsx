@@ -138,6 +138,7 @@ export interface RowPreview {
   storageLocation: string | null;
   sourceItemCode: string | null;
   itemCodeStatus: string | null;
+  packSizeRaw: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
   sourceCategory: string | null;

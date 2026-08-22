@@ -118,6 +118,7 @@ export interface ResolutionPreviewResult {
     storageLocation: string | null;
     sourceItemCode: string | null;
     itemCodeStatus: string | null;
+    packSizeRaw: string | null;
     cleanedDescription: string | null;
     supplierRaw: string | null;
     sourceCategory: string | null;
@@ -769,6 +770,10 @@ export async function runResolutionPreview(
       storageLocation: row.storageLocation,
       sourceItemCode: row.sourceItemCode,
       itemCodeStatus: row.itemCodeStatus,
+      packSizeRaw: typeof (row.rawData as Record<string, unknown> | null)?.['Pack Size'] === 'string'
+        && String((row.rawData as Record<string, unknown>)['Pack Size']).trim()
+          ? String((row.rawData as Record<string, unknown>)['Pack Size'])
+          : null,
       cleanedDescription: row.cleanedDescription,
       supplierRaw: row.supplierRaw,
       sourceCategory: (row as any).sourceCategory ?? null,

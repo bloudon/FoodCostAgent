@@ -927,6 +927,7 @@ export function ResolutionPreviewStep({
                       <TableHead className="w-10 text-center px-1 border-r"></TableHead>
                       <TableHead className="w-12 border-r text-center font-semibold text-xs">#</TableHead>
                       <TableHead className="font-semibold text-xs min-w-[200px]">Description</TableHead>
+                      <TableHead className="font-semibold text-xs min-w-[130px]">Pack size</TableHead>
                       <TableHead className="font-semibold text-xs">Location</TableHead>
                       <TableHead className="font-semibold text-xs">Vendor</TableHead>
                       <TableHead className="font-semibold text-xs">Category</TableHead>
@@ -937,7 +938,7 @@ export function ResolutionPreviewStep({
                   <TableBody>
                     {displayRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                           <div className="flex flex-col items-center justify-center">
                             <Info className="h-8 w-8 mb-2 opacity-20" />
                             <p className="text-sm font-medium">No rows match the selected filters.</p>
@@ -977,6 +978,24 @@ export function ResolutionPreviewStep({
                                     {row.sourceItemCode}
                                   </div>
                                 )}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <div className="font-medium text-foreground">
+                                  {row.packSizeRaw || <span className="text-muted-foreground italic font-normal">Not provided</span>}
+                                </div>
+                                <div className={`mt-1 text-[10px] ${
+                                  row.packParseStatus === "ok"
+                                    ? "text-emerald-700"
+                                    : row.packParseStatus === "partial"
+                                      ? "text-amber-700"
+                                      : "text-muted-foreground"
+                                }`}>
+                                  {row.packParseStatus === "ok"
+                                    ? "Parsed"
+                                    : row.packParseStatus === "partial"
+                                      ? "Partial parse — verify"
+                                      : "Needs review"}
+                                </div>
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {row.storageLocation || "—"}
@@ -1035,7 +1054,7 @@ export function ResolutionPreviewStep({
                             </TableRow>
                             {isExpanded && (
                               <TableRow className="bg-muted/5 hover:bg-muted/5 border-b">
-                                <TableCell colSpan={8} className="p-0">
+                                <TableCell colSpan={9} className="p-0">
                                   <CandidatePicker
                                     row={row}
                                     decision={decision}

@@ -265,6 +265,9 @@ function buildPreviewResponse(batchId: string, parseResult: OrderlyParseResult) 
       cleaningConfidence: r.cleaningConfidence,
       supplierRaw: r.supplierRaw,
       supplierStatus: r.supplierStatus,
+      packSizeRaw: typeof r.rawData['Pack Size'] === 'string' && r.rawData['Pack Size'].trim()
+        ? r.rawData['Pack Size']
+        : null,
       packSizeDisplay: [r.caseQuantity, r.innerPackQuantity, r.baseUnit]
         .filter(v => v != null && v !== '')
         .join('/'),

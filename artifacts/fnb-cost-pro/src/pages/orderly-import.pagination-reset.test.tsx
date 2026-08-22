@@ -70,6 +70,18 @@ vi.mock("@/components/ui/alert", () => ({
   Alert: ({ children }: any) => React.createElement("div", { role: "alert" }, children),
   AlertDescription: ({ children }: any) =>
     React.createElement("span", { "data-testid": "alert-description" }, children),
+  AlertTitle: ({ children }: any) => React.createElement("span", null, children),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogAction: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogCancel: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogContent: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogDescription: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogFooter: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogHeader: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogTitle: ({ children }: any) => React.createElement("span", null, children),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -136,7 +148,7 @@ vi.mock("lucide-react", async (importOriginal) => {
 // Import the component AFTER all mocks are in place
 // ---------------------------------------------------------------------------
 
-import { ResolutionPreviewStep } from "./orderly-import";
+import { ResolutionPreviewStep } from "@/components/orderly-resolution/ResolutionPreviewStep";
 
 // ---------------------------------------------------------------------------
 // Test fixtures

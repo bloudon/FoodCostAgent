@@ -62,6 +62,18 @@ vi.mock("@/components/ui/alert", () => ({
   Alert: ({ children }: any) => React.createElement("div", { role: "alert" }, children),
   AlertDescription: ({ children }: any) =>
     React.createElement("span", { "data-testid": "alert-description" }, children),
+  AlertTitle: ({ children }: any) => React.createElement("span", null, children),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogAction: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogCancel: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogContent: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogDescription: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogFooter: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogHeader: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogTitle: ({ children }: any) => React.createElement("span", null, children),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -124,7 +136,7 @@ vi.mock("lucide-react", async (importOriginal) => {
 // Import the component AFTER all mocks are in place
 // ---------------------------------------------------------------------------
 
-import { ResolutionPreviewStep } from "./orderly-import";
+import { ResolutionPreviewStep } from "@/components/orderly-resolution/ResolutionPreviewStep";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -135,6 +147,8 @@ interface RowPreview {
   storageLocation: string | null;
   sourceItemCode: string | null;
   itemCodeStatus: string | null;
+  packSizeRaw: string | null;
+  packParseStatus: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
   sourceCategory: string | null;
@@ -157,6 +171,8 @@ function makePreviewRow(
     storageLocation: "Dry Storage",
     sourceItemCode: `CODE-${rowIndex}`,
     itemCodeStatus: null,
+    packSizeRaw: rowIndex === 1 ? "6/1 LT" : null,
+    packParseStatus: rowIndex === 1 ? "ok" : null,
     cleanedDescription: `Item ${rowIndex}`,
     supplierRaw: "Test Vendor",
     sourceCategory,
@@ -310,6 +326,14 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
         screen.getByText((text) => text.includes("of 5 rows")),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows the raw Orderly pack size alongside each import row", async () => {
+    renderStep();
+
+    expect(await screen.findByRole("columnheader", { name: "Pack size" })).toBeInTheDocument();
+    expect(screen.getByText("6/1 LT")).toBeInTheDocument();
+    expect(screen.getByText("Parsed")).toBeInTheDocument();
   });
 
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
