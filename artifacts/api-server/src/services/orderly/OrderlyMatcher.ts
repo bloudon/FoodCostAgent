@@ -10,7 +10,15 @@
  * All functions are pure and synchronous — no DB access.
  */
 
-export type MatchStrategy = 'external_mapping' | 'item_code' | 'name_pack' | 'fuzzy' | 'location_history' | 'none';
+export type MatchStrategy =
+  | 'external_mapping'
+  | 'alternate_identity'
+  | 'same_workbook_identity'
+  | 'item_code'
+  | 'name_pack'
+  | 'fuzzy'
+  | 'location_history'
+  | 'none';
 export type MatchConfidence = 'high' | 'medium' | 'low' | 'ambiguous' | 'none';
 
 export interface PackEvidence {
@@ -72,11 +80,17 @@ export interface MatchableVendor {
 
 // ─── String normalisation ────────────────────────────────────────────────────
 
-/** Lower-case, collapse whitespace, strip non-alphanumeric except spaces. */
+/**
+ * Lower-case, Unicode-normalize, collapse whitespace, and reduce punctuation
+ * to separators. Meaningful words (cuts, colors, varietals, flavors) remain.
+ */
 export function normalizeForMatch(s: string): string {
   return s
+    .normalize('NFKC')
     .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/[’'`]/g, '')
+    .replace(/[‐‑‒–—-]/g, ' ')
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

@@ -397,6 +397,33 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.getByText("Parsed")).toBeInTheDocument();
   });
 
+  it("shows identity-group evidence without changing row-level filters", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      identitySummary: {
+        uniqueIdentityGroups: 3,
+        identityGroupsResolvedToExisting: 1,
+        identityGroupsNewCandidates: 1,
+        identityGroupsRequiringReview: 1,
+        blankCodeGroupsWithCodedSibling: 1,
+        blankCodeGroupsAutoResolved: 1,
+        alternateIdentityMatches: 1,
+      },
+      rows: MOCK_ROWS.map((row, index) => ({
+        ...row,
+        identityGroupRows: index === 0 ? [1, 2] : [row.rowIndex],
+      })),
+    };
+    renderStep();
+
+    expect(await screen.findByText("Product identity evidence")).toBeInTheDocument();
+    expect(screen.getByText((_, element) =>
+      element?.tagName === "SPAN" && element.textContent === "3 groups",
+    )).toBeInTheDocument();
+    expect(screen.getByText("Identity group: 2 location rows")).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes("of 5 rows"))).toBeInTheDocument();
+  });
+
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
     renderStep();
     // Wait for chip then click

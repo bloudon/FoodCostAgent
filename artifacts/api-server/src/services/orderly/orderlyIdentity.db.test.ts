@@ -596,6 +596,44 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(rows.map(row => row.resolvedInventoryItemId)).toEqual([null, null]);
   });
 
+  it('creates one coded identity and reconciles its blank-code location sibling', async () => {
+    const batchId = await stageBatch([
+      { code: null, description: `Evidence-led Cabernet ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `ALT-${RUN}`, description: `Evidence-led Cabernet ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
+    ], '2026-10-31');
+
+    const preview = await runResolutionPreview(batchId, ID.company);
+    expect(preview.identitySummary.blankCodeGroupsWithCodedSibling).toBe(1);
+    expect(preview.identitySummary.identityGroupsNewCandidates).toBe(1);
+    expect(preview.rows.find(row => row.itemCodeStatus === 'blank')?.identityGroupRows).toHaveLength(2);
+
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    expect(result.itemsCreated).toBe(1);
+    expect(result.rowsHeldForReview).toBe(0);
+
+    const rows = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    expect(rows[0].resolvedInventoryItemId).toBeTruthy();
+    expect(rows[0].resolvedInventoryItemId).toBe(rows[1].resolvedInventoryItemId);
+
+    const mappings = await db
+      .select({ sourceExternalId: inventoryItemExternalMappings.sourceExternalId })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, rows[0].resolvedInventoryItemId!),
+      ));
+    expect(mappings.map(mapping => mapping.sourceExternalId)).toEqual(expect.arrayContaining([
+      `ALT-${RUN}`,
+      expect.stringMatching(/^ALT\|evidence led cabernet /),
+    ]));
+  });
+
   it('allows explicit links for held ambiguous and fuzzy blank-code rows while leaving an unchosen row held', async () => {
     const unitId = await eachUnitId();
     const [ambiguousA] = await db

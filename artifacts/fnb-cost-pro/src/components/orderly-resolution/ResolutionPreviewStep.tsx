@@ -98,6 +98,8 @@ function StrategyLabel({ strategy, possibleRecode = false }: { strategy: string;
   if (possibleRecode) return <span className="text-muted-foreground">Same name, new code</span>;
   const map: Record<string, string> = {
     external_mapping: "Prior mapping",
+    alternate_identity: "Prior product identity",
+    same_workbook_identity: "Workbook sibling",
     item_code: "Item code",
     name_pack: "Name match",
     fuzzy: "Fuzzy",
@@ -814,6 +816,28 @@ export function ResolutionPreviewStep({
         </Card>
       </div>
 
+      {preview.identitySummary && (
+        <Card className="shadow-sm border-border/60 bg-slate-50/50">
+          <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-foreground">Product identity evidence</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Grouped by normalized description and pack evidence before matching storage-location rows.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              <span><strong>{preview.identitySummary.uniqueIdentityGroups.toLocaleString()}</strong> groups</span>
+              <span className="text-emerald-700"><strong>{preview.identitySummary.identityGroupsResolvedToExisting.toLocaleString()}</strong> existing</span>
+              <span><strong>{preview.identitySummary.identityGroupsNewCandidates.toLocaleString()}</strong> new candidates</span>
+              <span className="text-amber-700"><strong>{preview.identitySummary.blankCodeGroupsAutoResolved.toLocaleString()}</strong> blank-code groups reconciled</span>
+              {preview.identitySummary.identityGroupsRequiringReview > 0 && (
+                <span className="text-red-700"><strong>{preview.identitySummary.identityGroupsRequiringReview.toLocaleString()}</strong> need review</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Notices */}
       {(() => {
         const noticeCount =
@@ -1112,6 +1136,11 @@ export function ResolutionPreviewStep({
                                 {row.heldForReview && (
                                   <div className="mt-1 text-[10px] font-medium text-amber-700">
                                     Item Code: blank
+                                  </div>
+                                )}
+                                {row.identityGroupRows && row.identityGroupRows.length > 1 && (
+                                  <div className="mt-1 text-[10px] text-muted-foreground">
+                                    Identity group: {row.identityGroupRows.length} location rows
                                   </div>
                                 )}
                               </TableCell>

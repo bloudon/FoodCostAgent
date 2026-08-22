@@ -155,6 +155,10 @@ export interface RowPreview {
   /** Derived by the API using the same blank-code rule used during approval. */
   heldForReview: boolean;
   holdReason: 'blank_item_code' | null;
+  /** Rows sharing normalized description + canonical pack evidence. */
+  identityGroupKey?: string | null;
+  identityGroupRows?: number[];
+  identityGroupStatus?: 'existing_item' | 'new_candidate' | 'review_required' | 'unavailable';
 }
 
 export interface ResolutionPreview {
@@ -189,6 +193,16 @@ export interface ResolutionPreview {
   newLocations: string[];
 
   newVendors: string[];
+
+  identitySummary?: {
+    uniqueIdentityGroups: number;
+    identityGroupsResolvedToExisting: number;
+    identityGroupsNewCandidates: number;
+    identityGroupsRequiringReview: number;
+    blankCodeGroupsWithCodedSibling: number;
+    blankCodeGroupsAutoResolved: number;
+    alternateIdentityMatches: number;
+  };
 }
 
 export interface ApprovalResult {

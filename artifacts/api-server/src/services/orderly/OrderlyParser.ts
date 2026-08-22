@@ -325,52 +325,50 @@ export function cleanDescription(
 
   const supplier = supplierName?.trim();
 
+  let current = raw;
+  let cleaningMethod: CleaningMethod = 'none';
+  let cleaningConfidence = 1.0;
+  let removedSuffix = '';
+
   if (supplier && supplier.length >= 2) {
-    // Transform 2 checked FIRST: " - Supplier ..." separator (more specific)
-    const dashIdx = raw.lastIndexOf(' - ' + supplier);
-    if (dashIdx > 0) {
-      const before = raw.slice(0, dashIdx).trim();
+    // Use only the structured Supplier value, but tolerate capitalization
+    // differences in the export. The final literal occurrence is the source
+    // suffix; supplier-like words elsewhere are never guessed away.
+    const escapedSupplier = supplier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const supplierRe = new RegExp(escapedSupplier, 'ig');
+    let lastIndex = -1;
+    let match: RegExpExecArray | null;
+    while ((match = supplierRe.exec(current)) !== null) lastIndex = match.index;
+    if (lastIndex > 0) {
+      const hadDashSeparator = /[\s]*[-–][\s]*$/.test(current.slice(0, lastIndex));
+      const before = current.slice(0, lastIndex).replace(/[\s\-–]+$/, '').trim();
       if (before.length >= 2) {
-        return {
-          cleanedDescription: before,
-          cleaningMethod: 'dash_supplier_strip',
-          cleaningConfidence: 0.85,
-          removedSuffix: raw.slice(dashIdx),
-        };
-      }
-    }
-
-    // Transform 1: supplier name verbatim in description (last occurrence)
-    const idx = raw.lastIndexOf(supplier);
-    if (idx > 0) {
-      // Strip trailing punctuation left by the separator (e.g. " - " before supplier)
-      const before = raw.slice(0, idx).replace(/[\s\-–]+$/, '').trim();
-      if (before.length >= 2) {
-        return {
-          cleanedDescription: before,
-          cleaningMethod: 'supplier_suffix_strip',
-          cleaningConfidence: 0.9,
-          removedSuffix: raw.slice(idx),
-        };
+        removedSuffix = current.slice(lastIndex);
+        current = before;
+        cleaningMethod = hadDashSeparator ? 'dash_supplier_strip' : 'supplier_suffix_strip';
+        cleaningConfidence = cleaningMethod === 'dash_supplier_strip' ? 0.85 : 0.9;
       }
     }
   }
 
-  // Transform 3: strip trailing pack reference " N / M UNIT" or " N/M UNIT"
-  const packRefMatch = raw.match(/(\s+\d+\s*[/]\s*\d+\s*[A-Za-z]*\s*)$/);
+  // Strip a trailing numeric pack reference only after supplier cleanup.
+  // This deliberately removes no ordinary product words.
+  const packRefMatch = current.match(/(\s+\d+(?:\.\d+)?\s*[/]\s*\d+(?:\.\d+)?\s*[A-Za-z]*(?:\s+[A-Za-z]+)?\s*)$/);
   if (packRefMatch) {
-    const before = raw.slice(0, packRefMatch.index!).trim();
+    const before = current.slice(0, packRefMatch.index!).trim();
     if (before.length >= 2) {
-      return {
-        cleanedDescription: before,
-        cleaningMethod: 'pack_text_strip',
-        cleaningConfidence: 0.6,
-        removedSuffix: packRefMatch[0],
-      };
+      removedSuffix = `${removedSuffix}${packRefMatch[0]}`;
+      current = before;
+      if (cleaningMethod === 'none') {
+        cleaningMethod = 'pack_text_strip';
+        cleaningConfidence = 0.6;
+      }
     }
   }
 
-  return noOp;
+  return cleaningMethod === 'none'
+    ? noOp
+    : { cleanedDescription: current, cleaningMethod, cleaningConfidence, removedSuffix };
 }
 
 // ─── Inventory date detection ─────────────────────────────────────────────────
