@@ -202,6 +202,12 @@ export interface ResolutionPreview {
     blankCodeGroupsWithCodedSibling: number;
     blankCodeGroupsAutoResolved: number;
     alternateIdentityMatches: number;
+    blankCodeClassification: {
+      confirmed: { rows: number; valueTotal: number };
+      reviewable: { rows: number; valueTotal: number };
+      conflicted: { rows: number; valueTotal: number };
+      held: { rows: number; valueTotal: number };
+    };
   };
 }
 

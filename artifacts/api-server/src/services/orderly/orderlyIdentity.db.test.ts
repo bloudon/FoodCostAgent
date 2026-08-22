@@ -577,6 +577,12 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     const preview = await runResolutionPreview(batchId, ID.company);
     expect(preview.identitySummary.blankCodeRows).toBe(2);
     expect(preview.identitySummary.blankCodeUnresolved).toBe(2);
+    expect(preview.identitySummary.blankCodeClassification).toEqual({
+      confirmed: { rows: 0, valueTotal: 0 },
+      reviewable: { rows: 0, valueTotal: 0 },
+      conflicted: { rows: 0, valueTotal: 0 },
+      held: { rows: 2, valueTotal: 60 },
+    });
     expect(preview.summary.itemsHeldForReview).toBe(2);
     expect(preview.rows.map(row => ({
       heldForReview: row.heldForReview,
@@ -605,6 +611,10 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     const preview = await runResolutionPreview(batchId, ID.company);
     expect(preview.identitySummary.blankCodeGroupsWithCodedSibling).toBe(1);
     expect(preview.identitySummary.identityGroupsNewCandidates).toBe(1);
+    expect(preview.identitySummary.blankCodeClassification.confirmed).toEqual({
+      rows: 1,
+      valueTotal: 30,
+    });
     expect(preview.rows.find(row => row.itemCodeStatus === 'blank')?.identityGroupRows).toHaveLength(2);
 
     const result = await applyBatchApproval(batchId, approvalAuth);

@@ -183,6 +183,12 @@ export interface ResolutionPreviewResult {
     blankCodeGroupsWithCodedSibling: number;
     blankCodeGroupsAutoResolved: number;
     alternateIdentityMatches: number;
+    blankCodeClassification: {
+      confirmed: { rows: number; valueTotal: number };
+      reviewable: { rows: number; valueTotal: number };
+      conflicted: { rows: number; valueTotal: number };
+      held: { rows: number; valueTotal: number };
+    };
   };
 }
 
@@ -408,6 +414,52 @@ function buildIdentitySummary(rows: IdentityPreviewRow[]) {
     identityGroups.set(row.identityGroupKey, group);
   }
   const grouped = [...identityGroups.values()];
+  const blankCodeClassification = {
+    confirmed: { rows: 0, valueTotal: 0 },
+    reviewable: { rows: 0, valueTotal: 0 },
+    conflicted: { rows: 0, valueTotal: 0 },
+    held: { rows: 0, valueTotal: 0 },
+  };
+  for (const row of blankRows) {
+    const valueTotal = row.totalCost ?? 0;
+    const group = row.identityGroupKey ? identityGroups.get(row.identityGroupKey) ?? [] : [];
+    const safeSiblingCodes = new Set(
+      group
+        .filter(sibling => (
+          sibling.itemCodeStatus === 'valid' &&
+          isReliableItemCode(sibling) &&
+          !sibling.itemMatch.requiresReview
+        ))
+        .map(sibling => sibling.sourceItemCode!.trim()),
+    );
+    const followsOneSafeCodedSibling = safeSiblingCodes.size === 1;
+
+    if (
+      (!row.itemMatch.requiresReview && row.itemMatch.matchedId != null) ||
+      followsOneSafeCodedSibling
+    ) {
+      // A blank row may share the canonical item created or resolved from one
+      // reliable code in the same evidence group. It may never create an item
+      // by itself, and two different sibling codes remain a conflict below.
+      blankCodeClassification.confirmed.rows++;
+      blankCodeClassification.confirmed.valueTotal += valueTotal;
+    } else if (row.itemMatch.confidence === 'ambiguous' && row.itemMatch.candidateIds.length > 1) {
+      // Several otherwise plausible identities are evidence of a collision,
+      // not a candidate that may be silently chosen by a later import.
+      blankCodeClassification.conflicted.rows++;
+      blankCodeClassification.conflicted.valueTotal += valueTotal;
+    } else if (
+      row.itemMatch.candidateIds.length > 0 ||
+      row.itemMatch.confidence === 'medium' ||
+      row.itemMatch.confidence === 'low'
+    ) {
+      blankCodeClassification.reviewable.rows++;
+      blankCodeClassification.reviewable.valueTotal += valueTotal;
+    } else {
+      blankCodeClassification.held.rows++;
+      blankCodeClassification.held.valueTotal += valueTotal;
+    }
+  }
 
   return {
     reliableCodeRows: [...reliableGroups.values()].reduce((total, group) => total + group.length, 0),
@@ -445,6 +497,7 @@ function buildIdentitySummary(rows: IdentityPreviewRow[]) {
       group.some(row => !row.itemMatch.requiresReview && row.itemMatch.matchedId != null),
     ).length,
     alternateIdentityMatches: rows.filter(row => row.itemMatch.strategy === 'alternate_identity').length,
+    blankCodeClassification,
   };
 }
 

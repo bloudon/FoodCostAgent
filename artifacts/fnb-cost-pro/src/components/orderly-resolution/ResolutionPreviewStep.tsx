@@ -215,6 +215,10 @@ function HeldRowDetails({ row }: { row: RowPreview }) {
               ? " Its suggested match also requires confirmation; it stays unlinked unless you explicitly choose an existing item below."
               : " It will remain unlinked when this import is approved unless a safe existing match is available."}
           </p>
+          <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
+            Choosing an existing item saves this description-and-pack identity for future
+            Orderly imports at this property only. It never links another property.
+          </p>
         </div>
       </div>
       <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
@@ -666,6 +670,16 @@ export function ResolutionPreviewStep({
 
   const s = preview.summary;
   const matchPct = s.totalRows > 0 ? Math.round(((s.itemsMatchedHigh + s.itemsMatchedMedium) / s.totalRows) * 100) : 0;
+  // A browser can briefly hold a preview response from the prior API bundle
+  // while the web client has already hot-reloaded. Keep the review screen
+  // usable during that harmless rollout window; a fresh query gets the full
+  // read-only evidence report.
+  const blankCodeClassification = preview.identitySummary?.blankCodeClassification ?? {
+    confirmed: { rows: 0, valueTotal: 0 },
+    reviewable: { rows: 0, valueTotal: 0 },
+    conflicted: { rows: 0, valueTotal: 0 },
+    held: { rows: 0, valueTotal: 0 },
+  };
   const resolvedRecodeCodes = new Set(
     preview.rows
       .filter(row => {
@@ -817,25 +831,53 @@ export function ResolutionPreviewStep({
       </div>
 
       {preview.identitySummary && (
-        <Card className="shadow-sm border-border/60 bg-slate-50/50">
-          <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-semibold text-foreground">Product identity evidence</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Grouped by normalized description and pack evidence before matching storage-location rows.
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_1.4fr]">
+          <Card className="shadow-sm border-border/60 bg-slate-50/50">
+            <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Product identity evidence</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Grouped by normalized description and pack evidence before matching storage-location rows.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span><strong>{preview.identitySummary.uniqueIdentityGroups.toLocaleString()}</strong> groups</span>
+                <span className="text-emerald-700"><strong>{preview.identitySummary.identityGroupsResolvedToExisting.toLocaleString()}</strong> existing</span>
+                <span><strong>{preview.identitySummary.identityGroupsNewCandidates.toLocaleString()}</strong> new candidates</span>
+                <span className="text-amber-700"><strong>{preview.identitySummary.blankCodeGroupsAutoResolved.toLocaleString()}</strong> blank-code groups reconciled</span>
+                {preview.identitySummary.identityGroupsRequiringReview > 0 && (
+                  <span className="text-red-700"><strong>{preview.identitySummary.identityGroupsRequiringReview.toLocaleString()}</strong> need review</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-border/60">
+            <CardContent className="p-4">
+              <div className="text-sm font-semibold text-foreground">Blank Item Code classification</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Read-only evidence for this workbook. Dollar totals use the source snapshot values.
               </p>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              <span><strong>{preview.identitySummary.uniqueIdentityGroups.toLocaleString()}</strong> groups</span>
-              <span className="text-emerald-700"><strong>{preview.identitySummary.identityGroupsResolvedToExisting.toLocaleString()}</strong> existing</span>
-              <span><strong>{preview.identitySummary.identityGroupsNewCandidates.toLocaleString()}</strong> new candidates</span>
-              <span className="text-amber-700"><strong>{preview.identitySummary.blankCodeGroupsAutoResolved.toLocaleString()}</strong> blank-code groups reconciled</span>
-              {preview.identitySummary.identityGroupsRequiringReview > 0 && (
-                <span className="text-red-700"><strong>{preview.identitySummary.identityGroupsRequiringReview.toLocaleString()}</strong> need review</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {([
+                  ["Confirmed", blankCodeClassification.confirmed, "text-emerald-700"],
+                  ["Reviewable", blankCodeClassification.reviewable, "text-sky-700"],
+                  ["Conflicted", blankCodeClassification.conflicted, "text-red-700"],
+                  ["Still held", blankCodeClassification.held, "text-amber-700"],
+                ] as const).map(([label, classification, tone]) => (
+                  <div key={label} className="rounded-md border bg-background/70 p-2">
+                    <div className={`font-semibold ${tone}`}>{label}</div>
+                    <div className="mt-1 font-medium text-foreground">
+                      {classification.rows.toLocaleString()} rows
+                    </div>
+                    <div className="mt-0.5 text-muted-foreground">
+                      ${classification.valueTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Notices */}
@@ -1064,7 +1106,10 @@ export function ResolutionPreviewStep({
                       </div>
                     )}
                   </div>
-                  <div className="text-xs font-medium text-muted-foreground text-right shrink-0">
+                  <div
+                    data-testid="resolution-row-status"
+                    className="text-xs font-medium text-muted-foreground text-right shrink-0"
+                  >
                     {filteredRows.length === 0
                       ? "No matching rows"
                       : isFiltered

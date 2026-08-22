@@ -408,6 +408,12 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
         blankCodeGroupsWithCodedSibling: 1,
         blankCodeGroupsAutoResolved: 1,
         alternateIdentityMatches: 1,
+        blankCodeClassification: {
+          confirmed: { rows: 1, valueTotal: 24.5 },
+          reviewable: { rows: 1, valueTotal: 12 },
+          conflicted: { rows: 0, valueTotal: 0 },
+          held: { rows: 0, valueTotal: 0 },
+        },
       },
       rows: MOCK_ROWS.map((row, index) => ({
         ...row,
@@ -420,6 +426,8 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.getByText((_, element) =>
       element?.tagName === "SPAN" && element.textContent === "3 groups",
     )).toBeInTheDocument();
+    expect(screen.getByText("Blank Item Code classification")).toBeInTheDocument();
+    expect(screen.getByText("$24.50")).toBeInTheDocument();
     expect(screen.getByText("Identity group: 2 location rows")).toBeInTheDocument();
     expect(screen.getByText((text) => text.includes("of 5 rows"))).toBeInTheDocument();
   });
