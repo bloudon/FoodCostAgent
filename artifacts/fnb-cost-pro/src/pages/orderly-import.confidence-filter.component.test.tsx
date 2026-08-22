@@ -118,7 +118,7 @@ vi.mock("@/components/ui/table", () => ({
     React.createElement("td", { colSpan }, children),
   TableHead: ({ children }: any) => React.createElement("th", null, children),
   TableHeader: ({ children }: any) => React.createElement("thead", null, children),
-  TableRow: ({ children }: any) => React.createElement("tr", null, children),
+  TableRow: ({ children, onClick }: any) => React.createElement("tr", { onClick }, children),
 }));
 
 // Lucide icons — stub to empty spans so SVG doesn't trip up jsdom
@@ -155,6 +155,8 @@ interface RowPreview {
   caseQuantity: number | null;
   packagePrice: number | null;
   totalCost: number | null;
+  heldForReview?: boolean;
+  holdReason?: 'blank_item_code' | null;
   itemMatch: { strategy: string; confidence: string; matchedId: string | null; candidateIds: string[]; requiresReview: boolean };
   vendorMatch: { vendorId: string | null; isNew: boolean; confidence: string; requiresReview: boolean };
   locationMatch: { locationId: string | null; isNew: boolean; normalizedName: string };
@@ -232,15 +234,76 @@ const MOCK_PREVIEW = {
   newVendors: [],
 };
 
+const HELD_PREVIEW = {
+  ...MOCK_PREVIEW,
+  totalRows: 6,
+  summary: {
+    ...MOCK_PREVIEW.summary,
+    totalRows: 6,
+    itemsNew: 2,
+    itemsHeldForReview: 1,
+  },
+  rows: [
+    ...MOCK_ROWS,
+    {
+      ...makePreviewRow(6, "Wine", "none", "none"),
+      sourceItemCode: null,
+      itemCodeStatus: "blank",
+      heldForReview: true,
+      holdReason: "blank_item_code" as const,
+    },
+  ],
+};
+
+function heldMatchPreview(confidence: "ambiguous" | "low") {
+  const candidate = {
+    id: `candidate-${confidence}`,
+    name: `${confidence} candidate`,
+    caseSize: 1,
+    pluSku: "CAND-1",
+    knownLocations: [],
+  };
+  return {
+    ...MOCK_PREVIEW,
+    totalRows: 1,
+    summary: {
+      ...MOCK_PREVIEW.summary,
+      totalRows: 1,
+      itemsHeldForReview: 1,
+      itemsWillCreate: 0,
+    },
+    rows: [
+      {
+        ...makePreviewRow(6, "Wine", confidence === "low" ? "fuzzy" : "name_pack", confidence),
+        sourceItemCode: null,
+        itemCodeStatus: "blank",
+        heldForReview: true,
+        holdReason: "blank_item_code" as const,
+        itemMatch: {
+          strategy: confidence === "low" ? "fuzzy" : "name_pack",
+          confidence,
+          matchedId: candidate.id,
+          candidateIds: [candidate.id],
+          requiresReview: true,
+          candidates: confidence === "ambiguous" ? [candidate] : [],
+          matchedItem: confidence === "low" ? candidate : null,
+        },
+      },
+    ],
+  };
+}
+
+let currentPreview: any = MOCK_PREVIEW;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderStep() {
+function renderStep(onApproved = vi.fn()) {
   return render(
     React.createElement(ResolutionPreviewStep, {
       batchId: "batch-test-1",
-      onApproved: vi.fn(),
+      onApproved,
       onBack: vi.fn(),
     }),
   );
@@ -250,7 +313,7 @@ function setupQueryMocks() {
   mockUseQuery.mockImplementation((opts: any) => {
     const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
     if (typeof key === "string" && key.includes("resolution-preview")) {
-      return { data: MOCK_PREVIEW, isLoading: false, isError: false };
+      return { data: currentPreview, isLoading: false, isError: false };
     }
     return { data: undefined, isLoading: false, isError: false };
   });
@@ -261,6 +324,7 @@ function setupQueryMocks() {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  currentPreview = MOCK_PREVIEW;
   setupQueryMocks();
 });
 
@@ -294,12 +358,9 @@ function getCategoryChip(label: string) {
   return screen.getByRole("button", { name: label });
 }
 
-/**
- * Returns all buttons whose accessible name is "All".
- * The component renders one "All" button per filter row (category + confidence).
- */
+/** Returns the category and status reset chips. */
 function getAllChips() {
-  return screen.getAllByRole("button", { name: "All" });
+  return screen.getAllByRole("button", { name: /^All (Categories|Statuses)$/ });
 }
 
 // ---------------------------------------------------------------------------
@@ -334,46 +395,6 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(await screen.findByRole("columnheader", { name: "Pack size" })).toBeInTheDocument();
     expect(screen.getByText("6/1 LT")).toBeInTheDocument();
     expect(screen.getByText("Parsed")).toBeInTheDocument();
-  });
-
-  it("explains and filters rows held because their Item Code is blank", async () => {
-    const heldRow: RowPreview = {
-      ...makePreviewRow(6, "Wine", "none", "none"),
-      sourceItemCode: null,
-      itemCodeStatus: "blank",
-      packSizeRaw: "1/1 750ML",
-    };
-    const heldPreview = {
-      ...MOCK_PREVIEW,
-      totalRows: MOCK_ROWS.length + 1,
-      summary: {
-        ...MOCK_PREVIEW.summary,
-        totalRows: MOCK_ROWS.length + 1,
-        itemsHeldForReview: 1,
-      },
-      rows: [...MOCK_ROWS, heldRow],
-    };
-
-    mockUseQuery.mockImplementation((opts: any) => {
-      const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
-      if (typeof key === "string" && key.includes("resolution-preview")) {
-        return { data: heldPreview, isLoading: false, isError: false };
-      }
-      return { data: undefined, isLoading: false, isError: false };
-    });
-
-    renderStep();
-
-    expect(await screen.findByText("1 row is held")).toBeInTheDocument();
-    expect(screen.getByText(/because their Orderly Item Code is blank/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show held rows" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Held — no Item Code (1)" })).toBeInTheDocument();
-      expect(screen.getByText("Blank Item Code — manual review")).toBeInTheDocument();
-      expect(screen.getByText((text) => text.includes("of 1 matching"))).toBeInTheDocument();
-    });
   });
 
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
@@ -466,5 +487,48 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it("filters, labels, and explains the exact held blank-code rows", async () => {
+    currentPreview = HELD_PREVIEW;
+    renderStep();
+
+    const heldSummaryAction = await screen.findByRole("button", { name: /Held for review.*1 rows/ });
+    fireEvent.click(heldSummaryAction);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((text) =>
+          text.includes("of 1 matching rows") && text.includes("6 total"),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Blank Item Code")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Held").closest("tr")!);
+    expect(await screen.findByTestId("held-row-details-6")).toHaveTextContent("Blank / not provided");
+    expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("cannot create a new item");
+  });
+
+  it("marks an ambiguous held row as an explicit existing-item link without offering creation", async () => {
+    currentPreview = heldMatchPreview("ambiguous");
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Held")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /ambiguous candidate/ }));
+
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create new item record" })).not.toBeInTheDocument();
+  });
+
+  it("marks a fuzzy held row as an explicit existing-item link or leave-unlinked decision", async () => {
+    currentPreview = heldMatchPreview("low");
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Held")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Leave unlinked" }));
+    expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
   });
 });

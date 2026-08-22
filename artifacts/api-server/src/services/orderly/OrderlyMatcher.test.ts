@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   breakTieByLocation,
   computeResolutionSummary,
+  getHoldReason,
   type LocationAssignment,
   type MatchResult,
 } from './OrderlyMatcher';
@@ -125,6 +126,37 @@ describe('computeResolutionSummary — will-create vs held split', () => {
     ]);
     expect(s.itemsWillCreate).toBe(3);
     expect(s.itemsHeldForReview).toBe(1);
+  });
+});
+
+describe('getHoldReason', () => {
+  const unresolved = {
+    strategy: 'none' as const,
+    confidence: 'none' as const,
+    matchedId: null,
+    candidateIds: [],
+    requiresReview: false,
+  };
+
+  it('holds only blank-code rows that cannot be safely resolved', () => {
+    expect(getHoldReason('blank', unresolved)).toBe('blank_item_code');
+    expect(getHoldReason('valid', unresolved)).toBeNull();
+    expect(getHoldReason('blank', {
+      ...unresolved,
+      strategy: 'item_code',
+      confidence: 'high',
+      matchedId: 'item-1',
+    })).toBeNull();
+  });
+
+  it('keeps a blank-code review match held instead of treating it as a create candidate', () => {
+    expect(getHoldReason('blank', {
+      ...unresolved,
+      strategy: 'fuzzy',
+      confidence: 'low',
+      matchedId: 'item-1',
+      requiresReview: true,
+    })).toBe('blank_item_code');
   });
 });
 

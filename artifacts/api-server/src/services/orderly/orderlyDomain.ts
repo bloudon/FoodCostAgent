@@ -45,6 +45,7 @@ import {
   matchLocation,
   breakTieByLocation,
   computeResolutionSummary,
+  getHoldReason,
   normalizeForMatch,
   type MatchResult,
   type VendorMatchResult,
@@ -96,6 +97,8 @@ export interface ApprovalResult {
   locationsLinked: number;
   vendorItemsCreated: number;
   rowsSkipped: number;
+  /** Rows that remained unlinked because their blank Item Code could not safely establish identity. */
+  rowsHeldForReview: number;
   rowsProcessed: number;
   /** How many distinct items were newly inserted into store_inventory_items. */
   storeItemsCreated: number;
@@ -132,6 +135,8 @@ export interface ResolutionPreviewResult {
     itemMatch: MatchResult;
     vendorMatch: VendorMatchResult;
     locationMatch: LocationMatchResult;
+    heldForReview: boolean;
+    holdReason: string | null;
   }>;
   /** Unique locations that will be created on approval */
   newLocations: string[];
@@ -787,6 +792,8 @@ export async function runResolutionPreview(
       itemMatch: { ...rawMatch, candidates, matchedItem, possibleRecodeItem },
       vendorMatch: resolutions[i].vendorMatch,
       locationMatch: resolutions[i].locationMatch,
+      heldForReview: getHoldReason(row.itemCodeStatus, rawMatch) !== null,
+      holdReason: getHoldReason(row.itemCodeStatus, rawMatch),
     };
   });
   const identitySummary = buildIdentitySummary(rows);
@@ -1350,7 +1357,7 @@ export async function applyBatchApproval(
     let itemsCreated = 0, itemsLinked = 0;
     let vendorsCreated = 0, vendorsLinked = 0;
     let locationsCreated = 0, locationsLinked = 0;
-    let vendorItemsCreated = 0, rowsSkipped = 0, rowsProcessed = 0;
+    let vendorItemsCreated = 0, rowsSkipped = 0, rowsHeldForReview = 0, rowsProcessed = 0;
     let storeItemsCreated = 0, storeItemsReactivated = 0;
     let storeItemsAlreadyLinked = 0, storeItemsSkipped = 0;
 
@@ -1549,6 +1556,7 @@ export async function applyBatchApproval(
       // Skip if user explicitly skipped
       if (dec?.skip) {
         rowsSkipped++;
+        if (rowPreview.heldForReview) rowsHeldForReview++;
         storeItemsSkipped++;
         continue;
       }
@@ -1702,6 +1710,7 @@ export async function applyBatchApproval(
         }
       }
       if (reliableCode) reliableCodeItemIds.set(reliableCode, resolvedItemId);
+      if (rowPreview.heldForReview && !resolvedItemId) rowsHeldForReview++;
 
       // A separate pack variant is related for catalog review but never used as
       // this source code's identity. Store symmetric edges so either inventory
@@ -2028,6 +2037,7 @@ export async function applyBatchApproval(
       locationsLinked,
       vendorItemsCreated,
       rowsSkipped,
+      rowsHeldForReview,
       rowsProcessed,
       storeItemsCreated,
       storeItemsReactivated,

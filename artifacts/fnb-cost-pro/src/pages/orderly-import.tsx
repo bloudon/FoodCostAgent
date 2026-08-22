@@ -152,6 +152,9 @@ export interface RowPreview {
   itemMatch: MatchResult;
   vendorMatch: { vendorId: string | null; isNew: boolean; confidence: string; requiresReview: boolean };
   locationMatch: { locationId: string | null; isNew: boolean; normalizedName: string };
+  /** Derived by the API using the same blank-code rule used during approval. */
+  heldForReview: boolean;
+  holdReason: 'blank_item_code' | null;
 }
 
 export interface ResolutionPreview {
@@ -201,6 +204,7 @@ export interface ApprovalResult {
   locationsLinked: number;
   vendorItemsCreated: number;
   rowsSkipped: number;
+  rowsHeldForReview: number;
   rowsProcessed: number;
   storeItemsCreated: number;
   storeItemsReactivated: number;
@@ -1325,7 +1329,9 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
         <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
         <h2 className="text-xl font-semibold">Import Approved</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          All rows have been committed to your inventory catalog.
+          {result.rowsHeldForReview > 0
+            ? `${result.rowsHeldForReview.toLocaleString()} blank-code ${result.rowsHeldForReview === 1 ? "row remains" : "rows remain"} held and unlinked; the rest of the import was committed.`
+            : "All rows have been committed to your inventory catalog."}
         </p>
       </div>
 
@@ -1348,6 +1354,7 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
         {[
           { label: "Rows processed", value: result.rowsProcessed },
           { label: "Rows skipped", value: result.rowsSkipped },
+          { label: "Rows held for review", value: result.rowsHeldForReview },
           { label: "Items created", value: result.itemsCreated },
           { label: "Items linked", value: result.itemsLinked },
           { label: "Categories assigned", value: result.categoriesCreated },

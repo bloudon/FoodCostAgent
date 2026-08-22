@@ -423,6 +423,22 @@ export interface RowResolution {
   sourceItemCode?: string | null;
 }
 
+export type HoldReason = 'blank_item_code';
+
+/**
+ * Returns the reason a staged row remains held instead of creating or
+ * auto-linking an item. This is deliberately narrower than "requiresReview":
+ * coded unresolved rows are valid create candidates, while blank-code rows
+ * cannot safely establish a new identity.
+ */
+export function getHoldReason(
+  itemCodeStatus: string | null | undefined,
+  itemMatch: Pick<MatchResult, 'matchedId' | 'requiresReview'>,
+): HoldReason | null {
+  const unresolved = itemMatch.matchedId == null || itemMatch.requiresReview;
+  return itemCodeStatus === 'blank' && unresolved ? 'blank_item_code' : null;
+}
+
 export interface ResolutionSummary {
   totalRows: number;
 
@@ -527,7 +543,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
       rowsMatchedSafe++;
     }
     if (unresolved) {
-      if (row.itemCodeStatus === 'blank') {
+      if (getHoldReason(row.itemCodeStatus, m)) {
         itemsHeldForReview++;
       } else {
         const code = row.itemCodeStatus === 'valid' ? row.sourceItemCode?.trim() : null;

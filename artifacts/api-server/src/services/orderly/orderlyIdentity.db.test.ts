@@ -577,14 +577,101 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     const preview = await runResolutionPreview(batchId, ID.company);
     expect(preview.identitySummary.blankCodeRows).toBe(2);
     expect(preview.identitySummary.blankCodeUnresolved).toBe(2);
+    expect(preview.summary.itemsHeldForReview).toBe(2);
+    expect(preview.rows.map(row => ({
+      heldForReview: row.heldForReview,
+      holdReason: row.holdReason,
+    }))).toEqual([
+      { heldForReview: true, holdReason: 'blank_item_code' },
+      { heldForReview: true, holdReason: 'blank_item_code' },
+    ]);
 
     const result = await applyBatchApproval(batchId, approvalAuth);
     expect(result.itemsCreated).toBe(0);
+    expect(result.rowsHeldForReview).toBe(2);
     const rows = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, batchId));
     expect(rows.map(row => row.resolvedInventoryItemId)).toEqual([null, null]);
+  });
+
+  it('allows explicit links for held ambiguous and fuzzy blank-code rows while leaving an unchosen row held', async () => {
+    const unitId = await eachUnitId();
+    const [ambiguousA] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: ID.company,
+        name: `Held Ambiguous ${RUN}`,
+        unitId,
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+    await db.insert(inventoryItems).values({
+      companyId: ID.company,
+      name: `Held Ambiguous ${RUN}`,
+      unitId,
+      caseSize: 6,
+      pricePerUnit: 30,
+      avgCostPerUnit: 30,
+      active: 1,
+      yieldPercent: 100,
+    });
+    const [fuzzyCandidate] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: ID.company,
+        name: `Held Fuzzy ${RUN} Special Variant`,
+        unitId,
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+
+    const batchId = await stageBatch([
+      { code: null, description: `Held Ambiguous ${RUN}`, location: 'Member Lounge' },
+      { code: null, description: `Held Fuzzy ${RUN}`, location: 'Pool Cafe' },
+      { code: null, description: `Held Unlinked Evidence ${RUN}`, location: 'Main Kitchen' },
+    ], '2026-09-15');
+    const preview = await runResolutionPreview(batchId, ID.company);
+    const ambiguousRow = preview.rows.find(row => (
+      row.itemMatch.confidence === 'ambiguous' && row.itemMatch.candidateIds.includes(ambiguousA.id)
+    ));
+    const fuzzyRow = preview.rows.find(row => (
+      row.itemMatch.strategy === 'fuzzy' && row.itemMatch.matchedId === fuzzyCandidate.id
+    ));
+    const unlinkedRow = preview.rows.find(row => row.cleanedDescription === `Held Unlinked Evidence ${RUN}`);
+
+    expect(ambiguousRow?.heldForReview).toBe(true);
+    expect(fuzzyRow?.heldForReview).toBe(true);
+    expect(unlinkedRow?.heldForReview).toBe(true);
+
+    const result = await applyBatchApproval(batchId, approvalAuth, [
+      { rowIndex: ambiguousRow!.rowIndex, inventoryItemId: ambiguousA.id },
+      { rowIndex: fuzzyRow!.rowIndex, inventoryItemId: fuzzyCandidate.id },
+    ]);
+    expect(result.itemsCreated).toBe(0);
+    expect(result.itemsLinked).toBe(2);
+    expect(result.rowsHeldForReview).toBe(1);
+
+    const rows = await db
+      .select({
+        rowIndex: inventoryImportRows.rowIndex,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const resolvedByIndex = new Map(rows.map(row => [row.rowIndex, row.resolvedInventoryItemId]));
+    expect(resolvedByIndex.get(ambiguousRow!.rowIndex)).toBe(ambiguousA.id);
+    expect(resolvedByIndex.get(fuzzyRow!.rowIndex)).toBe(fuzzyCandidate.id);
+    expect(resolvedByIndex.get(unlinkedRow!.rowIndex)).toBeNull();
   });
 
   it('returns a review conflict for incompatible same-code evidence and reports same-location duplicates separately', async () => {

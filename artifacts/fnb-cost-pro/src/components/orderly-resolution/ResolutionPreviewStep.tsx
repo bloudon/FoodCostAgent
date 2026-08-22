@@ -52,7 +52,6 @@ import {
 } from "lucide-react";
 import {
   rowConfidenceKey,
-  isHeldForReview,
   uniqueCategories as computeUniqueCategories,
   applyFilters,
   toggleSetValue,
@@ -197,6 +196,39 @@ function PackComparison({
   );
 }
 
+function HeldRowDetails({ row }: { row: RowPreview }) {
+  const matchNeedsConfirmation = row.itemMatch.requiresReview;
+  return (
+    <div
+      className="border-b border-amber-200 bg-amber-50/70 px-4 py-4 text-amber-950"
+      data-testid={`held-row-details-${row.rowIndex}`}
+    >
+      <div className="flex items-start gap-2">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold">Held for review — blank Item Code</h4>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+            This row has no usable Item Code, so Orderly cannot create a new item from it.
+            {matchNeedsConfirmation
+              ? " Its suggested match also requires confirmation; it stays unlinked unless you explicitly choose an existing item below."
+              : " It will remain unlinked when this import is approved unless a safe existing match is available."}
+          </p>
+        </div>
+      </div>
+      <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="rounded border border-amber-200 bg-background/70 p-2">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">Item Code evidence</dt>
+          <dd className="mt-0.5 font-mono font-semibold">{row.sourceItemCode?.trim() || "Blank / not provided"}</dd>
+        </div>
+        <div className="rounded border border-amber-200 bg-background/70 p-2">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">Source description</dt>
+          <dd className="mt-0.5 font-semibold">{row.cleanedDescription?.trim() || "Blank / not provided"}</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 // ─── Candidate picker (for ambiguous / likely / possibleRecode rows) ───
 
 function CandidatePicker({
@@ -255,6 +287,8 @@ function CandidatePicker({
     const recodeDecision = isRecodeDecision(decision) ? decision : undefined;
     const isLink = recodeDecision?.action === "link_existing";
     const isCreateNew = recodeDecision?.action === "create_variant";
+    const isHeld = row.heldForReview;
+    const isLeftUnlinked = isHeld && decision === null;
     const targetId = match.possibleRecodeMatchedId ?? possibleRecodeItem.id;
     
     const isCompatible = packCompatibility === 'compatible';
@@ -262,7 +296,9 @@ function CandidatePicker({
     const isUnknown = packCompatibility === 'unknown';
 
     return (
-      <div className="px-4 py-4 space-y-4 bg-muted/20 border-t border-border">
+      <>
+        {isHeld && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-4 bg-muted/20 border-t border-border">
         <div className="flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
           <div>
@@ -288,7 +324,7 @@ function CandidatePicker({
             disabled={isIncompatible}
             onClick={() => onDecision(
               row.rowIndex,
-              isLink ? undefined : { action: "link_existing", inventoryItemId: targetId },
+              isHeld ? targetId : isLink ? undefined : { action: "link_existing", inventoryItemId: targetId },
             )}
             badge={
               isCompatible ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Compatible</Badge> :
@@ -296,73 +332,127 @@ function CandidatePicker({
               isUnknown ? <Badge className="bg-slate-200 text-slate-800 border-slate-300">Unknown</Badge> : null
             }
           />
-          <button
-            onClick={() => onDecision(
-              row.rowIndex,
-              isCreateNew ? undefined : { action: "create_variant", comparableInventoryItemId: targetId },
-            )}
-            className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-              isCreateNew
-                ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isCreateNew ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
-               {isCreateNew && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
-            </div>
-            <div>
-              <div className="font-semibold flex items-center gap-1.5">
-                <PlusCircle className="h-4 w-4 text-muted-foreground" />
-                Create as separate variant
+          {isHeld ? (
+            <button
+              onClick={() => onDecision(row.rowIndex, null)}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isLeftUnlinked
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-border bg-card hover:bg-accent/50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isLeftUnlinked ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                {isLeftUnlinked && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Establish a new item record. Do this if the pack size or product fundamentally changed.
-              </p>
-            </div>
-          </button>
+              <div>
+                <div className="font-semibold">Leave unlinked</div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Keep this blank-code row held for review. No new item will be created.
+                </p>
+              </div>
+            </button>
+          ) : (
+            <button
+              onClick={() => onDecision(
+                row.rowIndex,
+                isCreateNew ? undefined : { action: "create_variant", comparableInventoryItemId: targetId },
+              )}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isCreateNew
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-border bg-card hover:bg-accent/50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isCreateNew ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                 {isCreateNew && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+              </div>
+              <div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <PlusCircle className="h-4 w-4 text-muted-foreground" />
+                  Create as separate variant
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Establish a new item record. Do this if the pack size or product fundamentally changed.
+                </p>
+              </div>
+            </button>
+          )}
         </div>
-
-      </div>
+        </div>
+      </>
     );
   }
 
   // Handle Ambiguous
   if (confidence === "ambiguous") {
-    const resolvedId = hasOverride && !isRecodeDecision(decision) ? decision : undefined;
+    const isHeld = row.heldForReview;
+    const explicitLink = typeof decision === "string" ? decision : undefined;
+    const resolvedId = isHeld
+      ? explicitLink
+      : hasOverride && !isRecodeDecision(decision)
+        ? decision
+        : undefined;
+    const isLeftUnlinked = isHeld && decision === null;
     return (
-      <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
-        <p className="text-sm font-medium text-foreground">
-          {candidates.length} items matched — pick one to link, or create a new item:
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {candidates.map(c => (
-            <ItemChip
-              key={c.id}
-              item={c}
-              selected={resolvedId === c.id}
-              onClick={() => onDecision(row.rowIndex, resolvedId === c.id ? undefined : c.id)}
-            />
-          ))}
-          <button
-            onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
-            className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
-              resolvedId === null
-                ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${resolvedId === null ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
-               {resolvedId === null && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
-            </div>
-            <span className="font-medium">Create new item record</span>
-          </button>
-        </div>
-        {!hasOverride && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-             <Info className="h-3.5 w-3.5" /> No selection will result in a new item upon approval.
+      <>
+        {row.heldForReview && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
+          <p className="text-sm font-medium text-foreground">
+            {isHeld
+              ? `${candidates.length} items matched — pick one to link, or leave this row unlinked:`
+              : `${candidates.length} items matched — pick one to link, or create a new item:`}
           </p>
-        )}
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {candidates.map(c => (
+              <ItemChip
+                key={c.id}
+                item={c}
+                selected={resolvedId === c.id}
+                onClick={() => onDecision(
+                  row.rowIndex,
+                  isHeld
+                    ? c.id
+                    : resolvedId === c.id ? undefined : c.id,
+                )}
+              />
+            ))}
+            {isHeld ? (
+              <button
+                onClick={() => onDecision(row.rowIndex, null)}
+                className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                  isLeftUnlinked
+                    ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isLeftUnlinked ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                   {isLeftUnlinked && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+                </div>
+                <span className="font-medium">Leave unlinked</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
+                className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                  resolvedId === null
+                    ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${resolvedId === null ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                   {resolvedId === null && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+                </div>
+                <span className="font-medium">Create new item record</span>
+              </button>
+            )}
+          </div>
+          {!hasOverride && !isHeld && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+               <Info className="h-3.5 w-3.5" /> No selection will result in a new item upon approval.
+            </p>
+          )}
+        </div>
+      </>
     );
   }
 
@@ -370,44 +460,70 @@ function CandidatePicker({
   if (confidence === "medium" || confidence === "low") {
     const item = matchedItem;
     if (!item) return null;
+    const isHeld = row.heldForReview;
+    const isExplicitLink = typeof decision === "string";
     const isCreateNew = hasOverride && !isRecodeDecision(decision) && decision === null;
+    const isLeftUnlinked = isHeld && decision === null;
     return (
-      <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-foreground">
-            Auto-matched by {confidence === "medium" ? "name similarity" : "fuzzy match"}. Confirm or override:
-          </p>
-        </div>
-        <div className="flex flex-col md:flex-row items-start gap-3">
-          <div className="flex-1 w-full">
-            <ItemChip
-              item={item}
-              selected={!isCreateNew}
-              onClick={() => onDecision(row.rowIndex, undefined)}
-            />
+      <>
+        {row.heldForReview && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">
+              {isHeld
+                ? `Suggested by ${confidence === "medium" ? "name similarity" : "fuzzy match"}. Choose the existing item to link, or leave this row unlinked:`
+                : `Auto-matched by ${confidence === "medium" ? "name similarity" : "fuzzy match"}. Confirm or override:`}
+            </p>
           </div>
-          <button
-            onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
-            className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-              isCreateNew
-                ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            {isCreateNew ? <><Undo2 className="h-4 w-4" /> Revert to matched</> : <><PlusCircle className="h-4 w-4" /> Create new instead</>}
-          </button>
-        </div>
-        {row.caseQuantity != null && item.caseSize != null && Math.abs(row.caseQuantity - item.caseSize) > 0.01 && (
-          <div className="text-xs text-amber-700 bg-amber-50/50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>Pack size differs: import has <strong>{row.caseQuantity}</strong>, catalog item has <strong>{item.caseSize}</strong></span>
+          <div className="flex flex-col md:flex-row items-start gap-3">
+            <div className="flex-1 w-full">
+              <ItemChip
+                item={item}
+                selected={isHeld ? isExplicitLink : !isCreateNew}
+                onClick={() => onDecision(
+                  row.rowIndex,
+                  isHeld
+                    ? item.id
+                    : undefined,
+                )}
+              />
+            </div>
+            {isHeld ? (
+              <button
+                onClick={() => onDecision(row.rowIndex, null)}
+                className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  isLeftUnlinked
+                    ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                Leave unlinked
+              </button>
+            ) : (
+              <button
+                onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
+                className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  isCreateNew
+                    ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                {isCreateNew ? <><Undo2 className="h-4 w-4" /> Revert to matched</> : <><PlusCircle className="h-4 w-4" /> Create new instead</>}
+              </button>
+            )}
           </div>
-        )}
-      </div>
+          {row.caseQuantity != null && item.caseSize != null && Math.abs(row.caseQuantity - item.caseSize) > 0.01 && (
+            <div className="text-xs text-amber-700 bg-amber-50/50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Pack size differs: import has <strong>{row.caseQuantity}</strong>, catalog item has <strong>{item.caseSize}</strong></span>
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
-  return null;
+  return row.heldForReview ? <HeldRowDetails row={row} /> : null;
 }
 
 // ─── Step: Resolution preview ─────────────────────────────────────────────────
@@ -645,10 +761,23 @@ export function ResolutionPreviewStep({
               <span className="text-sm font-semibold text-foreground">New Items</span>
             </div>
             <div className="text-3xl font-bold text-foreground">{s.itemsWillCreate.toLocaleString()}</div>
-            <div className="text-xs font-medium text-muted-foreground mt-1">
-              Will be created
-              {s.itemsHeldForReview > 0 && <span className="text-amber-600 ml-1">({s.itemsHeldForReview.toLocaleString()} held for review)</span>}
-            </div>
+            <div className="text-xs font-medium text-muted-foreground mt-1">Will be created</div>
+            {s.itemsHeldForReview > 0 ? (
+              <button
+                type="button"
+                className="mt-3 flex w-full items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                onClick={() => {
+                  setSelectedCategories(new Set());
+                  setSelectedConfidences(new Set(["held"]));
+                  setCurrentPage(0);
+                }}
+              >
+                <span className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" /> Held for review</span>
+                <span>{s.itemsHeldForReview.toLocaleString()} rows</span>
+              </button>
+            ) : (
+              <div className="mt-3 text-xs text-muted-foreground">No rows are held for review</div>
+            )}
           </CardContent>
         </Card>
 
@@ -824,7 +953,7 @@ export function ResolutionPreviewStep({
           const uniqueCategories = computeUniqueCategories(preview.rows);
 
           const confidenceLevels: { key: string; label: string }[] = [
-             { key: "held",      label: `Held — no Item Code (${preview.rows.filter(isHeldForReview).length.toLocaleString()})` },
+            { key: "held",      label: "Held for review" },
             { key: "recode",    label: "Re-code?"  },
             { key: "high",      label: "Matched"   },
             { key: "medium",    label: "Likely"    },
@@ -834,7 +963,6 @@ export function ResolutionPreviewStep({
           ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
 
           const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
-           const heldRowCount = preview.rows.filter(isHeldForReview).length;
 
           const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
           const safePage = Math.min(currentPage, Math.max(0, totalPages - 1));
@@ -846,27 +974,6 @@ export function ResolutionPreviewStep({
           return (
             <div className="bg-card border rounded-lg shadow-sm">
               <div className="p-4 border-b space-y-4 bg-muted/10">
-                {heldRowCount > 0 && (
-                  <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                      <span>
-                        <strong>
-                          {heldRowCount.toLocaleString()} {heldRowCount === 1 ? "row is" : "rows are"} held
-                        </strong>{" "}
-                        because their Orderly Item Code is blank.
-                        They will not create inventory items until reviewed.
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedCategories(new Set()); setSelectedConfidences(new Set(["held"])); setCurrentPage(0); }}
-                      className="whitespace-nowrap font-semibold text-amber-800 underline decoration-dotted underline-offset-2 hover:text-amber-950"
-                    >
-                      Show held rows
-                    </button>
-                  </div>
-                )}
                 <div className="flex flex-col md:flex-row md:items-start gap-4 justify-between">
                   <div className="space-y-3">
                     {/* Category filter */}
@@ -937,7 +1044,7 @@ export function ResolutionPreviewStep({
                     {filteredRows.length === 0
                       ? "No matching rows"
                       : isFiltered
-                        ? `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${filteredRows.length.toLocaleString()} matching`
+                        ? `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
                         : `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${s.totalRows.toLocaleString()}`
                     }
                   </div>
@@ -974,8 +1081,7 @@ export function ResolutionPreviewStep({
                       </TableRow>
                     ) : (
                       displayRows.map((row) => {
-                        const needsReview = row.itemMatch.requiresReview || row.itemMatch.possibleRecode;
-                        const heldForReview = isHeldForReview(row);
+                        const needsReview = row.heldForReview || row.itemMatch.requiresReview || row.itemMatch.possibleRecode;
                         const isExpanded = expandedRows.has(row.rowIndex);
                         const decision = rowDecisions.get(row.rowIndex);
                         const hasOverride = rowDecisions.has(row.rowIndex);
@@ -1001,6 +1107,11 @@ export function ResolutionPreviewStep({
                                 {row.sourceItemCode && (
                                   <div className="text-[10px] text-muted-foreground font-normal mt-0.5 font-mono">
                                     {row.sourceItemCode}
+                                  </div>
+                                )}
+                                {row.heldForReview && (
+                                  <div className="mt-1 text-[10px] font-medium text-amber-700">
+                                    Item Code: blank
                                   </div>
                                 )}
                               </TableCell>
@@ -1039,15 +1150,13 @@ export function ResolutionPreviewStep({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col items-start gap-1.5">
-                                  {heldForReview ? (
+                                  {row.heldForReview ? (
                                     <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Held</Badge>
                                   ) : (
                                     <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
                                   )}
-                                  {heldForReview && (
-                                    <span className="text-[10px] font-medium text-amber-700">
-                                      Blank Item Code — manual review
-                                    </span>
+                                  {row.heldForReview && (
+                                    <span className="text-[10px] font-medium text-amber-700">Blank Item Code</span>
                                   )}
                                   
                                   {hasOverride && (
@@ -1055,7 +1164,9 @@ export function ResolutionPreviewStep({
                                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-background text-foreground shadow-sm">
                                          {isRecodeDecision(decision)
                                            ? decision.action === "create_variant" ? "→ Separate Variant" : "→ Link Existing"
-                                           : decision === null ? "→ Create New" : "→ Link Existing"}
+                                            : decision === null
+                                              ? row.heldForReview ? "→ Leave Unlinked" : "→ Create New"
+                                              : "→ Link Existing"}
                                       </Badge>
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setDecision(row.rowIndex, undefined); }}

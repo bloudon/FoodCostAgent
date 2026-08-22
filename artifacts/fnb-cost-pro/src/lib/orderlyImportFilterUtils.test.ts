@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   rowConfidenceKey,
-  isHeldForReview,
   uniqueCategories,
   applyFilters,
   toggleSetValue,
@@ -43,36 +42,10 @@ function makeLargeFixture(): RowPreviewLike[] {
 // ─── rowConfidenceKey ─────────────────────────────────────────────────────────
 
 describe("rowConfidenceKey", () => {
-  it('returns "held" for an unresolved row with a blank Item Code', () => {
-    const row: RowPreviewLike = {
-      sourceCategory: "Wine",
-      itemCodeStatus: "blank",
-      itemMatch: {
-        strategy: "none",
-        confidence: "none",
-        matchedId: null,
-        requiresReview: false,
-      },
-    };
-
-    expect(isHeldForReview(row)).toBe(true);
+  it('returns "held" before any match confidence for a server-held row', () => {
+    const row = makeRow("Wine", "fuzzy", "low");
+    row.heldForReview = true;
     expect(rowConfidenceKey(row)).toBe("held");
-  });
-
-  it('does not hold a blank-code row that already has a safe existing match', () => {
-    const row: RowPreviewLike = {
-      sourceCategory: "Wine",
-      itemCodeStatus: "blank",
-      itemMatch: {
-        strategy: "name_pack",
-        confidence: "high",
-        matchedId: "item-1",
-        requiresReview: false,
-      },
-    };
-
-    expect(isHeldForReview(row)).toBe(false);
-    expect(rowConfidenceKey(row)).toBe("high");
   });
 
   it('returns "new" when strategy is "none"', () => {
@@ -210,6 +183,15 @@ describe("applyFilters", () => {
     const result = applyFilters(rows, new Set(), new Set(["new"]));
     expect(result).toHaveLength(1);
     expect(result[0].itemMatch.strategy).toBe("none");
+  });
+
+  it('filters the exact server-held row population separately from create candidates', () => {
+    const heldRow = makeRow("Wine", "none", "none");
+    heldRow.heldForReview = true;
+    const rowsWithHeld = [...rows, heldRow];
+
+    expect(applyFilters(rowsWithHeld, new Set(), new Set(["held"]))).toEqual([heldRow]);
+    expect(applyFilters(rowsWithHeld, new Set(), new Set(["new"]))).not.toContain(heldRow);
   });
 
   it("combines category and confidence filters with AND logic", () => {

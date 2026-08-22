@@ -7,12 +7,11 @@
 
 export interface RowPreviewLike {
   sourceCategory: string | null;
-  itemCodeStatus?: string | null;
+  /** Server-derived from the same fail-closed rule used by approval. */
+  heldForReview?: boolean;
   itemMatch: {
     strategy: string;
     confidence: string;
-    matchedId?: string | null;
-    requiresReview?: boolean;
     possibleRecode?: boolean;
     possibleRecodeMatchedId?: string | null;
     possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
@@ -20,23 +19,15 @@ export interface RowPreviewLike {
 }
 
 /**
- * A held row is unresolved and has no source Item Code to use as a safe
- * identity. Blank-code rows that already have a safe match are not held.
- */
-export function isHeldForReview(row: RowPreviewLike): boolean {
-  const unresolved = row.itemMatch.matchedId == null || row.itemMatch.requiresReview === true;
-  return row.itemCodeStatus === "blank" && unresolved;
-}
-
-/**
  * Returns the canonical confidence key used by both the filter chips and the
  * filteredRows predicate.  Mirrors the `confidenceBadge` display logic.
  *
- * "recode" takes priority — a row flagged as a possible re-code is shown
- * exclusively under the "Re-code" filter chip, not under "Likely" or "New".
+ * "held" and "recode" take priority — their rows are shown exclusively under
+ * the corresponding action filter instead of also appearing as "New" or a
+ * confidence level.
  */
 export function rowConfidenceKey(row: RowPreviewLike): string {
-  if (isHeldForReview(row)) return "held";
+  if (row.heldForReview) return "held";
   if (row.itemMatch.possibleRecode) return "recode";
   if (row.itemMatch.strategy === "none") return "new";
   return row.itemMatch.confidence; // "high" | "medium" | "low" | "ambiguous"
