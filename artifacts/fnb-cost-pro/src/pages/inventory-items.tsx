@@ -57,6 +57,7 @@ type InventoryItemDisplay = {
   manufacturer: string | null;
   categoryId: string | null;
   category: string | null;
+  internalItemNumber: number | null;
   pluSku: string;
   pricePerUnit: number;
   avgCostPerUnit: number;
@@ -233,6 +234,7 @@ export default function InventoryItems() {
     const searchLower = search.toLowerCase();
     const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
       item.manufacturer?.toLowerCase().includes(searchLower) ||
+      item.internalItemNumber?.toString().includes(searchLower) ||
       item.pluSku?.toLowerCase().includes(searchLower) ||
       item.vendorSkus?.some(sku => sku.toLowerCase().includes(searchLower));
     const matchesLocation = selectedLocation === "all" || 
@@ -463,7 +465,11 @@ export default function InventoryItems() {
                                 </Badge>
                               )}
                             </div>
-                            <div className="text-sm text-muted-foreground">{item.pluSku}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {item.internalItemNumber != null && `FnB #${item.internalItemNumber}`}
+                              {item.internalItemNumber != null && item.pluSku && " · "}
+                              {item.pluSku}
+                            </div>
                           </div>
                         </div>
                       </TableCell>

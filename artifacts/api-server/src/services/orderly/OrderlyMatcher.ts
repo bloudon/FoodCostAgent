@@ -69,6 +69,7 @@ export interface MatchResult {
 export interface MatchableItem {
   id: string;
   name: string;
+  internalItemNumber?: number | null;
   pluSku?: string | null;
   caseSize?: number | null;
 }

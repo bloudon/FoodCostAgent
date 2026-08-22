@@ -432,6 +432,37 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.getByText((text) => text.includes("of 5 rows"))).toBeInTheDocument();
   });
 
+  it("uses identity classification instead of the legacy held count in the summary card", async () => {
+    currentPreview = {
+      ...HELD_PREVIEW,
+      summary: {
+        ...HELD_PREVIEW.summary,
+        itemsHeldForReview: 5, // includes one coded conflict beyond blank-code evidence
+      },
+      identitySummary: {
+        uniqueIdentityGroups: 3,
+        identityGroupsResolvedToExisting: 0,
+        identityGroupsNewCandidates: 1,
+        identityGroupsRequiringReview: 2,
+        blankCodeGroupsWithCodedSibling: 1,
+        blankCodeGroupsAutoResolved: 1,
+        alternateIdentityMatches: 0,
+        blankCodeClassification: {
+          confirmed: { rows: 1, valueTotal: 10 },
+          reviewable: { rows: 1, valueTotal: 10 },
+          conflicted: { rows: 1, valueTotal: 10 },
+          held: { rows: 2, valueTotal: 20 },
+        },
+      },
+    };
+    renderStep();
+
+    expect(
+      await screen.findByRole("button", { name: /Held for review.*5 rows/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Held for review.*4 rows/ })).not.toBeInTheDocument();
+  });
+
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
     renderStep();
     // Wait for chip then click
@@ -542,7 +573,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
 
     fireEvent.click(screen.getByText("Held").closest("tr")!);
     expect(await screen.findByTestId("held-row-details-6")).toHaveTextContent("Blank / not provided");
-    expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("cannot create a new item");
+    expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("assigns a permanent internal item number");
   });
 
   it("marks an ambiguous held row as an explicit existing-item link without offering creation", async () => {

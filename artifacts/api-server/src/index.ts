@@ -9,6 +9,7 @@ import { ensureAccountingClassificationSchema } from "./services/accountingClass
 import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
 import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/historicalSessionUnresolvedRows";
 import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniqueness";
+import { ensureInventoryItemNumberSchema } from "./migrations/inventoryItemNumbers";
 import { db } from "./db";
 
 const rawPort = process.env["PORT"];
@@ -39,6 +40,14 @@ if (Number.isNaN(port) || port <= 0) {
   // back mid-flight. Unlike the fire-and-forget migrations in routes.ts, this is
   // awaited and fatal — serving with this schema absent is a silent trap rather
   // than a degraded feature.
+  try {
+    await ensureInventoryItemNumberSchema(db);
+    logger.info("[Migration] inventory item numbers ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: inventory item number schema initialization failed — refusing to start");
+    process.exit(1);
+  }
+
   try {
     await ensureInventoryItemRemediationSchema(db);
     logger.info("[Migration] inventory item remediation schema ready (supersession + audit)");

@@ -208,16 +208,16 @@ function HeldRowDetails({ row }: { row: RowPreview }) {
       <div className="flex items-start gap-2">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
         <div className="min-w-0">
-          <h4 className="text-sm font-semibold">Held for review — blank Item Code</h4>
+          <h4 className="text-sm font-semibold">Held for review — conflicting item evidence</h4>
           <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-            This row has no usable Item Code, so Orderly cannot create a new item from it.
+            A blank Orderly Item Code is normally fine: FnB Cost Pro assigns a permanent internal item number to a genuinely new product group.
             {matchNeedsConfirmation
-              ? " Its suggested match also requires confirmation; it stays unlinked unless you explicitly choose an existing item below."
-              : " It will remain unlinked when this import is approved unless a safe existing match is available."}
+              ? " This row has competing catalog evidence, so it needs a choice before it can be linked or added."
+              : " This row is missing enough product identity evidence to create a safe internal item number."}
           </p>
           <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
             Choosing an existing item saves this description-and-pack identity for future
-            Orderly imports at this property only. It never links another property.
+            imports at this property only. It never links another property.
           </p>
         </div>
       </div>
@@ -273,6 +273,7 @@ function CandidatePicker({
             {badge && <div>{badge}</div>}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {item.internalItemNumber != null && <span>FnB #: <span className="font-medium text-foreground">{item.internalItemNumber}</span></span>}
             {item.caseSize != null && <span>Pack: <span className="font-medium text-foreground">{item.caseSize}</span></span>}
             {item.pluSku && <span>SKU: <span className="font-medium text-foreground">{item.pluSku}</span></span>}
           </div>
@@ -680,6 +681,9 @@ export function ResolutionPreviewStep({
     conflicted: { rows: 0, valueTotal: 0 },
     held: { rows: 0, valueTotal: 0 },
   };
+  // The summary covers every held row, including coded re-codes and conflicts.
+  // The identity classification is blank-code-only supporting detail.
+  const heldForReviewRows = s.itemsHeldForReview;
   const resolvedRecodeCodes = new Set(
     preview.rows
       .filter(row => {
@@ -778,7 +782,7 @@ export function ResolutionPreviewStep({
             </div>
             <div className="text-3xl font-bold text-foreground">{s.itemsWillCreate.toLocaleString()}</div>
             <div className="text-xs font-medium text-muted-foreground mt-1">Will be created</div>
-            {s.itemsHeldForReview > 0 ? (
+            {heldForReviewRows > 0 ? (
               <button
                 type="button"
                 className="mt-3 flex w-full items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
@@ -789,7 +793,7 @@ export function ResolutionPreviewStep({
                 }}
               >
                 <span className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" /> Held for review</span>
-                <span>{s.itemsHeldForReview.toLocaleString()} rows</span>
+                <span>{heldForReviewRows.toLocaleString()} rows</span>
               </button>
             ) : (
               <div className="mt-3 text-xs text-muted-foreground">No rows are held for review</div>
@@ -1239,7 +1243,7 @@ export function ResolutionPreviewStep({
                                          {isRecodeDecision(decision)
                                            ? decision.action === "create_variant" ? "→ Separate Variant" : "→ Link Existing"
                                             : decision === null
-                                              ? row.heldForReview ? "→ Leave Unlinked" : "→ Create New"
+                                              ? row.heldForReview ? "→ Leave Unlinked" : "→ Create FnB item"
                                               : "→ Link Existing"}
                                       </Badge>
                                       <button

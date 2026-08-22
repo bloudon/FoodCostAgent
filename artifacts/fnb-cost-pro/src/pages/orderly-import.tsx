@@ -98,6 +98,7 @@ export interface ImportBatch {
 export interface CandidateDetail {
   id: string;
   name: string;
+  internalItemNumber?: number | null;
   pluSku?: string | null;
   caseSize?: number | null;
   /** Storage locations this item has previously been counted at (from import history). */

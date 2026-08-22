@@ -345,6 +345,15 @@ export const inventoryItems = pgTable("inventory_items", {
   categoryId: varchar("category_id"), // Reference to categories table
   accountingAccountId: varchar("accounting_account_id"), // Optional current-account exception; managed by accounting service
   pluSku: text("plu_sku"),
+  /**
+   * FnB-owned, human-facing catalog number. This is assigned to every
+   * inventory item regardless of the import or POS system that introduced it.
+   * External identifiers stay in their own source-specific mapping tables.
+   */
+  // The startup migration makes this non-null with a database default. The
+  // schema stays nullable so isolated test schemas created before migrations
+  // can still exercise unrelated catalog behavior.
+  internalItemNumber: integer("internal_item_number"),
   /** Canonical inventory unit — the stable, vendor-independent unit for all
    *  cost calculations (e.g. LB, FL OZ, EA). Never changes because a vendor
    *  changes their pack format. price_per_unit and avg_cost_per_unit are
@@ -391,12 +400,15 @@ export const inventoryItems = pgTable("inventory_items", {
   // Optimize company-scoped inventory queries
   companyActiveIdx: index("inventory_items_company_active_idx").on(table.companyId, table.active),
   companyNameIdx: index("inventory_items_company_name_idx").on(table.companyId, table.name),
+  internalNumberIdx: uniqueIndex("inventory_items_internal_number_uniq").on(table.internalItemNumber),
   supersededIdx: index("inventory_items_superseded_idx").on(table.supersededByItemId),
 }));
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
   id: true,
   updatedAt: true,
+  // FnB-owned catalog number: assigned only by the database sequence.
+  internalItemNumber: true,
   accountingAccountId: true,
   // Supersession is written only by the remediation service.
   supersededByItemId: true,

@@ -345,4 +345,15 @@ describe('parseOrderlyWorkbook (Bay Hill June 2026)', () => {
     );
     expect(hasPackData).toBe(true);
   });
+
+  it('parses an ordinary 1/1 750ML bottle as complete three-tier evidence', () => {
+    const bottle = result.rows.find(row => row.rawData['Pack Size'] === '1/1 750ML');
+    expect(bottle).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packParseStatus: 'ok',
+    });
+  });
 });

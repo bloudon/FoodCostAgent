@@ -62,9 +62,9 @@ import {
   buildOrderlyIdentityGroup,
   deriveOrderlyAlternateSourceId,
 } from './orderlyIdentity';
+import { parseOrderlyPackSize } from './OrderlyParser';
 import type { InventoryImportRow } from '@workspace/db';
 import { storage } from '../../storage';
-import { getOrCreateVendorItem, VendorItemPackConflictError } from '../vendorItemResolution';
 import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -269,8 +269,58 @@ function assessCandidatePackCompatibility(
   };
 }
 
-function isReliableItemCode(row: Pick<IdentityPreviewRow, 'sourceItemCode' | 'itemCodeStatus'>): boolean {
+function isReliableItemCode(row: {
+  sourceItemCode?: string | null;
+  itemCodeStatus?: string | null;
+}): boolean {
   return row.itemCodeStatus === 'valid' && Boolean(row.sourceItemCode?.trim());
+}
+
+/**
+ * A blank physical-location row can only follow a coded sibling when that
+ * sibling has a single, non-review identity path. The sibling may resolve to an
+ * existing item or be the reliable row that creates this group's one new item
+ * during approval; in either case the blank row is not independently held.
+ */
+function hasSafeCodedSibling(
+  row: Pick<IdentityPreviewRow, 'rowIndex'>,
+  group: IdentityPreviewRow[],
+): boolean {
+  const safeCodes = new Set(
+    group
+      .filter(sibling => (
+        sibling.rowIndex !== row.rowIndex &&
+        isReliableItemCode(sibling) &&
+        !sibling.itemMatch.requiresReview &&
+        !sibling.itemMatch.possibleRecode
+      ))
+      .map(sibling => sibling.sourceItemCode!.trim()),
+  );
+  return safeCodes.size === 1;
+}
+
+/**
+ * An Orderly code is optional input. A blank-code product group that has a
+ * usable derived identity and no competing catalog candidate receives one new
+ * FnB-owned internal item number on approval. Every physical location row in
+ * that group shares the resulting canonical item.
+ */
+function canCreateInternalItemForBlankGroup(
+  row: Pick<IdentityPreviewRow, 'itemCodeStatus' | 'identityGroupKey'>,
+  group: IdentityPreviewRow[],
+): boolean {
+  return (
+    row.itemCodeStatus === 'blank' &&
+    Boolean(row.identityGroupKey) &&
+    group.length > 0 &&
+    group.every(sibling => (
+      sibling.itemCodeStatus === 'blank' &&
+      sibling.itemMatch.strategy === 'none' &&
+      sibling.itemMatch.matchedId == null &&
+      !sibling.itemMatch.requiresReview &&
+      !sibling.itemMatch.possibleRecode
+    ))
+  );
 }
 
 function normalizedUnit(unit: string | null): string {
@@ -403,9 +453,6 @@ function buildIdentitySummary(rows: IdentityPreviewRow[]) {
     if (hasPartialCountNotation) packNotationCompatibilityWarnings++;
   }
 
-  const blankCodeSafelyMatched = blankRows.filter(
-    row => !row.itemMatch.requiresReview && row.itemMatch.matchedId != null,
-  ).length;
   const identityGroups = new Map<string, IdentityPreviewRow[]>();
   for (const row of rows) {
     if (!row.identityGroupKey) continue;
@@ -423,24 +470,16 @@ function buildIdentitySummary(rows: IdentityPreviewRow[]) {
   for (const row of blankRows) {
     const valueTotal = row.totalCost ?? 0;
     const group = row.identityGroupKey ? identityGroups.get(row.identityGroupKey) ?? [] : [];
-    const safeSiblingCodes = new Set(
-      group
-        .filter(sibling => (
-          sibling.itemCodeStatus === 'valid' &&
-          isReliableItemCode(sibling) &&
-          !sibling.itemMatch.requiresReview
-        ))
-        .map(sibling => sibling.sourceItemCode!.trim()),
-    );
-    const followsOneSafeCodedSibling = safeSiblingCodes.size === 1;
+    const followsOneSafeCodedSibling = hasSafeCodedSibling(row, group);
 
     if (
       (!row.itemMatch.requiresReview && row.itemMatch.matchedId != null) ||
-      followsOneSafeCodedSibling
+      followsOneSafeCodedSibling ||
+      canCreateInternalItemForBlankGroup(row, group)
     ) {
-      // A blank row may share the canonical item created or resolved from one
-      // reliable code in the same evidence group. It may never create an item
-      // by itself, and two different sibling codes remain a conflict below.
+      // A blank group either follows one safe coded sibling or receives one
+      // FnB-owned internal item number on approval. Multiple coded identities
+      // and catalog candidates remain review cases below.
       blankCodeClassification.confirmed.rows++;
       blankCodeClassification.confirmed.valueTotal += valueTotal;
     } else if (row.itemMatch.confidence === 'ambiguous' && row.itemMatch.candidateIds.length > 1) {
@@ -474,8 +513,11 @@ function buildIdentitySummary(rows: IdentityPreviewRow[]) {
     reliableCodesWithoutPackSizeReconciliationEvidence: reliableGroups.size,
     conflictingReliableCodeGroups,
     blankCodeRows: blankRows.length,
-    blankCodeSafelyMatched,
-    blankCodeUnresolved: blankRows.length - blankCodeSafelyMatched,
+    // Group confirmation is the approval-aligned definition of a safe blank
+    // row. A direct catalog match, a single reliable coded sibling, or one
+    // deterministic new internal catalog item are valid paths.
+    blankCodeSafelyMatched: blankCodeClassification.confirmed.rows,
+    blankCodeUnresolved: blankRows.length - blankCodeClassification.confirmed.rows,
     uniquePhysicalLocations: physicalLocations.size,
     locationCountRowsPreserved: rows.length,
     sameCodeCrossLocationGroups,
@@ -650,7 +692,13 @@ export async function runResolutionPreview(
         )
         .limit(1),
       db
-        .select({ id: inventoryItems.id, name: inventoryItems.name, pluSku: inventoryItems.pluSku, caseSize: inventoryItems.caseSize })
+        .select({
+          id: inventoryItems.id,
+          name: inventoryItems.name,
+          internalItemNumber: inventoryItems.internalItemNumber,
+          pluSku: inventoryItems.pluSku,
+          caseSize: inventoryItems.caseSize,
+        })
         .from(inventoryItems)
         // @ts-ignore
         .where(and(eq(inventoryItems.companyId, companyId), eq(inventoryItems.active, 1))),
@@ -693,6 +741,19 @@ export async function runResolutionPreview(
         // @ts-ignore
         .where(eq(inventoryItemLocationAssignments.companyId, companyId)),
     ]);
+
+  // Earlier parser versions did not understand Orderly's complete three-tier
+  // packs (for example, "1/1 750ML"). Rehydrate only previously unparseable
+  // persisted rows from their immutable raw source value so existing staged
+  // batches use the same safe geometry rules as newly uploaded workbooks.
+  for (const row of batchRows) {
+    if (row.packParseStatus !== 'unparseable') continue;
+    const rawPack = (row.rawData as Record<string, unknown> | null)?.['Pack Size'];
+    if (typeof rawPack !== 'string') continue;
+    const parsedPack = parseOrderlyPackSize(rawPack);
+    if (parsedPack.packParseStatus !== 'ok') continue;
+    Object.assign(row, parsedPack);
+  }
 
   if (!batchMeta[0]) throw new Error('Batch not found or not accessible');
 
@@ -881,7 +942,20 @@ export async function runResolutionPreview(
         )
         .map(resolution => resolution.itemMatch.matchedId!),
     );
-    if (safeItemIds.size === 1) {
+    const safeCodedSiblingCodes = new Set(
+      groupResolutions
+        .filter(resolution => (
+          isReliableItemCode(resolution) &&
+          !resolution.itemMatch.requiresReview &&
+          !resolution.itemMatch.possibleRecode
+        ))
+        .map(resolution => resolution.sourceItemCode!.trim()),
+    );
+    // Same-workbook matching is evidence from exactly one reliable Item Code,
+    // never from a blank row that happened to find a catalog candidate. This
+    // keeps a blank-only group fail-closed unless it has its own confirmed
+    // alternate mapping or an explicit reviewer decision.
+    if (safeItemIds.size === 1 && safeCodedSiblingCodes.size === 1) {
       const [matchedId] = [...safeItemIds];
       for (const resolution of groupResolutions) {
         if (
@@ -909,21 +983,31 @@ export async function runResolutionPreview(
         };
       }
       identityGroupStatus.set(groupKey, 'review_required');
+    } else if (safeItemIds.size === 1) {
+      // A blank-only direct match or several coded identities that happen to
+      // point at one item is not the one-sibling evidence required to lift
+      // another blank row out of review.
+      identityGroupStatus.set(groupKey, 'review_required');
     } else if (groupResolutions.some(resolution => resolution.itemCodeStatus === 'valid')) {
+      identityGroupStatus.set(groupKey, 'new_candidate');
+    } else if (groupResolutions.every(resolution => (
+      resolution.itemCodeStatus === 'blank' &&
+      resolution.itemMatch.strategy === 'none' &&
+      resolution.itemMatch.matchedId == null &&
+      !resolution.itemMatch.requiresReview
+    ))) {
       identityGroupStatus.set(groupKey, 'new_candidate');
     } else {
       identityGroupStatus.set(groupKey, 'review_required');
     }
   }
 
-  const summary = computeResolutionSummary(resolutions);
-
   // Build id → item lookup so preview rows can carry candidate details
   // (name / caseSize / pluSku / knownLocations) without an extra DB round-trip.
   // @ts-ignore
   const itemById = new Map(existingItems.map(item => [item.id, item]));
 
-  const rows = batchRows.map((row: InventoryImportRow, i: number) => {
+  const rows: ResolutionPreviewResult['rows'] = batchRows.map((row: InventoryImportRow, i: number) => {
     const rawMatch = resolutions[i].itemMatch;
     const candidates = rawMatch.candidateIds
       .map(id => {
@@ -983,6 +1067,35 @@ export async function runResolutionPreview(
     };
   });
   const identitySummary = buildIdentitySummary(rows);
+  // `computeResolutionSummary` handles generic row matching. Identity groups add
+  // one important approval guarantee: a blank location sibling can follow the
+  // group's reliable coded row, including when that coded row creates the one
+  // new canonical item. Reflect that resolved group evidence in the row state
+  // before calculating the user-facing held total.
+  const blankOnlyGroupsCreatingInternalItems = new Set<string>();
+  for (const row of rows) {
+    if (row.itemCodeStatus !== 'blank' || !row.identityGroupKey) continue;
+    const group = rows.filter(candidate => candidate.identityGroupKey === row.identityGroupKey);
+    if (
+      hasSafeCodedSibling(row, group) ||
+      canCreateInternalItemForBlankGroup(row, group)
+    ) {
+      row.heldForReview = false;
+      row.holdReason = null;
+    }
+    if (canCreateInternalItemForBlankGroup(row, group)) {
+      blankOnlyGroupsCreatingInternalItems.add(row.identityGroupKey);
+    }
+  }
+  const summary = computeResolutionSummary(resolutions);
+  // The preview must use the same row state as approval and the Held filter.
+  // In particular, do not count a blank row that safely follows one coded
+  // sibling as an independent unresolved review item.
+  summary.itemsHeldForReview = rows.filter(row => row.heldForReview).length;
+  // Generic matching sees blank rows as unresolved. Approval instead creates
+  // one FnB item for each safe blank-only identity group, not once per
+  // location row, so make the preview's creation card use that same rule.
+  summary.itemsWillCreate += blankOnlyGroupsCreatingInternalItems.size;
 
   return {
     batchId,
@@ -1529,6 +1642,27 @@ export async function applyBatchApproval(
     }
     identityGroupExistingItemIds.set(row.identityGroupKey, row.itemMatch.matchedId);
   }
+  // Approval may only let a blank physical row inherit a group-created or
+  // group-resolved item when exactly one reliable coded sibling supports it.
+  // This is deliberately stricter than “same normalized description”: multiple
+  // distinct codes leave the blank row held until a reviewer supplies its own
+  // decision or direct alternate mapping evidence.
+  const previewIdentityGroups = new Map<string, ResolutionPreviewResult['rows']>();
+  for (const row of preview.rows) {
+    if (!row.identityGroupKey) continue;
+    const group = previewIdentityGroups.get(row.identityGroupKey) ?? [];
+    group.push(row);
+    previewIdentityGroups.set(row.identityGroupKey, group);
+  }
+  const blankGroupMayFollowCodedSibling = new Map<string, boolean>();
+  const blankGroupMayCreateInternalItem = new Map<string, boolean>();
+  for (const [groupKey, group] of previewIdentityGroups) {
+    const blankRow = group.find(row => row.itemCodeStatus === 'blank');
+    if (blankRow) {
+      blankGroupMayFollowCodedSibling.set(groupKey, hasSafeCodedSibling(blankRow, group));
+      blankGroupMayCreateInternalItem.set(groupKey, canCreateInternalItemForBlankGroup(blankRow, group));
+    }
+  }
 
   // ── Fetch "each" unit for new item creation ──────────────────────────────
   const eachUnitId = await getEachUnitId();
@@ -1799,6 +1933,19 @@ export async function applyBatchApproval(
       const identityGroupExistingItemId = identityGroupKey
         ? (identityGroupExistingItemIds.get(identityGroupKey) ?? null)
         : null;
+      const blankRowMayUseGroupEvidence = rowPreview.itemCodeStatus !== 'blank' || (
+        identityGroupKey != null &&
+        (
+          blankGroupMayFollowCodedSibling.get(identityGroupKey) === true ||
+          blankGroupMayCreateInternalItem.get(identityGroupKey) === true
+        )
+      );
+      const hasExplicitBlankDecision = rowPreview.itemCodeStatus === 'blank' &&
+        identityDecision?.inventoryItemId !== undefined;
+      const hasDirectBlankMatch = rowPreview.itemCodeStatus === 'blank' &&
+        !rowPreview.itemMatch.requiresReview &&
+        rowPreview.itemMatch.matchedId != null &&
+        rowPreview.itemMatch.strategy !== 'same_workbook_identity';
 
       const insertNewItem = async (): Promise<string> => {
         const name = rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
@@ -1825,7 +1972,18 @@ export async function applyBatchApproval(
        * code, or a newly created item.
        */
       const resolveRowCandidate = async (): Promise<{ itemId: string | null; created: boolean }> => {
-        if (identityGroupKey && identityGroupItemIds.has(identityGroupKey)) {
+        // Keep the apply path aligned with the read-only preview: a blank row
+        // with several coded siblings cannot silently borrow whichever group
+        // item happened to be processed first.
+        if (
+          rowPreview.itemCodeStatus === 'blank' &&
+          !blankRowMayUseGroupEvidence &&
+          !hasExplicitBlankDecision &&
+          !hasDirectBlankMatch
+        ) {
+          return { itemId: null, created: false };
+        }
+        if (identityGroupKey && blankRowMayUseGroupEvidence && identityGroupItemIds.has(identityGroupKey)) {
           return { itemId: identityGroupItemIds.get(identityGroupKey) ?? null, created: false };
         }
         if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
@@ -1846,7 +2004,7 @@ export async function applyBatchApproval(
           }
           return { itemId: cachedItemId, created: false };
         }
-        if (identityGroupExistingItemId) {
+        if (identityGroupExistingItemId && blankRowMayUseGroupEvidence) {
           return { itemId: identityGroupExistingItemId, created: false };
         }
         if (groupedExistingItemId) {
@@ -1885,9 +2043,14 @@ export async function applyBatchApproval(
           return { itemId: m.matchedId, created: false };
         }
         if (rowPreview.itemCodeStatus === 'blank') {
-          // Blank codes are legitimate Orderly source rows, but no synthetic
-          // identity may be invented from them. Keep the staged evidence
-          // reviewable/unresolved unless a safe existing match was found.
+          if (
+            identityGroupKey != null &&
+            blankGroupMayCreateInternalItem.get(identityGroupKey) === true
+          ) {
+            return { itemId: await insertNewItem(), created: true };
+          }
+          // Preserve review for true conflicts: multiple possible catalog
+          // targets, incompatible product evidence, or missing identity data.
           return { itemId: null, created: false };
         }
         // No confident auto-link (no match, fuzzy, or ambiguous) → new item.
@@ -1937,7 +2100,9 @@ export async function applyBatchApproval(
         }
       }
       if (reliableCode) reliableCodeItemIds.set(reliableCode, resolvedItemId);
-      if (identityGroupKey) identityGroupItemIds.set(identityGroupKey, resolvedItemId);
+      if (identityGroupKey && blankRowMayUseGroupEvidence) {
+        identityGroupItemIds.set(identityGroupKey, resolvedItemId);
+      }
       if (rowPreview.heldForReview && !resolvedItemId) rowsHeldForReview++;
 
       // A separate pack variant is related for catalog review but never used as
@@ -2141,36 +2306,13 @@ export async function applyBatchApproval(
       }
 
       // ── Vendor-item link ─────────────────────────────────────────────
-      if (resolvedItemId && resolvedVendorId) {
-        // Shared get-or-create: resolves to the existing row on the
-        // (vendor, item, SKU) identity instead of the old blind
-        // onConflictDoNothing (which was a silent no-op before the
-        // uniqueness index existed and produced thousands of duplicates).
-        let resolution;
-        try {
-          resolution = await getOrCreateVendorItem(tx as unknown as typeof db, {
-            vendorId: resolvedVendorId,
-            inventoryItemId: resolvedItemId,
-            vendorSku: rowPreview.sourceItemCode,
-            purchaseUnitId: eachUnitId,
-            caseSize: rowPreview.caseQuantity ?? 1,
-            lastPrice: rowPreview.packagePrice ?? 0,
-            lastCasePrice: rowPreview.packagePrice ?? 0,
-            priceSource: 'order_guide_import',
-            pricedAt: new Date(),
-            active: 1,
-          });
-        } catch (error) {
-          if (error instanceof VendorItemPackConflictError) {
-            throw new ImportApprovalError(
-              'CONFLICT',
-              `Vendor SKU ${rowPreview.sourceItemCode ?? '(blank)'} already exists with an incompatible case size; create or review a separate pack variant instead.`,
-            );
-          }
-          throw error;
-        }
-        if (resolution.created) vendorItemsCreated++;
-      }
+      // An Orderly inventory export identifies its supplier but does not carry
+      // a vendor-stable product SKU. Its Item Code is property-scoped source
+      // evidence, so turning it into a vendor_items record would either claim
+      // a false vendor identity or collapse distinct packs onto one record.
+      // Source-to-catalog identity is persisted exclusively in
+      // inventory_item_external_mappings; invoice/order-guide evidence may
+      // establish real vendor-item products later.
 
       // ── Location resolution ──────────────────────────────────────────
       if (rowPreview.locationMatch.normalizedName) {

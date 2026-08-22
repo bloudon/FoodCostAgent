@@ -62,6 +62,7 @@ type InventoryItem = {
   name: string;
   manufacturer: string | null;
   categoryId: string | null;
+  internalItemNumber: number | null;
   pluSku: string;
   unitId: string;
   barcode: string | null;
@@ -1899,7 +1900,9 @@ export default function InventoryItemDetail() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {item.manufacturer && <span>{item.manufacturer}{item.pluSku ? " | " : ""}</span>}{item.pluSku ? `PLU/SKU: ${item.pluSku}` : ""}
+              {item.manufacturer && <span>{item.manufacturer}{(item.pluSku || item.internalItemNumber != null) ? " | " : ""}</span>}
+              {item.internalItemNumber != null && <span>FnB #{item.internalItemNumber}{item.pluSku ? " | " : ""}</span>}
+              {item.pluSku ? `PLU/SKU: ${item.pluSku}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">

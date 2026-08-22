@@ -161,7 +161,7 @@ export interface OrderlyParseResult {
 
 // ─── Pack size parsing ────────────────────────────────────────────────────────
 
-function parseOrderlyPackSize(packSizeStr: string): Pick<
+export function parseOrderlyPackSize(packSizeStr: string): Pick<
   OrderlyRow,
   'caseQuantity' | 'innerPackQuantity' | 'baseUnitQuantity' | 'caseUnit' | 'innerUnit' | 'baseUnit' | 'packParseStatus'
 > {
@@ -177,9 +177,36 @@ function parseOrderlyPackSize(packSizeStr: string): Pick<
 
   if (!packSizeStr || !packSizeStr.trim()) return empty;
 
+  // Orderly commonly exports a three-tier physical pack as
+  // "case/inner base-unit", e.g. "1/1 750ML" or "12/1 750ML".
+  // This is complete evidence: 1 case × 1 bottle × 750 mL, not an
+  // ambiguous variant or an unparseable free-text value.
+  const threeTier = packSizeStr.trim().match(
+    /^([\d.]+)\s*\/\s*([\d.]+)\s+([\d.]+)\s*([A-Za-z]+)$/i,
+  );
+  if (threeTier) {
+    const caseQuantity = Number(threeTier[1]);
+    const innerPackQuantity = Number(threeTier[2]);
+    const baseUnitQuantity = Number(threeTier[3]);
+    if (
+      Number.isFinite(caseQuantity) &&
+      Number.isFinite(innerPackQuantity) &&
+      Number.isFinite(baseUnitQuantity)
+    ) {
+      return {
+        caseQuantity,
+        innerPackQuantity,
+        baseUnitQuantity,
+        caseUnit: 'Case',
+        innerUnit: 'Pack',
+        baseUnit: threeTier[4].toUpperCase(),
+        packParseStatus: 'ok',
+      };
+    }
+  }
+
   // Reuse the existing CsvOrderGuide compound pack parser
-  // e.g. "12/1 750ML" → {caseSize: 12, innerPack: 1, unit: "750ML"}
-  //      "6/2.5 LB"   → {caseSize: 6, innerPack: 2.5, unit: "LB"}
+  // e.g. "6/2.5 LB" → {caseSize: 6, innerPack: 2.5, unit: "LB"}
   const parsed = parseCompoundPackSize(packSizeStr.trim());
   if (!parsed) return empty;
 
