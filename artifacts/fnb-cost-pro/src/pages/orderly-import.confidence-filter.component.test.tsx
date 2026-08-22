@@ -336,6 +336,46 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.getByText("Parsed")).toBeInTheDocument();
   });
 
+  it("explains and filters rows held because their Item Code is blank", async () => {
+    const heldRow: RowPreview = {
+      ...makePreviewRow(6, "Wine", "none", "none"),
+      sourceItemCode: null,
+      itemCodeStatus: "blank",
+      packSizeRaw: "1/1 750ML",
+    };
+    const heldPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: MOCK_ROWS.length + 1,
+      summary: {
+        ...MOCK_PREVIEW.summary,
+        totalRows: MOCK_ROWS.length + 1,
+        itemsHeldForReview: 1,
+      },
+      rows: [...MOCK_ROWS, heldRow],
+    };
+
+    mockUseQuery.mockImplementation((opts: any) => {
+      const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
+      if (typeof key === "string" && key.includes("resolution-preview")) {
+        return { data: heldPreview, isLoading: false, isError: false };
+      }
+      return { data: undefined, isLoading: false, isError: false };
+    });
+
+    renderStep();
+
+    expect(await screen.findByText("1 row is held")).toBeInTheDocument();
+    expect(screen.getByText(/because their Orderly Item Code is blank/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show held rows" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Held — no Item Code (1)" })).toBeInTheDocument();
+      expect(screen.getByText("Blank Item Code — manual review")).toBeInTheDocument();
+      expect(screen.getByText((text) => text.includes("of 1 matching"))).toBeInTheDocument();
+    });
+  });
+
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
     renderStep();
     // Wait for chip then click

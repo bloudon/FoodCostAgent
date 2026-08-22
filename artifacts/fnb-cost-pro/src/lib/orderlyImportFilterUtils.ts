@@ -7,13 +7,25 @@
 
 export interface RowPreviewLike {
   sourceCategory: string | null;
+  itemCodeStatus?: string | null;
   itemMatch: {
     strategy: string;
     confidence: string;
+    matchedId?: string | null;
+    requiresReview?: boolean;
     possibleRecode?: boolean;
     possibleRecodeMatchedId?: string | null;
     possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
   };
+}
+
+/**
+ * A held row is unresolved and has no source Item Code to use as a safe
+ * identity. Blank-code rows that already have a safe match are not held.
+ */
+export function isHeldForReview(row: RowPreviewLike): boolean {
+  const unresolved = row.itemMatch.matchedId == null || row.itemMatch.requiresReview === true;
+  return row.itemCodeStatus === "blank" && unresolved;
 }
 
 /**
@@ -24,6 +36,7 @@ export interface RowPreviewLike {
  * exclusively under the "Re-code" filter chip, not under "Likely" or "New".
  */
 export function rowConfidenceKey(row: RowPreviewLike): string {
+  if (isHeldForReview(row)) return "held";
   if (row.itemMatch.possibleRecode) return "recode";
   if (row.itemMatch.strategy === "none") return "new";
   return row.itemMatch.confidence; // "high" | "medium" | "low" | "ambiguous"

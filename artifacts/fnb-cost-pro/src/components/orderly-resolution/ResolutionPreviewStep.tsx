@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import {
   rowConfidenceKey,
+  isHeldForReview,
   uniqueCategories as computeUniqueCategories,
   applyFilters,
   toggleSetValue,
@@ -823,6 +824,7 @@ export function ResolutionPreviewStep({
           const uniqueCategories = computeUniqueCategories(preview.rows);
 
           const confidenceLevels: { key: string; label: string }[] = [
+             { key: "held",      label: `Held — no Item Code (${preview.rows.filter(isHeldForReview).length.toLocaleString()})` },
             { key: "recode",    label: "Re-code?"  },
             { key: "high",      label: "Matched"   },
             { key: "medium",    label: "Likely"    },
@@ -832,6 +834,7 @@ export function ResolutionPreviewStep({
           ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
 
           const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
+           const heldRowCount = preview.rows.filter(isHeldForReview).length;
 
           const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
           const safePage = Math.min(currentPage, Math.max(0, totalPages - 1));
@@ -843,6 +846,27 @@ export function ResolutionPreviewStep({
           return (
             <div className="bg-card border rounded-lg shadow-sm">
               <div className="p-4 border-b space-y-4 bg-muted/10">
+                {heldRowCount > 0 && (
+                  <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <span>
+                        <strong>
+                          {heldRowCount.toLocaleString()} {heldRowCount === 1 ? "row is" : "rows are"} held
+                        </strong>{" "}
+                        because their Orderly Item Code is blank.
+                        They will not create inventory items until reviewed.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedCategories(new Set()); setSelectedConfidences(new Set(["held"])); setCurrentPage(0); }}
+                      className="whitespace-nowrap font-semibold text-amber-800 underline decoration-dotted underline-offset-2 hover:text-amber-950"
+                    >
+                      Show held rows
+                    </button>
+                  </div>
+                )}
                 <div className="flex flex-col md:flex-row md:items-start gap-4 justify-between">
                   <div className="space-y-3">
                     {/* Category filter */}
@@ -951,6 +975,7 @@ export function ResolutionPreviewStep({
                     ) : (
                       displayRows.map((row) => {
                         const needsReview = row.itemMatch.requiresReview || row.itemMatch.possibleRecode;
+                        const heldForReview = isHeldForReview(row);
                         const isExpanded = expandedRows.has(row.rowIndex);
                         const decision = rowDecisions.get(row.rowIndex);
                         const hasOverride = rowDecisions.has(row.rowIndex);
@@ -1014,7 +1039,16 @@ export function ResolutionPreviewStep({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col items-start gap-1.5">
-                                  <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                  {heldForReview ? (
+                                    <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Held</Badge>
+                                  ) : (
+                                    <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                  )}
+                                  {heldForReview && (
+                                    <span className="text-[10px] font-medium text-amber-700">
+                                      Blank Item Code — manual review
+                                    </span>
+                                  )}
                                   
                                   {hasOverride && (
                                     <div className="flex items-center gap-1.5">

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   rowConfidenceKey,
+  isHeldForReview,
   uniqueCategories,
   applyFilters,
   toggleSetValue,
@@ -42,6 +43,38 @@ function makeLargeFixture(): RowPreviewLike[] {
 // ─── rowConfidenceKey ─────────────────────────────────────────────────────────
 
 describe("rowConfidenceKey", () => {
+  it('returns "held" for an unresolved row with a blank Item Code', () => {
+    const row: RowPreviewLike = {
+      sourceCategory: "Wine",
+      itemCodeStatus: "blank",
+      itemMatch: {
+        strategy: "none",
+        confidence: "none",
+        matchedId: null,
+        requiresReview: false,
+      },
+    };
+
+    expect(isHeldForReview(row)).toBe(true);
+    expect(rowConfidenceKey(row)).toBe("held");
+  });
+
+  it('does not hold a blank-code row that already has a safe existing match', () => {
+    const row: RowPreviewLike = {
+      sourceCategory: "Wine",
+      itemCodeStatus: "blank",
+      itemMatch: {
+        strategy: "name_pack",
+        confidence: "high",
+        matchedId: "item-1",
+        requiresReview: false,
+      },
+    };
+
+    expect(isHeldForReview(row)).toBe(false);
+    expect(rowConfidenceKey(row)).toBe("high");
+  });
+
   it('returns "new" when strategy is "none"', () => {
     expect(rowConfidenceKey(makeRow(null, "none", "none"))).toBe("new");
   });
