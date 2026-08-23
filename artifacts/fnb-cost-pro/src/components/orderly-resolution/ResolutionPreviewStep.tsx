@@ -697,6 +697,13 @@ export function ResolutionPreviewStep({
       .filter(row => row.itemMatch.possibleRecode && row.sourceItemCode)
       .map(row => row.sourceItemCode!.trim()),
   )).filter(code => !resolvedRecodeCodes.has(code));
+  const resolvedHeldRows = preview.rows.filter(row => row.heldForReview && rowDecisions.has(row.rowIndex)).length;
+  const remainingHeldRows = Math.max(0, heldForReviewRows - resolvedHeldRows);
+  const recodeCodeCount = new Set(
+    preview.rows
+      .filter(row => row.itemMatch.possibleRecode && row.sourceItemCode)
+      .map(row => row.sourceItemCode!.trim()),
+  ).size;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
   const approvalDisabled = approving || hasPendingRecodeDecisions || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
@@ -782,7 +789,7 @@ export function ResolutionPreviewStep({
             </div>
             <div className="text-3xl font-bold text-foreground">{s.itemsWillCreate.toLocaleString()}</div>
             <div className="text-xs font-medium text-muted-foreground mt-1">Will be created</div>
-            {heldForReviewRows > 0 ? (
+            {remainingHeldRows > 0 ? (
               <button
                 type="button"
                 className="mt-3 flex w-full items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
@@ -793,8 +800,13 @@ export function ResolutionPreviewStep({
                 }}
               >
                 <span className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" /> Held for review</span>
-                <span>{heldForReviewRows.toLocaleString()} rows</span>
+                <span>{remainingHeldRows.toLocaleString()} remaining</span>
               </button>
+            ) : resolvedHeldRows > 0 ? (
+              <div className="mt-3 flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-800">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                {resolvedHeldRows.toLocaleString()} held {resolvedHeldRows === 1 ? "row decision" : "row decisions"} recorded
+              </div>
             ) : (
               <div className="mt-3 text-xs text-muted-foreground">No rows are held for review</div>
             )}
@@ -946,8 +958,8 @@ export function ResolutionPreviewStep({
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <AlertTitle className="text-amber-800 font-semibold">Possible Re-codes Detected</AlertTitle>
                     <AlertDescription className="text-amber-700">
-                      <strong>{s.itemsRecode} {s.itemsRecode === 1 ? "row has" : "rows have"}</strong> a new item code but the name perfectly matches an existing catalog item. 
-                      Use the <Badge variant="outline" className="bg-white px-1 py-0 shadow-sm text-[10px] mx-1">Re-code?</Badge> filter below to review and verify pack sizes to avoid creating duplicates.
+                      <strong>{s.itemsRecode} {s.itemsRecode === 1 ? "row has" : "rows have"}</strong> a new item code but the name perfectly matches an existing catalog item.
+                      These are grouped into <strong>{recodeCodeCount} product decisions</strong>, not {s.itemsRecode} separate decisions. Use the <Badge variant="outline" className="bg-white px-1 py-0 shadow-sm text-[10px] mx-1">Re-code?</Badge> filter below to review and verify pack sizes to avoid creating duplicates.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -1016,6 +1028,86 @@ export function ResolutionPreviewStep({
           </div>
         );
       })()}
+
+      {/* Plain-language review progress */}
+      <Alert className={
+        remainingHeldRows > 0 || hasPendingRecodeDecisions
+          ? "border-amber-200 bg-amber-50 shadow-sm"
+          : "border-emerald-200 bg-emerald-50 shadow-sm"
+      }>
+        {remainingHeldRows > 0 || hasPendingRecodeDecisions
+          ? <AlertTriangle className="h-5 w-5 text-amber-600" />
+          : <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+        <AlertTitle className={
+          remainingHeldRows > 0 || hasPendingRecodeDecisions
+            ? "text-amber-900 font-semibold"
+            : "text-emerald-900 font-semibold"
+        }>
+          {remainingHeldRows > 0 || hasPendingRecodeDecisions
+            ? "A few decisions remain"
+            : "Review complete"}
+        </AlertTitle>
+        <AlertDescription className={
+          remainingHeldRows > 0 || hasPendingRecodeDecisions
+            ? "text-amber-800"
+            : "text-emerald-800"
+        }>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              {remainingHeldRows > 0 && (
+                <p>
+                  <strong>{remainingHeldRows} held {remainingHeldRows === 1 ? "row" : "rows"}</strong> still needs a choice.
+                </p>
+              )}
+              {hasPendingRecodeDecisions && (
+                <p>
+                  <strong>{pendingRecodeCodes.length} re-code {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
+                </p>
+              )}
+              {!remainingHeldRows && !hasPendingRecodeDecisions && (
+                <p>Every item needing a decision has one. You can approve the import.</p>
+              )}
+              {resolvedHeldRows > 0 && (
+                <p className="mt-1 text-xs opacity-80">
+                  {resolvedHeldRows} held {resolvedHeldRows === 1 ? "row" : "rows"} already has a recorded choice.
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {remainingHeldRows > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["held"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show held row
+                </Button>
+              )}
+              {!remainingHeldRows && hasPendingRecodeDecisions && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["recode"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show re-codes
+                </Button>
+              )}
+            </div>
+          </div>
+        </AlertDescription>
+      </Alert>
 
       {/* Row table */}
       <div className="space-y-4">
@@ -1228,13 +1320,19 @@ export function ResolutionPreviewStep({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col items-start gap-1.5">
-                                  {row.heldForReview ? (
-                                    <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Held</Badge>
+                                  {row.heldForReview && hasOverride ? (
+                                    <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 shadow-none font-medium">
+                                      <CheckCircle2 className="mr-1 h-3 w-3" />Decision recorded
+                                    </Badge>
+                                  ) : row.heldForReview ? (
+                                    <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Needs decision</Badge>
                                   ) : (
                                     <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
                                   )}
                                   {row.heldForReview && (
-                                    <span className="text-[10px] font-medium text-amber-700">Blank Item Code</span>
+                                    <span className={`text-[10px] font-medium ${hasOverride ? "text-emerald-700" : "text-amber-700"}`}>
+                                      {hasOverride ? "Originally held · choice will apply on approval" : "Blank Item Code"}
+                                    </span>
                                   )}
                                   
                                   {hasOverride && (
@@ -1351,8 +1449,14 @@ export function ResolutionPreviewStep({
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-20 md:left-[var(--sidebar-width)] md:data-[state=collapsed]:left-[var(--sidebar-width-icon)] transition-[left]">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="text-sm font-medium text-muted-foreground hidden md:block">
-            {hasPendingRecodeDecisions
-              ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} still required.`
+            {hasPendingRecodeDecisions && remainingHeldRows > 0
+              ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} and ${remainingHeldRows} held ${remainingHeldRows === 1 ? "row" : "rows"} still need a choice.`
+              : hasPendingRecodeDecisions
+                ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} still required.`
+                : remainingHeldRows > 0
+                  ? `${remainingHeldRows} held ${remainingHeldRows === 1 ? "row" : "rows"} still need a choice.`
+                  : resolvedHeldRows > 0
+                    ? `${resolvedHeldRows} held ${resolvedHeldRows === 1 ? "row decision" : "row decisions"} recorded. Ready to approve.`
               : `You are approving ${s.totalRows.toLocaleString()} rows for ingestion.`}
           </div>
           <Button
