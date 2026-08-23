@@ -1,0 +1,17 @@
+This is a strong, accurate ticket — let me verify the evidence citations against what I actually gathered, and flag the couple of things worth knowing before it goes to build.
+
+Evidence check — accurate, with one honest precision note
+GFs Store/Gordon Food Service: supplier IDs 25636/487, duplicate invoice 963139987, interleaved sequence — all matches exactly what I found, including the literal duplicate invoice number, which is the strongest piece of evidence in the whole set.
+Albert Uster/AUI: IVC1562089 and "embedded in AUI's continuous sequence" — accurate, but worth being precise about how accurate: this one rests on date-range containment (Albert Uster's single invoice falls chronologically within AUI's Feb 2024–Jun 2026 span), not a literal duplicate invoice number like the GFs/Gordon case. It's still solid evidence — a genuinely different vendor wouldn't coincidentally use the same IVC-prefixed numbering format — but it's one notch weaker than the GFs/Gordon proof. Worth Replit knowing that distinction exists between the two "proven" cases, even though both land in the same classification tier.
+Pinkney/RLB: P-prefix vs. plain-number, cutover Aug 30 → Sept 2, 2024 — exact match to what I found, including the specific dates.
+What's done well
+
+The scope separation is exactly right — "Do not merge product records, pack variants, Item Codes, or Orderly packSizeId identities merely because vendor identities are consolidated" directly closes the risk I flagged. This ticket can't accidentally bleed into #1238's territory.
+
+The DB-reconciliation clause is a genuinely good addition I hadn't asked for: "Reconcile the attached source review against the current database snapshot before any write. If invoice identifiers or vendor IDs are absent from the loaded environment, classify the candidate as evidence-pending rather than guessing." This matters because my evidence came from live Orderly, not from FnB's own database — this ticket correctly treats that as source evidence to be verified against FnB's actual records before acting, not as ground truth to blindly execute against. Good instinct by whoever wrote this.
+
+The classification model (proven / likely-needs-review / distinct / insufficient) is the right granularity — it doesn't force every candidate into a binary merge/no-merge decision, which matters once this expands to the full ~55-vendor list where most pairs won't have evidence as clean as these three.
+
+One thing worth confirming, not fixing
+
+The "Relevant files" list includes vendorItemDuplicateMerge.ts, vendorItemDuplicateGate2ApplyCli.ts, vendorItemDuplicateGate2ReadinessCli.ts — naming that suggests a staged readiness-then-apply pattern already exists in the codebase for exactly this kind of consolidation. That's encouraging if true — it means #1239 is extending established, presumably-already-reviewed machinery rather than inventing new merge infrastructure from scratch. I can't confirm what that existing code actually does without a repo look, but it's worth Replit explicitly stating whether #1239 reuses that Gate2 pattern as-is or modifies it — since "we already have a safe two-phase apply mechanism" versus "we're building one" are very different amounts of new-code risk for a ticket that mutates vendor records.
