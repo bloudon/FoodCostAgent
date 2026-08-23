@@ -13,6 +13,12 @@ export interface RowPreviewLike {
     strategy: string;
     confidence: string;
     possibleRecode?: boolean;
+    recodeEvidenceClass?:
+      | "compatible_alternate"
+      | "new_pack_size"
+      | "source_data_conflict"
+      | "pack_evidence_missing"
+      | "unreliable_code";
     possibleRecodeMatchedId?: string | null;
     possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
   };
@@ -27,6 +33,12 @@ export interface RowPreviewLike {
  * confidence level.
  */
 export function rowConfidenceKey(row: RowPreviewLike): string {
+  const evidenceClass = row.itemMatch.recodeEvidenceClass;
+  if (evidenceClass === "source_data_conflict") return "source-conflict";
+  if (evidenceClass === "new_pack_size") return "new-pack-size";
+  if (evidenceClass === "compatible_alternate") return "alternate-code";
+  if (evidenceClass === "unreliable_code") return "unreliable-code";
+  if (evidenceClass === "pack_evidence_missing") return "pack-check";
   if (row.heldForReview) return "held";
   if (row.itemMatch.possibleRecode) return "recode";
   if (row.itemMatch.strategy === "none") return "new";

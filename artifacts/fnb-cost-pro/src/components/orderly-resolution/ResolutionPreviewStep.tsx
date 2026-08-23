@@ -84,8 +84,33 @@ function isRecodeDecision(value: DecisionValue | undefined): value is RecodeDeci
 
 // Helper components for UI
 
-function MatchStatusBadge({ confidence, strategy, possibleRecode }: { confidence: string, strategy: string, possibleRecode?: boolean }) {
-  if (possibleRecode) return <Badge className="bg-amber-50 text-amber-700 border-amber-200 shadow-none font-medium">Re-code?</Badge>;
+function recodeEvidenceLabel(evidenceClass: MatchResult["recodeEvidenceClass"]): string {
+  const labels: Record<NonNullable<MatchResult["recodeEvidenceClass"]>, string> = {
+    compatible_alternate: "Alternate code",
+    new_pack_size: "New pack size",
+    source_data_conflict: "Source conflict",
+    pack_evidence_missing: "Pack check",
+    unreliable_code: "Unreliable code",
+  };
+  return evidenceClass ? labels[evidenceClass] : "Re-code?";
+}
+
+function MatchStatusBadge({ confidence, strategy, possibleRecode, evidenceClass }: {
+  confidence: string;
+  strategy: string;
+  possibleRecode?: boolean;
+  evidenceClass?: MatchResult["recodeEvidenceClass"];
+}) {
+  if (possibleRecode || evidenceClass === "source_data_conflict" || evidenceClass === "unreliable_code") {
+    const tone = evidenceClass === "new_pack_size"
+      ? "bg-violet-50 text-violet-800 border-violet-200"
+      : evidenceClass === "source_data_conflict"
+        ? "bg-red-50 text-red-800 border-red-200"
+        : evidenceClass === "unreliable_code"
+          ? "bg-slate-100 text-slate-800 border-slate-300"
+          : "bg-amber-50 text-amber-700 border-amber-200";
+    return <Badge className={`${tone} shadow-none font-medium`}>{recodeEvidenceLabel(evidenceClass)}</Badge>;
+  }
   if (confidence === "high") return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none font-medium">Matched</Badge>;
   if (confidence === "medium") return <Badge className="bg-blue-50 text-blue-700 border-blue-200 shadow-none font-medium">Likely</Badge>;
   if (confidence === "low") return <Badge className="bg-orange-50 text-orange-700 border-orange-200 shadow-none font-medium">Fuzzy</Badge>;
@@ -94,8 +119,17 @@ function MatchStatusBadge({ confidence, strategy, possibleRecode }: { confidence
   return <Badge variant="outline" className="shadow-none font-medium">{confidence}</Badge>;
 }
 
-function StrategyLabel({ strategy, possibleRecode = false }: { strategy: string; possibleRecode?: boolean }) {
-  if (possibleRecode) return <span className="text-muted-foreground">Same name, new code</span>;
+function StrategyLabel({ strategy, possibleRecode = false, evidenceClass }: {
+  strategy: string;
+  possibleRecode?: boolean;
+  evidenceClass?: MatchResult["recodeEvidenceClass"];
+}) {
+  if (possibleRecode || evidenceClass === "source_data_conflict" || evidenceClass === "unreliable_code") {
+    if (evidenceClass === "new_pack_size") return <span className="text-muted-foreground">Same name, different pack</span>;
+    if (evidenceClass === "source_data_conflict") return <span className="text-muted-foreground">Conflicting source evidence</span>;
+    if (evidenceClass === "unreliable_code") return <span className="text-muted-foreground">Description in code field</span>;
+    return <span className="text-muted-foreground">Same name, new code</span>;
+  }
   const map: Record<string, string> = {
     external_mapping: "Prior mapping",
     alternate_identity: "Prior product identity",
@@ -249,7 +283,18 @@ function CandidatePicker({
   onDecision: (rowIndex: number, value: DecisionValue | undefined) => void;
 }) {
   const match = row.itemMatch;
-  const { confidence, candidates = [], matchedItem, possibleRecode, possibleRecodeItem, packCompatibility, packCompatibilityReason, candidatePackEvidence } = match;
+  const {
+    confidence,
+    candidates = [],
+    matchedItem,
+    possibleRecode,
+    possibleRecodeItem,
+    packCompatibility,
+    packCompatibilityReason,
+    candidatePackEvidence,
+    recodeEvidenceClass,
+    sourceDataConflict,
+  } = match;
 
   function ItemChip({ item, selected, onClick, disabled = false, badge }: { item: CandidateDetail; selected: boolean; onClick: () => void; disabled?: boolean; badge?: React.ReactNode }) {
     return (
@@ -289,6 +334,46 @@ function CandidatePicker({
     );
   }
 
+  if (recodeEvidenceClass === "source_data_conflict") {
+    return (
+      <div className="border-t border-red-200 bg-red-50/70 px-4 py-4 text-red-950">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-700" />
+          <div>
+            <h4 className="text-sm font-semibold">Source data conflict — approval is blocked</h4>
+            <p className="mt-1 text-xs leading-relaxed text-red-900/80">
+              The same vendor and Orderly Item Code appear with different physical pack evidence.
+              Correct or verify the source data before deciding whether this is an existing item or a new pack size.
+            </p>
+            {sourceDataConflict?.reason && (
+              <p className="mt-2 text-xs font-medium text-red-900">Why: {sourceDataConflict.reason}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (recodeEvidenceClass === "unreliable_code") {
+    return (
+      <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-slate-950">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
+          <div>
+            <h4 className="text-sm font-semibold">Unreliable Item Code — manual source review required</h4>
+            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+              This Item Code looks like descriptive text rather than a vendor-stable code. It may help a reviewer,
+              but FnB Cost Pro will not use it to link items or create a permanent Orderly code mapping.
+            </p>
+            <p className="mt-2 text-xs font-medium text-slate-800">
+              Verify the source identifier outside this import, then re-upload or correct the source data.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Handle Possible Recode
   if (possibleRecode && possibleRecodeItem) {
     const recodeDecision = isRecodeDecision(decision) ? decision : undefined;
@@ -301,6 +386,7 @@ function CandidatePicker({
     const isCompatible = packCompatibility === 'compatible';
     const isIncompatible = packCompatibility === 'incompatible';
     const isUnknown = packCompatibility === 'unknown';
+    const linkIsAllowed = isCompatible;
 
     return (
       <>
@@ -309,10 +395,19 @@ function CandidatePicker({
         <div className="flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
           <div>
-            <h4 className="text-sm font-semibold text-foreground">Possible Item Re-code Detected</h4>
+            <h4 className="text-sm font-semibold text-foreground">
+              {recodeEvidenceClass === "new_pack_size"
+                ? "New Pack Size Detected"
+                : isUnknown
+                  ? "Pack Evidence Incomplete"
+                  : "Alternate Item Code Detected"}
+            </h4>
             <p className="text-xs text-muted-foreground mt-1">
-              This row has a new item code, but its name matches an existing catalog item. 
-              Review pack size compatibility below to decide if they are the same product.
+              {recodeEvidenceClass === "new_pack_size"
+                ? "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
+                : isUnknown
+                  ? "The physical pack cannot be verified. Linking is blocked; correct the source evidence or create a separate variant after verification."
+                  : "This row has a new item code, but its name and physical pack match an existing catalog item."}
             </p>
           </div>
         </div>
@@ -328,7 +423,7 @@ function CandidatePicker({
           <ItemChip
             item={possibleRecodeItem}
             selected={isLink === true}
-            disabled={isIncompatible}
+            disabled={!linkIsAllowed}
             onClick={() => onDecision(
               row.rowIndex,
               isHeld ? targetId : isLink ? undefined : { action: "link_existing", inventoryItemId: targetId },
@@ -684,28 +779,37 @@ export function ResolutionPreviewStep({
   // The summary covers every held row, including coded re-codes and conflicts.
   // The identity classification is blank-code-only supporting detail.
   const heldForReviewRows = s.itemsHeldForReview;
+  const recodeSummary = preview.recodeSummary ?? {
+    compatibleAlternates: 0,
+    newPackSizes: 0,
+    sourceDataConflicts: 0,
+    unreliableCodes: 0,
+    packEvidenceMissing: 0,
+  };
+  const actionableRecodeRows = preview.rows.filter(row =>
+    row.itemMatch.possibleRecode &&
+    row.sourceCodeReliability === "stable" &&
+    row.itemMatch.recodeEvidenceClass !== "source_data_conflict",
+  );
   const resolvedRecodeCodes = new Set(
-    preview.rows
+    actionableRecodeRows
       .filter(row => {
         const decision = rowDecisions.get(row.rowIndex);
-        return row.itemMatch.possibleRecode && row.sourceItemCode && isRecodeDecision(decision);
+        return row.sourceItemCode && isRecodeDecision(decision);
       })
       .map(row => row.sourceItemCode!.trim()),
   );
   const pendingRecodeCodes = Array.from(new Set(
-    preview.rows
-      .filter(row => row.itemMatch.possibleRecode && row.sourceItemCode)
+    actionableRecodeRows
+      .filter(row => row.sourceItemCode)
       .map(row => row.sourceItemCode!.trim()),
   )).filter(code => !resolvedRecodeCodes.has(code));
   const resolvedHeldRows = preview.rows.filter(row => row.heldForReview && rowDecisions.has(row.rowIndex)).length;
   const remainingHeldRows = Math.max(0, heldForReviewRows - resolvedHeldRows);
-  const recodeCodeCount = new Set(
-    preview.rows
-      .filter(row => row.itemMatch.possibleRecode && row.sourceItemCode)
-      .map(row => row.sourceItemCode!.trim()),
-  ).size;
+  const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
-  const approvalDisabled = approving || hasPendingRecodeDecisions || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0 || recodeSummary.unreliableCodes > 0;
+  const approvalDisabled = approving || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -845,6 +949,57 @@ export function ResolutionPreviewStep({
           </CardContent>
         </Card>
       </div>
+
+      {(recodeCodeCount > 0 || hasSourceEvidenceBlockers) && (
+        <Card className="border-violet-200 bg-violet-50/30 shadow-sm" data-testid="orderly-pack-size-walkthrough">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-950">
+                  <Package className="h-4 w-4 text-violet-700" />
+                  Item code and pack-size review
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-violet-900/75">
+                  A matching name is not enough. Review the physical pack before deciding whether a new code represents the same item.
+                </p>
+              </div>
+              {recodeSummary.newPackSizes > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["new-pack-size"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
+                </Button>
+              )}
+            </div>
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5">
+                <div className="font-semibold text-emerald-900">1. Same physical pack</div>
+                <div className="mt-1 text-emerald-800/80">{recodeSummary.compatibleAlternates} alternate {recodeSummary.compatibleAlternates === 1 ? "code can" : "codes can"} link to the existing item.</div>
+              </div>
+              <div className="rounded-md border border-violet-200 bg-violet-100/60 p-2.5">
+                <div className="font-semibold text-violet-950">2. New pack size</div>
+                <div className="mt-1 text-violet-900/80">{recodeSummary.newPackSizes} {recodeSummary.newPackSizes === 1 ? "decision requires" : "decisions require"} a separate item variant.</div>
+              </div>
+              <div className="rounded-md border border-red-200 bg-red-50/70 p-2.5">
+                <div className="font-semibold text-red-900">3. Conflicting source packs</div>
+                <div className="mt-1 text-red-800/80">{recodeSummary.sourceDataConflicts} {recodeSummary.sourceDataConflicts === 1 ? "conflict blocks" : "conflicts block"} approval until the source is verified.</div>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                <div className="font-semibold text-slate-900">4. Description in Item Code</div>
+                <div className="mt-1 text-slate-700">{recodeSummary.unreliableCodes} {recodeSummary.unreliableCodes === 1 ? "value needs" : "values need"} source correction; it cannot become a code mapping.</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {preview.identitySummary && (
         <div className="grid gap-4 xl:grid-cols-[1.1fr_1.4fr]">
@@ -1031,24 +1186,24 @@ export function ResolutionPreviewStep({
 
       {/* Plain-language review progress */}
       <Alert className={
-        remainingHeldRows > 0 || hasPendingRecodeDecisions
+        remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
           ? "border-amber-200 bg-amber-50 shadow-sm"
           : "border-emerald-200 bg-emerald-50 shadow-sm"
       }>
-        {remainingHeldRows > 0 || hasPendingRecodeDecisions
+        {remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
           ? <AlertTriangle className="h-5 w-5 text-amber-600" />
           : <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
         <AlertTitle className={
-          remainingHeldRows > 0 || hasPendingRecodeDecisions
+          remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
             ? "text-amber-900 font-semibold"
             : "text-emerald-900 font-semibold"
         }>
-          {remainingHeldRows > 0 || hasPendingRecodeDecisions
+          {remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
             ? "A few decisions remain"
             : "Review complete"}
         </AlertTitle>
         <AlertDescription className={
-          remainingHeldRows > 0 || hasPendingRecodeDecisions
+          remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
             ? "text-amber-800"
             : "text-emerald-800"
         }>
@@ -1061,10 +1216,20 @@ export function ResolutionPreviewStep({
               )}
               {hasPendingRecodeDecisions && (
                 <p>
-                  <strong>{pendingRecodeCodes.length} re-code {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
+                  <strong>{pendingRecodeCodes.length} item-code {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
                 </p>
               )}
-              {!remainingHeldRows && !hasPendingRecodeDecisions && (
+              {recodeSummary.sourceDataConflicts > 0 && (
+                <p>
+                  <strong>{recodeSummary.sourceDataConflicts} source {recodeSummary.sourceDataConflicts === 1 ? "conflict blocks" : "conflicts block"} approval.</strong> Verify the vendor pack evidence before importing.
+                </p>
+              )}
+              {recodeSummary.unreliableCodes > 0 && (
+                <p>
+                  <strong>{recodeSummary.unreliableCodes} descriptive Item Code {recodeSummary.unreliableCodes === 1 ? "needs" : "values need"} correction.</strong> These cannot become permanent mappings.
+                </p>
+              )}
+              {!remainingHeldRows && !hasPendingRecodeDecisions && !hasSourceEvidenceBlockers && (
                 <p>Every item needing a decision has one. You can approve the import.</p>
               )}
               {resolvedHeldRows > 0 && (
@@ -1101,7 +1266,25 @@ export function ResolutionPreviewStep({
                     setCurrentPage(0);
                   }}
                 >
-                  Show re-codes
+                  Show item-code reviews
+                </Button>
+              )}
+              {hasSourceEvidenceBlockers && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set([
+                      ...(recodeSummary.sourceDataConflicts > 0 ? ["source-conflict"] : []),
+                      ...(recodeSummary.unreliableCodes > 0 ? ["unreliable-code"] : []),
+                    ]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show blocked rows
                 </Button>
               )}
             </div>
@@ -1115,13 +1298,18 @@ export function ResolutionPreviewStep({
           const uniqueCategories = computeUniqueCategories(preview.rows);
 
           const confidenceLevels: { key: string; label: string }[] = [
-            { key: "held",      label: "Held for review" },
-            { key: "recode",    label: "Re-code?"  },
-            { key: "high",      label: "Matched"   },
-            { key: "medium",    label: "Likely"    },
-            { key: "low",       label: "Fuzzy"     },
-            { key: "ambiguous", label: "Ambiguous" },
-            { key: "new",       label: "New"       },
+            { key: "held",             label: "Held for review" },
+            { key: "alternate-code",   label: "Alternate code" },
+            { key: "new-pack-size",    label: "New pack size" },
+            { key: "source-conflict",  label: "Source conflict" },
+            { key: "unreliable-code",  label: "Unreliable code" },
+            { key: "pack-check",       label: "Pack check" },
+            { key: "recode",           label: "Other re-code"  },
+            { key: "high",             label: "Matched"   },
+            { key: "medium",           label: "Likely"    },
+            { key: "low",              label: "Fuzzy"     },
+            { key: "ambiguous",        label: "Ambiguous" },
+            { key: "new",              label: "New"       },
           ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
 
           const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
@@ -1327,7 +1515,12 @@ export function ResolutionPreviewStep({
                                   ) : row.heldForReview ? (
                                     <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Needs decision</Badge>
                                   ) : (
-                                    <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                    <MatchStatusBadge
+                                      confidence={row.itemMatch.confidence}
+                                      strategy={row.itemMatch.strategy}
+                                      possibleRecode={row.itemMatch.possibleRecode}
+                                      evidenceClass={row.itemMatch.recodeEvidenceClass}
+                                    />
                                   )}
                                   {row.heldForReview && (
                                     <span className={`text-[10px] font-medium ${hasOverride ? "text-emerald-700" : "text-amber-700"}`}>
@@ -1370,7 +1563,11 @@ export function ResolutionPreviewStep({
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs">
-                                <StrategyLabel strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                    <StrategyLabel
+                                      strategy={row.itemMatch.strategy}
+                                      possibleRecode={row.itemMatch.possibleRecode}
+                                      evidenceClass={row.itemMatch.recodeEvidenceClass}
+                                    />
                               </TableCell>
                             </TableRow>
                             {isExpanded && (

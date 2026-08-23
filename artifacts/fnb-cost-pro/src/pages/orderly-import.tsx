@@ -132,6 +132,16 @@ export interface MatchResult {
   packCompatibility?: 'compatible' | 'incompatible' | 'unknown' | null;
   packCompatibilityReason?: string | null;
   candidatePackEvidence?: PackEvidence | null;
+  recodeEvidenceClass?:
+    | 'compatible_alternate'
+    | 'new_pack_size'
+    | 'source_data_conflict'
+    | 'pack_evidence_missing'
+    | 'unreliable_code';
+  sourceDataConflict?: {
+    rowIndexes: number[];
+    reason: string;
+  };
 }
 
 export interface RowPreview {
@@ -139,6 +149,7 @@ export interface RowPreview {
   storageLocation: string | null;
   sourceItemCode: string | null;
   itemCodeStatus: string | null;
+  sourceCodeReliability: 'stable' | 'pseudo_code' | 'unavailable';
   packSizeRaw: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
@@ -194,6 +205,14 @@ export interface ResolutionPreview {
   newLocations: string[];
 
   newVendors: string[];
+
+  recodeSummary: {
+    compatibleAlternates: number;
+    newPackSizes: number;
+    sourceDataConflicts: number;
+    unreliableCodes: number;
+    packEvidenceMissing: number;
+  };
 
   identitySummary?: {
     uniqueIdentityGroups: number;

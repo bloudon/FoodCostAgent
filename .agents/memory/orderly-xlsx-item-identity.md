@@ -23,6 +23,14 @@ Every reliable-code resolution path — batch cache, group-wide safe match, manu
 
 **How to apply:** when a claim loses the race, only delete the candidate item **if this transaction just created it** and it differs from the winner. Deleting unconditionally destroys a pre-existing catalog item. Guard the delete on a `created` flag, not on a comment promising the invariant.
 
+## Code reliability is a gate before mapping
+
+Only a compact, vendor-code-like XLSX Item Code may create a durable Orderly mapping. Free-text labels or shorthand placed in the Item Code column are review evidence, not identity; they must block approval until corrected and may never create either a raw-code or derived name-and-pack mapping.
+
+**Why:** source exports can put product descriptions into the code field. Treating that prose as a code silently makes a weak name match permanent and prevents later correction.
+
+**How to apply:** classify reliability during preview, return it to the reviewer UI, and enforce the same classification again before every mapping/derived-identity write. Keep source pack contradictions as a separate, pre-transaction approval blocker.
+
 ## Identity stability
 
 Location, month/file, vendor, pricing, par/target, and ordinary count changes never alter core identity. Conflicts stay narrow: materially different product evidence, incompatible case geometry, or incompatible base units.

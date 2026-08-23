@@ -47,6 +47,8 @@ import {
   computeResolutionSummary,
   getHoldReason,
   normalizeForMatch,
+  classifySourceItemCode,
+  isStableSourceItemCode,
   type MatchResult,
   type VendorMatchResult,
   type LocationMatchResult,
@@ -56,6 +58,8 @@ import {
   type MatchableLocation,
   type LocationAssignment,
   type PackEvidence,
+  type SourceCodeReliability,
+  type RecodeEvidenceClass,
 } from './OrderlyMatcher';
 import { comparePackGeometry, type SourcePackGeometry } from './packGeometry';
 import {
@@ -125,6 +129,7 @@ export interface ResolutionPreviewResult {
     storageLocation: string | null;
     sourceItemCode: string | null;
     itemCodeStatus: string | null;
+    sourceCodeReliability: SourceCodeReliability;
     packSizeRaw: string | null;
     cleanedDescription: string | null;
     supplierRaw: string | null;
@@ -149,6 +154,14 @@ export interface ResolutionPreviewResult {
   newLocations: string[];
   /** Unique vendors that will be created on approval */
   newVendors: string[];
+  /** Distinct review decisions by their evidence class, not raw location rows. */
+  recodeSummary: {
+    compatibleAlternates: number;
+    newPackSizes: number;
+    sourceDataConflicts: number;
+    unreliableCodes: number;
+    packEvidenceMissing: number;
+  };
   /**
    * Workbook-only identity evidence for the approval gate. Item Code is scoped
    * to this authorized XLSX import; it is not an Orderly API packSize identity.
@@ -198,6 +211,7 @@ type IdentityPreviewRow = Pick<
   | 'storageLocation'
   | 'sourceItemCode'
   | 'itemCodeStatus'
+  | 'sourceCodeReliability'
   | 'cleanedDescription'
   | 'caseQuantity'
   | 'innerPackQuantity'
@@ -269,11 +283,79 @@ function assessCandidatePackCompatibility(
   };
 }
 
+function recodeEvidenceClassForPack(
+  packCompatibility: 'compatible' | 'incompatible' | 'unknown',
+): RecodeEvidenceClass {
+  if (packCompatibility === 'compatible') return 'compatible_alternate';
+  if (packCompatibility === 'incompatible') return 'new_pack_size';
+  return 'pack_evidence_missing';
+}
+
+function sourceVendorEvidenceKey(
+  row: Pick<InventoryImportRow, 'supplierRaw'>,
+  resolution: Pick<RowResolution, 'vendorMatch'>,
+): string | null {
+  if (resolution.vendorMatch.vendorId) return `vendor:${resolution.vendorMatch.vendorId}`;
+  const normalizedSupplier = normalizeForMatch(row.supplierRaw ?? '');
+  return normalizedSupplier ? `source:${normalizedSupplier}` : null;
+}
+
+/**
+ * A source data conflict is different from an incoming pack variant: the same
+ * stable code from the same vendor is represented by contradictory physical
+ * pack evidence in this workbook. It must remain blocked instead of creating
+ * or linking either interpretation.
+ */
+function findSourcePackConflicts(
+  batchRows: InventoryImportRow[],
+  resolutions: RowResolution[],
+): Map<number, { rowIndexes: number[]; reason: string }> {
+  const rowByIndex = new Map(batchRows.map(row => [row.rowIndex, row]));
+  const groups = new Map<string, RowResolution[]>();
+  for (const resolution of resolutions) {
+    if (!isReliableItemCode(resolution)) continue;
+    const row = rowByIndex.get(resolution.rowIndex);
+    if (!row) continue;
+    const vendorKey = sourceVendorEvidenceKey(row, resolution);
+    if (!vendorKey) continue;
+    const groupKey = `${resolution.sourceItemCode!.trim()}\u0000${vendorKey}`;
+    const group = groups.get(groupKey) ?? [];
+    group.push(resolution);
+    groups.set(groupKey, group);
+  }
+
+  const conflicts = new Map<number, { rowIndexes: number[]; reason: string }>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const reasons = new Set<string>();
+    for (let left = 0; left < group.length; left++) {
+      for (let right = left + 1; right < group.length; right++) {
+        const leftRow = rowByIndex.get(group[left].rowIndex);
+        const rightRow = rowByIndex.get(group[right].rowIndex);
+        if (!leftRow || !rightRow) continue;
+        const comparison = comparePackGeometry(
+          sourcePackGeometry(leftRow as any),
+          sourcePackGeometry(rightRow as any),
+        );
+        if (comparison.status === 'incompatible') reasons.add(comparison.reason);
+      }
+    }
+    if (reasons.size === 0) continue;
+    const rowIndexes = group.map(row => row.rowIndex).sort((a, b) => a - b);
+    const reason = [...reasons].join('; ');
+    for (const rowIndex of rowIndexes) conflicts.set(rowIndex, { rowIndexes, reason });
+  }
+  return conflicts;
+}
+
 function isReliableItemCode(row: {
   sourceItemCode?: string | null;
   itemCodeStatus?: string | null;
+  sourceCodeReliability?: SourceCodeReliability;
 }): boolean {
-  return row.itemCodeStatus === 'valid' && Boolean(row.sourceItemCode?.trim());
+  return row.sourceCodeReliability
+    ? row.sourceCodeReliability === 'stable'
+    : isStableSourceItemCode(row.sourceItemCode, row.itemCodeStatus);
 }
 
 /**
@@ -806,9 +888,10 @@ export async function runResolutionPreview(
   for (const row of batchRows) {
     // ── Item resolution ──
     let itemMatch: MatchResult;
+    const sourceCodeReliability = classifySourceItemCode(row.sourceItemCode, row.itemCodeStatus);
 
     // Strategy 1: external mapping
-    const extId = row.sourceItemCode
+    const extId = sourceCodeReliability === 'stable' && row.sourceItemCode
       ? extMappingLookup.get(row.sourceItemCode.trim())
       : undefined;
     const alternateSourceId = deriveOrderlyAlternateSourceId(
@@ -836,7 +919,11 @@ export async function runResolutionPreview(
       };
     } else {
       // Strategy 2: item code
-      itemMatch = matchByItemCode(row.sourceItemCode, row.itemCodeStatus, matchableItems);
+      itemMatch = matchByItemCode(
+        sourceCodeReliability === 'stable' ? row.sourceItemCode : null,
+        sourceCodeReliability === 'stable' ? row.itemCodeStatus : 'placeholder',
+        matchableItems,
+      );
 
       // Strategy 3: name + pack
       if (itemMatch.strategy === 'none') {
@@ -880,13 +967,14 @@ export async function runResolutionPreview(
     // assigned a new code to a product already in the catalog.  Flag the row
     // so the user can explicitly link it rather than creating a duplicate.
     // This does NOT auto-link — linking stays an explicit user action.
-    const isUnmappedValidCode =
+    const isUnmappedStableCode =
       !extId &&
-      row.itemCodeStatus === 'valid' &&
+      sourceCodeReliability === 'stable' &&
       Boolean(row.sourceItemCode?.trim());
     const codeWasMatched =
       itemMatch.strategy === 'external_mapping' || itemMatch.strategy === 'item_code';
-    if (isUnmappedValidCode && !codeWasMatched) {
+    const isPseudoCodeCandidate = sourceCodeReliability === 'pseudo_code';
+    if ((isUnmappedStableCode && !codeWasMatched) || isPseudoCodeCandidate) {
       const normalizedDesc = normalizeForMatch(row.cleanedDescription ?? '');
       if (normalizedDesc) {
         const nameExactMatch = matchableItems.find(
@@ -904,12 +992,50 @@ export async function runResolutionPreview(
             packCompatibility: packAssessment.status,
             packCompatibilityReason: packAssessment.reason,
             candidatePackEvidence: packAssessment.candidatePackEvidence,
+              recodeEvidenceClass: isPseudoCodeCandidate
+                ? 'unreliable_code'
+                : recodeEvidenceClassForPack(packAssessment.status),
+              // A prose-like value in Item Code may guide a reviewer, but it
+              // cannot prove identity or create a permanent source mapping.
+              requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
           };
         }
       }
     }
 
-    resolutions.push({ rowIndex: row.rowIndex, itemMatch, vendorMatch, locationMatch, itemCodeStatus: row.itemCodeStatus, sourceItemCode: row.sourceItemCode });
+    // A descriptive value in Orderly's Item Code column is not source identity
+    // evidence, even if it has no exact name candidate. Keep every such row in
+    // the review path and prevent both raw and derived external mappings later.
+    if (sourceCodeReliability === 'pseudo_code') {
+      itemMatch = {
+        ...itemMatch,
+        requiresReview: true,
+        recodeEvidenceClass: 'unreliable_code',
+      };
+    }
+
+    resolutions.push({
+      rowIndex: row.rowIndex,
+      itemMatch,
+      vendorMatch,
+      locationMatch,
+      itemCodeStatus: row.itemCodeStatus,
+      sourceItemCode: row.sourceItemCode,
+      sourceCodeReliability,
+      supplierRaw: row.supplierRaw,
+    });
+  }
+
+  const sourcePackConflicts = findSourcePackConflicts(batchRows as InventoryImportRow[], resolutions);
+  for (const resolution of resolutions) {
+    const conflict = sourcePackConflicts.get(resolution.rowIndex);
+    if (!conflict) continue;
+    resolution.itemMatch = {
+      ...resolution.itemMatch,
+      requiresReview: true,
+      recodeEvidenceClass: 'source_data_conflict',
+      sourceDataConflict: conflict,
+    };
   }
 
   // Reconcile physical location rows into a workbook-local product group after
@@ -1038,6 +1164,7 @@ export async function runResolutionPreview(
       storageLocation: row.storageLocation,
       sourceItemCode: row.sourceItemCode,
       itemCodeStatus: row.itemCodeStatus,
+      sourceCodeReliability: resolutions[i].sourceCodeReliability ?? 'unavailable',
       packSizeRaw: typeof (row.rawData as Record<string, unknown> | null)?.['Pack Size'] === 'string'
         && String((row.rawData as Record<string, unknown>)['Pack Size']).trim()
           ? String((row.rawData as Record<string, unknown>)['Pack Size'])
@@ -1096,6 +1223,34 @@ export async function runResolutionPreview(
   // one FnB item for each safe blank-only identity group, not once per
   // location row, so make the preview's creation card use that same rule.
   summary.itemsWillCreate += blankOnlyGroupsCreatingInternalItems.size;
+  const recodeDecisionClassByKey = new Map<string, RecodeEvidenceClass>();
+  for (const row of rows) {
+    const evidenceClass = row.itemMatch.recodeEvidenceClass;
+    if (!evidenceClass) continue;
+    const key = isReliableItemCode(row)
+      ? `code:${row.sourceItemCode!.trim()}`
+      : `row:${row.rowIndex}`;
+    const existing = recodeDecisionClassByKey.get(key);
+    // A source conflict is the strictest interpretation and must not be
+    // hidden by a compatible row in the same source-code group.
+    if (!existing || evidenceClass === 'source_data_conflict') {
+      recodeDecisionClassByKey.set(key, evidenceClass);
+    }
+  }
+  const recodeSummary = {
+    compatibleAlternates: 0,
+    newPackSizes: 0,
+    sourceDataConflicts: 0,
+    unreliableCodes: 0,
+    packEvidenceMissing: 0,
+  };
+  for (const evidenceClass of recodeDecisionClassByKey.values()) {
+    if (evidenceClass === 'compatible_alternate') recodeSummary.compatibleAlternates++;
+    else if (evidenceClass === 'new_pack_size') recodeSummary.newPackSizes++;
+    else if (evidenceClass === 'source_data_conflict') recodeSummary.sourceDataConflicts++;
+    else if (evidenceClass === 'unreliable_code') recodeSummary.unreliableCodes++;
+    else if (evidenceClass === 'pack_evidence_missing') recodeSummary.packEvidenceMissing++;
+  }
 
   return {
     batchId,
@@ -1105,6 +1260,7 @@ export async function runResolutionPreview(
     rows,
     newLocations: Array.from(newLocationNames),
     newVendors: Array.from(newVendorNames),
+    recodeSummary,
     identitySummary,
   };
 }
@@ -1528,6 +1684,25 @@ export async function applyBatchApproval(
   // ── Run matching (outside transaction) ──────────────────────────────────
   const preview = await runResolutionPreview(batchId, companyId);
   const previewRowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const sourceConflictRows = preview.rows.filter(row => row.itemMatch.sourceDataConflict);
+  if (sourceConflictRows.length > 0) {
+    const details = sourceConflictRows
+      .map(row => `row ${row.rowIndex}: ${row.itemMatch.sourceDataConflict!.reason}`)
+      .join(' | ');
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Orderly source data contains contradictory pack evidence for the same vendor and Item Code. Correct or verify the source before approval: ${details}`,
+    );
+  }
+  const unreliableCodeRows = preview.rows.filter(
+    row => row.itemMatch.recodeEvidenceClass === 'unreliable_code',
+  );
+  if (unreliableCodeRows.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Orderly Item Code values that look like descriptions require manual source review before approval (rows ${unreliableCodeRows.map(row => row.rowIndex).join(', ')}). No permanent mapping will be inferred from descriptive code text.`,
+    );
+  }
   const recodeDecisionByReliableCode = new Map<string, RowDecision>();
   for (const decision of rowDecisions.filter(decision => decision.action !== undefined)) {
     const row = previewRowsByIndex.get(decision.rowIndex);
@@ -1555,7 +1730,7 @@ export async function applyBatchApproval(
     recodeDecisionByReliableCode.set(code, decision);
   }
 
-  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode)) {
+  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
     const code = row.sourceItemCode!.trim();
     const decision = recodeDecisionByReliableCode.get(code);
     if (!decision) {
@@ -2181,7 +2356,11 @@ export async function applyBatchApproval(
         .where(eq(inventoryImportRows.id, rowPreview.rowId));
 
       // ── External mapping creation ───────────────────────────────────
-      if (resolvedItemId && rowPreview.sourceItemCode && rowPreview.itemCodeStatus === 'valid') {
+      if (
+        resolvedItemId &&
+        rowPreview.sourceItemCode &&
+        rowPreview.sourceCodeReliability === 'stable'
+      ) {
         await tx
           .insert(inventoryItemExternalMappings)
           .values({
@@ -2211,7 +2390,7 @@ export async function applyBatchApproval(
         rowPreview.cleanedDescription,
         sourcePackGeometry(rowPreview),
       );
-      if (resolvedItemId && alternateSourceId) {
+      if (resolvedItemId && alternateSourceId && rowPreview.sourceCodeReliability !== 'pseudo_code') {
         const inserted = await tx
           .insert(inventoryItemExternalMappings)
           .values({

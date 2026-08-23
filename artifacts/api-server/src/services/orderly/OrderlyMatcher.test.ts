@@ -7,11 +7,34 @@
 import { describe, it, expect } from 'vitest';
 import {
   breakTieByLocation,
+  classifySourceItemCode,
   computeResolutionSummary,
   getHoldReason,
   type LocationAssignment,
   type MatchResult,
 } from './OrderlyMatcher';
+
+describe('classifySourceItemCode', () => {
+  it('keeps compact vendor-style codes eligible for a durable mapping', () => {
+    expect(classifySourceItemCode('KETEL-750', 'valid')).toBe('stable');
+    expect(classifySourceItemCode('012345678901', 'valid')).toBe('stable');
+  });
+
+  it('holds free-text pseudo-codes rather than treating them as vendor identities', () => {
+    expect(classifySourceItemCode('oni jum', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('tuna saku 2 lb', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('Onions', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('ONIONS', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('2% Milk', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('12OZ Coke', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('1 Onion', 'valid')).toBe('pseudo_code');
+  });
+
+  it('does not infer a code from blank or parser-rejected values', () => {
+    expect(classifySourceItemCode(null, 'blank')).toBe('unavailable');
+    expect(classifySourceItemCode('N/A', 'placeholder')).toBe('unavailable');
+  });
+});
 
 // ─── breakTieByLocation ───────────────────────────────────────────────────────
 

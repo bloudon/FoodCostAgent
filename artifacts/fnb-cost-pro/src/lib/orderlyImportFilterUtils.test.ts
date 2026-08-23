@@ -48,6 +48,22 @@ describe("rowConfidenceKey", () => {
     expect(rowConfidenceKey(row)).toBe("held");
   });
 
+  it('gives a new physical pack size its own review filter', () => {
+    const row = makeRow("Spirits", "name_pack", "high");
+    row.itemMatch.possibleRecode = true;
+    row.itemMatch.recodeEvidenceClass = "new_pack_size";
+    expect(rowConfidenceKey(row)).toBe("new-pack-size");
+    expect(applyFilters([row], new Set(), new Set(["new-pack-size"]))).toEqual([row]);
+  });
+
+  it('prioritizes blocked source evidence over generic held/re-code states', () => {
+    const row = makeRow("Dairy", "name_pack", "high");
+    row.heldForReview = true;
+    row.itemMatch.possibleRecode = true;
+    row.itemMatch.recodeEvidenceClass = "source_data_conflict";
+    expect(rowConfidenceKey(row)).toBe("source-conflict");
+  });
+
   it('returns "new" when strategy is "none"', () => {
     expect(rowConfidenceKey(makeRow(null, "none", "none"))).toBe("new");
   });
