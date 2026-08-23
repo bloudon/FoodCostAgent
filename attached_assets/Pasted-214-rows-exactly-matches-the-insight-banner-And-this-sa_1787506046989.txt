@@ -1,0 +1,36 @@
+214 rows exactly matches the insight banner. And this sample reveals a genuinely important edge case already: "Casamigo's - Blanco" flagged as a possible re-code but with packCompatibility: "incompatible" — normalized pack totals differ 250ML vs 6000ML — meaning blindly re-coding this would merge two genuinely different pack sizes. Let me pull the full 214-row dataset.
+
+Used Claude in Chrome integration · 1 note
+
+Critical finding: 40 of 88 (45%) are flagged "incompatible" pack compatibility — and the first three samples are all liquor items from Southern Glazer's, all incompatible. This suggests many "possible re-codes" may be false positives — different pack sizes (mini bottles vs. full bottles) of the same-named spirit, not genuine code changes for the same product. Let me get the complete list to see the full pattern.
+
+Used Claude in Chrome integration · 3 notes
+
+I've now captured 63+ of 88 with real codes and spotted another important edge case: "Onions - Yellow" has code oni jum and "Tuna" has a full product-description string as its "code" — these aren't real vendor SKUs, they're free-text pseudo-codes, the same pattern found in the earlier SAFE_CANDIDATE review. Let me now verify a curated, diverse sample directly against Orderly.
+
+Used Claude in Chrome integration · 2 notes
+
+This confirms it precisely. "Ketel One" isn't a vendor-switch case at all — it's the SAME vendor (Southern Glazer's) selling genuinely different pack tiers: full liter bottles (code 36126, 12/1 LITER) vs. 50ml mini bottles (codes 192364 AND 77626 — two different codes for the same mini-bottle tier). Merging these would be a real error. Let me check a couple more incompatible cases to see if this pattern holds broadly.
+
+Used Claude in Chrome integration
+
+This reveals a third distinct edge case: "Milk - Whole" has the exact same code (4676306) from the same vendor (Sysco) appearing with two contradictory pack descriptions — "1/1 GALLON" and "4/1 GALLON" — a genuine data-inconsistency in Orderly's own catalog, not a re-code at all. And Casamigo's confirms the same same-vendor/different-pack-tier pattern as Ketel One (5/50ML minis vs 1L/6×1L full bottles, all Southern Glazer's).
+
+I now have four distinct, well-evidenced edge-case categories. Let me compile this into a full reference spreadsheet.
+
+Ran 4 commands, created 2 files, viewed a file · 3 notes
+Result: pulled the real 88-decision dataset from the live tool, and it splits into four genuinely distinct patterns
+
+I found the exact backing endpoint (resolution-preview), confirmed 214 rows → 88 unique matched items matches the insight banner precisely, and cross-verified a representative sample directly against Orderly's catalog and invoice history.
+
+Category A — Genuine concurrent multi-vendor sourcing (Banana, Gatorade Orange, Blueberries, Blackberries, Raspberries, Asparagus, and more): confirmed via real invoice data that both vendors are actively, simultaneously invoiced. Safe to auto-accumulate both codes permanently.
+
+Category B — Same vendor, different real pack tier (Ketel One, Casamigo's Blanco, Zing Zang): this is the big surprise. Ketel One has only one supplier in the entire catalog (Southern Glazer's) — it's not a vendor situation at all. The vendor sells full liter bottles and 50ml minis under the same display name, with the minis themselves drifting across two different codes over time. These must never be merged — the tool's own packCompatibility: "incompatible" flag is catching this correctly, and it should be trusted over a name match.
+
+Category C — Source data inconsistency (Milk - Whole): the exact same code, from the exact same vendor, appears in Orderly's own catalog with two contradictory pack sizes ("1/1 GALLON" vs "4/1 GALLON"). Not a re-code at all — a data-quality problem needing a different remediation path.
+
+Category D — Free-text pseudo-codes (Onions-Yellow's "oni jum", Tuna's full product description used as a "code," Pasta-Rigatoni, Grouper, Mahi Mahi): the "source item code" isn't a real vendor SKU, so this is fuzzy description-matching wearing a re-code label. Confidence should be discounted relative to a genuine numeric-code match.
+
+40 of 88 (45%) are flagged "incompatible" pack — a much larger share than I'd have guessed, and the sample proves it's not one failure mode but at least three (B, C, and some D cases) mixed together under one flag.
+
+The workbook has three sheets: Summary (the taxonomy with counts and recommended handling), All 88 Decisions (the full list, color-coded), and Verified Against Orderly (the deep-dive evidence for each category). About 60 of the 88 are captured with exact codes; the rest have confirmed name/supplier/compatibility/confidence but weren't individually code-verified in this pass — flagged clearly on the sheet rather than guessed at.
