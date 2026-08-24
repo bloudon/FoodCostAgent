@@ -1,0 +1,115 @@
+# Proposed Tickets — Draft
+
+**Drafted:** 2026-08-24
+**Context:** Follow-ups after #1245 was verified working on dev. Written in the same format as #1245–1247.
+
+---
+
+## #1248 — Flag Ambiguous Source Pack Sizes For A Reviewer Answer
+
+### What & Why
+
+Some Orderly item codes carry more than one pack size in the source export. Code `4676306` (Milk - Whole, Sysco, Dairy) maps to both `1/1 GALLON` and `4/1 GALLON` in Orderly's own catalog. Today these rows are silently classified as ordinary "New pack size" candidates and swept into the bulk action, and the "Conflicting source packs" counter reads `0`.
+
+This is a question, not a defect. The source is ambiguous and FnB cannot resolve it by inference — the correct pack size is something the reviewer knows and the data does not contain. The fix is to mark the row and ask, not to build logic that guesses.
+
+Detection is a group-by over data already present in the workbook — distinct pack sizes per item code — not a new classification rule and not an external lookup.
+
+Scale: prior analysis found **407 of 5,319 codes (7.65%)** map to more than one `packSizeId`, of which **371** share this exact shape (same spec, same supplier). Expect a similar proportion per monthly batch.
+
+### Done looks like
+
+* Rows whose item code resolves to more than one distinct pack size in the source are visibly marked in the collapsed row list, so they are identifiable without expanding.
+* The mark is answerable inline: the reviewer is shown the distinct pack sizes found in the source for that code and picks the one that applies.
+* The answer is recorded once per item code and applies to all of that code's location rows, consistent with the existing grouping (e.g. Milk - Whole spans 5 location rows under one code).
+* Bulk actions state plainly how many rows within the selection carry an unanswered mark, and do not silently include them.
+* An unanswered mark is visible in the outstanding-decisions footer alongside re-code and held-row counts.
+* Once answered, the row proceeds through the normal link/separate-variant path with no special casing.
+* The "Conflicting source packs" counter reflects reality — if it reads `0`, that means none were found, not that the check did not run.
+
+### Out of scope
+
+* Inferring or ranking which pack size is correct. The tool asks; it does not decide.
+* Changing pack-classification, normalization, or catalog-approval rules.
+* Blocking approval on unanswered marks as a hard gate. Treat it as an outstanding decision like any other, surfaced in the footer.
+* External Orderly lookups or invoice-history evidence.
+* Vendor-identity consolidation (parked separately, pending invoice import).
+
+### Steps
+
+1. During preview computation, group source rows by item code and detect codes resolving to more than one distinct pack size. Carry the distinct set through in the preview response.
+2. Surface the mark on the collapsed row and expose the distinct source pack sizes in the expanded evidence panel, worded as an open question rather than an error.
+3. Record the reviewer's answer using the existing durable review-decision draft store from #1245 — no new persistence layer needed. Scope the answer to the item code within the batch.
+4. Include unanswered marks in the outstanding-decision count, and have bulk actions report and exclude them.
+5. Add regressions for: a code with two pack sizes is marked; answering once resolves all its location rows; bulk actions exclude unanswered marks; a code with a single pack size is never marked.
+
+### Verification case
+
+`4676306` / Milk - Whole / Sysco / Dairy — 5 location rows (Halfway House, Main Walk-in, Bay Window, Cafe, Main Kitchen). Source shows `1/1 GALLON` and `4/1 GALLON`. Expected: one mark, one question, one answer, five rows resolved.
+
+### Relevant files *(inferred from #1245–1247 — please confirm)*
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts`
+* `artifacts/api-server/src/services/orderly/packGeometry.ts`
+* `artifacts/api-server/src/routes/orderlyImportRoutes.ts`
+* `artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx`
+* `artifacts/fnb-cost-pro/src/pages/orderly-import.tsx`
+
+### Dependencies
+
+Builds on the durable review-decision store delivered in #1245.
+
+---
+
+## #1249 — Restore Detected Inventory Date When Resuming The Date Step
+
+### What & Why
+
+The URL resume safeguard added in #1245 restores the wizard step but not the state that step depends on. Pressing **Back** from Preview lands on the Date step showing `Detected: unknown` with an empty date field and a disabled Confirm button — a dead end with no forward path.
+
+The detected date was computed during Upload and held in memory; resuming by URL does not rehydrate it.
+
+Saved review decisions are unaffected and survive intact, so no data is at risk. This is a navigation trap, not corruption.
+
+It still warrants prompt attention because the natural workaround is for the reviewer to type the inventory date by hand — on the one step whose purpose is to prevent a wrong-period posting. A mistyped date would post a month's count to the wrong period, which on a production seed is expensive to unwind.
+
+### Reproduction (dev, current build)
+
+1. Enter the June batch → Review → Confirm Date & Preview Matches. Preview loads normally.
+2. Click **Back**.
+3. Observed: `Detected: unknown`, date input empty, Confirm button `disabled: true`. No way forward.
+4. Recovery (works, but undiscoverable): navigate to bare `/orderly-import` and re-enter via **Review**. `Detected: 2026-06-30` returns correctly and saved decisions are intact.
+
+### Done looks like
+
+* Resuming the Date step by URL or via Back re-derives the detected inventory date from the batch identified in the URL.
+* If the detected date genuinely cannot be resolved, the reviewer is told so explicitly and directed back to the batch list — not presented with a silently empty, freely editable date field.
+* The Confirm control is never left disabled with no stated reason and no recovery path.
+
+### Out of scope
+
+* Changing date detection itself, or the duplicate-inventory-date guard.
+* Changing review-decision persistence.
+
+### Steps
+
+1. On Date-step mount with a batch present in the URL, load the batch's detected inventory date from the server rather than relying on in-memory upload state.
+2. Distinguish "not yet loaded" from "could not be detected" in the UI and handle each explicitly.
+3. Add a regression for resuming the Date step directly by URL, and for the Preview → Back → Date path.
+
+### Relevant files *(inferred — please confirm)*
+
+* `artifacts/fnb-cost-pro/src/pages/orderly-import.tsx`
+* `artifacts/api-server/src/routes/orderlyImportRoutes.ts`
+
+### Dependencies
+
+Follow-up defect on the URL resume safeguard delivered in #1245.
+
+---
+
+## Note on approach
+
+#1248 sets a precedent worth applying generally: **where the source data is ambiguous, mark it and ask the reviewer — do not build logic to infer an answer the data does not contain.**
+
+The 7.65% multi-pack-size population is a data-quality characteristic of the Orderly export, not a fault in FnB's classifier. An asterisk plus a one-click answer resolves it at a fraction of the cost of a detector, and keeps the reviewer — who actually knows what is on the shelf — as the authority.
