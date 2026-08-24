@@ -29,6 +29,7 @@ import {
   storeInventoryItems,
   vendors,
 } from '@workspace/db';
+import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 
@@ -122,6 +123,7 @@ function buildApp() {
 beforeAll(async () => {
   if (SKIP) return;
 
+  await ensureOrderlyReviewDecisionsSchema(db);
   ({ registerOrderlyImportRoutes } = await import('./orderlyImportRoutes'));
 
   await db.insert(companiesTable).values({ id: IDs.company, name: `OAR Co ${IDs.RUN}` });
@@ -184,6 +186,18 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     expect(after?.approvedBy).toBe(IDs.admin); // real identity recorded, not null
   });
 
+  it('rejects an unsaved client override instead of silently changing the persisted review draft', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({
+      rowDecisions: [{ rowIndex: 1, inventoryItemId: 'forged-item-id' }],
+    });
+
+    expect(res.status).toBe(400);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
   it('returns 403 (not 401) when the user lacks access to the destination store', async () => {
     authState.userId = IDs.scoped;
     const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
@@ -224,5 +238,73 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
       .send({ rowDecisions: [] });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe.skipIf(SKIP)('Orderly review decision drafts', () => {
+  const decisionsUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/review-decisions`;
+
+  it('stores a draft decision and returns it after a separate read', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.decisions).toHaveLength(1);
+    expect(saved.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions).toHaveLength(1);
+    expect(reloaded.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+  });
+
+  it('rejects a stale reviewer revision rather than silently overwriting a saved draft', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const firstSave = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+    expect(firstSave.status).toBe(200);
+
+    const staleSave = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+    expect(staleSave.status).toBe(409);
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions).toHaveLength(1);
+    expect(reloaded.body.decisions[0].revision).toBe(1);
   });
 });

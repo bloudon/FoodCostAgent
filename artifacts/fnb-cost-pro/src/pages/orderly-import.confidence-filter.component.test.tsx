@@ -326,11 +326,29 @@ function setupQueryMocks() {
 beforeEach(() => {
   currentPreview = MOCK_PREVIEW;
   setupQueryMocks();
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    const payload = JSON.parse(String(init?.body ?? "{}"));
+    return new Response(JSON.stringify({
+      decisions: (payload.changes ?? [])
+        .filter((change: { decision?: unknown }) => change.decision !== undefined)
+        .map((change: { rowIndex: number; decision: unknown }) => ({
+          rowIndex: change.rowIndex,
+          decision: change.decision,
+          revision: 1,
+          decidedBy: "test-reviewer",
+          updatedAt: new Date().toISOString(),
+        })),
+      clearedRowIndexes: (payload.changes ?? [])
+        .filter((change: { decision?: unknown }) => change.decision === undefined)
+        .map((change: { rowIndex: number }) => change.rowIndex),
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }));
 });
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // ---------------------------------------------------------------------------
@@ -422,7 +440,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Create 1 variant" }));
 
-    expect(await screen.findByTestId("bulk-new-pack-size-queued")).toHaveTextContent("1 pack-size variant is queued");
+    expect(await screen.findByTestId("bulk-new-pack-size-queued")).toHaveTextContent("1 pack-size variant is saved");
     expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
   });
 

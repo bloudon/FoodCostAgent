@@ -29,6 +29,7 @@ import {
   inventoryItemRelationships,
   inventoryImportBatches,
   inventoryImportRows,
+  orderlyImportReviewDecisions,
   importSourcePropertyBindings,
   storeInventoryItems,
   companyStores,
@@ -91,6 +92,381 @@ export interface RowDecision {
   vendorId?: string | null;
   /** Skip this row entirely — don't create or link anything. */
   skip?: boolean;
+}
+
+export type ReviewDecisionPayload = Omit<RowDecision, 'rowIndex'>;
+
+export interface SavedReviewDecision {
+  rowIndex: number;
+  decision: ReviewDecisionPayload;
+  revision: number;
+  decidedBy: string | null;
+  updatedAt: Date | null;
+}
+
+export interface ReviewDecisionChange {
+  rowIndex: number;
+  /** null means the caller saw no existing draft decision for this row. */
+  expectedRevision: number | null;
+  /** Omit to undo a previously saved decision. */
+  decision?: ReviewDecisionPayload;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeReviewDecision(
+  rowIndex: number,
+  value: unknown,
+): ReviewDecisionPayload {
+  if (!isPlainObject(value)) {
+    throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} is invalid.`);
+  }
+  const allowedKeys = new Set(['action', 'inventoryItemId', 'comparableInventoryItemId']);
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.has(key)) {
+      throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} contains an unsupported field.`);
+    }
+  }
+
+  const hasInventoryItemId = Object.prototype.hasOwnProperty.call(value, 'inventoryItemId');
+  const action = value.action;
+  const inventoryItemId = value.inventoryItemId;
+  const comparableInventoryItemId = value.comparableInventoryItemId;
+
+  if (
+    action !== undefined &&
+    action !== 'link_existing' &&
+    action !== 'create_variant'
+  ) {
+    throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} has an unsupported action.`);
+  }
+  if (
+    inventoryItemId !== undefined &&
+    inventoryItemId !== null &&
+    (typeof inventoryItemId !== 'string' || inventoryItemId.trim().length === 0)
+  ) {
+    throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} has an invalid inventory item.`);
+  }
+  if (
+    comparableInventoryItemId !== undefined &&
+    (typeof comparableInventoryItemId !== 'string' || comparableInventoryItemId.trim().length === 0)
+  ) {
+    throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} has an invalid comparable item.`);
+  }
+  if (!action && !hasInventoryItemId) {
+    throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} does not select an outcome.`);
+  }
+  if (action === 'link_existing') {
+    if (typeof inventoryItemId !== 'string' || !inventoryItemId.trim() || comparableInventoryItemId !== undefined) {
+      throw new ImportApprovalError('INVALID_REQUEST', `Review link decision for row ${rowIndex} needs one existing item.`);
+    }
+    return { action, inventoryItemId: inventoryItemId.trim() };
+  }
+  if (action === 'create_variant') {
+    if (typeof comparableInventoryItemId !== 'string' || !comparableInventoryItemId.trim() || inventoryItemId !== undefined) {
+      throw new ImportApprovalError('INVALID_REQUEST', `Review variant decision for row ${rowIndex} needs one comparable item.`);
+    }
+    return { action, comparableInventoryItemId: comparableInventoryItemId.trim() };
+  }
+
+  return { inventoryItemId: inventoryItemId == null ? null : inventoryItemId.trim() };
+}
+
+function assertReviewDecisionMatchesPreview(
+  row: ResolutionPreviewResult['rows'][number],
+  decision: ReviewDecisionPayload,
+): void {
+  if (row.itemMatch.sourceDataConflict) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Row ${row.rowIndex} has contradictory source pack evidence and cannot receive a review decision.`,
+    );
+  }
+  if (row.itemMatch.recodeEvidenceClass === 'unreliable_code') {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Row ${row.rowIndex} has an unreliable Orderly Item Code and cannot receive a review decision.`,
+    );
+  }
+
+  if (decision.action === 'link_existing') {
+    if (
+      !row.itemMatch.possibleRecode ||
+      decision.inventoryItemId !== row.itemMatch.possibleRecodeMatchedId ||
+      row.itemMatch.packCompatibility !== 'compatible'
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `The saved link for row ${row.rowIndex} no longer matches its compatible review candidate.`,
+      );
+    }
+    return;
+  }
+  if (decision.action === 'create_variant') {
+    if (
+      !row.itemMatch.possibleRecode ||
+      decision.comparableInventoryItemId !== row.itemMatch.possibleRecodeMatchedId ||
+      row.itemMatch.recodeEvidenceClass !== 'new_pack_size' ||
+      row.itemMatch.packCompatibility !== 'incompatible'
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `The saved variant for row ${row.rowIndex} no longer has verified incompatible pack evidence.`,
+      );
+    }
+    return;
+  }
+
+  if (row.itemMatch.possibleRecode) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Row ${row.rowIndex} needs an explicit compatible-link or separate-variant decision.`,
+    );
+  }
+  if (decision.inventoryItemId === null) {
+    if (!row.heldForReview && row.itemMatch.confidence === 'high') {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Row ${row.rowIndex} is already safely matched and cannot be changed to a new item.`,
+      );
+    }
+    return;
+  }
+
+  const allowedItemIds = new Set([
+    row.itemMatch.matchedId,
+    row.itemMatch.possibleRecodeMatchedId,
+    ...(row.itemMatch.candidateIds ?? []),
+  ].filter((id): id is string => typeof id === 'string'));
+  const selectedItemId = decision.inventoryItemId;
+  if (!selectedItemId || !allowedItemIds.has(selectedItemId)) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `The saved item for row ${row.rowIndex} is no longer one of its review candidates.`,
+    );
+  }
+}
+
+function assertSavedReviewDecisionsRemainValid(
+  preview: ResolutionPreviewResult,
+  decisions: RowDecision[],
+): void {
+  const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const conflicts = preview.rows.filter(row => row.itemMatch.sourceDataConflict);
+  if (conflicts.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Orderly source data changed to contradictory pack evidence before approval: ${conflicts.map(row => `row ${row.rowIndex}`).join(', ')}.`,
+    );
+  }
+  const unreliableCodes = preview.rows.filter(
+    row => row.itemMatch.recodeEvidenceClass === 'unreliable_code',
+  );
+  if (unreliableCodes.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Orderly Item Code evidence changed and now requires source review (rows ${unreliableCodes.map(row => row.rowIndex).join(', ')}).`,
+    );
+  }
+
+  const recodeDecisionByCode = new Map<string, RowDecision>();
+  for (const decision of decisions) {
+    const row = rowsByIndex.get(decision.rowIndex);
+    if (!row) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Saved review decision references row ${decision.rowIndex}, which is no longer part of this batch.`,
+      );
+    }
+    assertReviewDecisionMatchesPreview(row, decision);
+    if (decision.action === undefined) continue;
+    if (!isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Saved re-code decision for row ${decision.rowIndex} is no longer eligible.`,
+      );
+    }
+    const sourceCode = row.sourceItemCode!.trim();
+    const prior = recodeDecisionByCode.get(sourceCode);
+    if (
+      prior &&
+      (
+        prior.action !== decision.action ||
+        prior.inventoryItemId !== decision.inventoryItemId ||
+        prior.comparableInventoryItemId !== decision.comparableInventoryItemId
+      )
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Saved decisions for Orderly Item Code ${sourceCode} no longer agree.`,
+      );
+    }
+    recodeDecisionByCode.set(sourceCode, decision);
+  }
+
+  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
+    const decision = recodeDecisionByCode.get(row.sourceItemCode!.trim());
+    if (!decision) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Orderly Item Code ${row.sourceItemCode} now requires an explicit review decision.`,
+      );
+    }
+    // One reviewed code may appear on multiple staged rows. Validate the same
+    // saved action against every row's current candidate and pack evidence.
+    assertReviewDecisionMatchesPreview(row, decision);
+  }
+
+  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      'Reliable Orderly Item Code identity evidence changed and now contains a conflicting group. Refresh the review before approval.',
+    );
+  }
+}
+
+function deriveApprovalIdentityCaches(preview: ResolutionPreviewResult): {
+  reliableCodeExistingItemIds: Map<string, string>;
+  identityGroupExistingItemIds: Map<string, string>;
+  blankGroupMayFollowCodedSibling: Map<string, boolean>;
+  blankGroupMayCreateInternalItem: Map<string, boolean>;
+} {
+  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
+    const details = preview.identitySummary.conflictingReliableCodeGroups
+      .map(group => `${group.sourceItemCode} (rows ${group.rowIndexes.join(', ')}: ${group.reasons.join('; ')})`)
+      .join(' | ');
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Reliable Orderly Item Code groups contain incompatible or divergent identity evidence and require review: ${details}`,
+    );
+  }
+
+  const reliableCodeExistingItemIds = new Map<string, string>();
+  const identityGroupExistingItemIds = new Map<string, string>();
+  const identityGroups = new Map<string, ResolutionPreviewResult['rows']>();
+  for (const row of preview.rows) {
+    if (
+      isReliableItemCode(row) &&
+      !row.itemMatch.requiresReview &&
+      row.itemMatch.matchedId != null
+    ) {
+      const code = row.sourceItemCode!.trim();
+      const existing = reliableCodeExistingItemIds.get(code);
+      if (existing && existing !== row.itemMatch.matchedId) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Reliable Orderly Item Code ${code} resolves to multiple existing inventory items and requires review.`,
+        );
+      }
+      reliableCodeExistingItemIds.set(code, row.itemMatch.matchedId);
+    }
+    if (
+      row.identityGroupKey &&
+      !row.itemMatch.requiresReview &&
+      row.itemMatch.matchedId != null &&
+      !row.itemMatch.possibleRecode
+    ) {
+      const existing = identityGroupExistingItemIds.get(row.identityGroupKey);
+      if (existing && existing !== row.itemMatch.matchedId) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly identity group ${row.identityGroupKey} resolves to multiple inventory items and requires review.`,
+        );
+      }
+      identityGroupExistingItemIds.set(row.identityGroupKey, row.itemMatch.matchedId);
+    }
+    if (row.identityGroupKey) {
+      const group = identityGroups.get(row.identityGroupKey) ?? [];
+      group.push(row);
+      identityGroups.set(row.identityGroupKey, group);
+    }
+  }
+
+  const blankGroupMayFollowCodedSibling = new Map<string, boolean>();
+  const blankGroupMayCreateInternalItem = new Map<string, boolean>();
+  for (const [groupKey, group] of identityGroups) {
+    const blankRow = group.find(row => row.itemCodeStatus === 'blank');
+    if (!blankRow) continue;
+    blankGroupMayFollowCodedSibling.set(groupKey, hasSafeCodedSibling(blankRow, group));
+    blankGroupMayCreateInternalItem.set(groupKey, canCreateInternalItemForBlankGroup(blankRow, group));
+  }
+  return {
+    reliableCodeExistingItemIds,
+    identityGroupExistingItemIds,
+    blankGroupMayFollowCodedSibling,
+    blankGroupMayCreateInternalItem,
+  };
+}
+
+async function assertReviewDecisionItemsBelongToCompany(
+  companyId: string,
+  decisions: Array<{ rowIndex: number; decision: ReviewDecisionPayload }>,
+  runner: any = db,
+): Promise<void> {
+  const itemIds = Array.from(new Set(
+    decisions.flatMap(({ decision }) => [
+      decision.inventoryItemId,
+      decision.comparableInventoryItemId,
+    ]).filter((id): id is string => typeof id === 'string'),
+  ));
+  if (itemIds.length === 0) return;
+  const found = await runner
+    .select({ id: inventoryItems.id })
+    .from(inventoryItems)
+    .where(and(
+      // @ts-ignore
+      eq(inventoryItems.companyId, companyId),
+      // @ts-ignore
+      inArray(inventoryItems.id, itemIds),
+    ));
+  const foundIds = new Set(found.map((item: { id: string }) => item.id));
+  const invalidId = itemIds.find(id => !foundIds.has(id));
+  if (invalidId) {
+    throw new ImportApprovalError(
+      'FORBIDDEN',
+      `Review decision references an inventory item outside this company.`,
+    );
+  }
+}
+
+async function loadStoredReviewDecisionRecords(
+  batchId: string,
+  companyId: string,
+  runner: any = db,
+): Promise<SavedReviewDecision[]> {
+  const rows = await runner
+    .select({
+      rowIndex: orderlyImportReviewDecisions.rowIndex,
+      decision: orderlyImportReviewDecisions.decision,
+      revision: orderlyImportReviewDecisions.revision,
+      decidedBy: orderlyImportReviewDecisions.updatedBy,
+      updatedAt: orderlyImportReviewDecisions.updatedAt,
+    })
+    .from(orderlyImportReviewDecisions)
+    .where(and(
+      // @ts-ignore
+      eq(orderlyImportReviewDecisions.batchId, batchId),
+      // @ts-ignore
+      eq(orderlyImportReviewDecisions.companyId, companyId),
+    ))
+    .orderBy(orderlyImportReviewDecisions.rowIndex);
+  return rows.map((row: any) => ({
+    rowIndex: row.rowIndex,
+    decision: normalizeReviewDecision(row.rowIndex, row.decision),
+    revision: row.revision,
+    decidedBy: row.decidedBy ?? null,
+    updatedAt: row.updatedAt ?? null,
+  }));
+}
+
+function reviewDecisionSignature(decisions: SavedReviewDecision[]): string {
+  return JSON.stringify(decisions.map(decision => ({
+    rowIndex: decision.rowIndex,
+    decision: decision.decision,
+    revision: decision.revision,
+  })));
 }
 
 export interface ApprovalResult {
@@ -1781,6 +2157,214 @@ async function resolveApprovalContract(
   };
 }
 
+export async function getOrderlyReviewDecisions(
+  batchId: string,
+  auth: ApprovalAuthorizationContext | null | undefined,
+): Promise<{ decisions: SavedReviewDecision[] }> {
+  const contract = await resolveApprovalContract(batchId, auth);
+  return {
+    decisions: await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId),
+  };
+}
+
+function normalizeReviewDecisionChanges(input: unknown): ReviewDecisionChange[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new ImportApprovalError('INVALID_REQUEST', 'At least one review decision change is required.');
+  }
+  const rowIndexes = new Set<number>();
+  return input.map((rawChange) => {
+    if (!isPlainObject(rawChange)) {
+      throw new ImportApprovalError('INVALID_REQUEST', 'Review decision changes must be objects.');
+    }
+    const rowIndex = rawChange.rowIndex;
+    const expectedRevision = rawChange.expectedRevision;
+    if (!Number.isInteger(rowIndex) || (rowIndex as number) < 1) {
+      throw new ImportApprovalError('INVALID_REQUEST', 'Review decision row indexes must be positive integers.');
+    }
+    if (rowIndexes.has(rowIndex as number)) {
+      throw new ImportApprovalError('INVALID_REQUEST', `Row ${rowIndex} appears more than once in this review save.`);
+    }
+    rowIndexes.add(rowIndex as number);
+    if (
+      expectedRevision !== null &&
+      (!Number.isInteger(expectedRevision) || (expectedRevision as number) < 1)
+    ) {
+      throw new ImportApprovalError(
+        'INVALID_REQUEST',
+        `Review decision for row ${rowIndex} needs a revision number or null for a new decision.`,
+      );
+    }
+    const hasDecision = Object.prototype.hasOwnProperty.call(rawChange, 'decision');
+    return {
+      rowIndex: rowIndex as number,
+      expectedRevision: expectedRevision as number | null,
+      ...(hasDecision ? { decision: normalizeReviewDecision(rowIndex as number, rawChange.decision) } : {}),
+    };
+  });
+}
+
+export async function saveOrderlyReviewDecisionChanges(
+  batchId: string,
+  auth: ApprovalAuthorizationContext | null | undefined,
+  rawChanges: unknown,
+): Promise<{ decisions: SavedReviewDecision[]; clearedRowIndexes: number[] }> {
+  const contract = await resolveApprovalContract(batchId, auth);
+  if (contract.batch.status !== 'pending_review') {
+    throw new ImportApprovalError('CONFLICT', 'Review decisions can only be changed while a batch is pending review.');
+  }
+  const changes = normalizeReviewDecisionChanges(rawChanges);
+  const decisionChanges = changes.filter(
+    (change): change is ReviewDecisionChange & { decision: ReviewDecisionPayload } => change.decision !== undefined,
+  );
+
+  if (decisionChanges.length > 0) {
+    const preview = await runResolutionPreview(contract.batch.id, contract.companyId);
+    const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+    for (const change of decisionChanges) {
+      const row = rowsByIndex.get(change.rowIndex);
+      if (!row) {
+        throw new ImportApprovalError('INVALID_REQUEST', `Row ${change.rowIndex} is not part of this import batch.`);
+      }
+      assertReviewDecisionMatchesPreview(row, change.decision);
+    }
+    await assertReviewDecisionItemsBelongToCompany(contract.companyId, decisionChanges);
+  }
+
+  return db.transaction(async (tx: any) => {
+    // Draft writes and approval take the same lock. This makes an approval
+    // either observe the complete saved decision set or force the reviewer to
+    // refresh; it can never apply a half-written bulk choice.
+    const [lockedBatch] = await tx
+      .select({
+        status: inventoryImportBatches.status,
+        companyId: inventoryImportBatches.companyId,
+      })
+      .from(inventoryImportBatches)
+      .where(and(
+        // @ts-ignore
+        eq(inventoryImportBatches.id, contract.batch.id),
+        // @ts-ignore
+        eq(inventoryImportBatches.companyId, contract.companyId),
+      ))
+      .for('update');
+    if (!lockedBatch) throw new ImportApprovalError('NOT_FOUND', 'Batch not found');
+    if (lockedBatch.status !== 'pending_review') {
+      throw new ImportApprovalError('CONFLICT', 'This batch is no longer available for review.');
+    }
+    if (decisionChanges.length > 0) {
+      const underLockPreview = await runResolutionPreview(contract.batch.id, contract.companyId, tx);
+      const rowsByIndex = new Map(underLockPreview.rows.map(row => [row.rowIndex, row]));
+      for (const change of decisionChanges) {
+        const row = rowsByIndex.get(change.rowIndex);
+        if (!row) {
+          throw new ImportApprovalError('INVALID_REQUEST', `Row ${change.rowIndex} is not part of this import batch.`);
+        }
+        assertReviewDecisionMatchesPreview(row, change.decision);
+      }
+    }
+
+    const targetRows = changes.map(change => change.rowIndex);
+    const existingRows = await tx
+      .select({
+        rowIndex: orderlyImportReviewDecisions.rowIndex,
+        revision: orderlyImportReviewDecisions.revision,
+      })
+      .from(orderlyImportReviewDecisions)
+      .where(and(
+        // @ts-ignore
+        eq(orderlyImportReviewDecisions.batchId, contract.batch.id),
+        // @ts-ignore
+        eq(orderlyImportReviewDecisions.companyId, contract.companyId),
+        // @ts-ignore
+        inArray(orderlyImportReviewDecisions.rowIndex, targetRows),
+      ))
+      .for('update');
+    const existingByRow = new Map<number, { rowIndex: number; revision: number }>(
+      existingRows.map((row: { rowIndex: number; revision: number }) => [row.rowIndex, row]),
+    );
+
+    for (const change of changes) {
+      const existing = existingByRow.get(change.rowIndex);
+      if (!existing && change.expectedRevision !== null) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `The saved review decision for row ${change.rowIndex} was removed by another reviewer. Refresh before saving.`,
+        );
+      }
+      if (existing && change.expectedRevision !== existing.revision) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `The saved review decision for row ${change.rowIndex} changed in another session. Refresh before saving.`,
+        );
+      }
+    }
+
+    const now = new Date();
+    for (const change of changes) {
+      const existing = existingByRow.get(change.rowIndex);
+      if (change.decision === undefined) {
+        if (existing) {
+          await tx
+            .delete(orderlyImportReviewDecisions)
+            .where(and(
+              // @ts-ignore
+              eq(orderlyImportReviewDecisions.batchId, contract.batch.id),
+              // @ts-ignore
+              eq(orderlyImportReviewDecisions.companyId, contract.companyId),
+              // @ts-ignore
+              eq(orderlyImportReviewDecisions.rowIndex, change.rowIndex),
+              // @ts-ignore
+              eq(orderlyImportReviewDecisions.revision, existing.revision),
+            ));
+        }
+        continue;
+      }
+
+      if (existing) {
+        await tx
+          .update(orderlyImportReviewDecisions)
+          .set({
+            decision: change.decision,
+            revision: existing.revision + 1,
+            updatedBy: contract.actingUserId,
+            updatedAt: now,
+          })
+          .where(and(
+            // @ts-ignore
+            eq(orderlyImportReviewDecisions.batchId, contract.batch.id),
+            // @ts-ignore
+            eq(orderlyImportReviewDecisions.companyId, contract.companyId),
+            // @ts-ignore
+            eq(orderlyImportReviewDecisions.rowIndex, change.rowIndex),
+            // @ts-ignore
+            eq(orderlyImportReviewDecisions.revision, existing.revision),
+          ));
+      } else {
+        await tx.insert(orderlyImportReviewDecisions).values({
+          batchId: contract.batch.id,
+          companyId: contract.companyId,
+          rowIndex: change.rowIndex,
+          decision: change.decision,
+          revision: 1,
+          createdBy: contract.actingUserId,
+          updatedBy: contract.actingUserId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    const saved = await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId, tx);
+    const changedRowIndexes = new Set(changes.map(change => change.rowIndex));
+    return {
+      decisions: saved.filter(decision => changedRowIndexes.has(decision.rowIndex)),
+      clearedRowIndexes: changes
+        .filter(change => change.decision === undefined)
+        .map(change => change.rowIndex),
+    };
+  });
+}
+
 /**
  * Apply a batch approval.
  *
@@ -1792,7 +2376,7 @@ async function resolveApprovalContract(
 export async function applyBatchApproval(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
-  rowDecisions: RowDecision[] = [],
+  rowDecisions: RowDecision[] | null = [],
 ): Promise<ApprovalResult> {
   // ── Authorization + destination contract (zero writes on any failure) ────
   const contract = await resolveApprovalContract(batchId, auth);
@@ -1801,12 +2385,29 @@ export async function applyBatchApproval(
   const userId: string | null = actingUserId;
   // Verified source-property scope for every external mapping written below.
   const approvedSourcePropertyId = batch.sourcePropertyId;
+  // HTTP approval deliberately supplies no client-side decisions. Read the
+  // durable draft set instead, so a reload, hot reload, or forged request
+  // cannot silently discard or replace the decisions reviewers actually saved.
+  // Direct service callers retain the existing array contract. The HTTP route
+  // passes null to request the durable decision set instead.
+  let persistedDecisionSignature: string | null = null;
+  let decisionsToApply: RowDecision[];
+  if (rowDecisions === null) {
+    const savedDecisions = await loadStoredReviewDecisionRecords(batchId, companyId);
+    decisionsToApply = savedDecisions.map(saved => ({
+      rowIndex: saved.rowIndex,
+      ...saved.decision,
+    }));
+    persistedDecisionSignature = reviewDecisionSignature(savedDecisions);
+  } else {
+    decisionsToApply = rowDecisions;
+  }
 
   // ── Build decision override map ──────────────────────────────────────────
   const decisionMap = new Map<number, RowDecision>(
-    rowDecisions.map(d => [d.rowIndex, d]),
+    decisionsToApply.map(d => [d.rowIndex, d]),
   );
-  for (const decision of rowDecisions) {
+  for (const decision of decisionsToApply) {
     if (
       decision.action !== undefined &&
       decision.action !== 'link_existing' &&
@@ -1824,11 +2425,11 @@ export async function applyBatchApproval(
 
   // ── Validate override IDs belong to this company ─────────────────────────
   // Security: a caller must not be able to cross-tenant link by supplying
-  // foreign company item/vendor IDs in rowDecisions.
-  const overrideItemIds = rowDecisions
+  // foreign company item/vendor IDs in saved or explicit decisions.
+  const overrideItemIds = decisionsToApply
     .flatMap(d => [d.inventoryItemId, d.comparableInventoryItemId])
     .filter((id): id is string => typeof id === 'string');
-  const overrideVendorIds = rowDecisions
+  const overrideVendorIds = decisionsToApply
     .map(d => d.vendorId)
     .filter((id): id is string => typeof id === 'string');
 
@@ -1893,7 +2494,7 @@ export async function applyBatchApproval(
     );
   }
   const recodeDecisionByReliableCode = new Map<string, RowDecision>();
-  for (const decision of rowDecisions.filter(decision => decision.action !== undefined)) {
+  for (const decision of decisionsToApply.filter(decision => decision.action !== undefined)) {
     const row = previewRowsByIndex.get(decision.rowIndex);
     if (!row || !isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
       throw new ImportApprovalError(
@@ -1961,80 +2562,15 @@ export async function applyBatchApproval(
     }
   }
 
-  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
-    const details = preview.identitySummary.conflictingReliableCodeGroups
-      .map(group => `${group.sourceItemCode} (rows ${group.rowIndexes.join(', ')}: ${group.reasons.join('; ')})`)
-      .join(' | ');
-    throw new ImportApprovalError(
-      'CONFLICT',
-      `Reliable Orderly Item Code groups contain incompatible or divergent identity evidence and require review: ${details}`,
-    );
-  }
   // A group may include an earlier row that is unmatched and a later row with
   // a safe existing match. Resolve the whole reliable-code group to that
   // existing item before considering any create path, independent of row order.
-  const reliableCodeExistingItemIds = new Map<string, string>();
-  for (const row of preview.rows) {
-    if (
-      !isReliableItemCode(row) ||
-      row.itemMatch.requiresReview ||
-      row.itemMatch.matchedId == null
-    ) {
-      continue;
-    }
-    const code = row.sourceItemCode!.trim();
-    const existing = reliableCodeExistingItemIds.get(code);
-    if (existing && existing !== row.itemMatch.matchedId) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Reliable Orderly Item Code ${code} resolves to multiple existing inventory items and requires review.`,
-      );
-    }
-    reliableCodeExistingItemIds.set(code, row.itemMatch.matchedId);
-  }
-  // The same cache applies to physical rows in one derived identity group.
-  // It lets an earlier blank row follow a later valid-code sibling without
-  // treating the blank itself as authority to create a catalog item.
-  const identityGroupExistingItemIds = new Map<string, string>();
-  for (const row of preview.rows) {
-    if (
-      !row.identityGroupKey ||
-      row.itemMatch.requiresReview ||
-      row.itemMatch.matchedId == null ||
-      row.itemMatch.possibleRecode
-    ) {
-      continue;
-    }
-    const existing = identityGroupExistingItemIds.get(row.identityGroupKey);
-    if (existing && existing !== row.itemMatch.matchedId) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Orderly identity group ${row.identityGroupKey} resolves to multiple inventory items and requires review.`,
-      );
-    }
-    identityGroupExistingItemIds.set(row.identityGroupKey, row.itemMatch.matchedId);
-  }
-  // Approval may only let a blank physical row inherit a group-created or
-  // group-resolved item when exactly one reliable coded sibling supports it.
-  // This is deliberately stricter than “same normalized description”: multiple
-  // distinct codes leave the blank row held until a reviewer supplies its own
-  // decision or direct alternate mapping evidence.
-  const previewIdentityGroups = new Map<string, ResolutionPreviewResult['rows']>();
-  for (const row of preview.rows) {
-    if (!row.identityGroupKey) continue;
-    const group = previewIdentityGroups.get(row.identityGroupKey) ?? [];
-    group.push(row);
-    previewIdentityGroups.set(row.identityGroupKey, group);
-  }
-  const blankGroupMayFollowCodedSibling = new Map<string, boolean>();
-  const blankGroupMayCreateInternalItem = new Map<string, boolean>();
-  for (const [groupKey, group] of previewIdentityGroups) {
-    const blankRow = group.find(row => row.itemCodeStatus === 'blank');
-    if (blankRow) {
-      blankGroupMayFollowCodedSibling.set(groupKey, hasSafeCodedSibling(blankRow, group));
-      blankGroupMayCreateInternalItem.set(groupKey, canCreateInternalItemForBlankGroup(blankRow, group));
-    }
-  }
+  let {
+    reliableCodeExistingItemIds,
+    identityGroupExistingItemIds,
+    blankGroupMayFollowCodedSibling,
+    blankGroupMayCreateInternalItem,
+  } = deriveApprovalIdentityCaches(preview);
 
   // ── Fetch "each" unit for new item creation ──────────────────────────────
   const eachUnitId = await getEachUnitId();
@@ -2067,22 +2603,43 @@ export async function applyBatchApproval(
         'Batch has already been approved — use the history view to see results.',
       );
     }
+    if (persistedDecisionSignature !== null) {
+      const underLockSavedDecisions = await loadStoredReviewDecisionRecords(batchId, companyId, tx);
+      if (reviewDecisionSignature(underLockSavedDecisions) !== persistedDecisionSignature) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          'Review decisions changed while approval was starting. Refresh the preview and confirm the saved decisions before approving.',
+        );
+      }
+    }
     // The UI preview is intentionally outside the transaction, but the
     // persisted catalog evidence may change after that read. Re-check it once
     // the batch is locked and before any mutation so a newly-arrived
     // contradictory packSize identity cannot race a variant into the catalog.
     const underLockPreview = await runResolutionPreview(batchId, companyId, tx);
-    const underLockConflicts = underLockPreview.rows.filter(
-      row => row.itemMatch.sourceDataConflict,
-    );
-    if (underLockConflicts.length > 0) {
-      const details = underLockConflicts
-        .map(row => `row ${row.rowIndex}: ${row.itemMatch.sourceDataConflict!.reason}`)
-        .join(' | ');
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Orderly source data changed to contradictory pack evidence before approval: ${details}`,
+    let resolutionPreview = preview;
+    if (persistedDecisionSignature !== null) {
+      assertSavedReviewDecisionsRemainValid(underLockPreview, decisionsToApply);
+      ({
+        reliableCodeExistingItemIds,
+        identityGroupExistingItemIds,
+        blankGroupMayFollowCodedSibling,
+        blankGroupMayCreateInternalItem,
+      } = deriveApprovalIdentityCaches(underLockPreview));
+      resolutionPreview = underLockPreview;
+    } else {
+      const underLockConflicts = underLockPreview.rows.filter(
+        row => row.itemMatch.sourceDataConflict,
       );
+      if (underLockConflicts.length > 0) {
+        const details = underLockConflicts
+          .map(row => `row ${row.rowIndex}: ${row.itemMatch.sourceDataConflict!.reason}`)
+          .join(' | ');
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly source data changed to contradictory pack evidence before approval: ${details}`,
+        );
+      }
     }
 
     let itemsCreated = 0, itemsLinked = 0;
@@ -2110,7 +2667,7 @@ export async function applyBatchApproval(
     // here and let the persisted mapping win, so two concurrent approvals
     // converge on one inventory item instead of each creating their own.
     const batchReliableCodes = Array.from(new Set(
-      preview.rows
+      resolutionPreview.rows
         .filter(row => isReliableItemCode(row))
         .map(row => row.sourceItemCode!.trim()),
     ));
@@ -2268,7 +2825,7 @@ export async function applyBatchApproval(
     const categoryCache = new Map<string, string>(); // lowerCased name → categoryId
     let categoriesCreated = 0;
     const uniqueCategoryNames = new Set<string>(
-      preview.rows
+      resolutionPreview.rows
         .map(r => r.sourceCategory?.trim() ?? '')
         .filter(s => s.length > 0),
     );
@@ -2284,7 +2841,7 @@ export async function applyBatchApproval(
     // Resolve authority-bearing coded rows first. This means an otherwise
     // earlier blank sibling can safely consume the group's canonical item ID
     // later in this transaction, rather than inventing an identity itself.
-    const rowsInIdentityOrder = [...preview.rows].sort((left, right) => {
+    const rowsInIdentityOrder = [...resolutionPreview.rows].sort((left, right) => {
       const leftIsCode = left.itemCodeStatus === 'valid' ? 0 : 1;
       const rightIsCode = right.itemCodeStatus === 'valid' ? 0 : 1;
       return leftIsCode - rightIsCode || left.rowIndex - right.rowIndex;

@@ -1429,11 +1429,34 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function OrderlyImport() {
-  const [step, setStep] = useState<WizardStep>("list");
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [resumeTarget] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const batchId = params.get("orderlyBatch");
+    const step = params.get("orderlyStep");
+    // The server still authorizes the batch before any preview data is shown.
+    // This only preserves the pending wizard destination across a full reload.
+    if (batchId && (step === "date" || step === "preview")) {
+      return { step: step as WizardStep, batchId };
+    }
+    return { step: "list" as WizardStep, batchId: null };
+  });
+  const [step, setStep] = useState<WizardStep>(resumeTarget.step);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(resumeTarget.batchId);
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [approvalResult, setApprovalResult] = useState<ApprovalResult | null>(null);
   const [countSessionResult, setCountSessionResult] = useState<CreateCountSessionResult | null>(null);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeBatchId && (step === "date" || step === "preview")) {
+      url.searchParams.set("orderlyBatch", activeBatchId);
+      url.searchParams.set("orderlyStep", step);
+    } else {
+      url.searchParams.delete("orderlyBatch");
+      url.searchParams.delete("orderlyStep");
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [activeBatchId, step]);
 
   function selectBatch(batch: ImportBatch) {
     setActiveBatchId(batch.id);

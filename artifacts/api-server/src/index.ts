@@ -11,6 +11,7 @@ import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/histor
 import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniqueness";
 import { ensureInventoryItemNumberSchema } from "./migrations/inventoryItemNumbers";
 import { ensureOrderlyPackIdentityEvidenceSchema } from "./migrations/orderlyPackIdentityEvidence";
+import { ensureOrderlyReviewDecisionsSchema } from "./migrations/orderlyReviewDecisions";
 import { db } from "./db";
 
 const rawPort = process.env["PORT"];
@@ -85,6 +86,14 @@ if (Number.isNaN(port) || port <= 0) {
     logger.info("[Migration] Orderly pack identity evidence schema ready");
   } catch (err) {
     logger.error({ err }, "Fatal: Orderly pack identity evidence schema initialization failed — refusing to start");
+    process.exit(1);
+  }
+
+  try {
+    await ensureOrderlyReviewDecisionsSchema(db);
+    logger.info("[Migration] Orderly review decisions schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: Orderly review decisions schema initialization failed — refusing to start");
     process.exit(1);
   }
 

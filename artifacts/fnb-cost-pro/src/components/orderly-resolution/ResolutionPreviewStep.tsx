@@ -1,4 +1,4 @@
-import { useState, Fragment, useMemo } from "react";
+import { useState, Fragment, useMemo, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -79,9 +79,36 @@ type RecodeDecision = {
   comparableInventoryItemId: string;
 };
 type DecisionValue = string | null | RecodeDecision;
+type StoredDecisionPayload = RecodeDecision | { inventoryItemId: string | null };
+
+type SavedReviewDecision = {
+  rowIndex: number;
+  decision: StoredDecisionPayload;
+  revision: number;
+  decidedBy: string | null;
+  updatedAt: string | null;
+};
+
+type ReviewDecisionResponse = {
+  decisions: SavedReviewDecision[];
+};
+
+type ReviewDecisionChange = {
+  rowIndex: number;
+  expectedRevision: number | null;
+  decision?: StoredDecisionPayload;
+};
 
 function isRecodeDecision(value: DecisionValue | undefined): value is RecodeDecision {
   return typeof value === "object" && value !== null && "action" in value;
+}
+
+function toStoredDecisionPayload(value: DecisionValue): StoredDecisionPayload {
+  return isRecodeDecision(value) ? value : { inventoryItemId: value };
+}
+
+function fromStoredDecisionPayload(value: StoredDecisionPayload): DecisionValue {
+  return "action" in value ? value : value.inventoryItemId;
 }
 
 // Helper components for UI
@@ -648,12 +675,15 @@ export function ResolutionPreviewStep({
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [rowDecisions, setRowDecisions] = useState<Map<number, DecisionValue>>(() => new Map());
+  const [decisionRevisions, setDecisionRevisions] = useState<Map<number, number>>(() => new Map());
+  const [savingRowIndexes, setSavingRowIndexes] = useState<Set<number>>(() => new Set());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
   const [duplicateDialogWarning, setDuplicateDialogWarning] = useState<DuplicateDateWarning | null>(null);
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
   const [noticesCollapsed, setNoticesCollapsed] = useState(false);
   const [bulkVariantConfirmationOpen, setBulkVariantConfirmationOpen] = useState(false);
+  const savingRowsRef = useRef<Set<number>>(new Set());
 
   const PAGE_SIZE = 100;
 
@@ -679,6 +709,41 @@ export function ResolutionPreviewStep({
     },
   });
 
+  const {
+    data: savedReviewDecisions,
+    isLoading: areReviewDecisionsLoading,
+    refetch: refetchReviewDecisions,
+  } = useQuery<ReviewDecisionResponse>({
+    queryKey: [`/api/inventory-import/orderly/batches/${batchId}/review-decisions`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/inventory-import/orderly/batches/${batchId}/review-decisions`);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to load saved review decisions");
+      }
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!savedReviewDecisions) return;
+    setRowDecisions(new Map(savedReviewDecisions.decisions.map(decision => [
+      decision.rowIndex,
+      fromStoredDecisionPayload(decision.decision),
+    ])));
+    setDecisionRevisions(new Map(savedReviewDecisions.decisions.map(decision => [decision.rowIndex, decision.revision])));
+  }, [batchId, savedReviewDecisions]);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (savingRowsRef.current.size === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
+
   function toggleExpand(rowIndex: number) {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -688,48 +753,93 @@ export function ResolutionPreviewStep({
     });
   }
 
-  function setDecision(rowIndex: number, value: DecisionValue | undefined) {
-    setRowDecisions(prev => {
-      const next = new Map(prev);
-      if (value === undefined) next.delete(rowIndex);
-      else next.set(rowIndex, value);
-      return next;
-    });
+  async function persistDecisionChanges(changes: ReviewDecisionChange[]): Promise<boolean> {
+    if (changes.some(change => savingRowsRef.current.has(change.rowIndex))) return false;
+    for (const change of changes) savingRowsRef.current.add(change.rowIndex);
+    setSavingRowIndexes(new Set(savingRowsRef.current));
+    try {
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ changes }),
+      });
+      const body: ReviewDecisionResponse & { clearedRowIndexes?: number[]; error?: string } = await res.json();
+      if (!res.ok) {
+        if (res.status === 409) await refetchReviewDecisions();
+        throw new Error(body.error ?? "Failed to save review decision");
+      }
+
+      const cleared = new Set(body.clearedRowIndexes ?? []);
+      setRowDecisions(prev => {
+        const next = new Map(prev);
+        for (const rowIndex of cleared) next.delete(rowIndex);
+        for (const saved of body.decisions) {
+          next.set(saved.rowIndex, fromStoredDecisionPayload(saved.decision));
+        }
+        return next;
+      });
+      setDecisionRevisions(prev => {
+        const next = new Map(prev);
+        for (const rowIndex of cleared) next.delete(rowIndex);
+        for (const saved of body.decisions) next.set(saved.rowIndex, saved.revision);
+        return next;
+      });
+      return true;
+    } catch (err: any) {
+      toast({
+        title: "Decision was not saved",
+        description: err.message ?? "Review the row and try again.",
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      for (const change of changes) savingRowsRef.current.delete(change.rowIndex);
+      setSavingRowIndexes(new Set(savingRowsRef.current));
+    }
   }
 
-  function queueBulkNewPackSizeVariants() {
+  function setDecision(rowIndex: number, value: DecisionValue | undefined) {
+    void persistDecisionChanges([{
+      rowIndex,
+      expectedRevision: decisionRevisions.get(rowIndex) ?? null,
+      ...(value === undefined ? {} : { decision: toStoredDecisionPayload(value) }),
+    }]);
+  }
+
+  async function queueBulkNewPackSizeVariants() {
     const bulkDecisions = buildBulkNewPackSizeDecisions(bulkNewPackSizeReview.candidates);
-    setRowDecisions(prev => {
-      const next = new Map(prev);
-      for (const decision of bulkDecisions) {
-        next.set(decision.rowIndex, {
-          action: decision.action,
-          comparableInventoryItemId: decision.comparableInventoryItemId,
-        });
-      }
-      return next;
-    });
+    const saved = await persistDecisionChanges(bulkDecisions.map(decision => ({
+      rowIndex: decision.rowIndex,
+      expectedRevision: decisionRevisions.get(decision.rowIndex) ?? null,
+      decision: {
+        action: decision.action,
+        comparableInventoryItemId: decision.comparableInventoryItemId,
+      },
+    })));
+    if (!saved) return;
     setBulkVariantConfirmationOpen(false);
     toast({
-      title: `${bulkNewPackSizeReview.candidates.length} pack-size ${bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} queued`,
-      description: "You can still open any row below to adjust an exception before approving.",
+      title: `${bulkNewPackSizeReview.candidates.length} pack-size ${bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} saved`,
+      description: "You can leave and resume this review; any saved row can still be changed before approval.",
     });
   }
 
   async function submitApproval(force = false) {
+    if (savingRowsRef.current.size > 0) {
+      toast({
+        title: "Waiting for review decisions to save",
+        description: "Approve is available once all in-progress saves finish.",
+      });
+      return;
+    }
     setApproving(true);
     try {
-      const decisions = Array.from(rowDecisions.entries()).map(([rowIndex, decision]) => (
-        isRecodeDecision(decision)
-          ? { rowIndex, ...decision }
-          : { rowIndex, inventoryItemId: decision }
-      ));
       const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          rowDecisions: decisions,
           ...(force ? { force: true } : {}),
           ...(legacyApprovalStoreId ? { storeId: legacyApprovalStoreId } : {}),
         }),
@@ -765,7 +875,17 @@ export function ResolutionPreviewStep({
     }
   }
 
-  if (isLoading) {
+  function handleBack() {
+    if (
+      savingRowsRef.current.size > 0 &&
+      !window.confirm("A review decision is still saving. Leave this page anyway?")
+    ) {
+      return;
+    }
+    onBack();
+  }
+
+  if (isLoading || areReviewDecisionsLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 min-h-[50vh] text-center">
         <RefreshCw className="h-8 w-8 mb-4 text-primary animate-spin" />
@@ -840,7 +960,7 @@ export function ResolutionPreviewStep({
   const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
   const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0 || recodeSummary.unreliableCodes > 0;
-  const approvalDisabled = approving || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const approvalDisabled = approving || savingRowIndexes.size > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -937,7 +1057,7 @@ export function ResolutionPreviewStep({
 
       <div className="flex items-center justify-between border-b pb-4">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={onBack} className="h-8 shadow-sm">
+          <Button variant="outline" size="sm" onClick={handleBack} className="h-8 shadow-sm">
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <div>
@@ -1102,7 +1222,7 @@ export function ResolutionPreviewStep({
             </div>
             {queuedBulkVariantCount > 0 && (
               <p className="mt-3 text-xs font-medium text-violet-950" data-testid="bulk-new-pack-size-queued">
-                {queuedBulkVariantCount} pack-size {queuedBulkVariantCount === 1 ? "variant is" : "variants are"} queued. Open any row below to adjust an exception before approval.
+                {queuedBulkVariantCount} pack-size {queuedBulkVariantCount === 1 ? "variant is" : "variants are"} saved. Open any row below to adjust an exception before approval.
               </p>
             )}
           </CardContent>
@@ -1618,7 +1738,7 @@ export function ResolutionPreviewStep({
                                 <div className="flex flex-col items-start gap-1.5">
                                   {row.heldForReview && hasOverride ? (
                                     <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 shadow-none font-medium">
-                                      <CheckCircle2 className="mr-1 h-3 w-3" />Decision recorded
+                                      <CheckCircle2 className="mr-1 h-3 w-3" />Saved decision
                                     </Badge>
                                   ) : row.heldForReview ? (
                                     <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Needs decision</Badge>

@@ -2609,6 +2609,38 @@ export const insertInventoryImportRowSchema = createInsertSchema(inventoryImport
 export type InsertInventoryImportRow = z.infer<typeof insertInventoryImportRowSchema>;
 export type InventoryImportRow = typeof inventoryImportRows.$inferSelect;
 
+/**
+ * orderly_import_review_decisions
+ * Durable, reviewer-authored draft decisions for a pending Orderly batch.
+ *
+ * Source rows remain immutable. This table is intentionally separate so a
+ * reviewer can save, revise, and resume a proposed resolution without making
+ * catalog mutations before approval.
+ */
+export const orderlyImportReviewDecisions = pgTable("orderly_import_review_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  rowIndex: integer("row_index").notNull(),
+  decision: jsonb("decision").notNull(),
+  revision: integer("revision").notNull().default(1),
+  createdBy: varchar("created_by"),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  batchRowUnique: unique("orderly_import_review_decisions_batch_row_unique").on(t.batchId, t.rowIndex),
+  batchCompanyIdx: index("orderly_import_review_decisions_batch_company_idx").on(t.batchId, t.companyId),
+}));
+
+export const insertOrderlyImportReviewDecisionSchema = createInsertSchema(orderlyImportReviewDecisions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOrderlyImportReviewDecision = z.infer<typeof insertOrderlyImportReviewDecisionSchema>;
+export type OrderlyImportReviewDecision = typeof orderlyImportReviewDecisions.$inferSelect;
+
 // ─── Inventory Locations ─────────────────────────────────────────────────────
 // First-class location hierarchy — supports multi-outlet clubs, bars, kitchens etc.
 // Distinct from the legacy storageLocations table (company-scoped, flat, no hierarchy).
