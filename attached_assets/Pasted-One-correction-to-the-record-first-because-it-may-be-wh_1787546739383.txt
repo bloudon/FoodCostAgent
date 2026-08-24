@@ -1,0 +1,35 @@
+One correction to the record first, because it may be why #1249 got cancelled.
+
+"Claude did not identify a blocking defect" refers to Replit's internal code-review agent. That's a different check from mine — theirs read the code, mine drove the browser. Their PASS is legitimate; the code is sound. But I did find a defect, and I just re-confirmed it live in shipped code: URL-resume → Back → Detected: unknown, empty date, Confirm disabled: true, no way forward. A code review structurally can't catch that, because the bug is missing state at runtime, not wrong logic. Both results are correct and neither substitutes for the other.
+
+Also confirmed still live: 0 conflicts block approval, Create 31 new variants in bulk — Milk-Whole remains inside the bulk set.
+
+Priority against the mission
+
+Their five items don't rank equally for a production seed.
+
+Do before the dev dry run:
+
+#4 — the six identity-suite failures. This is the top item, ahead of everything else on their list. Six undiagnosed failures in the identity suite, which is precisely the subsystem deciding item matching and catalog mappings — the thing the entire seed depends on. "Rerun against an isolated database or diagnose" is right, and it has to happen before Approve is ever clicked. Until diagnosed, we can't distinguish test-harness noise from a real identity regression.
+
+#3 — the end-to-end saved-draft test. This closes the one link nobody has verified. I confirmed decisions persist, survive reload, survive navigation, and clear on undo. I have not verified a saved decision actually controls what gets written at Approve. #1245's whole purpose rests on that, and it's currently untested.
+
+Decide in parallel (cheap):
+
+#1 — approval permissions. Recommend restricting to manager/company admin. Approve is the only irreversible step in the flow; basic-tier plus store access is a wide door for it. This is a policy call you can make today.
+
+Defer for a single-operator sequential seed:
+
+#2 and #5. Concurrent approvals of the same date, and concurrent catalog edits during approval, are near-impossible with one operator working months in order. But #2 has one question worth answering now, because it is a seed scenario: if a batch is discarded and re-uploaded, does the duplicate-date guard block re-approving that month? If a month needs redoing mid-seed, that guard could lock you out.
+
+On the cancelled tickets
+
+#1249 — I'd reinstate. It's live, cheap, and it degrades the feature just shipped: only reviewers who use resume hit it. The corrected repro is in the file.
+
+#1248 — cancelling is defensible as a conscious tradeoff, but it converts the runbook's §4.3 pre-screen from a precaution into a mandatory manual step. Search each batch for known multi-pack codes before touching bulk. That works for cases we know by name; it doesn't scale to the 7.65% population generally. Fine for three months with a careful operator — worth revisiting before this becomes routine.
+
+The item nobody's list covers
+
+Approve has still never been executed. None of the five follow-ups changes that. Once #4 and #3 land, the next thing that actually de-risks production is a full dry run on dev through Approve — answering the five unknowns in runbook §1 (atomicity, duration, idempotency, reversibility, what it writes).
+
+Suggested order: diagnose #4 → add #3 → decide #1 → reinstate #1249 → then dry run, with explicit go-ahead from you at the Approve click.

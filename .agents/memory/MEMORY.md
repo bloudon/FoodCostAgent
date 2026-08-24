@@ -40,6 +40,7 @@
 - [Orderly adoption root cause](orderly-adoption-root-cause.md) — missing relationships came from cross-batch adoption loss; the catalog intentionally supports many vendors and many vendor packs per ingredient.
 - [Orderly pack identity provenance](orderly-pack-identity-provenance.md) — per-pack source facts belong on immutable provenance mappings, not the unique vendor-item relationship.
 - [Orderly review-draft atomicity](orderly-review-draft-atomicity.md) — saved decisions and every identity cache must be revalidated and consumed from one under-lock preview.
+- [Orderly acceptance evidence](orderly-acceptance-evidence.md) — structural review cannot replace authenticated browser acceptance and an end-to-end approval dry run.
 - [Orderly production preflight boundary](orderly-production-preflight-boundary.md) — readiness proves scope/evidence/environment only; live classifications remain a separate PM-authorized production preview.
 - [VPS production operator boundary](vps-production-operator-boundary.md) — Replit supplies checksum-pinned commands and sanitized evidence expectations; the production operator executes on the VPS.
 - [Production database source-of-truth](production-db-source-of-truth.md) — Replit’s production query target may differ from the VPS app database; operator evidence decides VPS invariants.
