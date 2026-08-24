@@ -19,6 +19,10 @@ import {
   detectInventoryDate,
   parseOrderlyWorkbook,
 } from './OrderlyParser';
+import {
+  buildBulkPackSizeFixtureWorkbook,
+  BULK_PACK_SIZE_FIXTURE_FILENAME,
+} from './orderlyBulkPackSize.fixture';
 
 // ─── detectOrderlyFormat ─────────────────────────────────────────────────────
 
@@ -355,5 +359,36 @@ describe('parseOrderlyWorkbook (Bay Hill June 2026)', () => {
       baseUnit: 'ML',
       packParseStatus: 'ok',
     });
+  });
+});
+
+describe('bulk pack-size acceptance fixture', () => {
+  it('contains a stable complete-pack candidate and a missing-pack-evidence row', () => {
+    const result = parseOrderlyWorkbook(
+      buildBulkPackSizeFixtureWorkbook(),
+      BULK_PACK_SIZE_FIXTURE_FILENAME,
+    );
+
+    expect(result.sheetName).toBe('Inventory Detail');
+    expect(result.sourceRowCount).toBe(2);
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceItemCode: 'TEQ-5050',
+        cleanedDescription: 'House Tequila',
+        supplierRaw: 'Acme Liquor',
+        packParseStatus: 'ok',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: 'ML',
+        itemCodeStatus: 'valid',
+      }),
+      expect.objectContaining({
+        sourceItemCode: 'TEQ-5051',
+        cleanedDescription: 'House Tequila',
+        packParseStatus: 'unparseable',
+        itemCodeStatus: 'valid',
+      }),
+    ]));
   });
 });
