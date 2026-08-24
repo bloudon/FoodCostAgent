@@ -4,6 +4,8 @@ import {
   uniqueCategories,
   applyFilters,
   toggleSetValue,
+  buildBulkNewPackSizeDecisions,
+  getBulkNewPackSizeReview,
   type RowPreviewLike,
 } from "./orderlyImportFilterUtils";
 
@@ -87,6 +89,139 @@ describe("rowConfidenceKey", () => {
 
   it("returns the confidence value for an ambiguous row", () => {
     expect(rowConfidenceKey(makeRow("Dairy", "name_pack", "ambiguous"))).toBe("ambiguous");
+  });
+});
+
+describe("getBulkNewPackSizeReview", () => {
+  function newPackRow(overrides: Partial<RowPreviewLike> = {}): RowPreviewLike {
+    return {
+      rowIndex: 1,
+      sourceCategory: "Spirits",
+      sourceItemCode: "PACK-5X50",
+      sourceCodeReliability: "stable",
+      supplierRaw: "Acme Liquor",
+      packSizeRaw: "5/50 ML",
+      cleanedDescription: "House Tequila",
+      caseQuantity: 5,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 50,
+      baseUnit: "ML",
+      itemMatch: {
+        strategy: "name_pack",
+        confidence: "high",
+        possibleRecode: true,
+        recodeEvidenceClass: "new_pack_size",
+        packCompatibility: "incompatible",
+        possibleRecodeMatchedId: "existing-tequila",
+      },
+      ...overrides,
+    };
+  }
+
+  it("only queues complete, verified new-pack source-code groups and groups their source samples", () => {
+    const review = getBulkNewPackSizeReview([
+      newPackRow({ rowIndex: 4 }),
+      newPackRow({ rowIndex: 9 }),
+      newPackRow({
+        rowIndex: 10,
+        sourceItemCode: "PACK-6X1L",
+        packSizeRaw: "6/1 LT",
+        cleanedDescription: "House Tequila",
+      }),
+    ]);
+
+    expect(review.candidates).toEqual([
+      expect.objectContaining({
+        sourceItemCode: "PACK-5X50",
+        comparableInventoryItemId: "existing-tequila",
+        rowIndexes: [4, 9],
+        sourceRowCount: 2,
+        vendorName: "Acme Liquor",
+        packDescriptor: "5/50 ML",
+      }),
+      expect.objectContaining({
+        sourceItemCode: "PACK-6X1L",
+        rowIndexes: [10],
+        packDescriptor: "6/1 LT",
+      }),
+    ]);
+    expect(review.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        vendorName: "Acme Liquor",
+        packDescriptor: "5/50 ML",
+        variantCount: 1,
+        sourceRowCount: 2,
+        samples: [{ sourceItemCode: "PACK-5X50", sampleDescription: "House Tequila" }],
+      }),
+    ]));
+
+    expect(buildBulkNewPackSizeDecisions(review.candidates)).toEqual([
+      { rowIndex: 4, action: "create_variant", comparableInventoryItemId: "existing-tequila" },
+      { rowIndex: 9, action: "create_variant", comparableInventoryItemId: "existing-tequila" },
+      { rowIndex: 10, action: "create_variant", comparableInventoryItemId: "existing-tequila" },
+    ]);
+  });
+
+  it("never includes another class or a partial source-code group in a bulk variant action", () => {
+    const review = getBulkNewPackSizeReview([
+      newPackRow({ rowIndex: 1 }),
+      newPackRow({
+        rowIndex: 2,
+        sourceItemCode: "PACK-5X50",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          possibleRecode: true,
+          recodeEvidenceClass: "source_data_conflict",
+          packCompatibility: "incompatible",
+          possibleRecodeMatchedId: "existing-tequila",
+        },
+      }),
+      newPackRow({
+        rowIndex: 3,
+        sourceItemCode: "PACK-UNKNOWN",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          possibleRecode: true,
+          recodeEvidenceClass: "pack_evidence_missing",
+          packCompatibility: "unknown",
+          possibleRecodeMatchedId: "existing-tequila",
+        },
+      }),
+      newPackRow({
+        rowIndex: 4,
+        sourceItemCode: "PACK-PSEUDO",
+        sourceCodeReliability: "pseudo_code",
+      }),
+      newPackRow({
+        rowIndex: 5,
+        sourceItemCode: "PACK-HELD",
+        heldForReview: true,
+      }),
+    ]);
+
+    expect(review.candidates).toEqual([]);
+    expect(buildBulkNewPackSizeDecisions(review.candidates)).toEqual([]);
+  });
+
+  it("excludes a code when its vendor or source pack facts disagree across locations", () => {
+    const review = getBulkNewPackSizeReview([
+      newPackRow({ rowIndex: 1 }),
+      newPackRow({ rowIndex: 2, supplierRaw: "Other Liquor" }),
+      newPackRow({
+        rowIndex: 3,
+        sourceItemCode: "PACK-6X1L",
+        packSizeRaw: "6/1 LT",
+      }),
+      newPackRow({
+        rowIndex: 4,
+        sourceItemCode: "PACK-6X1L",
+        packSizeRaw: "6 × 1 L",
+      }),
+    ]);
+
+    expect(review.candidates).toEqual([]);
   });
 });
 

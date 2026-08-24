@@ -1003,6 +1003,11 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .where(eq(inventoryImportRows.batchId, juneBatch));
     expect(juneRow.resolvedInventoryItemId).toBeTruthy();
     expect(juneRow.resolvedInventoryItemId).not.toBe(mayRow.resolvedInventoryItemId);
+    const [juneItem] = await db
+      .select({ name: inventoryItems.name })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, juneRow.resolvedInventoryItemId!));
+    expect(juneItem.name).toBe("Casamigo's Blanco — 5 × 50 ML");
 
     const links = await db
       .select({
@@ -1021,6 +1026,50 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         relatedInventoryItemId: juneRow.resolvedInventoryItemId,
       },
     ]));
+  });
+
+  it('refuses a separate variant when the source pack evidence is incomplete', async () => {
+    const mayBatch = await stageBatch([
+      {
+        code: '7710021',
+        description: 'Evidence Tequila',
+        location: 'Liquor Cage',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2026-10-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+
+    const incompleteEvidenceBatch = await stageBatch([
+      {
+        code: '7710022',
+        description: 'Evidence Tequila',
+        location: 'Liquor Cage',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 0,
+        baseUnit: 'ML',
+      },
+    ], '2026-11-30');
+    await db
+      .update(inventoryImportRows)
+      .set({ baseUnitQuantity: null, baseUnit: null })
+      .where(eq(inventoryImportRows.batchId, incompleteEvidenceBatch));
+    const preview = await runResolutionPreview(incompleteEvidenceBatch, ID.company);
+    expect(preview.rows[0].itemMatch.recodeEvidenceClass).toBe('pack_evidence_missing');
+    expect(preview.rows[0].itemMatch.packCompatibility).toBe('unknown');
+
+    await expect(applyBatchApproval(incompleteEvidenceBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
   });
 
   it('accepts a true Red Breast 750 ml re-code only with an explicit compatible link', async () => {

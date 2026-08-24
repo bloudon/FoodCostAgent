@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { expect as vitestExpect } from "vitest";
 import React from "react";
@@ -66,7 +66,7 @@ vi.mock("@/components/ui/alert", () => ({
 }));
 
 vi.mock("@/components/ui/alert-dialog", () => ({
-  AlertDialog: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialog: ({ children, open }: any) => open ? React.createElement("div", null, children) : null,
   AlertDialogAction: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
   AlertDialogCancel: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
   AlertDialogContent: ({ children }: any) => React.createElement("div", null, children),
@@ -368,6 +368,64 @@ function getAllChips() {
 // ---------------------------------------------------------------------------
 
 describe("ResolutionPreviewStep — confidence filter chips", () => {
+  it("requires a confirmation with source evidence before queueing eligible pack-size variants in bulk", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 1,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 0 },
+      recodeSummary: {
+        compatibleAlternates: 0,
+        newPackSizes: 1,
+        sourceDataConflicts: 0,
+        unreliableCodes: 0,
+        packEvidenceMissing: 0,
+      },
+      rows: [{
+        ...makePreviewRow(1, "Spirits", "name_pack", "high"),
+        sourceItemCode: "PACK-5X50",
+        sourceCodeReliability: "stable",
+        supplierRaw: "Acme Liquor",
+        packSizeRaw: "5/50 ML",
+        cleanedDescription: "House Tequila",
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: "ML",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          matchedId: "existing-tequila",
+          candidateIds: ["existing-tequila"],
+          requiresReview: false,
+          possibleRecode: true,
+          recodeEvidenceClass: "new_pack_size",
+          packCompatibility: "incompatible",
+          possibleRecodeMatchedId: "existing-tequila",
+        },
+      }],
+    };
+    renderStep();
+
+    expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create 1 new variant in bulk" }));
+
+    const confirmationHeading = await screen.findByText("Confirm 1 separate variant");
+    const confirmationDialog = confirmationHeading.parentElement?.parentElement;
+    expect(confirmationDialog).not.toBeNull();
+    expect(within(confirmationDialog!).getByText("Acme Liquor")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText("5/50 ML")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText("House Tequila")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText((_, element) =>
+      element?.classList.contains("font-mono") && element.textContent === "(PACK-5X50)",
+    )).toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-new-pack-size-queued")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create 1 variant" }));
+
+    expect(await screen.findByTestId("bulk-new-pack-size-queued")).toHaveTextContent("1 pack-size variant is queued");
+    expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
+  });
+
   it("renders a chip for each confidence level present in the batch", async () => {
     renderStep();
     // All 4 confidence levels from our fixture should appear as chip buttons
@@ -458,9 +516,9 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     renderStep();
 
     expect(
-      await screen.findByRole("button", { name: /Held for review.*5 rows/ }),
+      await screen.findByRole("button", { name: /Held for review.*5 remaining/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Held for review.*4 rows/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Held for review.*4 remaining/ })).not.toBeInTheDocument();
   });
 
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
@@ -559,7 +617,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     currentPreview = HELD_PREVIEW;
     renderStep();
 
-    const heldSummaryAction = await screen.findByRole("button", { name: /Held for review.*1 rows/ });
+    const heldSummaryAction = await screen.findByRole("button", { name: /Held for review.*1 remaining/ });
     fireEvent.click(heldSummaryAction);
 
     await waitFor(() => {
@@ -571,7 +629,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
       expect(screen.getByText("Blank Item Code")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("Held").closest("tr")!);
+    fireEvent.click(screen.getByText("Item 6").closest("tr")!);
     expect(await screen.findByTestId("held-row-details-6")).toHaveTextContent("Blank / not provided");
     expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("assigns a permanent internal item number");
   });
@@ -580,7 +638,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     currentPreview = heldMatchPreview("ambiguous");
     renderStep();
 
-    fireEvent.click((await screen.findByText("Held")).closest("tr")!);
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
     fireEvent.click(await screen.findByRole("button", { name: /ambiguous candidate/ }));
 
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
@@ -591,7 +649,7 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     currentPreview = heldMatchPreview("low");
     renderStep();
 
-    fireEvent.click((await screen.findByText("Held")).closest("tr")!);
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
     fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Leave unlinked" }));

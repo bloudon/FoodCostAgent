@@ -55,6 +55,8 @@ import {
   uniqueCategories as computeUniqueCategories,
   applyFilters,
   toggleSetValue,
+  buildBulkNewPackSizeDecisions,
+  getBulkNewPackSizeReview,
 } from "@/lib/orderlyImportFilterUtils";
 import { formatDate } from "@/lib/orderlyImportUtils";
 
@@ -651,6 +653,7 @@ export function ResolutionPreviewStep({
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
   const [noticesCollapsed, setNoticesCollapsed] = useState(false);
+  const [bulkVariantConfirmationOpen, setBulkVariantConfirmationOpen] = useState(false);
 
   const PAGE_SIZE = 100;
 
@@ -691,6 +694,25 @@ export function ResolutionPreviewStep({
       if (value === undefined) next.delete(rowIndex);
       else next.set(rowIndex, value);
       return next;
+    });
+  }
+
+  function queueBulkNewPackSizeVariants() {
+    const bulkDecisions = buildBulkNewPackSizeDecisions(bulkNewPackSizeReview.candidates);
+    setRowDecisions(prev => {
+      const next = new Map(prev);
+      for (const decision of bulkDecisions) {
+        next.set(decision.rowIndex, {
+          action: decision.action,
+          comparableInventoryItemId: decision.comparableInventoryItemId,
+        });
+      }
+      return next;
+    });
+    setBulkVariantConfirmationOpen(false);
+    toast({
+      title: `${bulkNewPackSizeReview.candidates.length} pack-size ${bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} queued`,
+      description: "You can still open any row below to adjust an exception before approving.",
     });
   }
 
@@ -786,6 +808,15 @@ export function ResolutionPreviewStep({
     unreliableCodes: 0,
     packEvidenceMissing: 0,
   };
+  const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
+  const queuedBulkVariantCount = bulkNewPackSizeReview.candidates.filter(candidate =>
+    candidate.rowIndexes.every(rowIndex => {
+      const decision = rowDecisions.get(rowIndex);
+      return isRecodeDecision(decision) &&
+        decision.action === "create_variant" &&
+        decision.comparableInventoryItemId === candidate.comparableInventoryItemId;
+    }),
+  ).length;
   const actionableRecodeRows = preview.rows.filter(row =>
     row.itemMatch.possibleRecode &&
     row.sourceCodeReliability === "stable" &&
@@ -840,6 +871,65 @@ export function ResolutionPreviewStep({
             <AlertDialogCancel onClick={() => setDuplicateDialogWarning(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { setDuplicateDialogWarning(null); submitApproval(true); }}>
               Approve Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkVariantConfirmationOpen}
+        onOpenChange={setBulkVariantConfirmationOpen}
+      >
+        <AlertDialogContent className="max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-violet-700" />
+              Confirm {bulkNewPackSizeReview.candidates.length} separate {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Each listed source Item Code has a verified incompatible pack and will create a separate inventory item.
+                  Names come from the source item description and pack descriptors come from the source Pack Size — no manual
+                  re-entry is needed.
+                </p>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+                  {bulkNewPackSizeReview.groups.map(group => (
+                    <div key={`${group.vendorName}-${group.packDescriptor}`} className="rounded-md border bg-background p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-foreground">
+                        <span className="font-semibold">{group.vendorName}</span>
+                        <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-900">
+                          {group.packDescriptor}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs">
+                        {group.variantCount} {group.variantCount === 1 ? "variant" : "variants"} from {group.sourceRowCount} source {group.sourceRowCount === 1 ? "row" : "rows"}
+                      </p>
+                      <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs">
+                        {group.samples.map(sample => (
+                          <li key={sample.sourceItemCode}>
+                            {sample.sampleDescription} <span className="font-mono">({sample.sourceItemCode})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs">
+                  This only queues verified <strong>New pack size</strong> rows. Source conflicts, missing pack evidence,
+                  and other review blockers remain unresolved and can still block approval.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep reviewing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={queueBulkNewPackSizeVariants}
+              data-testid="confirm-bulk-new-pack-size-variants"
+              className="bg-violet-700 text-white hover:bg-violet-800"
+            >
+              Create {bulkNewPackSizeReview.candidates.length} {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -964,19 +1054,32 @@ export function ResolutionPreviewStep({
                 </p>
               </div>
               {recodeSummary.newPackSizes > 0 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
-                  onClick={() => {
-                    setSelectedCategories(new Set());
-                    setSelectedConfidences(new Set(["new-pack-size"]));
-                    setCurrentPage(0);
-                  }}
-                >
-                  Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {bulkNewPackSizeReview.candidates.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-violet-700 text-white hover:bg-violet-800"
+                      onClick={() => setBulkVariantConfirmationOpen(true)}
+                      data-testid="bulk-new-pack-size-variants"
+                    >
+                      Create {bulkNewPackSizeReview.candidates.length} new {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} in bulk
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
+                    onClick={() => {
+                      setSelectedCategories(new Set());
+                      setSelectedConfidences(new Set(["new-pack-size"]));
+                      setCurrentPage(0);
+                    }}
+                  >
+                    Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
+                  </Button>
+                </div>
               )}
             </div>
             <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
@@ -997,6 +1100,11 @@ export function ResolutionPreviewStep({
                 <div className="mt-1 text-slate-700">{recodeSummary.unreliableCodes} {recodeSummary.unreliableCodes === 1 ? "value needs" : "values need"} source correction; it cannot become a code mapping.</div>
               </div>
             </div>
+            {queuedBulkVariantCount > 0 && (
+              <p className="mt-3 text-xs font-medium text-violet-950" data-testid="bulk-new-pack-size-queued">
+                {queuedBulkVariantCount} pack-size {queuedBulkVariantCount === 1 ? "variant is" : "variants are"} queued. Open any row below to adjust an exception before approval.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

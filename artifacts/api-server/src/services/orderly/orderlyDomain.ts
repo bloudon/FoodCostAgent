@@ -235,6 +235,29 @@ function sourcePackGeometry(row: Pick<
   };
 }
 
+/**
+ * A pack variant needs a deterministic catalog label without requiring the
+ * reviewer to retype source facts. Use the same parsed geometry that drove the
+ * incompatible-pack classification.
+ */
+function sourcePackVariantName(row: Pick<
+  ResolutionPreviewResult['rows'][number],
+  'rowIndex' | 'cleanedDescription' | 'caseQuantity' | 'innerPackQuantity' | 'baseUnitQuantity' | 'baseUnit'
+>): string {
+  const baseName = row.cleanedDescription?.trim() || `Orderly Item ${row.rowIndex}`;
+  const geometry = sourcePackGeometry(row);
+  const caseQuantity = geometry.caseQuantity && geometry.caseQuantity > 0 ? geometry.caseQuantity : null;
+  const innerPackQuantity = geometry.innerPackQuantity && geometry.innerPackQuantity > 0 ? geometry.innerPackQuantity : null;
+  const baseUnitQuantity = geometry.baseUnitQuantity && geometry.baseUnitQuantity > 0 ? geometry.baseUnitQuantity : null;
+  const baseUnit = geometry.baseUnit?.trim() || null;
+  if (baseUnitQuantity == null || !baseUnit) return baseName;
+
+  const parts = caseQuantity != null ? [String(caseQuantity)] : [];
+  if (innerPackQuantity != null && innerPackQuantity !== 1) parts.push(String(innerPackQuantity));
+  parts.push(`${baseUnitQuantity} ${baseUnit}`);
+  return `${baseName} — ${parts.join(' × ')}`;
+}
+
 function toPreviewPackEvidence(geometry: SourcePackGeometry): PackEvidence {
   return {
     caseQuantity: geometry.caseQuantity ?? null,
@@ -1753,10 +1776,18 @@ export async function applyBatchApproval(
           `Orderly Item Code ${code} cannot link to the existing inventory item because its pack is ${row.itemMatch.packCompatibility ?? 'unknown'}: ${row.itemMatch.packCompatibilityReason ?? 'no compatible pack evidence'}.`,
         );
       }
-    } else if (
-      decision.action !== 'create_variant' ||
-      decision.comparableInventoryItemId !== expectedCandidateId
-    ) {
+    } else if (decision.action === 'create_variant') {
+      if (
+        decision.comparableInventoryItemId !== expectedCandidateId ||
+        row.itemMatch.recodeEvidenceClass !== 'new_pack_size' ||
+        row.itemMatch.packCompatibility !== 'incompatible'
+      ) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly Item Code ${code} can only create a separate variant after verified incompatible pack evidence. Correct the source Pack Size before approval.`,
+        );
+      }
+    } else {
       throw new ImportApprovalError(
         'CONFLICT',
         `Orderly Item Code ${code} must create a separate variant of its reviewed candidate when it is not safely re-coded.`,
@@ -2123,7 +2154,9 @@ export async function applyBatchApproval(
         rowPreview.itemMatch.strategy !== 'same_workbook_identity';
 
       const insertNewItem = async (): Promise<string> => {
-        const name = rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
+        const name = identityDecision?.action === 'create_variant'
+          ? sourcePackVariantName(rowPreview)
+          : rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
         const [newItem] = await tx
           .insert(inventoryItems)
           .values({
