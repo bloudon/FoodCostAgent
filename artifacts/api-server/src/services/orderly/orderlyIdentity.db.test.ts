@@ -10,6 +10,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   companies as companiesTable,
+  categories,
   companyStores,
   importSourcePropertyBindings,
   inventoryImportBatches,
@@ -23,6 +24,9 @@ import {
   storeInventoryItems,
   units,
   users,
+  vendorItemExternalMappings,
+  vendorItems,
+  vendors,
 } from '@workspace/db';
 import {
   applyBatchApproval,
@@ -30,6 +34,7 @@ import {
   runResolutionPreview,
 } from './orderlyDomain';
 import { ensureInventoryItemNumberSchema } from '../../migrations/inventoryItemNumbers';
+import { ensureOrderlyPackIdentityEvidenceSchema } from '../../migrations/orderlyPackIdentityEvidence';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 const RUN = vi.hoisted(() => Date.now().toString(36));
@@ -65,6 +70,7 @@ type SourceRow = {
   code: string | null;
   description: string;
   location: string;
+  supplier?: string | null;
   caseQuantity?: number;
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
@@ -109,11 +115,80 @@ async function stageBatch(
     totalCost: row.totalCost ?? 30,
     sourceItemCode: row.code,
     itemCodeStatus: row.code ? 'valid' : 'blank',
-    supplierStatus: 'blank',
+    supplierRaw: row.supplier ?? null,
+    supplierStatus: row.supplier ? 'valid' : 'blank',
     storageLocation: row.location,
     rowStatus: 'new_item_candidate',
   })));
   return id;
+}
+
+/**
+ * Approval must fail before touching any table its transaction can mutate.
+ * Keep this broader than an item count: a partial resolution, mapping, vendor,
+ * location, relationship, or store link would be just as corrupting.
+ */
+async function approvalWriteSnapshot(batchId: string) {
+  const [
+    batches,
+    rows,
+    itemIds,
+    categoryIds,
+    externalMappingIds,
+    relationshipIds,
+    locationIds,
+    assignmentIds,
+    storeItemIds,
+    vendorRows,
+  ] = await Promise.all([
+    db.select({
+      status: inventoryImportBatches.status,
+      approvedAt: inventoryImportBatches.approvedAt,
+      targetStoreId: inventoryImportBatches.targetStoreId,
+    }).from(inventoryImportBatches).where(eq(inventoryImportBatches.id, batchId)),
+    db.select({
+      id: inventoryImportRows.id,
+      rowStatus: inventoryImportRows.rowStatus,
+      resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+    }).from(inventoryImportRows).where(eq(inventoryImportRows.batchId, batchId)).orderBy(inventoryImportRows.id),
+    db.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).orderBy(inventoryItems.id),
+    db.select({ id: categories.id }).from(categories).where(eq(categories.companyId, ID.company)).orderBy(categories.id),
+    db.select({ id: inventoryItemExternalMappings.id }).from(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, ID.company)).orderBy(inventoryItemExternalMappings.id),
+    db.select({ id: inventoryItemRelationships.id }).from(inventoryItemRelationships).where(eq(inventoryItemRelationships.companyId, ID.company)).orderBy(inventoryItemRelationships.id),
+    db.select({ id: inventoryLocations.id }).from(inventoryLocations).where(eq(inventoryLocations.companyId, ID.company)).orderBy(inventoryLocations.id),
+    db.select({ id: inventoryItemLocationAssignments.id }).from(inventoryItemLocationAssignments).where(eq(inventoryItemLocationAssignments.companyId, ID.company)).orderBy(inventoryItemLocationAssignments.id),
+    db.select({ id: storeInventoryItems.id }).from(storeInventoryItems).where(eq(storeInventoryItems.companyId, ID.company)).orderBy(storeInventoryItems.id),
+    db.select({ id: vendors.id }).from(vendors).where(eq(vendors.companyId, ID.company)).orderBy(vendors.id),
+  ]);
+  const vendorIds = vendorRows.map(row => row.id);
+  const vendorItemRows = vendorIds.length
+    ? await db.select({ id: vendorItems.id }).from(vendorItems).where(inArray(vendorItems.vendorId, vendorIds)).orderBy(vendorItems.id)
+    : [];
+  const vendorItemIds = vendorItemRows.map(row => row.id);
+  const vendorExternalMappingIds = vendorItemIds.length
+    ? await db.select({ id: vendorItemExternalMappings.id })
+      .from(vendorItemExternalMappings)
+      .where(and(
+        eq(vendorItemExternalMappings.companyId, ID.company),
+        inArray(vendorItemExternalMappings.vendorItemId, vendorItemIds),
+      ))
+      .orderBy(vendorItemExternalMappings.id)
+    : [];
+
+  return {
+    batches,
+    rows,
+    itemIds,
+    categoryIds,
+    externalMappingIds,
+    relationshipIds,
+    locationIds,
+    assignmentIds,
+    storeItemIds,
+    vendorRows,
+    vendorItemRows,
+    vendorExternalMappingIds,
+  };
 }
 
 
@@ -122,6 +197,7 @@ const approvalAuth = { actingUserId: ID.admin, companyId: ID.company };
 beforeAll(async () => {
   if (SKIP) return;
   await ensureInventoryItemNumberSchema(db);
+  await ensureOrderlyPackIdentityEvidenceSchema(db);
   await db.insert(companiesTable).values({ id: ID.company, name: `Orderly Identity ${RUN}` });
   await db.insert(companyStores).values({
     id: ID.store,
@@ -176,13 +252,23 @@ afterAll(async () => {
   if (batchIds.length) {
     await db.delete(inventoryImportRows).where(inArray(inventoryImportRows.batchId, batchIds)).catch(() => {});
   }
+  const vendorRows = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(eq(vendors.companyId, ID.company));
+  const vendorIds = vendorRows.map(vendor => vendor.id);
   await db.delete(inventoryImportBatches).where(eq(inventoryImportBatches.companyId, ID.company)).catch(() => {});
   await db.delete(storeInventoryItems).where(eq(storeInventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemLocationAssignments).where(eq(inventoryItemLocationAssignments.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemRelationships).where(eq(inventoryItemRelationships.companyId, ID.company)).catch(() => {});
+  await db.delete(vendorItemExternalMappings).where(eq(vendorItemExternalMappings.companyId, ID.company)).catch(() => {});
+  if (vendorIds.length) {
+    await db.delete(vendorItems).where(inArray(vendorItems.vendorId, vendorIds)).catch(() => {});
+  }
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, ID.company)).catch(() => {});
+  await db.delete(vendors).where(eq(vendors.companyId, ID.company)).catch(() => {});
   await db.delete(importSourcePropertyBindings).where(eq(importSourcePropertyBindings.companyId, ID.company)).catch(() => {});
   await db.delete(users).where(eq(users.id, ID.admin)).catch(() => {});
   await db.delete(companyStores).where(eq(companyStores.companyId, ID.company)).catch(() => {});
@@ -1026,6 +1112,107 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         relatedInventoryItemId: juneRow.resolvedInventoryItemId,
       },
     ]));
+  });
+
+  it('blocks a Milk-like catalog packSize conflict before a requested variant can write', async () => {
+    const baseBatch = await stageBatch([
+      {
+        code: 'MILK-1000',
+        description: 'Milk - Whole',
+        location: 'Walk-in',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+    ], '2026-12-31');
+    await applyBatchApproval(baseBatch, approvalAuth);
+    const [baseRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, baseBatch));
+    if (!baseRow?.resolvedInventoryItemId) throw new Error('Expected Milk base item to resolve');
+
+    const [sysco] = await db.insert(vendors).values({
+      companyId: ID.company,
+      name: 'Sysco',
+    }).returning({ id: vendors.id });
+    const unitId = await eachUnitId();
+    const [milkVendorItem] = await db.insert(vendorItems).values({
+      vendorId: sysco.id,
+      inventoryItemId: baseRow.resolvedInventoryItemId,
+      vendorSku: '4676306',
+      purchaseUnitId: unitId,
+      caseSize: 1,
+      innerPackSize: 1,
+      packUom: 'GAL',
+    }).returning({ id: vendorItems.id });
+    await db.insert(vendorItemExternalMappings).values([
+      {
+        companyId: ID.company,
+        vendorItemId: milkVendorItem.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `milk-pack-1-gal-${RUN}`,
+        sourceItemCode: '4676306',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+      {
+        companyId: ID.company,
+        vendorItemId: milkVendorItem.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `milk-pack-4-gal-${RUN}`,
+        sourceItemCode: '4676306',
+        caseQuantity: 4,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+    ]);
+
+    // One workbook row is enough: the contradiction exists only in the
+    // persisted Orderly catalog pack identities, not in this XLSX.
+    const conflictBatch = await stageBatch([
+      {
+        code: '4676306',
+        description: 'Milk - Whole',
+        supplier: 'Sysco',
+        location: 'Walk-in',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 250,
+        baseUnit: 'EA',
+      },
+    ], '2027-01-31');
+    const preview = await runResolutionPreview(conflictBatch, ID.company);
+    expect(preview.recodeSummary).toMatchObject({
+      newPackSizes: 0,
+      sourceDataConflicts: 1,
+    });
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      matchedId: baseRow.resolvedInventoryItemId,
+      possibleRecodeMatchedId: baseRow.resolvedInventoryItemId,
+      recodeEvidenceClass: 'source_data_conflict',
+      requiresReview: true,
+      sourceDataConflict: {
+        rowIndexes: [1],
+      },
+    });
+    expect(preview.rows[0].itemMatch.sourceDataConflict?.reason).toContain(`milk-pack-1-gal-${RUN}`);
+    expect(preview.rows[0].itemMatch.sourceDataConflict?.reason).toContain(`milk-pack-4-gal-${RUN}`);
+
+    const before = await approvalWriteSnapshot(conflictBatch);
+    await expect(applyBatchApproval(conflictBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: baseRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    const after = await approvalWriteSnapshot(conflictBatch);
+    expect(after).toEqual(before);
   });
 
   it('refuses a separate variant when the source pack evidence is incomplete', async () => {

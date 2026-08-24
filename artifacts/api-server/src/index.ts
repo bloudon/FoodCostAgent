@@ -10,6 +10,7 @@ import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItem
 import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/historicalSessionUnresolvedRows";
 import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniqueness";
 import { ensureInventoryItemNumberSchema } from "./migrations/inventoryItemNumbers";
+import { ensureOrderlyPackIdentityEvidenceSchema } from "./migrations/orderlyPackIdentityEvidence";
 import { db } from "./db";
 
 const rawPort = process.env["PORT"];
@@ -76,6 +77,14 @@ if (Number.isNaN(port) || port <= 0) {
     logger.info("[Migration] vendor item uniqueness index ready");
   } catch (err) {
     logger.error({ err }, "Fatal: vendor item uniqueness initialization failed — refusing to start");
+    process.exit(1);
+  }
+
+  try {
+    await ensureOrderlyPackIdentityEvidenceSchema(db);
+    logger.info("[Migration] Orderly pack identity evidence schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: Orderly pack identity evidence schema initialization failed — refusing to start");
     process.exit(1);
   }
 

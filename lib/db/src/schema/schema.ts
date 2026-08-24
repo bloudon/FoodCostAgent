@@ -2710,6 +2710,14 @@ export const vendorItemExternalMappings = pgTable("vendor_item_external_mappings
   sourcePropertyId: text("source_property_id").notNull(),
   sourceExternalId: text("source_external_id").notNull(),
   sourceDescription: text("source_description"),
+  // Immutable source facts owned by this provenance identity. For an Orderly
+  // packSize.id mapping they preserve the source Item Code and normalized pack
+  // geometry even when vendor_items cannot represent a reused SKU twice.
+  sourceItemCode: text("source_item_code"),
+  caseQuantity: real("case_quantity"),
+  innerPackQuantity: real("inner_pack_quantity"),
+  baseUnitQuantity: real("base_unit_quantity"),
+  baseUnit: text("base_unit"),
   matchStrategy: text("match_strategy"),
   confidenceScore: real("confidence_score"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

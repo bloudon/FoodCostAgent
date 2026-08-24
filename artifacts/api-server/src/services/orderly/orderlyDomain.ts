@@ -22,6 +22,7 @@ import {
   inventoryItems,
   vendors,
   vendorItems,
+  vendorItemExternalMappings,
   inventoryLocations,
   inventoryItemLocationAssignments,
   inventoryItemExternalMappings,
@@ -321,6 +322,97 @@ function sourceVendorEvidenceKey(
   if (resolution.vendorMatch.vendorId) return `vendor:${resolution.vendorMatch.vendorId}`;
   const normalizedSupplier = normalizeForMatch(row.supplierRaw ?? '');
   return normalizedSupplier ? `source:${normalizedSupplier}` : null;
+}
+
+/**
+ * Persisted Orderly adoption evidence is intentionally keyed by packSize.id,
+ * while XLSX inventory review is keyed by the vendor-facing Item Code. The
+ * bridge is a vendor product: its vendorSku is the Item Code and its immutable
+ * provenance mapping is the pack-size identity.
+ */
+interface CatalogPackSizeEvidence extends SourcePackGeometry {
+  vendorId: string;
+  inventoryItemId: string;
+  sourceItemCode: string;
+  packSizeId: string;
+}
+
+function normalizedStableSourceCode(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function catalogPackEvidenceKey(
+  vendorId: string,
+  inventoryItemId: string,
+  sourceItemCode: string,
+): string {
+  return `${vendorId}\u0000${inventoryItemId}\u0000${sourceItemCode}`;
+}
+
+/**
+ * Detect a catalog contradiction that an XLSX alone cannot represent. This is
+ * deliberately narrower than "an item has several vendor packs": only a
+ * reviewed exact-name candidate with the same matched item, vendor, and Item
+ * Code is blocked, and only when distinct authoritative Orderly packSize IDs
+ * have materially incompatible geometry.
+ */
+function findCatalogPackSizeConflict(
+  row: Pick<InventoryImportRow, 'rowIndex' | 'sourceItemCode'>,
+  itemMatch: MatchResult,
+  vendorMatch: VendorMatchResult,
+  evidenceByIdentity: Map<string, CatalogPackSizeEvidence[]>,
+): {
+  evidenceClass: 'source_data_conflict' | 'pack_evidence_missing';
+  rowIndexes: number[];
+  reason: string;
+} | null {
+  const sourceItemCode = normalizedStableSourceCode(row.sourceItemCode);
+  const candidateId = itemMatch.possibleRecodeMatchedId;
+  if (
+    !sourceItemCode ||
+    !vendorMatch.vendorId ||
+    !candidateId ||
+    itemMatch.matchedId !== candidateId
+  ) {
+    return null;
+  }
+
+  const evidence = evidenceByIdentity.get(
+    catalogPackEvidenceKey(vendorMatch.vendorId, candidateId, sourceItemCode),
+  ) ?? [];
+  const evidenceByPackSizeId = new Map(
+    evidence.map(entry => [entry.packSizeId, entry] as const),
+  );
+  const distinctEvidence = [...evidenceByPackSizeId.values()];
+  if (distinctEvidence.length < 2) return null;
+
+  const incompatibleReasons = new Set<string>();
+  let hasUnverifiableComparison = false;
+  for (let left = 0; left < distinctEvidence.length; left++) {
+    for (let right = left + 1; right < distinctEvidence.length; right++) {
+      const comparison = comparePackGeometry(distinctEvidence[left], distinctEvidence[right]);
+      if (comparison.status === 'incompatible') incompatibleReasons.add(comparison.reason);
+      if (comparison.status === 'unknown') hasUnverifiableComparison = true;
+    }
+  }
+  if (incompatibleReasons.size === 0 && !hasUnverifiableComparison) return null;
+
+  const packSizeIds = distinctEvidence
+    .map(entry => entry.packSizeId)
+    .sort((left, right) => left.localeCompare(right));
+  const geometryReason = incompatibleReasons.size > 0
+    ? `have incompatible normalized pack geometry: ${[...incompatibleReasons].join('; ')}`
+    : 'lack enough immutable pack geometry to prove that they are equivalent';
+  return {
+    evidenceClass: incompatibleReasons.size > 0
+      ? 'source_data_conflict'
+      : 'pack_evidence_missing',
+    rowIndexes: [row.rowIndex],
+    reason:
+      `Orderly catalog pack identities ${packSizeIds.join(', ')} for this vendor and Item Code ` +
+      geometryReason,
+  };
 }
 
 /**
@@ -757,11 +849,12 @@ async function getEachUnitId(): Promise<string> {
 export async function runResolutionPreview(
   batchId: string,
   companyId: string,
+  runner: typeof db = db,
 ): Promise<ResolutionPreviewResult> {
   // External-code identity is scoped to the batch's authorized source property.
   // Two Orderly clubs can legitimately reuse the same Item Code, so a mapping
   // from another property must never resolve this batch's rows.
-  const [scopeRow] = await db
+  const [scopeRow] = await runner
     .select({ sourcePropertyId: inventoryImportBatches.sourcePropertyId })
     .from(inventoryImportBatches)
     .where(
@@ -776,15 +869,15 @@ export async function runResolutionPreview(
   const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
-  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments] =
+  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings] =
     await Promise.all([
-      db
+      runner
         .select()
         .from(inventoryImportRows)
         // @ts-ignore
         .where(eq(inventoryImportRows.batchId, batchId))
         .orderBy(inventoryImportRows.rowIndex),
-      db
+      runner
         .select({ id: inventoryImportBatches.id, inventoryDate: inventoryImportBatches.inventoryDate })
         .from(inventoryImportBatches)
         .where(
@@ -796,7 +889,7 @@ export async function runResolutionPreview(
           ),
         )
         .limit(1),
-      db
+      runner
         .select({
           id: inventoryItems.id,
           name: inventoryItems.name,
@@ -807,17 +900,17 @@ export async function runResolutionPreview(
         .from(inventoryItems)
         // @ts-ignore
         .where(and(eq(inventoryItems.companyId, companyId), eq(inventoryItems.active, 1))),
-      db
+      runner
         .select({ id: vendors.id, name: vendors.name })
         .from(vendors)
         // @ts-ignore
         .where(and(eq(vendors.companyId, companyId), eq(vendors.active, 1))),
-      db
+      runner
         .select({ id: inventoryLocations.id, name: inventoryLocations.name, normalizedName: inventoryLocations.normalizedName })
         .from(inventoryLocations)
         // @ts-ignore
         .where(and(eq(inventoryLocations.companyId, companyId), eq(inventoryLocations.active, 1))),
-      db
+      runner
         .select({
           sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
           inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
@@ -837,7 +930,7 @@ export async function runResolutionPreview(
             eq(inventoryItemExternalMappings.sourcePropertyId, sourcePropertyScope),
           ),
         ),
-      db
+      runner
         .select({
           inventoryItemId: inventoryItemLocationAssignments.inventoryItemId,
           locationId: inventoryItemLocationAssignments.locationId,
@@ -845,6 +938,33 @@ export async function runResolutionPreview(
         .from(inventoryItemLocationAssignments)
         // @ts-ignore
         .where(eq(inventoryItemLocationAssignments.companyId, companyId)),
+      runner
+        .select({
+          vendorId: vendorItems.vendorId,
+          inventoryItemId: vendorItems.inventoryItemId,
+          sourceItemCode: vendorItemExternalMappings.sourceItemCode,
+          vendorSku: vendorItems.vendorSku,
+          packSizeId: vendorItemExternalMappings.sourceExternalId,
+          caseQuantity: vendorItemExternalMappings.caseQuantity,
+          innerPackQuantity: vendorItemExternalMappings.innerPackQuantity,
+          baseUnitQuantity: vendorItemExternalMappings.baseUnitQuantity,
+          baseUnit: vendorItemExternalMappings.baseUnit,
+        })
+        .from(vendorItemExternalMappings)
+        .innerJoin(vendorItems, eq(vendorItems.id, vendorItemExternalMappings.vendorItemId))
+        .innerJoin(vendors, and(
+          eq(vendors.id, vendorItems.vendorId),
+          eq(vendors.companyId, companyId),
+        ))
+        .innerJoin(inventoryItems, and(
+          eq(inventoryItems.id, vendorItems.inventoryItemId),
+          eq(inventoryItems.companyId, companyId),
+        ))
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, companyId),
+          eq(vendorItemExternalMappings.sourceSystem, 'ORDERLY'),
+          eq(vendorItemExternalMappings.sourcePropertyId, sourcePropertyScope),
+        )),
     ]);
 
   // Earlier parser versions did not understand Orderly's complete three-tier
@@ -885,6 +1005,30 @@ export async function runResolutionPreview(
     const evidences = packEvidenceByItemId.get(mapping.inventoryItemId) ?? [];
     evidences.push(mapping);
     packEvidenceByItemId.set(mapping.inventoryItemId, evidences);
+  }
+  const catalogPackEvidenceByIdentity = new Map<string, CatalogPackSizeEvidence[]>();
+  for (const mapping of catalogPackSizeMappings as Array<{
+    vendorId: string;
+    inventoryItemId: string;
+    sourceItemCode: string | null;
+    vendorSku: string | null;
+    packSizeId: string;
+    caseQuantity: number | null;
+    innerPackQuantity: number | null;
+    baseUnitQuantity: number | null;
+    baseUnit: string | null;
+  }>) {
+    const sourceItemCode = normalizedStableSourceCode(mapping.sourceItemCode ?? mapping.vendorSku);
+    // Fallback mappings deliberately lack a stable Orderly packSize.id and
+    // cannot establish this source-identity conflict.
+    if (!sourceItemCode || mapping.packSizeId.startsWith('fallback|')) continue;
+    const key = catalogPackEvidenceKey(mapping.vendorId, mapping.inventoryItemId, sourceItemCode);
+    const evidence = catalogPackEvidenceByIdentity.get(key) ?? [];
+    evidence.push({
+      ...mapping,
+      sourceItemCode,
+    });
+    catalogPackEvidenceByIdentity.set(key, evidence);
   }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
@@ -1022,6 +1166,28 @@ export async function runResolutionPreview(
               // cannot prove identity or create a permanent source mapping.
               requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
           };
+          const catalogConflict = findCatalogPackSizeConflict(
+            row,
+            itemMatch,
+            vendorMatch,
+            catalogPackEvidenceByIdentity,
+          );
+          if (catalogConflict) {
+            itemMatch = {
+              ...itemMatch,
+              requiresReview: true,
+              recodeEvidenceClass: catalogConflict.evidenceClass,
+              packCompatibility: catalogConflict.evidenceClass === 'pack_evidence_missing'
+                ? 'unknown'
+                : itemMatch.packCompatibility,
+              packCompatibilityReason: catalogConflict.evidenceClass === 'pack_evidence_missing'
+                ? catalogConflict.reason
+                : itemMatch.packCompatibilityReason,
+              sourceDataConflict: catalogConflict.evidenceClass === 'source_data_conflict'
+                ? catalogConflict
+                : undefined,
+            };
+          }
         }
       }
     }
@@ -1899,6 +2065,23 @@ export async function applyBatchApproval(
       throw new ImportApprovalError(
         'CONFLICT',
         'Batch has already been approved — use the history view to see results.',
+      );
+    }
+    // The UI preview is intentionally outside the transaction, but the
+    // persisted catalog evidence may change after that read. Re-check it once
+    // the batch is locked and before any mutation so a newly-arrived
+    // contradictory packSize identity cannot race a variant into the catalog.
+    const underLockPreview = await runResolutionPreview(batchId, companyId, tx);
+    const underLockConflicts = underLockPreview.rows.filter(
+      row => row.itemMatch.sourceDataConflict,
+    );
+    if (underLockConflicts.length > 0) {
+      const details = underLockConflicts
+        .map(row => `row ${row.rowIndex}: ${row.itemMatch.sourceDataConflict!.reason}`)
+        .join(' | ');
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Orderly source data changed to contradictory pack evidence before approval: ${details}`,
       );
     }
 

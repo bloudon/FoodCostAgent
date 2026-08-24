@@ -38,6 +38,7 @@
 - [Post-apply migration metrics](post-apply-migration-metrics.md) — compare the frozen baseline to a fresh projection; a post-mutation projection resets its own “newly resolvable” delta.
 - [Manifest-based idempotency](manifest-based-idempotency.md) — prove reruns with frozen mapping and vendor-product identity, not a source projection that can hold geometry-absent rows.
 - [Orderly adoption root cause](orderly-adoption-root-cause.md) — missing relationships came from cross-batch adoption loss; the catalog intentionally supports many vendors and many vendor packs per ingredient.
+- [Orderly pack identity provenance](orderly-pack-identity-provenance.md) — per-pack source facts belong on immutable provenance mappings, not the unique vendor-item relationship.
 - [Orderly production preflight boundary](orderly-production-preflight-boundary.md) — readiness proves scope/evidence/environment only; live classifications remain a separate PM-authorized production preview.
 - [VPS production operator boundary](vps-production-operator-boundary.md) — Replit supplies checksum-pinned commands and sanitized evidence expectations; the production operator executes on the VPS.
 - [Production database source-of-truth](production-db-source-of-truth.md) — Replit’s production query target may differ from the VPS app database; operator evidence decides VPS invariants.

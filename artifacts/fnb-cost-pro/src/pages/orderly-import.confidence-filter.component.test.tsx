@@ -426,6 +426,48 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
   });
 
+  it("does not expose a bulk variant action for a catalog pack identity conflict", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 1,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 1 },
+      recodeSummary: {
+        compatibleAlternates: 0,
+        newPackSizes: 0,
+        sourceDataConflicts: 1,
+        unreliableCodes: 0,
+        packEvidenceMissing: 0,
+      },
+      rows: [{
+        ...makePreviewRow(1, "Dairy", "name_pack", "high"),
+        sourceItemCode: "4676306",
+        sourceCodeReliability: "stable",
+        supplierRaw: "Sysco",
+        packSizeRaw: "1/250 EA",
+        cleanedDescription: "Milk - Whole",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          matchedId: "whole-milk",
+          candidateIds: ["whole-milk"],
+          requiresReview: true,
+          possibleRecode: true,
+          possibleRecodeMatchedId: "whole-milk",
+          recodeEvidenceClass: "source_data_conflict",
+          sourceDataConflict: {
+            rowIndexes: [1],
+            reason: "Catalog pack IDs milk-pack-1-gal and milk-pack-4-gal disagree.",
+          },
+        },
+      }],
+    };
+    renderStep();
+
+    await screen.findByText("Resolution Preview");
+    expect(screen.queryByRole("button", { name: /Create .*new variant in bulk/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-new-pack-size-queued")).not.toBeInTheDocument();
+  });
+
   it("renders a chip for each confidence level present in the batch", async () => {
     renderStep();
     // All 4 confidence levels from our fixture should appear as chip buttons
