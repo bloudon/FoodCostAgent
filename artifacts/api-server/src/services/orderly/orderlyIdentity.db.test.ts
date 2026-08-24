@@ -37,7 +37,7 @@ import { ensureInventoryItemNumberSchema } from '../../migrations/inventoryItemN
 import { ensureOrderlyPackIdentityEvidenceSchema } from '../../migrations/orderlyPackIdentityEvidence';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
-const RUN = vi.hoisted(() => Date.now().toString(36));
+const RUN = vi.hoisted(() => Date.now().toString(36).toUpperCase());
 const ID = {
   company: `oid-co-${RUN}`,
   store: `oid-store-${RUN}`,
@@ -284,7 +284,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
   });
 
   it('backfills legacy items and never rewinds the FnB number generator', async () => {
-    const schemaName = `fnb_item_number_${RUN}`;
+    const schemaName = `fnb_item_number_${RUN.toLowerCase()}`;
     await db.execute(sql.raw(`
       CREATE SCHEMA "${schemaName}";
       CREATE TABLE "${schemaName}"."inventory_items" (
@@ -410,7 +410,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
 
   it('uses a later safe existing match for the whole reliable-code group, regardless of row order', async () => {
     const knownBatch = await stageBatch([
-      { code: 'known-product-code', description: 'Known Product', location: 'Bar Back' },
+      { code: 'KNOWN-7000000', description: 'Known Product', location: 'Bar Back' },
     ], '2026-08-01');
     await applyBatchApproval(knownBatch, approvalAuth);
     const [knownRow] = await db

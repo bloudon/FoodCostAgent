@@ -23,10 +23,12 @@ import {
   companyStores,
   inventoryImportBatches,
   inventoryImportRows,
+  inventoryItemExternalMappings,
   importSourcePropertyBindings,
   inventoryItems,
   inventoryLocations,
   storeInventoryItems,
+  units,
   vendors,
 } from '@workspace/db';
 import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
@@ -67,6 +69,20 @@ vi.mock('../auth', () => ({
 let registerOrderlyImportRoutes: (app: express.Express) => void;
 
 let batchSeq = 0;
+let cachedEachUnitId: string | null = null;
+
+async function eachUnitId() {
+  if (cachedEachUnitId) return cachedEachUnitId;
+  const [unit] = await db
+    .select({ id: units.id })
+    .from(units)
+    .where(eq(units.abbreviation, 'ea'))
+    .limit(1);
+  if (!unit) throw new Error('Expected seeded "ea" unit for Orderly approval route fixtures');
+  cachedEachUnitId = unit.id;
+  return unit.id;
+}
+
 async function stageBatch(opts: { targetStoreId?: string | null; withBinding?: boolean }) {
   const id = `oar-batch-${IDs.RUN}-${batchSeq++}`;
   await db.insert(inventoryImportBatches).values({
@@ -243,6 +259,7 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
 
 describe.skipIf(SKIP)('Orderly review decision drafts', () => {
   const decisionsUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/review-decisions`;
+  const approvalUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/approve`;
 
   it('stores a draft decision and returns it after a separate read', async () => {
     authState.userId = IDs.admin;
@@ -306,5 +323,82 @@ describe.skipIf(SKIP)('Orderly review decision drafts', () => {
     expect(reloaded.status).toBe(200);
     expect(reloaded.body.decisions).toHaveLength(1);
     expect(reloaded.body.decisions[0].revision).toBe(1);
+  });
+
+  it('uses a saved compatible link when approval receives an empty request body', async () => {
+    authState.userId = IDs.admin;
+    const sourceItemCode = `DRAFT-${IDs.RUN}`.toUpperCase();
+    const candidateName = `Saved Draft Candidate ${IDs.RUN}`;
+    const [candidate] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: IDs.company,
+        name: candidateName,
+        unitId: await eachUnitId(),
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+
+    await db.insert(inventoryItemExternalMappings).values({
+      companyId: IDs.company,
+      inventoryItemId: candidate.id,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: IDs.sourceProperty,
+      sourceExternalId: `PRIOR-${IDs.RUN}`.toUpperCase(),
+      sourceDescription: candidateName,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      matchStrategy: 'manual',
+    });
+
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await db
+      .update(inventoryImportRows)
+      .set({
+        rawDescription: candidateName,
+        cleanedDescription: candidateName,
+        sourceItemCode,
+        itemCodeStatus: 'valid',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      })
+      .where(eq(inventoryImportRows.batchId, batchId));
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { action: 'link_existing', inventoryItemId: candidate.id },
+        }],
+      });
+    expect(saved.status).toBe(200);
+
+    const approval = await supertest(buildApp()).post(approvalUrl(batchId)).send({});
+    expect(approval.status).toBe(200);
+    expect(approval.body.itemsCreated).toBe(0);
+
+    const [approvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    expect(approvedRow.resolvedInventoryItemId).toBe(candidate.id);
+
+    const mappings = await db
+      .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+      .from(inventoryItemExternalMappings)
+      .where(
+        eq(inventoryItemExternalMappings.sourceExternalId, sourceItemCode),
+      );
+    expect(mappings).toEqual([{ inventoryItemId: candidate.id }]);
   });
 });
