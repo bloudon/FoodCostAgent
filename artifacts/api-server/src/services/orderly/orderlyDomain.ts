@@ -71,7 +71,7 @@ import {
 import { parseOrderlyPackSize } from './OrderlyParser';
 import type { InventoryImportRow } from '@workspace/db';
 import { storage } from '../../storage';
-import { getAccessibleStores, hasCompanyAccess } from '../../permissions';
+import { canApproveOrderlyImport, getAccessibleStores, hasCompanyAccess } from '../../permissions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1915,6 +1915,7 @@ export interface ApprovalAuthorizationContext {
 async function resolveApprovalContract(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
+  options: { requireApprovalRole?: boolean } = {},
 ): Promise<{
   batch: {
     id: string;
@@ -1959,7 +1960,17 @@ async function resolveApprovalContract(
     );
   }
 
-  // ── 3. Company authorization ─────────────────────────────────────────────
+  // ── 3. Approval role authorization ─────────────────────────────────────────
+  // Store users may review and save drafts, but approval is an irreversible
+  // enterprise onboarding action reserved for admins and store managers.
+  if (options.requireApprovalRole && !canApproveOrderlyImport(actingUser)) {
+    throw new ImportApprovalError(
+      'FORBIDDEN',
+      'Only company admins and managers can approve Orderly imports.',
+    );
+  }
+
+  // ── 4. Company authorization ─────────────────────────────────────────────
   // Global/company admins are covered by hasCompanyAccess; scoped roles must
   // belong to the company they are importing into.
   const companyAuthorized =
@@ -1971,7 +1982,7 @@ async function resolveApprovalContract(
     );
   }
 
-  // ── 4. Batch ownership — scoped read, never trusts a caller-passed company ─
+  // ── 5. Batch ownership — scoped read, never trusts a caller-passed company ─
   const [batch] = await db
     .select({
       id: inventoryImportBatches.id,
@@ -2001,7 +2012,7 @@ async function resolveApprovalContract(
     );
   }
 
-  // ── 5. Source-property binding ───────────────────────────────────────────
+  // ── 6. Source-property binding ───────────────────────────────────────────
   // When a batch was staged against an approved source property, that binding
   // is the authority for the destination. A client cannot redirect it.
   let bindingDestinationStoreId: string | null = null;
@@ -2066,7 +2077,7 @@ async function resolveApprovalContract(
     }
   }
 
-  // ── 6. Resolve the destination store ─────────────────────────────────────
+  // ── 7. Resolve the destination store ─────────────────────────────────────
   // Priority: approved binding → already-bound target → single-store fallback.
   // No caller-supplied destination participates in this decision.
   let resolvedTargetStoreId: string | null =
@@ -2137,7 +2148,7 @@ async function resolveApprovalContract(
     }
   }
 
-  // ── 7. Destination authorization for the acting user ─────────────────────
+  // ── 8. Destination authorization for the acting user ─────────────────────
   // Runs after the company check so a cross-store attempt is rejected even when
   // the store belongs to the correct company.
   assertStoreIsApproved(resolvedTargetStoreId, accessibleStoreIds);
@@ -2379,7 +2390,7 @@ export async function applyBatchApproval(
   rowDecisions: RowDecision[] | null = [],
 ): Promise<ApprovalResult> {
   // ── Authorization + destination contract (zero writes on any failure) ────
-  const contract = await resolveApprovalContract(batchId, auth);
+  const contract = await resolveApprovalContract(batchId, auth, { requireApprovalRole: true });
   const { batch, companyId, actingUserId } = contract;
   const resolvedTargetStoreId = contract.resolvedTargetStoreId;
   const userId: string | null = actingUserId;

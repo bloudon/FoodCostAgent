@@ -32,6 +32,7 @@ import {
   vendors,
 } from '@workspace/db';
 import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
+import { applyBatchApproval } from '../services/orderly/orderlyDomain';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 
@@ -43,7 +44,9 @@ const IDs = vi.hoisted(() => {
     store: `oar-store-${RUN}`,
     otherStore: `oar-other-${RUN}`,
     admin: `oar-admin-${RUN}`,
+    manager: `oar-manager-${RUN}`,
     scoped: `oar-scoped-${RUN}`,
+    staff: `oar-staff-${RUN}`,
     binding: `oar-bind-${RUN}`,
     sourceProperty: `24472-${RUN}`,
   };
@@ -57,7 +60,12 @@ const authState = vi.hoisted(() => ({ userId: '' as string }));
 // `req.userId`, matching production behavior, so the route must read `user.id`.
 vi.mock('../auth', () => ({
   requireAuth: vi.fn((req: any, _res: any, next: any) => {
-    req.user = { id: authState.userId, companyId: IDs.company };
+    const role = authState.userId === IDs.manager
+      ? 'store_manager'
+      : authState.userId === IDs.scoped || authState.userId === IDs.staff
+        ? 'store_user'
+        : 'company_admin';
+    req.user = { id: authState.userId, companyId: IDs.company, role };
     req.companyId = IDs.company;
     next();
   }),
@@ -149,10 +157,18 @@ beforeAll(async () => {
   ]);
   await db.insert(users).values([
     { id: IDs.admin, email: `oar-admin-${IDs.RUN}@test.local`, role: 'company_admin', companyId: IDs.company, active: 1 },
+    { id: IDs.manager, email: `oar-manager-${IDs.RUN}@test.local`, role: 'store_manager', companyId: IDs.company, active: 1 },
     { id: IDs.scoped, email: `oar-scoped-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
+    { id: IDs.staff, email: `oar-staff-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
   ]);
-  // Scoped user can reach only the "Other" store — never Bay Hill.
-  await db.insert(userStores).values([{ userId: IDs.scoped, storeId: IDs.otherStore }]);
+  // Scoped user can reach only the "Other" store — never Bay Hill. The
+  // manager and staff fixtures can reach Bay Hill, so role and destination
+  // authorization are tested independently.
+  await db.insert(userStores).values([
+    { userId: IDs.manager, storeId: IDs.store },
+    { userId: IDs.scoped, storeId: IDs.otherStore },
+    { userId: IDs.staff, storeId: IDs.store },
+  ]);
   await db.insert(importSourcePropertyBindings).values({
     id: IDs.binding,
     companyId: IDs.company,
@@ -178,8 +194,8 @@ afterAll(async () => {
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, IDs.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, IDs.company)).catch(() => {});
   await db.delete(vendors).where(eq(vendors.companyId, IDs.company)).catch(() => {});
-  await db.delete(userStores).where(eq(userStores.userId, IDs.scoped)).catch(() => {});
-  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.scoped])).catch(() => {});
+  await db.delete(userStores).where(inArray(userStores.userId, [IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
+  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
   await db.delete(companyStores).where(eq(companyStores.companyId, IDs.company)).catch(() => {});
   await db.delete(companiesTable).where(eq(companiesTable.id, IDs.company)).catch(() => {});
 });
@@ -202,6 +218,17 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     expect(after?.approvedBy).toBe(IDs.admin); // real identity recorded, not null
   });
 
+  it('allows an assigned store manager to approve the destination store', async () => {
+    authState.userId = IDs.manager;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(200);
+    expect((await batchState(batchId))?.status).toBe('approved');
+    expect((await batchState(batchId))?.approvedBy).toBe(IDs.manager);
+  });
+
   it('rejects an unsaved client override instead of silently changing the persisted review draft', async () => {
     authState.userId = IDs.admin;
     const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
@@ -221,6 +248,29 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     const res = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
 
     expect(res.status).toBe(403);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('rejects a destination-authorized store user before any approval write', async () => {
+    authState.userId = IDs.staff;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('company admins and managers');
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('rejects a direct service approval from a destination-authorized store user', async () => {
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: IDs.staff, companyId: IDs.company }),
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'Only company admins and managers can approve Orderly imports.',
+    });
     expect((await batchState(batchId))?.status).toBe('pending_review');
   });
 
@@ -323,6 +373,40 @@ describe.skipIf(SKIP)('Orderly review decision drafts', () => {
     expect(reloaded.status).toBe(200);
     expect(reloaded.body.decisions).toHaveLength(1);
     expect(reloaded.body.decisions[0].revision).toBe(1);
+  });
+
+  it('still allows a destination-authorized store user to save a review draft', async () => {
+    authState.userId = IDs.staff;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+
+    const preview = await supertest(buildApp())
+      .get(`/api/inventory-import/orderly/batches/${batchId}/resolution-preview`);
+    expect(preview.status).toBe(200);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
   });
 
   it('uses a saved compatible link when approval receives an empty request body', async () => {

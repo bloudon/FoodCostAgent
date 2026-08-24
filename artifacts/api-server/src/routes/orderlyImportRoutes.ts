@@ -35,7 +35,7 @@ import {
 } from '../services/orderly/orderlyCountSession';
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
-import { getAccessibleStores } from '../permissions';
+import { canApproveOrderlyImport, getAccessibleStores } from '../permissions';
 import { db } from '../db';
 import { sql, eq, and, isNull, ne } from 'drizzle-orm';
 import {
@@ -241,6 +241,20 @@ function approvalErrorStatus(err: unknown): number {
     }
   }
   return 500;
+}
+
+/** Route-level defense for the irreversible Orderly approval action. */
+function requireOrderlyApprovalRole(req: any, res: any, next: any) {
+  const user = req.user;
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  if (!canApproveOrderlyImport(user)) {
+    return res.status(403).json({
+      error: 'Only company admins and managers can approve Orderly imports.',
+    });
+  }
+  return next();
 }
 
 /** Build the unified preview response shape. */
@@ -759,6 +773,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
     requireAuth,
     // @ts-ignore
     requireTier('basic'),
+    requireOrderlyApprovalRole,
     // @ts-ignore
     async (req, res) => {
       try {

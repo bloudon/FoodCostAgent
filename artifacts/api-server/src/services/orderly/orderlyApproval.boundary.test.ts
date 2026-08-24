@@ -49,7 +49,7 @@ const ID = {
   storeCompanyB: `iap-costore-b-${RUN}`,
   adminA: `iap-adminA-${RUN}`,
   adminB: `iap-adminB-${RUN}`,
-  scopedUser: `iap-scoped-${RUN}`,
+  scopedManager: `iap-scoped-manager-${RUN}`,
   inactiveUser: `iap-inactive-${RUN}`,
   bindingBayHill: `iap-bind-bh-${RUN}`,
   bindingOther: `iap-bind-other-${RUN}`,
@@ -168,14 +168,15 @@ beforeAll(async () => {
     { id: ID.adminA, email: `iap-admina-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyA, active: 1 },
     // Company admin for company B — must not touch company A.
     { id: ID.adminB, email: `iap-adminb-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyB, active: 1 },
-    // Store user in company A assigned ONLY to "Other Club" — not Bay Hill.
-    { id: ID.scopedUser, email: `iap-scoped-${RUN}@test.local`, role: 'store_user', companyId: ID.companyA, active: 1 },
+    // Store manager in company A assigned ONLY to "Other Club" — not Bay Hill.
+    // This must reach the destination guard after passing the approval role gate.
+    { id: ID.scopedManager, email: `iap-scoped-manager-${RUN}@test.local`, role: 'store_manager', companyId: ID.companyA, active: 1 },
     // Deactivated user in company A.
     { id: ID.inactiveUser, email: `iap-inactive-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyA, active: 0 },
   ]);
 
   await db.insert(userStores).values([
-    { userId: ID.scopedUser, storeId: ID.storeOther },
+    { userId: ID.scopedManager, storeId: ID.storeOther },
   ]);
 
   await db.insert(importSourcePropertyBindings).values([
@@ -219,8 +220,8 @@ afterAll(async () => {
   await db.delete(inventoryItems).where(inArray(inventoryItems.companyId, companyIds)).catch(() => {});
   await db.delete(inventoryLocations).where(inArray(inventoryLocations.companyId, companyIds)).catch(() => {});
   await db.delete(vendors).where(inArray(vendors.companyId, companyIds)).catch(() => {});
-  await db.delete(userStores).where(eq(userStores.userId, ID.scopedUser)).catch(() => {});
-  await db.delete(users).where(inArray(users.id, [ID.adminA, ID.adminB, ID.scopedUser, ID.inactiveUser])).catch(() => {});
+  await db.delete(userStores).where(eq(userStores.userId, ID.scopedManager)).catch(() => {});
+  await db.delete(users).where(inArray(users.id, [ID.adminA, ID.adminB, ID.scopedManager, ID.inactiveUser])).catch(() => {});
   await db.delete(companyStores).where(inArray(companyStores.companyId, companyIds)).catch(() => {});
   await db.delete(companiesTable).where(inArray(companiesTable.id, companyIds)).catch(() => {});
 });
@@ -425,12 +426,15 @@ describe.skipIf(SKIP)('applyBatchApproval — authorization enforcement', () => 
   });
 
   it('rejects a user without permission for the target store', async () => {
-    // scopedUser is in company A but assigned only to "Other Club".
+    // The manager is in company A but assigned only to "Other Club", so this
+    // reaches the destination-scope guard after passing the role gate.
+    const beforeCounts = await countDomainRecords(ID.companyA);
     await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.scopedUser, companyId: ID.companyA }),
+      applyBatchApproval(batchId, { actingUserId: ID.scopedManager, companyId: ID.companyA }),
     ).rejects.toThrow(/do not have access/i);
 
     expect((await snapshotBatch(batchId))?.status).toBe('pending_review');
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
   });
 
   it('rejects an inactive acting user', async () => {
