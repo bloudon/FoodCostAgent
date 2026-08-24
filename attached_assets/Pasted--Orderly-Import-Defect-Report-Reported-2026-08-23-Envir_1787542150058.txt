@@ -1,0 +1,121 @@
+# Orderly Import — Defect Report
+
+**Reported:** 2026-08-23
+**Environment:** FnB Dev — `/orderly-import` (v1.15.0)
+**Test batch:** `June_2026.xlsx`, batch ID `3beae5c4-9975-45f8-b3b0-b745b3d5ad87`, 5,409 rows, inventory date 6/30/2026
+**Company:** Bay Hill CC, `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Context:** This review is a rehearsal for seeding three months of real batches on the production server. Defects are prioritised by their impact on that seed, not just on this batch.
+
+---
+
+## #1241 — Preview-step decisions are never persisted (P0, blocks production seed)
+
+### Summary
+
+Every decision made in the **Preview** step of the import wizard lives only in client-side React memory. Nothing is written to the server before final Approve. Any reload, navigation, or dev-server restart silently discards all review work.
+
+### Reproduction (100%, verified this session)
+
+1. Open the June batch → Review → Confirm Date & Preview Matches.
+2. Note footer: `63 re-code decisions and 1 held row still need a choice.`
+3. Expand row #924 (`Red Breast -  Irish Whiskey 12Yr`, code `417747`) and click the "Compatible / FnB #: 23896" candidate card to link it.
+4. Row correctly updates to `Link Existing / Undo`; footer correctly decrements to `62`.
+5. Reload the page.
+6. Observe: the app returns to the batch list (the wizard holds no URL state).
+7. Re-enter Review → Confirm Date → Preview.
+8. **Observed:** footer is back to `63`; bulk button is back to `Create 31 new variants in bulk`; row #924 is `Action Required` again.
+9. **Expected:** the recorded decision survives.
+
+### Root-cause evidence
+
+Three independent persistence/protection layers were checked. All are absent:
+
+| Layer | Result |
+|---|---|
+| Server write on decision click | **None.** Network monitoring across the click captured zero requests. Not a failed or slow request — no request was made at all. |
+| Browser storage | **None.** No `localStorage` keys matching orderly/import/decision/batch. No decision state in `sessionStorage`. |
+| Navigation guard | **None.** `window.onbeforeunload` has no registered listener. Reload proceeds silently with no warning. |
+
+### Impact
+
+- A reviewer can spend hours resolving 64 decisions and lose all of it to a single reload or Replit dev-server restart, with no warning and no recovery.
+- Confirmed to have already happened: an entire prior review session's work — 31 bulk-accepted variants, a manual Milk-Whole exclusion, a restored Casamigo's row, a resolved held row, and a completed Red Breast link — was found fully reverted at the start of this session.
+- The wizard's own UI language ("Undo", queue counts, "Decision recorded") implies durable queued state and actively misleads reviewers into believing work is saved.
+- **For the production seed this is the primary blocker.** It forces each monthly batch into a single unbroken sitting that must terminate in the irreversible Approve. There is no way to prepare decisions, have them reviewed by a second person, and approve later.
+
+### Requested fix, in priority order
+
+1. **Persist each decision to the server as it is made**, scoped to the batch ID. Reviewers should be able to leave and resume.
+2. **Add a navigation guard** (`beforeunload`) as an immediate stopgap while (1) is built — cheap, and would have prevented both observed losses.
+3. **Decision manifest export/import.** Strongly desirable for the production seed specifically: the ability to export the full set of decisions for a batch as a reviewable file, and re-import it. This enables preparing decisions off-line, peer review before approval, and an audit trail of what was decided and why.
+4. **Correct the misleading UI copy** until (1) ships — "Undo" and queue counts should not suggest durability that does not exist.
+
+---
+
+## #1242 — Pack comparison display discards inner-pack detail (P2, cosmetic but expensive)
+
+### Summary
+
+The pack-comparison summary renders only the outer case count and labels the rest `(unit detail unavailable)`, even though the backend has already correctly normalised both sides. The classification logic is **correct**; only the display is wrong.
+
+### Evidence
+
+The expanded evidence panel contains a `Why:` line that the collapsed row summary omits. It shows the true normalised comparison:
+
+| Row | Displayed comparison | Backend `Why:` line | Real verdict |
+|---|---|---|---|
+| Stella Artois - Bottled (`99753`, 2/12 EA) | `2 count → 1 count` | both packs normalize to **24 EA** | Same pack |
+| Beef - Bratwurst (`8745838`, 1/10 LB) | `1 count → 40 count` | both packs normalize to **160 OZ** | Same pack |
+| Shrimp - 6-8 (`7952559`, 4/2.5 LB) | `4 count → 1 count` | both packs normalize to **160 OZ** | Same pack |
+| Roasted Potatoes (`272095`, 6/2.5 LB) | `6 count → 5 count` | both packs normalize to **240 OZ** | Same pack |
+| Coke - Ind. (`7260291`, 1/24 EA) | `1 count → 1 count` | both packs normalize to **24 EA** | Same pack |
+
+Every row that *looks* contradictory is in fact consistent. Conversely, rows that display as matching (`24 → 24`, `1 → 1`) are also not verified by the displayed number — it is simply not the value the classifier used.
+
+### Impact
+
+The displayed number is decorative and should not be read as evidence either way. Because it looks authoritative, it causes real waste: a prior session performed manual cross-checks against live Orderly (`app.bepbackoffice.com`, restaurantId `24472`) for Stella Artois to resolve an apparent 2→1 conflict that the backend had already correctly resolved to 24 EA on both sides. That verification was unnecessary.
+
+Independent corroboration: the manual Orderly research and the backend normalisation agree exactly (City Beverages codes `77001` = 2/12 EACH, `99753` = 2/12 EACH, `99682` = 1/24 EACH — all 24 total).
+
+### Requested fix
+
+Render the normalised value the backend has already computed for the `Why:` line, in the collapsed summary. Where unit detail genuinely cannot be resolved, say so explicitly rather than printing a bare count that invites misreading.
+
+---
+
+## #1238 (reopen) — Milk-Whole still classified as "New pack size"; conflict count reads 0 (P1)
+
+### Summary
+
+The known same-code/contradictory-pack case is still not detected, despite the hardening described for #1238 ("under-lock recheck", durable provenance constraint).
+
+### Evidence
+
+- Filtering STATUS = **New pack size** returns 79 rows, including **Milk - Whole, code `4676306`** at rows #2583, #3754, #4027, #4231, #5284 (5 location rows).
+- Header card **"3. Conflicting source packs" reads `0` conflicts.**
+- Orderly's own catalog maps code `4676306` to two different `packSizeId` values (1/1 GALLON and 4/1 GALLON).
+
+Expected: these rows land in the Conflicting bucket and block approval until the source is verified. Observed: they are offered as legitimate "create a separate variant" candidates and are swept into the `Create 31 new variants in bulk` action.
+
+### Impact
+
+- **The bulk-accept button is unsafe as shipped.** Clicking it accepts the 5 Milk-Whole rows along with 26 legitimate ones, and the only remedy is to manually undo them afterwards — which a reviewer will only do if they already know about this case.
+- This is not a one-off. Prior analysis found **407 of 5,319 Orderly item codes (7.65%) map to more than one `packSizeId`** — 371 of them sharing Milk-Whole's exact shape (same spec, same supplier). Milk-Whole is the instance we happen to know by name.
+- **Scaling concern for the production seed:** across three months of real production data, the number of affected codes will be materially larger than five rows, and the tool currently reports zero of them. Manual detection does not scale and depends on prior knowledge of each case.
+
+### Requested fix
+
+Restore the conflict detection so multi-`packSizeId` source codes are routed to Category 3 and block approval. Additionally, please confirm whether Category 3 has *ever* been non-zero on this batch — a permanently-zero bucket suggests the detector is not running at all, rather than running and missing.
+
+---
+
+## #1243 — Description whitespace not normalised (P3, minor)
+
+`Red Breast -  Irish Whiskey 12Yr` contains a double space after the hyphen. Row descriptions are not whitespace-normalised for display or matching. This is cosmetic for humans but breaks exact-string automation against the row list, and may affect name-similarity matching quality. Suggest normalising internal whitespace on ingest.
+
+---
+
+## Overall recommendation
+
+**#1241 should be fixed before any production seed is attempted.** The other three are workable with care; #1241 is not, because it converts a multi-hour reviewable process into an all-or-nothing sitting that ends in an irreversible write, with no audit trail of what was decided.

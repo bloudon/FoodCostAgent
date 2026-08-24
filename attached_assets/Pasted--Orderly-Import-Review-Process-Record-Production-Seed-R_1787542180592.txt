@@ -1,0 +1,174 @@
+# Orderly Import Review — Process Record & Production Seed Runbook
+
+**Version:** 0.3 (provisional — see Validation Status)
+**Last updated:** 2026-08-23
+**Purpose:** Capture the import-review process precisely enough to replicate it for a three-month seed on the production server.
+
+---
+
+## 1. Validation status — read first
+
+This process is **not yet validated end-to-end.** It must not be run on production in its current state.
+
+| Stage | Validated? | Notes |
+|---|---|---|
+| Upload | Yes | Prior sessions |
+| Date confirmation | Yes | Detected date matched filename and worksheet |
+| Preview — classification review | Partially | Method proven on ~5 representative rows; never completed for a full batch |
+| Preview — decision persistence | **Fails** | See defect #1241. No decision survives a reload. |
+| **Approve** | **Never observed** | No session has reached this step. Behaviour entirely unknown. |
+| Post-approve verification | **Never observed** | No known method yet |
+
+**The single most important gap is that Approve has never been executed or observed.** Everything downstream of it is undocumented.
+
+### Unknowns that must be resolved on dev before production
+
+These are all safely testable on dev, which is test data:
+
+1. **Is Approve atomic?** If it fails partway through 5,409 rows, does it roll back or leave the catalog half-written?
+2. **How long does it take?** A 5,409-row commit may exceed a proxy or gateway timeout. What does the UI do if it does?
+3. **Is it idempotent?** If a reviewer double-clicks or retries after an apparent failure, does it double-write?
+4. **Is it reversible?** Is there any unwind path, or is a bad approval permanent? This determines how much pre-approval review rigour is required.
+5. **What exactly does it write?** Item variants, code mappings, vendor links, location rows — and which of those become permanent mappings that affect future months.
+
+Until (1)–(5) are answered, the risk of a production seed is unbounded.
+
+---
+
+## 2. Critical finding: months are not independent
+
+The classifier compares each incoming row against **existing catalog evidence** (the evidence panel cites concrete existing records, e.g. `FnB #: 24136`, `FnB #: 23896`). Approving a batch writes new items, variants, and code mappings into that same catalog.
+
+**Therefore approving month N changes the classification of month N+1.**
+
+Confirmed indirectly on dev: `May_2026.xlsx` is already approved, and June's classification is running against a post-May catalog.
+
+Consequences for the seed:
+
+- **Batches must be seeded in strict chronological order.** Do not parallelise.
+- **A decision set is not portable.** Decisions recorded while reviewing June on dev cannot be blindly replayed against June on production unless production's catalog is in an identical state at that moment. The candidate a row matches to may differ.
+- **Re-running an earlier month after a later one has been approved is not a clean operation** and should be assumed unsafe.
+- Decision counts and category totals will differ between dev and production for the same file. Treat any divergence as expected, not as evidence of error — but investigate large divergences.
+
+*(This is inferred from the structure of the evidence panel rather than from source code. Worth confirming with Replit.)*
+
+---
+
+## 3. Preconditions before any production run
+
+Do not begin until all are true:
+
+- [ ] Defect **#1241** (decision persistence) is fixed and verified by the reload test in §6.
+- [ ] Defect **#1238** (conflict detection / Milk-Whole) is fixed, **or** a documented manual detection procedure exists for multi-`packSizeId` codes at production scale.
+- [ ] A full dry run of one batch on dev has been completed **through Approve**, with §1 unknowns (1)–(5) answered and recorded.
+- [ ] A verified database backup / restore point exists for the production catalog, taken immediately before the seed.
+- [ ] The chronological order of the three batches is fixed and agreed.
+- [ ] A decision log (§5) is prepared, and a second reviewer is available to sign off on it before Approve is clicked.
+
+---
+
+## 4. Per-batch procedure
+
+### 4.1 Enter the wizard
+
+1. Navigate to `/orderly-import`.
+2. Confirm the target file appears with status `pending review` and the expected row count.
+3. Click **Review**.
+4. On the Date step, verify the detected date matches the count date on the Orderly report. Do not accept a mismatch — stop and investigate.
+5. Click **Confirm Date & Preview Matches**.
+
+### 4.2 Record the baseline
+
+Before touching anything, capture and log:
+
+- Total rows
+- Matched items / New items / Vendors / Locations
+- The four review categories: Same physical pack, New pack size, **Conflicting source packs**, Description in Item Code
+- Footer decision count (`N re-code decisions and M held rows still need a choice`)
+
+**If "Conflicting source packs" reads 0, treat it as untrustworthy until #1238 is confirmed fixed.** A zero here currently means "detector silent", not "no conflicts".
+
+### 4.3 Pre-screen for multi-packSizeId codes
+
+Before making any decisions, filter STATUS = **New pack size** and check for known contradictory codes. At minimum, search the row list for `4676306` (Milk - Whole). Any hit here is a case the tool failed to flag, and must be excluded manually rather than bulk-accepted.
+
+Broader detection at production scale needs a systematic approach — 7.65% of codes historically map to more than one `packSizeId`, and the tool does not surface them.
+
+### 4.4 Resolve decisions
+
+Work the STATUS filters one bucket at a time. For each row:
+
+1. Expand the row (see §7 for the reliable technique).
+2. **Read the `Why:` line in the expanded panel — not the pack-check summary string.** The summary is unreliable (defect #1242). The `Why:` line carries the backend's true normalised comparison, e.g. `both packs normalize to 24 EA`.
+3. Decide:
+   - `Why:` shows both sides normalising to the same value → **link to existing**.
+   - `Why:` shows genuinely different normalised values → **create as separate variant**.
+   - Panel is internally inconsistent or `Why:` is absent → **stop and cross-check against Orderly** (`app.bepbackoffice.com`, Bay Hill restaurantId `24472`). Do not guess.
+4. **Verify the count moved.** Re-read the footer after every action. A click that appears to succeed may not have registered.
+5. Log the decision (§5).
+
+**Bulk actions:** `Create N new variants in bulk` is only safe once §4.3 has confirmed no contradictory codes are inside the set. Otherwise resolve individually or bulk-accept and then manually undo the known bad rows, verifying the count drops by exactly the expected amount.
+
+### 4.5 Held rows and descriptive codes
+
+- Held rows offer fuzzy-match candidates; select on name + pack + location agreement.
+- **Category 4 (descriptive Item Code values)** is expected and by design — these cannot become permanent mappings and do not need resolving. On the June batch this is 414 values. Do not attempt to "fix" them in the wizard.
+
+### 4.6 Approve
+
+1. Confirm the footer shows zero outstanding decisions.
+2. Have the second reviewer sign off on the decision log.
+3. Confirm explicitly, in writing, that approval is intended for this batch.
+4. Click Approve.
+5. Record: duration, any errors, resulting status, and post-approve catalog counts.
+
+**Approve is the only irreversible step in the flow.** Everything before it is discardable (which is currently the problem, not the safeguard).
+
+---
+
+## 5. Decision log template
+
+Because the tool keeps no audit trail, the log is the only record of what was decided and why. Maintain one file per batch.
+
+| Row # | Description | Code | Bucket | `Why:` line | Decision | Rationale / source |
+|---|---|---|---|---|---|---|
+| 924 | Red Breast - Irish Whiskey 12Yr | 417747 | Alternate code | both packs normalize to 750 ML | Link existing (FnB #23896) | Clean normalisation, both sides 1×750ML |
+| 2583 | Milk - Whole | 4676306 | New pack size | — | **Exclude — do not accept** | Orderly maps code to two packSizeIds (1/1 GAL, 4/1 GAL). Tool fails to flag. Defect #1238 |
+| 1022 | Stella Artois - Bottled | 99753 | Alternate code | both packs normalize to 24 EA | Link existing | Display shows 2→1; backend and Orderly both confirm 24 EA. Defect #1242 |
+
+---
+
+## 6. Persistence regression test
+
+Run this before every production batch, and after any Replit deploy. It takes two minutes and would have caught the loss of two full review sessions.
+
+1. Enter Preview. Note the footer decision count.
+2. Record any single decision. Confirm the count decrements.
+3. Reload the page.
+4. Re-enter Preview.
+5. **Pass:** the count is still decremented and the row shows its recorded decision.
+   **Fail:** the count has reset — decisions are not persisting. **Stop. Do not proceed with the batch.**
+
+---
+
+## 7. Technical notes on driving the UI
+
+Gathered through trial and error; recorded so the next operator does not repeat it.
+
+- **Expanding a row.** Coordinate clicks are unreliable — the layout shifts as rows expand and the list scrolls. Reliable pattern: use `document.createTreeWalker` over text nodes to find the row's description, walk up to the enclosing `<tr>`, find the `svg` inside it, and click its closest button ancestor.
+- **Match on substring, not exact text.** Descriptions contain unnormalised whitespace — `Red Breast -  Irish Whiskey 12Yr` has a double space (defect #1243). Exact-match selectors fail silently on these.
+- **Selecting a candidate.** The candidate card is a `<button>`, not an `<input type="radio">`. Walk up from the candidate's `Compatible` badge text node to the nearest `BUTTON` ancestor and click that.
+- **The `Why:` line only exists in the expanded panel.** It is not present in the collapsed row summary, which is why the collapsed view is misleading.
+- **Status filter buttons** are pill-shaped `<button>` elements matched by their exact label text (`Alternate code`, `New pack size`, etc.).
+- **Always re-read the footer after an action.** This is the only reliable confirmation that a click registered. It is what caught a batch-undo script accidentally un-flagging a correct row in a prior session (expected count 30, actual 29).
+- **The wizard holds no URL state.** Reloading `/orderly-import` always returns to the batch list, never to the Preview step.
+
+---
+
+## 8. Change log
+
+| Version | Date | Change |
+|---|---|---|
+| 0.3 | 2026-08-23 | Added persistence failure (#1241) and regression test §6; corrected §4.4 to read the `Why:` line rather than the pack-check summary; added §2 month-interdependence finding; added §1 validation status and Approve unknowns |
+| 0.2 | prior | Row-expansion technique, Orderly cross-check method |
+| 0.1 | prior | Initial capture of wizard steps |
