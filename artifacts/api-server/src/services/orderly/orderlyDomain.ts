@@ -69,6 +69,14 @@ import {
   deriveOrderlyAlternateSourceId,
 } from './orderlyIdentity';
 import { parseOrderlyPackSize } from './OrderlyParser';
+import {
+  createOrderlyDecisionManifest,
+  fingerprintOrderlyPreview,
+  parseAndVerifyOrderlyDecisionManifest,
+  OrderlyDecisionManifestError,
+  type OrderlyDecisionManifest,
+  type OrderlyDecisionManifestBatch,
+} from './orderlyDecisionManifest';
 import type { InventoryImportRow } from '@workspace/db';
 import { storage } from '../../storage';
 import { canApproveOrderlyImport, getAccessibleStores, hasCompanyAccess } from '../../permissions';
@@ -1943,6 +1951,12 @@ async function resolveApprovalContract(
     targetStoreId: string | null;
     sourceSystem: string;
     sourcePropertyId: string;
+    fileHash: string;
+    originalFilename: string;
+    parserVersion: string;
+    inventoryDate: string | null;
+    sourceRowCount: number;
+    snapshotTotal: number | null;
   };
   companyId: string;
   actingUserId: string;
@@ -2012,6 +2026,12 @@ async function resolveApprovalContract(
       sourcePropertyBindingId: inventoryImportBatches.sourcePropertyBindingId,
       sourcePropertyId: inventoryImportBatches.sourcePropertyId,
       companyId: inventoryImportBatches.companyId,
+      fileHash: inventoryImportBatches.fileHash,
+      originalFilename: inventoryImportBatches.originalFilename,
+      parserVersion: inventoryImportBatches.parserVersion,
+      inventoryDate: inventoryImportBatches.inventoryDate,
+      sourceRowCount: inventoryImportBatches.sourceRowCount,
+      snapshotTotal: inventoryImportBatches.snapshotTotal,
     })
     .from(inventoryImportBatches)
     .where(
@@ -2190,6 +2210,12 @@ async function resolveApprovalContract(
       sourceSystem: batch.sourceSystem,
       // Verified against the active binding above when one exists.
       sourcePropertyId: batch.sourcePropertyId ?? '',
+      fileHash: batch.fileHash,
+      originalFilename: batch.originalFilename,
+      parserVersion: batch.parserVersion,
+      inventoryDate: batch.inventoryDate ?? null,
+      sourceRowCount: batch.sourceRowCount,
+      snapshotTotal: batch.snapshotTotal ?? null,
     },
     companyId,
     actingUserId,
@@ -2204,6 +2230,162 @@ export async function getOrderlyReviewDecisions(
   const contract = await resolveApprovalContract(batchId, auth);
   return {
     decisions: await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId),
+  };
+}
+
+function manifestBatchForContract(
+  contract: Awaited<ReturnType<typeof resolveApprovalContract>>,
+): OrderlyDecisionManifestBatch {
+  return {
+    batchId: contract.batch.id,
+    companyId: contract.companyId,
+    sourceSystem: contract.batch.sourceSystem,
+    sourcePropertyId: contract.batch.sourcePropertyId || null,
+    targetStoreId: contract.batch.targetStoreId,
+    fileHash: contract.batch.fileHash,
+    originalFilename: contract.batch.originalFilename,
+    parserVersion: contract.batch.parserVersion,
+    inventoryDate: contract.batch.inventoryDate,
+    sourceRowCount: contract.batch.sourceRowCount,
+    snapshotTotal: contract.batch.snapshotTotal,
+  };
+}
+
+function assertManifestMatchesContract(
+  manifest: OrderlyDecisionManifest,
+  contract: Awaited<ReturnType<typeof resolveApprovalContract>>,
+): void {
+  const expected = manifestBatchForContract(contract);
+  const mismatches = (Object.keys(expected) as Array<keyof OrderlyDecisionManifestBatch>)
+    .filter(key => manifest.batch[key] !== expected[key]);
+  if (mismatches.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Decision manifest belongs to a different import scope (${mismatches.join(', ')}).`,
+    );
+  }
+}
+
+export async function exportOrderlyReviewDecisionManifest(
+  batchId: string,
+  auth: ApprovalAuthorizationContext | null | undefined,
+): Promise<OrderlyDecisionManifest> {
+  const contract = await resolveApprovalContract(batchId, auth);
+  const [preview, decisions] = await Promise.all([
+    runResolutionPreview(contract.batch.id, contract.companyId),
+    loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId),
+  ]);
+  try {
+    return createOrderlyDecisionManifest({
+      batch: manifestBatchForContract(contract),
+      preview,
+      decisions,
+    });
+  } catch (err) {
+    if (err instanceof OrderlyDecisionManifestError) {
+      throw new ImportApprovalError(err.code, err.message);
+    }
+    throw err;
+  }
+}
+
+export interface OrderlyDecisionManifestImportResult {
+  status: 'accepted' | 'rejected' | 'stale';
+  accepted: Array<{ rowIndex: number }>;
+  rejected: Array<{ rowIndex: number; reason: string }>;
+  stale: Array<{ rowIndex: number; reason: string }>;
+  decisions: SavedReviewDecision[];
+}
+
+export async function importOrderlyReviewDecisionManifest(
+  batchId: string,
+  auth: ApprovalAuthorizationContext | null | undefined,
+  rawManifest: unknown,
+): Promise<OrderlyDecisionManifestImportResult> {
+  const contract = await resolveApprovalContract(batchId, auth);
+  let manifest: OrderlyDecisionManifest;
+  try {
+    manifest = parseAndVerifyOrderlyDecisionManifest(rawManifest);
+  } catch (err) {
+    if (err instanceof OrderlyDecisionManifestError) {
+      throw new ImportApprovalError(err.code, err.message);
+    }
+    throw err;
+  }
+  assertManifestMatchesContract(manifest, contract);
+
+  const preview = await runResolutionPreview(contract.batch.id, contract.companyId);
+  if (fingerprintOrderlyPreview(preview) !== manifest.previewFingerprint) {
+    return {
+      status: 'stale',
+      accepted: [],
+      rejected: [],
+      stale: manifest.decisions.map(decision => ({
+        rowIndex: decision.rowIndex,
+        reason: 'The catalog or source evidence changed after this manifest was exported.',
+      })),
+      decisions: [],
+    };
+  }
+
+  const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const rejected: Array<{ rowIndex: number; reason: string }> = [];
+  const changes: ReviewDecisionChange[] = [];
+  for (const entry of manifest.decisions) {
+    try {
+      const decision = normalizeReviewDecision(entry.rowIndex, entry.decision);
+      const row = rowsByIndex.get(entry.rowIndex);
+      if (!row) {
+        throw new ImportApprovalError('CONFLICT', `Row ${entry.rowIndex} is no longer part of this import batch.`);
+      }
+      assertReviewDecisionMatchesPreview(row, decision);
+      changes.push({
+        rowIndex: entry.rowIndex,
+        expectedRevision: entry.revision,
+        decision,
+      });
+    } catch (err: any) {
+      rejected.push({
+        rowIndex: entry.rowIndex,
+        reason: err?.message ?? 'This decision is no longer valid for the current preview.',
+      });
+    }
+  }
+  if (rejected.length > 0) {
+    return { status: 'rejected', accepted: [], rejected, stale: [], decisions: [] };
+  }
+  if (changes.length === 0) {
+    return { status: 'accepted', accepted: [], rejected: [], stale: [], decisions: [] };
+  }
+
+  const current = await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId);
+  const currentByRow = new Map(current.map(decision => [decision.rowIndex, decision]));
+  const stale = manifest.decisions.flatMap(entry => {
+    const currentDecision = currentByRow.get(entry.rowIndex);
+    if (currentDecision && currentDecision.revision === entry.revision) return [];
+    return [{
+      rowIndex: entry.rowIndex,
+      reason: currentDecision
+        ? 'Another reviewer changed this decision after the manifest was exported.'
+        : 'This saved decision was removed after the manifest was exported.',
+    }];
+  });
+  if (stale.length > 0) {
+    return { status: 'stale', accepted: [], rejected: [], stale, decisions: [] };
+  }
+
+  const saved = await saveOrderlyReviewDecisionChanges(
+    contract.batch.id,
+    auth,
+    changes,
+    { expectedPreviewFingerprint: manifest.previewFingerprint },
+  );
+  return {
+    status: 'accepted',
+    accepted: saved.decisions.map(decision => ({ rowIndex: decision.rowIndex })),
+    rejected: [],
+    stale: [],
+    decisions: saved.decisions,
   };
 }
 
@@ -2247,6 +2429,7 @@ export async function saveOrderlyReviewDecisionChanges(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
   rawChanges: unknown,
+  options: { expectedPreviewFingerprint?: string } = {},
 ): Promise<{ decisions: SavedReviewDecision[]; clearedRowIndexes: number[] }> {
   const contract = await resolveApprovalContract(batchId, auth);
   if (contract.batch.status !== 'pending_review') {
@@ -2295,6 +2478,15 @@ export async function saveOrderlyReviewDecisionChanges(
     }
     if (decisionChanges.length > 0) {
       const underLockPreview = await runResolutionPreview(contract.batch.id, contract.companyId, tx);
+      if (
+        options.expectedPreviewFingerprint &&
+        fingerprintOrderlyPreview(underLockPreview) !== options.expectedPreviewFingerprint
+      ) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          'The catalog or source evidence changed while this manifest was being imported.',
+        );
+      }
       const rowsByIndex = new Map(underLockPreview.rows.map(row => [row.rowIndex, row]));
       for (const change of decisionChanges) {
         const row = rowsByIndex.get(change.rowIndex);

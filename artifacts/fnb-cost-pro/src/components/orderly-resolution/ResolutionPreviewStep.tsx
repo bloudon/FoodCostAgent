@@ -48,7 +48,9 @@ import {
   PlusCircle,
   HelpCircle,
   AlertCircle,
-  Undo2
+  Undo2,
+  Download,
+  Upload,
 } from "lucide-react";
 import {
   rowConfidenceKey,
@@ -97,6 +99,14 @@ type ReviewDecisionChange = {
   rowIndex: number;
   expectedRevision: number | null;
   decision?: StoredDecisionPayload;
+};
+
+type DecisionManifestImportResult = {
+  status: "accepted" | "rejected" | "stale";
+  accepted: Array<{ rowIndex: number }>;
+  rejected: Array<{ rowIndex: number; reason: string }>;
+  stale: Array<{ rowIndex: number; reason: string }>;
+  decisions: SavedReviewDecision[];
 };
 
 function isRecodeDecision(value: DecisionValue | undefined): value is RecodeDecision {
@@ -717,7 +727,11 @@ export function ResolutionPreviewStep({
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
   const [noticesCollapsed, setNoticesCollapsed] = useState(false);
   const [bulkVariantConfirmationOpen, setBulkVariantConfirmationOpen] = useState(false);
+  const [isManifestExporting, setIsManifestExporting] = useState(false);
+  const [isManifestImporting, setIsManifestImporting] = useState(false);
+  const [manifestImportResult, setManifestImportResult] = useState<DecisionManifestImportResult | null>(null);
   const savingRowsRef = useRef<Set<number>>(new Set());
+  const manifestFileInputRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 100;
 
@@ -921,11 +935,98 @@ export function ResolutionPreviewStep({
     });
   }
 
+  async function exportDecisionManifest() {
+    setIsManifestExporting(true);
+    try {
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions/manifest`, {
+        credentials: "include",
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not export review decisions");
+
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `orderly-review-decisions-${batchId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Review manifest downloaded",
+        description: "It is bound to this pending import and will be rechecked before it can be applied.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Could not export review decisions",
+        description: err.message ?? "Try again from the pending review.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsManifestExporting(false);
+    }
+  }
+
+  async function importDecisionManifest(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsManifestImporting(true);
+    setManifestImportResult(null);
+    try {
+      let manifest: unknown;
+      try {
+        manifest = JSON.parse(await file.text());
+      } catch {
+        throw new Error("Choose a valid Orderly review manifest JSON file.");
+      }
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions/manifest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ manifest }),
+      });
+      const body: DecisionManifestImportResult & { error?: string } = await res.json();
+      if (!res.ok && !body.status) throw new Error(body.error ?? "Could not import review decisions");
+
+      setManifestImportResult(body);
+      if (body.status === "accepted") {
+        await refetchReviewDecisions();
+        toast({
+          title: `${body.accepted.length} review ${body.accepted.length === 1 ? "decision" : "decisions"} applied`,
+          description: "Every imported decision was rechecked against the current batch before saving.",
+        });
+      } else if (body.status === "stale") {
+        toast({
+          title: "Manifest is stale",
+          description: "No decisions were changed. Export a fresh manifest after reviewing the current evidence.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Manifest was not applied",
+          description: "No decisions were changed because one or more entries no longer pass review.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Could not import review decisions",
+        description: err.message ?? "No decisions were changed.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsManifestImporting(false);
+    }
+  }
+
   async function submitApproval(force = false) {
-    if (savingRowsRef.current.size > 0) {
+    if (savingRowsRef.current.size > 0 || isManifestImporting) {
       toast({
         title: "Waiting for review decisions to save",
-        description: "Approve is available once all in-progress saves finish.",
+        description: "Approve is available once all in-progress decision updates finish.",
       });
       return;
     }
@@ -1056,7 +1157,7 @@ export function ResolutionPreviewStep({
   const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
   const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0 || recodeSummary.unreliableCodes > 0;
-  const approvalDisabled = approving || savingRowIndexes.size > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const approvalDisabled = approving || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -1165,11 +1266,70 @@ export function ResolutionPreviewStep({
             </div>
           </div>
         </div>
-        <Button onClick={() => submitApproval(false)} disabled={approvalDisabled} size="lg" className="shadow-sm">
-          {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-          {approving ? "Approving Batch..." : "Approve Import"}
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <input
+            ref={manifestFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={importDecisionManifest}
+            data-testid="orderly-decision-manifest-input"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportDecisionManifest}
+            disabled={isManifestExporting || isManifestImporting}
+          >
+            {isManifestExporting ? <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+            Export decisions
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => manifestFileInputRef.current?.click()}
+            disabled={isManifestExporting || isManifestImporting}
+          >
+            {isManifestImporting ? <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+            Import decisions
+          </Button>
+          <Button onClick={() => submitApproval(false)} disabled={approvalDisabled} size="lg" className="shadow-sm">
+            {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+            {approving ? "Approving Batch..." : "Approve Import"}
+          </Button>
+        </div>
       </div>
+
+      {manifestImportResult && (
+        <div data-testid="orderly-decision-manifest-result">
+          <Alert
+            variant={manifestImportResult.status === "accepted" ? "default" : "destructive"}
+            className={manifestImportResult.status === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : undefined}
+          >
+            {manifestImportResult.status === "accepted"
+              ? <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+              : <ShieldAlert className="h-4 w-4" />}
+            <AlertTitle>
+              {manifestImportResult.status === "accepted"
+                ? "Manifest applied"
+                : manifestImportResult.status === "stale"
+                  ? "Manifest not applied — evidence changed"
+                  : "Manifest not applied — decisions rejected"}
+            </AlertTitle>
+            <AlertDescription className="mt-1 space-y-1">
+              {manifestImportResult.accepted.length > 0 && (
+                <p>{manifestImportResult.accepted.length} accepted {manifestImportResult.accepted.length === 1 ? "decision" : "decisions"} saved.</p>
+              )}
+              {manifestImportResult.rejected.map(entry => (
+                <p key={`rejected-${entry.rowIndex}`}>Row {entry.rowIndex} rejected: {entry.reason}</p>
+              ))}
+              {manifestImportResult.stale.map(entry => (
+                <p key={`stale-${entry.rowIndex}`}>Row {entry.rowIndex} is stale: {entry.reason}</p>
+              ))}
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

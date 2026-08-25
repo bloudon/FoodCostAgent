@@ -933,4 +933,119 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
 
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
   });
+
+  it("imports a review manifest and clearly reports accepted saved decisions", async () => {
+    const refetch = vi.fn();
+    mockUseQuery.mockImplementation((opts: any) => {
+      const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
+      if (typeof key === "string" && key.includes("resolution-preview")) {
+        return { data: currentPreview, isLoading: false, isError: false };
+      }
+      if (typeof key === "string" && key.includes("review-decisions")) {
+        return { data: currentSavedReviewDecisions, isLoading: false, isError: false, refetch };
+      }
+      return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "accepted",
+          accepted: [{ rowIndex: 6 }],
+          rejected: [],
+          stale: [],
+          decisions: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest applied",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "1 accepted decision saved.",
+    );
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("reports stale imported evidence and leaves the reviewer in the current preview", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "stale",
+          accepted: [],
+          rejected: [],
+          stale: [{ rowIndex: 6, reason: "The catalog or source evidence changed after this manifest was exported." }],
+          decisions: [],
+        }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "stale-review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest not applied — evidence changed",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Row 6 is stale:",
+    );
+    expect(screen.getByRole("heading", { name: "Resolution Preview" })).toBeInTheDocument();
+  });
+
+  it("reports rejected manifest decisions without claiming that any draft was saved", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "rejected",
+          accepted: [],
+          rejected: [{ rowIndex: 6, reason: "This decision is no longer valid for the current preview." }],
+          stale: [],
+          decisions: [],
+        }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "rejected-review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest not applied — decisions rejected",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Row 6 rejected:",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).not.toHaveTextContent(
+      "accepted decision saved",
+    );
+  });
 });

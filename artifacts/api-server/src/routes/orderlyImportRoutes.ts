@@ -55,6 +55,8 @@ import {
   runResolutionPreview,
   applyBatchApproval,
   getOrderlyReviewDecisions,
+  exportOrderlyReviewDecisionManifest,
+  importOrderlyReviewDecisionManifest,
   saveOrderlyReviewDecisionChanges,
   ImportApprovalError,
 } from '../services/orderly/orderlyDomain';
@@ -753,6 +755,69 @@ export function registerOrderlyImportRoutes(app: Express): void {
         res.json(result);
       } catch (err: any) {
         console.error('[OrderlyImport] review decision save error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/inventory-import/orderly/batches/:batchId/review-decisions/manifest
+   *
+   * Produces a signed, batch-bound record of the current saved decisions and
+   * the reviewer-facing evidence that supported them. It is never an approval
+   * token: imports re-check the current preview and all decision rules.
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions/manifest',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const manifest = await exportOrderlyReviewDecisionManifest(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+        );
+        res
+          .type('application/json')
+          .attachment(`orderly-review-decisions-${req.params.batchId}.json`)
+          .send(manifest);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision manifest export error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/inventory-import/orderly/batches/:batchId/review-decisions/manifest
+   *
+   * Applies a signed manifest only to its original pending batch. The entire
+   * manifest is rejected on stale, cross-scope, or invalid evidence; no partial
+   * decision set is ever written.
+   */
+  app.post(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions/manifest',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const result = await importOrderlyReviewDecisionManifest(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+          req.body?.manifest ?? req.body,
+        );
+        const status = result.status === 'accepted' ? 200 : result.status === 'stale' ? 409 : 400;
+        res.status(status).json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision manifest import error:', err);
         res.status(approvalErrorStatus(err)).json({ error: err.message });
       }
     },
