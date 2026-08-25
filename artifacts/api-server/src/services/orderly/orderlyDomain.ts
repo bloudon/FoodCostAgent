@@ -63,7 +63,7 @@ import {
   type SourceCodeReliability,
   type RecodeEvidenceClass,
 } from './OrderlyMatcher';
-import { comparePackGeometry, type SourcePackGeometry } from './packGeometry';
+import { comparePackGeometry, normalizePackGeometry, type SourcePackGeometry } from './packGeometry';
 import {
   buildOrderlyIdentityGroup,
   deriveOrderlyAlternateSourceId,
@@ -636,11 +636,14 @@ function sourcePackVariantName(row: Pick<
 }
 
 function toPreviewPackEvidence(geometry: SourcePackGeometry): PackEvidence {
+  const normalized = normalizePackGeometry(geometry);
   return {
     caseQuantity: geometry.caseQuantity ?? null,
     innerPackQuantity: geometry.innerPackQuantity ?? null,
     baseUnitQuantity: geometry.baseUnitQuantity ?? null,
     baseUnit: geometry.baseUnit ?? null,
+    normalizedUnit: normalized.normalizedUnit,
+    totalBaseUnits: normalized.totalBaseUnits,
   };
 }
 
@@ -1541,6 +1544,7 @@ export async function runResolutionPreview(
             possibleRecodeMatchedId: nameExactMatch.id,
             packCompatibility: packAssessment.status,
             packCompatibilityReason: packAssessment.reason,
+            sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
             candidatePackEvidence: packAssessment.candidatePackEvidence,
               recodeEvidenceClass: isPseudoCodeCandidate
                 ? 'unreliable_code'
@@ -1585,6 +1589,15 @@ export async function runResolutionPreview(
         recodeEvidenceClass: 'unreliable_code',
       };
     }
+
+    // Every review row receives the server-normalized incoming pack evidence.
+    // The browser may format this fact, but never infer a total from partial
+    // geometry. Candidate evidence is added separately when a catalog
+    // comparison exists.
+    itemMatch = {
+      ...itemMatch,
+      sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
+    };
 
     resolutions.push({
       rowIndex: row.rowIndex,

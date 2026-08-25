@@ -255,6 +255,34 @@ const HELD_PREVIEW = {
   ],
 };
 
+function packComparisonPreview(
+  sourcePackEvidence: Record<string, unknown>,
+  candidatePackEvidence: Record<string, unknown> | null,
+  packCompatibility: "compatible" | "incompatible" | "unknown",
+) {
+  return {
+    ...MOCK_PREVIEW,
+    totalRows: 1,
+    summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 0 },
+    rows: [{
+      ...makePreviewRow(1, "Spirits", "name_pack", "high"),
+      sourceItemCode: "PACK-1",
+      itemMatch: {
+        ...makePreviewRow(1, "Spirits", "name_pack", "high").itemMatch,
+        possibleRecode: true,
+        possibleRecodeMatchedId: "catalog-item",
+        possibleRecodeItem: { id: "catalog-item", name: "House Spirit", caseSize: 24 },
+        packCompatibility,
+        packCompatibilityReason: packCompatibility === "unknown"
+          ? "the existing source mapping lacks complete pack evidence"
+          : undefined,
+        sourcePackEvidence,
+        candidatePackEvidence,
+      },
+    }],
+  };
+}
+
 function heldMatchPreview(confidence: "ambiguous" | "low") {
   const candidate = {
     id: `candidate-${confidence}`,
@@ -494,6 +522,108 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     await screen.findByText("Resolution Preview");
     expect(screen.queryByRole("button", { name: /Create .*new variant in bulk/i })).not.toBeInTheDocument();
     expect(screen.queryByTestId("bulk-new-pack-size-queued")).not.toBeInTheDocument();
+  });
+
+  it("leads with server-normalized totals for equivalent multi-level packs", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 1,
+        innerPackQuantity: 24,
+        baseUnitQuantity: 1,
+        baseUnit: "EA",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      {
+        caseQuantity: 2,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: "each",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      "compatible",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: 24 EA → 24 EA")).toBeInTheDocument();
+    expect(screen.getByText(/Incoming shape: 1 × 24 × 1 EA/)).toBeInTheDocument();
+
+    fireEvent.click((await screen.findByText("Item 1")).closest("tr")!);
+    expect(screen.getAllByText("Normalized total: 24 EA")).toHaveLength(2);
+    expect(screen.getByText("Same physical pack — you may link this new code to the existing item.")).toBeInTheDocument();
+  });
+
+  it("shows both normalized totals for a truly incompatible pack", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: "ML",
+        normalizedUnit: "ML",
+        totalBaseUnits: 250,
+      },
+      {
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: "LT",
+        normalizedUnit: "ML",
+        totalBaseUnits: 6000,
+      },
+      "incompatible",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: 250 ML → 6000 ML")).toBeInTheDocument();
+    fireEvent.click((await screen.findByText("Item 1")).closest("tr")!);
+    expect(screen.getByText("Different physical pack — linking is blocked. Create a separate variant instead.")).toBeInTheDocument();
+  });
+
+  it("states that normalized evidence is unconfirmed when pack geometry is incomplete", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 2,
+        innerPackQuantity: null,
+        baseUnitQuantity: null,
+        baseUnit: null,
+        normalizedUnit: null,
+        totalBaseUnits: null,
+      },
+      {
+        caseQuantity: 2,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: "EA",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      "unknown",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: Not confirmed → 24 EA")).toBeInTheDocument();
+    expect(screen.getByText("Pack unconfirmed")).toBeInTheDocument();
+    expect(screen.getByText(/Not confirmed/)).toBeInTheDocument();
+  });
+
+  it("shows server-normalized incoming evidence on review rows without a catalog comparison", async () => {
+    currentPreview = heldMatchPreview("low");
+    currentPreview.rows[0].itemMatch.sourcePackEvidence = {
+      caseQuantity: 1,
+      innerPackQuantity: 24,
+      baseUnitQuantity: 1,
+      baseUnit: "EA",
+      normalizedUnit: "EA",
+      totalBaseUnits: 24,
+    };
+    renderStep();
+
+    expect(await screen.findByText("Pack evidence")).toBeInTheDocument();
+    expect(screen.getByText("Normalized total: 24 EA")).toBeInTheDocument();
+    expect(screen.getByText(/Incoming shape: 1 × 24 × 1 EA/)).toBeInTheDocument();
+    expect(screen.queryByText(/Catalog shape:/)).not.toBeInTheDocument();
   });
 
   it("renders a chip for each confidence level present in the batch", async () => {

@@ -1070,6 +1070,16 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       innerPackQuantity: 1,
       baseUnitQuantity: 1,
       baseUnit: 'LT',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 6000,
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      caseQuantity: 5,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 50,
+      baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 250,
     });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth, [{
@@ -1295,6 +1305,16 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       innerPackQuantity: 1,
       baseUnitQuantity: 750,
       baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 750,
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 750,
     });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({

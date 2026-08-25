@@ -111,6 +111,9 @@ export interface PackEvidence {
   innerPackQuantity: number | null;
   baseUnitQuantity: number | null;
   baseUnit: string | null;
+  /** Computed by the server from complete pack geometry; never inferred in UI. */
+  normalizedUnit?: string | null;
+  totalBaseUnits?: number | null;
 }
 
 export interface MatchResult {
@@ -131,6 +134,7 @@ export interface MatchResult {
   possibleRecodeMatchedId?: string | null;
   packCompatibility?: 'compatible' | 'incompatible' | 'unknown' | null;
   packCompatibilityReason?: string | null;
+  sourcePackEvidence?: PackEvidence | null;
   candidatePackEvidence?: PackEvidence | null;
   recodeEvidenceClass?:
     | 'compatible_alternate'

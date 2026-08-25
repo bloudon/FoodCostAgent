@@ -171,7 +171,10 @@ function StrategyLabel({ strategy, possibleRecode = false, evidenceClass }: {
   return <span className="text-muted-foreground">{map[strategy] ?? strategy}</span>;
 }
 
-type PackGeometry = Pick<PackEvidence, "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit">;
+type PackGeometry = Pick<
+  PackEvidence,
+  "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit" | "normalizedUnit" | "totalBaseUnits"
+>;
 
 function formatPackGeometry(pack: PackGeometry | null | undefined): string {
   if (!pack) return "Not confirmed";
@@ -188,6 +191,11 @@ function formatPackGeometry(pack: PackGeometry | null | undefined): string {
   }
   if (caseQuantity != null) return `${caseQuantity} count (unit detail unavailable)`;
   return "Not confirmed";
+}
+
+function formatNormalizedPack(pack: PackGeometry | null | undefined): string {
+  if (!pack || pack.totalBaseUnits == null || !pack.normalizedUnit) return "Not confirmed";
+  return `${Number.isInteger(pack.totalBaseUnits) ? pack.totalBaseUnits : pack.totalBaseUnits.toFixed(2)} ${pack.normalizedUnit}`;
 }
 
 function packDecisionCopy(status: MatchResult["packCompatibility"]): string {
@@ -214,7 +222,9 @@ function PackComparison({
     : status === "incompatible"
       ? "border-red-200 bg-red-50/70 text-red-900"
       : "border-slate-200 bg-slate-50 text-slate-800";
-  const label = status === "compatible" ? "Same pack" : status === "incompatible" ? "Different pack" : "Pack unknown";
+  const label = status === "compatible" ? "Same pack" : status === "incompatible" ? "Different pack" : "Pack unconfirmed";
+  const sourceEvidence = source;
+  const candidateEvidence = candidate;
 
   if (compact) {
     return (
@@ -231,8 +241,12 @@ function PackComparison({
         >
           {label}
         </Badge>
-        <span className="font-medium text-foreground">Pack check:</span>{" "}
-        {formatPackGeometry(source)} <span aria-hidden="true">→</span> {formatPackGeometry(candidate)}
+        <span className="font-semibold text-foreground">
+          Normalized total: {formatNormalizedPack(sourceEvidence)} → {formatNormalizedPack(candidateEvidence)}
+        </span>
+        <span className="ml-1">
+          · Incoming shape: {formatPackGeometry(sourceEvidence)} · Catalog shape: {formatPackGeometry(candidateEvidence)}
+        </span>
       </div>
     );
   }
@@ -247,16 +261,35 @@ function PackComparison({
       <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <div>
           <div className="text-[10px] uppercase tracking-wide opacity-70">Incoming Orderly row</div>
-          <div className="font-semibold text-sm">{formatPackGeometry(source)}</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(sourceEvidence)}</div>
+          <div className="text-xs font-medium">Normalized total: {formatNormalizedPack(sourceEvidence)}</div>
         </div>
         <span className="hidden sm:block text-muted-foreground" aria-hidden="true">→</span>
         <div>
           <div className="text-[10px] uppercase tracking-wide opacity-70">Existing catalog evidence</div>
-          <div className="font-semibold text-sm">{formatPackGeometry(candidate)}</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(candidateEvidence)}</div>
+          <div className="text-xs font-medium">Normalized total: {formatNormalizedPack(candidateEvidence)}</div>
         </div>
       </div>
       <p className="mt-2 text-xs leading-relaxed">{packDecisionCopy(status)}</p>
       {reason && <p className="mt-1 text-[11px] leading-relaxed opacity-80">Why: {reason}</p>}
+    </div>
+  );
+}
+
+function SourcePackEvidence({ source }: { source: PackGeometry | null | undefined }) {
+  return (
+    <div className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+      <Badge
+        variant="outline"
+        className="mr-1 h-4 px-1 text-[9px] leading-none border-slate-300 bg-slate-50 text-slate-700"
+      >
+        Pack evidence
+      </Badge>
+      <span className="font-semibold text-foreground">
+        Normalized total: {formatNormalizedPack(source)}
+      </span>
+      <span className="ml-1">· Incoming shape: {formatPackGeometry(source)}</span>
     </div>
   );
 }
@@ -442,7 +475,7 @@ function CandidatePicker({
         </div>
 
         <PackComparison
-          source={row}
+          source={row.itemMatch.sourcePackEvidence ?? row}
           candidate={candidatePackEvidence}
           status={packCompatibility}
           reason={packCompatibilityReason}
@@ -1863,14 +1896,16 @@ export function ResolutionPreviewStep({
                                        Action Required
                                      </span>
                                   )}
-                                  {row.itemMatch.possibleRecode && (
+                                   {row.itemMatch.possibleRecode ? (
                                     <PackComparison
-                                      source={row}
+                                       source={row.itemMatch.sourcePackEvidence ?? row}
                                       candidate={row.itemMatch.candidatePackEvidence}
                                       status={row.itemMatch.packCompatibility}
                                       compact
                                     />
-                                  )}
+                                   ) : needsReview ? (
+                                     <SourcePackEvidence source={row.itemMatch.sourcePackEvidence ?? row} />
+                                   ) : null}
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs">

@@ -68,6 +68,9 @@ export interface PackEvidence {
   innerPackQuantity: number | null;
   baseUnitQuantity: number | null;
   baseUnit: string | null;
+  /** Server-computed normalized comparison facts; clients must not infer these. */
+  normalizedUnit?: string | null;
+  totalBaseUnits?: number | null;
 }
 
 export interface MatchResult {
@@ -106,6 +109,8 @@ export interface MatchResult {
    * comparison that also gates a link_existing decision.
    */
   candidatePackEvidence?: PackEvidence | null;
+  /** The incoming row's parsed pack evidence, including server normalization. */
+  sourcePackEvidence?: PackEvidence | null;
   /** Evidence class for a possible re-code candidate. */
   recodeEvidenceClass?: RecodeEvidenceClass;
   /** Source rows for which the same code/vendor carries contradictory pack evidence. */
