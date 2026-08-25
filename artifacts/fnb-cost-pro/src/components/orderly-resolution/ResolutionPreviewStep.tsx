@@ -677,6 +677,7 @@ export function ResolutionPreviewStep({
   const [rowDecisions, setRowDecisions] = useState<Map<number, DecisionValue>>(() => new Map());
   const [decisionRevisions, setDecisionRevisions] = useState<Map<number, number>>(() => new Map());
   const [savingRowIndexes, setSavingRowIndexes] = useState<Set<number>>(() => new Set());
+  const [decisionSaveErrors, setDecisionSaveErrors] = useState<Map<number, string>>(() => new Map());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
   const [duplicateDialogWarning, setDuplicateDialogWarning] = useState<DuplicateDateWarning | null>(null);
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
@@ -744,6 +745,52 @@ export function ResolutionPreviewStep({
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, []);
 
+  useEffect(() => {
+    // Wouter navigation goes through history.pushState. Guard routes outside
+    // this wizard while a server save is in flight so the same protection as
+    // the Back button applies to sidebar and top-bar navigation too.
+    const originalPushState = window.history.pushState.bind(window.history);
+    const reviewRoute = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    window.history.pushState = (
+      state: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) => {
+      const target = url ? new URL(String(url), window.location.href) : null;
+      const remainsInOrderlyImport = target?.pathname === window.location.pathname;
+      if (
+        savingRowsRef.current.size > 0 &&
+        !remainsInOrderlyImport &&
+        !window.confirm("A review decision is still saving. Leave this page anyway?")
+      ) {
+        return;
+      }
+      originalPushState(state, unused, url);
+    };
+
+    const guardBrowserHistoryNavigation = () => {
+      if (savingRowsRef.current.size === 0) return;
+      const remainsInOrderlyImport = window.location.pathname === new URL(reviewRoute, window.location.origin).pathname;
+      if (
+        !remainsInOrderlyImport &&
+        !window.confirm("A review decision is still saving. Leave this page anyway?")
+      ) {
+        // popstate arrives after the browser changes its URL. Restore the
+        // protected review route and notify Wouter before it can unmount the
+        // pending save screen.
+        window.history.replaceState(null, "", reviewRoute);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      }
+    };
+    window.addEventListener("popstate", guardBrowserHistoryNavigation);
+
+    return () => {
+      window.history.pushState = originalPushState;
+      window.removeEventListener("popstate", guardBrowserHistoryNavigation);
+    };
+  }, []);
+
   function toggleExpand(rowIndex: number) {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -756,6 +803,11 @@ export function ResolutionPreviewStep({
   async function persistDecisionChanges(changes: ReviewDecisionChange[]): Promise<boolean> {
     if (changes.some(change => savingRowsRef.current.has(change.rowIndex))) return false;
     for (const change of changes) savingRowsRef.current.add(change.rowIndex);
+    setDecisionSaveErrors(prev => {
+      const next = new Map(prev);
+      for (const change of changes) next.delete(change.rowIndex);
+      return next;
+    });
     setSavingRowIndexes(new Set(savingRowsRef.current));
     try {
       const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions`, {
@@ -785,11 +837,22 @@ export function ResolutionPreviewStep({
         for (const saved of body.decisions) next.set(saved.rowIndex, saved.revision);
         return next;
       });
+      setDecisionSaveErrors(prev => {
+        const next = new Map(prev);
+        for (const change of changes) next.delete(change.rowIndex);
+        return next;
+      });
       return true;
     } catch (err: any) {
+      const message = err.message ?? "Review the row and try again.";
+      setDecisionSaveErrors(prev => {
+        const next = new Map(prev);
+        for (const change of changes) next.set(change.rowIndex, message);
+        return next;
+      });
       toast({
         title: "Decision was not saved",
-        description: err.message ?? "Review the row and try again.",
+        description: message,
         variant: "destructive",
       });
       return false;
@@ -1666,6 +1729,8 @@ export function ResolutionPreviewStep({
                         const isExpanded = expandedRows.has(row.rowIndex);
                         const decision = rowDecisions.get(row.rowIndex);
                         const hasOverride = rowDecisions.has(row.rowIndex);
+                        const isSavingDecision = savingRowIndexes.has(row.rowIndex);
+                        const decisionSaveError = decisionSaveErrors.get(row.rowIndex);
                         
                         return (
                           <Fragment key={row.rowIndex}>
@@ -1736,6 +1801,24 @@ export function ResolutionPreviewStep({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col items-start gap-1.5">
+                                  {isSavingDecision && (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-blue-200 bg-blue-50 text-blue-800 shadow-none font-medium"
+                                      data-testid={`orderly-decision-saving-${row.rowIndex}`}
+                                    >
+                                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                                      Saving decision
+                                    </Badge>
+                                  )}
+                                  {decisionSaveError && (
+                                    <span
+                                      className="text-[10px] font-medium text-destructive"
+                                      data-testid={`orderly-decision-save-error-${row.rowIndex}`}
+                                    >
+                                      Save failed — choose a decision again to retry.
+                                    </span>
+                                  )}
                                   {row.heldForReview && hasOverride ? (
                                     <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 shadow-none font-medium">
                                       <CheckCircle2 className="mr-1 h-3 w-3" />Saved decision

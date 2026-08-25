@@ -91,19 +91,24 @@ async function eachUnitId() {
   return unit.id;
 }
 
-async function stageBatch(opts: { targetStoreId?: string | null; withBinding?: boolean }) {
+async function stageBatch(opts: {
+  targetStoreId?: string | null;
+  withBinding?: boolean;
+  sourceSystem?: string;
+  status?: string;
+}) {
   const id = `oar-batch-${IDs.RUN}-${batchSeq++}`;
   await db.insert(inventoryImportBatches).values({
     id,
     companyId: IDs.company,
-    sourceSystem: 'ORDERLY',
+    sourceSystem: opts.sourceSystem ?? 'ORDERLY',
     fileHash: `hash-${id}`,
     originalFilename: `${id}.xlsx`,
     sheetName: 'Inventory Detail',
     parserVersion: '1.0',
     inventoryDate: null,
     inventoryDateConfirmed: 0,
-    status: 'pending_review',
+    status: opts.status ?? 'pending_review',
     sourceRowCount: 1,
     targetStoreId: opts.targetStoreId ?? null,
     sourcePropertyBindingId: opts.withBinding ? IDs.binding : null,
@@ -305,6 +310,33 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
 
     expect(res.status).toBe(404);
   });
+
+  it('rejects a non-Orderly batch instead of applying Orderly approval logic', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      sourceSystem: 'INVOICE',
+    });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(404);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it.each(['cancelled', 'failed', 'processing'])(
+    'rejects %s batches before any approval write',
+    async (status) => {
+      authState.userId = IDs.admin;
+      const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true, status });
+
+      const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+      expect(res.status).toBe(409);
+      expect((await batchState(batchId))?.status).toBe(status);
+    },
+  );
 });
 
 describe.skipIf(SKIP)('Orderly review decision drafts', () => {
@@ -341,6 +373,32 @@ describe.skipIf(SKIP)('Orderly review decision drafts', () => {
       revision: 1,
       decision: { inventoryItemId: null },
     });
+  });
+
+  it('rejects draft access for a non-Orderly batch', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      sourceSystem: 'INVOICE',
+    });
+
+    const [read, write, preview] = await Promise.all([
+      supertest(buildApp()).get(decisionsUrl(batchId)),
+      supertest(buildApp()).put(decisionsUrl(batchId)).send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      }),
+      supertest(buildApp()).get(`/api/inventory-import/orderly/batches/${batchId}/resolution-preview`),
+    ]);
+
+    expect(read.status).toBe(404);
+    expect(write.status).toBe(404);
+    expect(preview.status).toBe(404);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
   });
 
   it('rejects a stale reviewer revision rather than silently overwriting a saved draft', async () => {

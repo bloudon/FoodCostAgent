@@ -1239,9 +1239,14 @@ export async function runResolutionPreview(
         eq(inventoryImportBatches.id, batchId),
         // @ts-ignore
         eq(inventoryImportBatches.companyId, companyId),
+        // @ts-ignore
+        eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
       ),
     )
     .limit(1);
+  if (!scopeRow) {
+    throw new ImportApprovalError('NOT_FOUND', 'Orderly batch not found');
+  }
   const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
@@ -1262,6 +1267,8 @@ export async function runResolutionPreview(
             eq(inventoryImportBatches.id, batchId),
             // @ts-ignore
             eq(inventoryImportBatches.companyId, companyId),
+            // @ts-ignore
+            eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
           ),
         )
         .limit(1),
@@ -2005,10 +2012,19 @@ async function resolveApprovalContract(
     .limit(1);
 
   if (!batch) throw new ImportApprovalError('NOT_FOUND', 'Batch not found');
+  if (batch.sourceSystem !== 'ORDERLY') {
+    throw new ImportApprovalError('NOT_FOUND', 'Orderly batch not found');
+  }
   if (batch.status === 'approved') {
     throw new ImportApprovalError(
       'CONFLICT',
       'Batch has already been approved — use the history view to see results.',
+    );
+  }
+  if (batch.status !== 'pending_review') {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      'Only a pending-review Orderly batch can be approved or reviewed.',
     );
   }
 
@@ -2256,6 +2272,8 @@ export async function saveOrderlyReviewDecisionChanges(
         eq(inventoryImportBatches.id, contract.batch.id),
         // @ts-ignore
         eq(inventoryImportBatches.companyId, contract.companyId),
+        // @ts-ignore
+        eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
       ))
       .for('update');
     if (!lockedBatch) throw new ImportApprovalError('NOT_FOUND', 'Batch not found');
@@ -2602,6 +2620,8 @@ export async function applyBatchApproval(
           eq(inventoryImportBatches.id, batchId),
           // @ts-ignore
           eq(inventoryImportBatches.companyId, companyId),
+          // @ts-ignore
+          eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
         ),
       )
       .for('update');
@@ -2612,6 +2632,12 @@ export async function applyBatchApproval(
       throw new ImportApprovalError(
         'CONFLICT',
         'Batch has already been approved — use the history view to see results.',
+      );
+    }
+    if (lockedBatch.status !== 'pending_review') {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        'This import is no longer pending review and cannot be approved.',
       );
     }
     if (persistedDecisionSignature !== null) {

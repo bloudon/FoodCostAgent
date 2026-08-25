@@ -294,6 +294,7 @@ function heldMatchPreview(confidence: "ambiguous" | "low") {
 }
 
 let currentPreview: any = MOCK_PREVIEW;
+let currentSavedReviewDecisions: any = { decisions: [] };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -315,7 +316,15 @@ function setupQueryMocks() {
     if (typeof key === "string" && key.includes("resolution-preview")) {
       return { data: currentPreview, isLoading: false, isError: false };
     }
-    return { data: undefined, isLoading: false, isError: false };
+    if (typeof key === "string" && key.includes("review-decisions")) {
+      return {
+        data: currentSavedReviewDecisions,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    }
+    return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
   });
 }
 
@@ -325,6 +334,7 @@ function setupQueryMocks() {
 
 beforeEach(() => {
   currentPreview = MOCK_PREVIEW;
+  currentSavedReviewDecisions = { decisions: [] };
   setupQueryMocks();
   vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
     const payload = JSON.parse(String(init?.body ?? "{}"));
@@ -714,5 +724,83 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Leave unlinked" }));
     expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+  });
+
+  it("hydrates a saved review decision without issuing another save", async () => {
+    currentPreview = heldMatchPreview("low");
+    currentSavedReviewDecisions = {
+      decisions: [{
+        rowIndex: 6,
+        decision: { inventoryItemId: null },
+        revision: 3,
+        decidedBy: "reviewer-1",
+        updatedAt: "2026-08-24T12:00:00.000Z",
+      }],
+    };
+
+    renderStep();
+
+    expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed decision unsaved and shows a row-level retry message", async () => {
+    currentPreview = heldMatchPreview("low");
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify({ error: "The saved decision changed in another session." }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    renderStep();
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+
+    expect(await screen.findByTestId("orderly-decision-save-error-6")).toHaveTextContent(
+      "Save failed — choose a decision again to retry.",
+    );
+    expect(screen.queryByText("→ Link Existing")).not.toBeInTheDocument();
+  });
+
+  it("asks before a sidebar-style route change while a decision save is still in progress", async () => {
+    currentPreview = heldMatchPreview("low");
+    let resolveSave: ((response: Response) => void) | undefined;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+      resolveSave = resolve;
+    })));
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+    const initialPathname = window.location.pathname;
+
+    renderStep();
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+    expect(await screen.findByText("Saving decision")).toBeInTheDocument();
+
+    window.history.pushState(null, "", "/inventory-items");
+
+    expect(confirm).toHaveBeenCalledWith("A review decision is still saving. Leave this page anyway?");
+    expect(window.location.pathname).toBe(initialPathname);
+
+    // Browser Back/Forward emits popstate after the URL has already changed.
+    // Declining the prompt restores the protected review route.
+    window.history.replaceState(null, "", "/inventory-items");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(window.location.pathname).toBe(initialPathname);
+
+    resolveSave?.(new Response(JSON.stringify({
+      decisions: [{
+        rowIndex: 6,
+        decision: { inventoryItemId: "candidate-low" },
+        revision: 1,
+        decidedBy: "test-reviewer",
+        updatedAt: new Date().toISOString(),
+      }],
+      clearedRowIndexes: [],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
   });
 });

@@ -68,6 +68,7 @@ async function stageBatch(opts: {
   targetStoreId?: string | null;
   sourcePropertyBindingId?: string | null;
   sourcePropertyId?: string | null;
+  sourceSystem?: string;
   status?: string;
   rows?: Array<{
     sourceItemCode?: string | null;
@@ -85,7 +86,7 @@ async function stageBatch(opts: {
   await db.insert(inventoryImportBatches).values({
     id,
     companyId: opts.companyId,
-    sourceSystem: 'ORDERLY',
+    sourceSystem: opts.sourceSystem ?? 'ORDERLY',
     fileHash: `hash-${id}`,
     originalFilename: `${id}.xlsx`,
     sheetName: 'Inventory Detail',
@@ -468,6 +469,45 @@ describe.skipIf(SKIP)('applyBatchApproval — authorization enforcement', () => 
   });
 });
 
+describe.skipIf(SKIP)('applyBatchApproval — batch eligibility', () => {
+  it('rejects a same-company non-Orderly batch before any domain write', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourceSystem: 'INVOICE',
+    });
+    const beforeCounts = await countDomainRecords(ID.companyA);
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    expect(await snapshotBatch(batchId)).toMatchObject({ status: 'pending_review' });
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
+  });
+
+  it.each(['cancelled', 'failed', 'processing'])(
+    'rejects a %s batch before any domain write',
+    async (status) => {
+      const batchId = await stageBatch({
+        companyId: ID.companyA,
+        targetStoreId: ID.storeBayHill,
+        sourcePropertyBindingId: ID.bindingBayHill,
+        sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+        status,
+      });
+      const beforeCounts = await countDomainRecords(ID.companyA);
+
+      await expect(
+        applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      expect(await snapshotBatch(batchId)).toMatchObject({ status });
+      expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
+    },
+  );
+});
+
 // ─── 7. Omitted / null authorization context ──────────────────────────────────
 
 describe.skipIf(SKIP)('applyBatchApproval — fail-closed authorization context', () => {
@@ -613,7 +653,7 @@ describe.skipIf(SKIP)('applyBatchApproval — zero writes on rejected approval',
 
     // Unauthorized store access for this user.
     await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.scopedUser, companyId: ID.companyA }),
+      applyBatchApproval(batchId, { actingUserId: ID.scopedManager, companyId: ID.companyA }),
     ).rejects.toThrow();
 
     const afterBatch = await snapshotBatch(batchId);
