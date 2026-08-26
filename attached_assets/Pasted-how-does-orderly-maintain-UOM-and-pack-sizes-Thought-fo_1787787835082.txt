@@ -1,0 +1,54 @@
+how does orderly maintain UOM and pack sizes?
+
+Thought for 14s
+
+Good question — and the answer determines what the fix should actually store. packGeometry.ts is the file that interprets it.
+
+Ran a command, used Claude in Chrome integration
+Orderly's model: three tiers, not two
+
+Orderly represents a pack as case → inner pack → base unit, and the total is the product of all three:
+
+total = caseQuantity × innerPackQuantity × baseUnitQuantity × unitMultiplier
+
+The XLSX shape string encodes it as case/inner baseUnit, with the base quantity folded into the unit token. The parser pulls a leading number out of the unit itself, so 750ML becomes 750 × ML. That's why every value I saw reconciles:
+
+Shape	Case	Inner	Base	Total
+1/1 750ML (Red Breast)	1	1	750 ML	750 ML
+2/12 EA (Stella)	2	12	1 EA	24 EA
+1/24 EA (Coke)	1	24	1 EA	24 EA
+1/10 LB (Bratwurst)	1	10	1 LB	160 OZ
+6/2.5 LB (Potatoes)	6	2.5	1 LB	240 OZ
+
+Units normalize to three dimensions — volume→ML, weight→OZ, count→EA — which is how 2/12 EA and 1/24 EA correctly compare equal. The earlier "2 → 1" display was showing tier one of three.
+
+The #1246 change is this comment in normalizePackGeometry:
+
+Every parsed tier must be explicit. Missing evidence is intentionally unknown rather than silently assuming a multiplier of one.
+
+Previously missing tiers defaulted to 1. That's exactly what produced the confident-looking both packs normalize to 24 EA on top of nulls — and why my earlier sample looked clean.
+
+FnB's schema can hold all three — it just isn't filled
+
+This is the useful part. The catalog isn't missing columns:
+
+Tier	Orderly field	FnB column	Populated
+Case	caseQuantity	caseSize	3,052 / 3,052
+Inner pack	innerPackQuantity	casePkgCount	0 / 3,052
+Base qty	baseUnitQuantity	containerSize	0 / 3,052
+Base unit	baseUnit	containerUnitId	0 / 3,052
+Label	packSizeRaw	containerLabel	0 / 3,052
+
+The write path fills tier one and drops tiers two and three. The columns were designed for this and sit empty.
+
+So the fix is smaller than "add pack support" — it's populating four existing fields at the existing insert, from data already on rowPreview.
+
+One thing that won't be fixed by this
+
+Orderly maintains pack size as a first-class entity with its own packSizeId, and an item code can legitimately map to more than one. But there's a comment in the source worth knowing about:
+
+XLSX exports do not expose Orderly packSize.id.
+
+So the export gives you the shape (4/1 GALLON) but not the identity. FnB has to reconstruct pack identity from the three tiers. That's precisely why Milk-Whole is unresolvable from the workbook alone — two different packSizeIds can appear under one code, and the export doesn't carry the discriminator.
+
+Which means even after the write path is fixed, Milk-Whole still needs a human answer. That's your asterisk, and it's inherent to the export format rather than a defect anyone can code away.
