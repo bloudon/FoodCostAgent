@@ -2708,6 +2708,7 @@ export const inventoryItemExternalMappings = pgTable("inventory_item_external_ma
   sourcePropertyId: text("source_property_id").notNull().default(""),
   sourceExternalId: text("source_external_id").notNull(), // item code from source system
   sourceDescription: text("source_description"),       // description snapshot for drift detection
+  packSizeRaw: text("pack_size_raw"),                   // original source pack expression
   // Immutable source pack evidence captured when the mapping is confirmed.
   // This makes later new-code comparisons safe without treating a display name
   // or GL code as a product identity.

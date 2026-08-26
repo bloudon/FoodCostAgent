@@ -51,6 +51,7 @@ const ID = {
   propertyB: `oid-prop-b-${RUN}`,
 };
 let batchSequence = 0;
+let chambordItemId: string | null = null;
 
 /** Seeded 'each' unit, used when a fixture needs a pre-existing catalog item. */
 let cachedEachUnitId: string | null = null;
@@ -71,10 +72,12 @@ type SourceRow = {
   description: string;
   location: string;
   supplier?: string | null;
-  caseQuantity?: number;
+  packSizeRaw?: string | null;
+  caseQuantity?: number | null;
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
   baseUnit?: string | null;
+  packagePrice?: number | null;
   totalCost?: number;
 };
 
@@ -104,14 +107,18 @@ async function stageBatch(
     batchId: id,
     rowIndex: index + 1,
     sheetName: 'Inventory Detail',
-    rawData: { description: row.description, location: row.location },
+    rawData: {
+      description: row.description,
+      location: row.location,
+      ...(row.packSizeRaw ? { 'Pack Size': row.packSizeRaw } : {}),
+    },
     rawDescription: row.description,
     cleanedDescription: row.description,
-    caseQuantity: row.caseQuantity ?? 6,
-    innerPackQuantity: row.innerPackQuantity ?? 1,
-    baseUnitQuantity: row.baseUnitQuantity ?? 1,
-    baseUnit: row.baseUnit ?? 'ML',
-    packagePrice: 30,
+    caseQuantity: row.caseQuantity === undefined ? 6 : row.caseQuantity,
+    innerPackQuantity: row.innerPackQuantity === undefined ? 1 : row.innerPackQuantity,
+    baseUnitQuantity: row.baseUnitQuantity === undefined ? 1 : row.baseUnitQuantity,
+    baseUnit: row.baseUnit === undefined ? 'ML' : row.baseUnit,
+    packagePrice: row.packagePrice === undefined ? 30 : row.packagePrice,
     totalCost: row.totalCost ?? 30,
     sourceItemCode: row.code,
     itemCodeStatus: row.code ? 'valid' : 'blank',
@@ -334,6 +341,187 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     }
   });
 
+  it('creates canonical catalog geometry, costs, and raw provenance from complete Orderly packs', async () => {
+    const batchId = await stageBatch([
+      {
+        code: `ML-500${RUN}`.slice(0, 20),
+        description: `Pack Geometry ML ${RUN}`,
+        location: 'Geometry Lab',
+        packSizeRaw: '5/1 50ML',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: 'ML',
+        packagePrice: 25,
+      },
+      {
+        code: `EA-212${RUN}`.slice(0, 20),
+        description: `Pack Geometry EA ${RUN}`,
+        location: 'Geometry Lab',
+        packSizeRaw: '2/12 1EA',
+        caseQuantity: 2,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+        packagePrice: 24,
+      },
+      {
+        code: `OZ-612${RUN}`.slice(0, 20),
+        description: `Pack Geometry OZ ${RUN}`,
+        location: 'Geometry Lab',
+        packSizeRaw: '6/1 12OZ',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 12,
+        baseUnit: 'OZ',
+        packagePrice: 36,
+      },
+    ], '2026-05-31');
+
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    expect(result.itemsCreated).toBe(3);
+
+    const approvedRows = await db
+      .select({
+        sourceItemCode: inventoryImportRows.sourceItemCode,
+        inventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const itemIds = approvedRows
+      .map(row => row.inventoryItemId)
+      .filter((id): id is string => Boolean(id));
+    const items = await db
+      .select({
+        id: inventoryItems.id,
+        unitId: inventoryItems.unitId,
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        containerUnitId: inventoryItems.containerUnitId,
+        casePkgCount: inventoryItems.casePkgCount,
+        pricePerUnit: inventoryItems.pricePerUnit,
+        avgCostPerUnit: inventoryItems.avgCostPerUnit,
+      })
+      .from(inventoryItems)
+      .where(inArray(inventoryItems.id, itemIds));
+    const unitIds = Array.from(new Set(items.flatMap(item => [
+      item.unitId,
+      item.containerUnitId,
+    ].filter((id): id is string => Boolean(id)))));
+    const unitRows = await db
+      .select({ id: units.id, abbreviation: units.abbreviation })
+      .from(units)
+      .where(inArray(units.id, unitIds));
+    const abbreviationById = new Map(unitRows.map(unit => [unit.id, unit.abbreviation.toUpperCase()]));
+    const itemByCode = new Map(approvedRows.map(row => [
+      row.sourceItemCode,
+      items.find(item => item.id === row.inventoryItemId)!,
+    ]));
+
+    expect(itemByCode.get(`ML-500${RUN}`.slice(0, 20))).toMatchObject({
+      caseSize: 250,
+      containerSize: 50,
+      casePkgCount: 5,
+      pricePerUnit: 0.1,
+      avgCostPerUnit: 0.1,
+    });
+    expect(itemByCode.get(`EA-212${RUN}`.slice(0, 20))).toMatchObject({
+      caseSize: 24,
+      containerSize: 1,
+      casePkgCount: 24,
+      pricePerUnit: 1,
+      avgCostPerUnit: 1,
+    });
+    expect(itemByCode.get(`OZ-612${RUN}`.slice(0, 20))).toMatchObject({
+      caseSize: 72,
+      containerSize: 12,
+      casePkgCount: 6,
+      pricePerUnit: 0.5,
+      avgCostPerUnit: 0.5,
+    });
+    for (const [code, expectedUnit] of [
+      [`ML-500${RUN}`.slice(0, 20), 'ML'],
+      [`EA-212${RUN}`.slice(0, 20), 'EA'],
+      [`OZ-612${RUN}`.slice(0, 20), 'OZ'],
+    ] as const) {
+      const item = itemByCode.get(code)!;
+      expect(abbreviationById.get(item.unitId)).toBe(expectedUnit);
+      expect(abbreviationById.get(item.containerUnitId!)).toBe(expectedUnit);
+    }
+
+    const mappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        packSizeRaw: inventoryItemExternalMappings.packSizeRaw,
+        caseQuantity: inventoryItemExternalMappings.caseQuantity,
+        innerPackQuantity: inventoryItemExternalMappings.innerPackQuantity,
+        baseUnitQuantity: inventoryItemExternalMappings.baseUnitQuantity,
+        baseUnit: inventoryItemExternalMappings.baseUnit,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        inArray(inventoryItemExternalMappings.sourceExternalId, approvedRows.map(row => row.sourceItemCode!)),
+      ));
+    expect(mappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        packSizeRaw: '5/1 50ML',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: 'ML',
+      }),
+      expect.objectContaining({ packSizeRaw: '2/12 1EA' }),
+      expect.objectContaining({ packSizeRaw: '6/1 12OZ' }),
+    ]));
+
+    const followingBatch = await stageBatch([{
+      code: `ML-500${RUN}`.slice(0, 20),
+      description: `Pack Geometry ML ${RUN}`,
+      location: 'Next Month',
+      packSizeRaw: '5/1 50ML',
+      caseQuantity: 5,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 50,
+      baseUnit: 'ML',
+      packagePrice: 25,
+    }], '2026-06-30');
+    const followingPreview = await runResolutionPreview(followingBatch, ID.company);
+    expect(followingPreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      requiresReview: false,
+      sourcePackEvidence: {
+        normalizedUnit: 'ML',
+        totalBaseUnits: 250,
+      },
+    });
+  });
+
+  it.each([
+    [
+      'incomplete geometry',
+      { caseQuantity: 5, innerPackQuantity: null, baseUnitQuantity: 50, baseUnit: 'ML' },
+    ],
+    [
+      'an unknown unit',
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'FURLONG' },
+    ],
+  ])('rolls back approval when a new item has %s', async (_label, geometry) => {
+    const batchId = await stageBatch([{
+      code: `BAD-${batchSequence}-${RUN}`.slice(0, 24),
+      description: `Invalid Geometry ${batchSequence} ${RUN}`,
+      location: 'Geometry Lab',
+      ...geometry,
+    }], '2026-05-31');
+    const before = await approvalWriteSnapshot(batchId);
+
+    await expect(applyBatchApproval(batchId, approvalAuth)).rejects.toMatchObject<
+      Partial<ImportApprovalError>
+    >({ code: 'CONFLICT' });
+
+    expect(await approvalWriteSnapshot(batchId)).toEqual(before);
+  });
+
   it('creates one Chambord-equivalent item and preserves five location records in one workbook', async () => {
     const batchId = await stageBatch([
       { code: '9684722', description: 'Chambord', location: 'Liquor Cage', innerPackQuantity: 6 },
@@ -360,6 +548,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(itemIds.size).toBe(1);
     const [itemId] = [...itemIds];
     expect(itemId).toBeTruthy();
+    chambordItemId = itemId ?? null;
 
     const mappings = await db
       .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
@@ -378,14 +567,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
   });
 
   it('reuses the same item for a later month and an equivalent re-import', async () => {
-    const mayRows = await db
-      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
-      .from(inventoryImportRows)
-      .where(and(
-        eq(inventoryImportRows.sourceItemCode, '9684722'),
-        eq(inventoryImportRows.batchId, `oid-batch-${RUN}-0`),
-      ));
-    const expectedId = mayRows[0]?.resolvedInventoryItemId;
+    const expectedId = chambordItemId;
     expect(expectedId).toBeTruthy();
 
     const juneBatch = await stageBatch([
@@ -762,7 +944,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
   it('creates one coded identity and reconciles its blank-code location sibling', async () => {
     const batchId = await stageBatch([
       { code: null, description: `Evidence-led Cabernet ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
-      { code: `ALT-${RUN}`, description: `Evidence-led Cabernet ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `ALT-7-${RUN}`, description: `Evidence-led Cabernet ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
     ], '2026-10-31');
 
     const preview = await runResolutionPreview(batchId, ID.company);
@@ -802,7 +984,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         eq(inventoryItemExternalMappings.inventoryItemId, rows[0].resolvedInventoryItemId!),
       ));
     expect(mappings.map(mapping => mapping.sourceExternalId)).toEqual(expect.arrayContaining([
-      `ALT-${RUN}`,
+      `ALT-7-${RUN}`,
       expect.stringMatching(/^ALT\|evidence led cabernet /),
     ]));
   });
@@ -810,8 +992,8 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
   it('keeps a blank row held when multiple coded siblings could establish its identity', async () => {
     const batchId = await stageBatch([
       { code: null, description: `Multiple Code Evidence ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
-      { code: `MULTI-A-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
-      { code: `MULTI-B-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Main Kitchen', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `MULTI-A-7-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `MULTI-B-7-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Main Kitchen', caseQuantity: 6, baseUnit: 'ML' },
     ], '2026-11-15');
 
     const preview = await runResolutionPreview(batchId, ID.company);
@@ -837,8 +1019,8 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .where(eq(inventoryImportRows.batchId, batchId));
     const resolvedByCode = new Map(rows.map(row => [row.sourceItemCode, row.resolvedInventoryItemId]));
     expect(resolvedByCode.get(null)).toBeNull();
-    expect(resolvedByCode.get(`MULTI-A-${RUN}`)).toBeTruthy();
-    expect(resolvedByCode.get(`MULTI-B-${RUN}`)).toBeTruthy();
+    expect(resolvedByCode.get(`MULTI-A-7-${RUN}`)).toBeTruthy();
+    expect(resolvedByCode.get(`MULTI-B-7-${RUN}`)).toBeTruthy();
   });
 
   it('does not let a direct blank-row match resolve another blank row in the same group', async () => {

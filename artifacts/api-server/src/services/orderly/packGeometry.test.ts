@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { comparePackGeometry, normalizePackGeometry } from './packGeometry';
+import {
+  comparePackGeometry,
+  normalizePackGeometry,
+  toCatalogPackGeometry,
+} from './packGeometry';
 
 describe('Orderly source pack compatibility', () => {
   it('keeps Casamigos 6 × 1 L and 5 × 50 ml as incompatible pack variants', () => {
@@ -55,5 +59,72 @@ describe('Orderly source pack compatibility', () => {
 
     expect(normalized).toMatchObject({ status: 'unknown', totalBaseUnits: null });
     expect(comparison).toMatchObject({ status: 'unknown', totalBaseUnits: null });
+  });
+
+  it.each([
+    [
+      '5/50 ML',
+      { caseQuantity: 5, innerPackQuantity: 1, baseUnitQuantity: 50, baseUnit: 'ML' },
+      { canonicalUnit: 'ML', containerSize: 50, casePkgCount: 5, caseSize: 250 },
+    ],
+    [
+      '2/12 EA',
+      { caseQuantity: 2, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'EA' },
+      { canonicalUnit: 'EA', containerSize: 1, casePkgCount: 24, caseSize: 24 },
+    ],
+    [
+      '6/12 OZ',
+      { caseQuantity: 6, innerPackQuantity: 1, baseUnitQuantity: 12, baseUnit: 'OZ' },
+      { canonicalUnit: 'OZ', containerSize: 12, casePkgCount: 6, caseSize: 72 },
+    ],
+  ])('maps %s into the catalog container hierarchy', (_label, source, expected) => {
+    expect(toCatalogPackGeometry(source)).toEqual(expected);
+  });
+
+  it('normalizes liters before deriving the catalog hierarchy', () => {
+    expect(toCatalogPackGeometry({
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+    })).toEqual({
+      canonicalUnit: 'ML',
+      containerSize: 1000,
+      casePkgCount: 6,
+      caseSize: 6000,
+    });
+  });
+
+  it('keeps the Milk whole-case evidence distinct', () => {
+    expect(toCatalogPackGeometry({
+      caseQuantity: 4,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'GALLON',
+    })).toEqual({
+      canonicalUnit: 'ML',
+      containerSize: 3785.41,
+      casePkgCount: 4,
+      caseSize: 15141.64,
+    });
+    expect(toCatalogPackGeometry({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'GALLON',
+    })).toEqual({
+      canonicalUnit: 'ML',
+      containerSize: 3785.41,
+      casePkgCount: 1,
+      caseSize: 3785.41,
+    });
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'GALLON' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 3785.41, baseUnit: 'ML' },
+    )).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 3785.41,
+    });
   });
 });

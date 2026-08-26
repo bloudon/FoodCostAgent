@@ -63,7 +63,12 @@ import {
   type SourceCodeReliability,
   type RecodeEvidenceClass,
 } from './OrderlyMatcher';
-import { comparePackGeometry, normalizePackGeometry, type SourcePackGeometry } from './packGeometry';
+import {
+  comparePackGeometry,
+  normalizePackGeometry,
+  toCatalogPackGeometry,
+  type SourcePackGeometry,
+} from './packGeometry';
 import {
   buildOrderlyIdentityGroup,
   deriveOrderlyAlternateSourceId,
@@ -1198,33 +1203,6 @@ export async function resolveOrCreateCategoryId(
     .returning({ id: categories.id });
 
   return { id: newCat.id, created: true };
-}
-
-// ─── Unit lookup cache ────────────────────────────────────────────────────────
-
-let _eachUnitId: string | null = null;
-
-async function getEachUnitId(): Promise<string> {
-  if (_eachUnitId) return _eachUnitId;
-  const rows = await db
-    .select({ id: units.id })
-    .from(units)
-    // @ts-ignore
-    .where(eq(units.abbreviation, 'ea'))
-    .limit(1);
-  if (rows[0]) {
-    _eachUnitId = rows[0].id;
-    return _eachUnitId!;
-  }
-  // Fallback: any count unit
-  const countRows = await db
-    .select({ id: units.id })
-    .from(units)
-    // @ts-ignore
-    .where(eq(units.kind, 'count'))
-    .limit(1);
-  _eachUnitId = countRows[0]?.id ?? 'each';
-  return _eachUnitId!;
 }
 
 // ─── Resolution preview (read-only) ──────────────────────────────────────────
@@ -2806,9 +2784,6 @@ export async function applyBatchApproval(
     blankGroupMayCreateInternalItem,
   } = deriveApprovalIdentityCaches(preview);
 
-  // ── Fetch "each" unit for new item creation ──────────────────────────────
-  const eachUnitId = await getEachUnitId();
-
   // ── Apply everything in one transaction ─────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await db.transaction(async (tx: any) => {
@@ -2891,6 +2866,22 @@ export async function applyBatchApproval(
     let storeItemsCreated = 0, storeItemsReactivated = 0;
     let storeItemsAlreadyLinked = 0, storeItemsSkipped = 0;
 
+    // New Orderly items must use the source's normalized canonical unit. Load
+    // unit identity under the same lock/transaction as item creation so a
+    // missing unit cannot be hidden by the historical "ea" fallback.
+    const catalogUnitRows = await tx
+      .select({
+        id: units.id,
+        name: units.name,
+        abbreviation: units.abbreviation,
+      })
+      .from(units);
+    const catalogUnitByKey = new Map<string, string>();
+    for (const unit of catalogUnitRows as Array<{ id: string; name: string; abbreviation: string }>) {
+      catalogUnitByKey.set(normalizeForMatch(unit.abbreviation), unit.id);
+      catalogUnitByKey.set(normalizeForMatch(unit.name), unit.id);
+    }
+
     // Track distinct resolved item IDs and their storage locations for the
     // store_inventory_items upsert that happens after the row loop.
     const resolvedItemIds = new Set<string>();
@@ -2952,6 +2943,7 @@ export async function applyBatchApproval(
       resolveCandidate: () => Promise<{ itemId: string; created: boolean }>,
       mappingEvidence: {
         description: string | null;
+        packSizeRaw: string | null;
         strategy: string;
         score: number | null;
         geometry: SourcePackGeometry;
@@ -2971,6 +2963,7 @@ export async function applyBatchApproval(
           sourcePropertyId: approvedSourcePropertyId,
           sourceExternalId: code,
           sourceDescription: mappingEvidence.description,
+          packSizeRaw: mappingEvidence.packSizeRaw,
           caseQuantity: mappingEvidence.geometry.caseQuantity ?? null,
           innerPackQuantity: mappingEvidence.geometry.innerPackQuantity ?? null,
           baseUnitQuantity: mappingEvidence.geometry.baseUnitQuantity ?? null,
@@ -3136,18 +3129,40 @@ export async function applyBatchApproval(
         rowPreview.itemMatch.strategy !== 'same_workbook_identity';
 
       const insertNewItem = async (): Promise<string> => {
+        const catalogGeometry = toCatalogPackGeometry(sourcePackGeometry(rowPreview));
+        if (!catalogGeometry) {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `Orderly row ${rowPreview.rowIndex} cannot create a catalog item without complete positive pack geometry.`,
+          );
+        }
+        const canonicalUnitId = catalogUnitByKey.get(
+          normalizeForMatch(catalogGeometry.canonicalUnit),
+        );
+        if (!canonicalUnitId) {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `Orderly row ${rowPreview.rowIndex} uses pack unit ${catalogGeometry.canonicalUnit}, which is not configured in FnB.`,
+          );
+        }
         const name = identityDecision?.action === 'create_variant'
           ? sourcePackVariantName(rowPreview)
           : rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
+        const canonicalUnitCost = rowPreview.packagePrice == null
+          ? 0
+          : rowPreview.packagePrice / catalogGeometry.caseSize;
         const [newItem] = await tx
           .insert(inventoryItems)
           .values({
             companyId,
             name,
-            unitId: eachUnitId,
-            caseSize: rowPreview.caseQuantity ?? 1,
-            pricePerUnit: rowPreview.packagePrice ?? 0,
-            avgCostPerUnit: rowPreview.packagePrice ?? 0,
+            unitId: canonicalUnitId,
+            caseSize: catalogGeometry.caseSize,
+            containerSize: catalogGeometry.containerSize,
+            containerUnitId: canonicalUnitId,
+            casePkgCount: catalogGeometry.casePkgCount,
+            pricePerUnit: canonicalUnitCost,
+            avgCostPerUnit: canonicalUnitCost,
             active: 1,
             yieldPercent: 100,
             categoryId: resolvedCategoryId,
@@ -3267,6 +3282,7 @@ export async function applyBatchApproval(
           },
           {
             description: rowPreview.cleanedDescription,
+            packSizeRaw: rowPreview.packSizeRaw,
             strategy: rowPreview.itemMatch.strategy,
             score: rowPreview.itemMatch.score ?? null,
             geometry: sourcePackGeometry(rowPreview),
@@ -3385,6 +3401,7 @@ export async function applyBatchApproval(
             sourcePropertyId: approvedSourcePropertyId,
             sourceExternalId: rowPreview.sourceItemCode.trim(),
             sourceDescription: rowPreview.cleanedDescription,
+            packSizeRaw: rowPreview.packSizeRaw,
             caseQuantity: rowPreview.caseQuantity,
             innerPackQuantity: rowPreview.innerPackQuantity,
             baseUnitQuantity: rowPreview.baseUnitQuantity,
@@ -3415,6 +3432,7 @@ export async function applyBatchApproval(
             sourcePropertyId: approvedSourcePropertyId,
             sourceExternalId: alternateSourceId,
             sourceDescription: rowPreview.cleanedDescription,
+            packSizeRaw: rowPreview.packSizeRaw,
             caseQuantity: rowPreview.caseQuantity,
             innerPackQuantity: rowPreview.innerPackQuantity,
             baseUnitQuantity: rowPreview.baseUnitQuantity,

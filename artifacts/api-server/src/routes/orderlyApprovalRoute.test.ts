@@ -33,6 +33,7 @@ import {
   vendors,
 } from '@workspace/db';
 import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
+import { ensureOrderlyPackIdentityEvidenceSchema } from '../migrations/orderlyPackIdentityEvidence';
 import { applyBatchApproval } from '../services/orderly/orderlyDomain';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
@@ -97,6 +98,16 @@ async function stageBatch(opts: {
   withBinding?: boolean;
   sourceSystem?: string;
   status?: string;
+  row?: {
+    sourceItemCode: string;
+    description: string;
+    packSizeRaw: string;
+    caseQuantity: number;
+    innerPackQuantity: number;
+    baseUnitQuantity: number;
+    baseUnit: string;
+    packagePrice: number;
+  };
 }) {
   const id = `oar-batch-${IDs.RUN}-${batchSeq++}`;
   await db.insert(inventoryImportBatches).values({
@@ -115,16 +126,23 @@ async function stageBatch(opts: {
     sourcePropertyBindingId: opts.withBinding ? IDs.binding : null,
     sourcePropertyId: opts.withBinding ? IDs.sourceProperty : null,
   });
+  const sourceRow = opts.row;
   await db.insert(inventoryImportRows).values({
     batchId: id,
     rowIndex: 1,
     sheetName: 'Inventory Detail',
-    rawData: { desc: 'Route Test Item' },
-    rawDescription: `Route Test Item ${id}`,
-    cleanedDescription: `Route Test Item ${id}`,
-    caseQuantity: 1,
-    packagePrice: 5,
-    itemCodeStatus: 'missing',
+    rawData: sourceRow
+      ? { desc: sourceRow.description, 'Pack Size': sourceRow.packSizeRaw }
+      : { desc: 'Route Test Item' },
+    rawDescription: sourceRow?.description ?? `Route Test Item ${id}`,
+    cleanedDescription: sourceRow?.description ?? `Route Test Item ${id}`,
+    caseQuantity: sourceRow?.caseQuantity ?? 1,
+    innerPackQuantity: sourceRow?.innerPackQuantity ?? 1,
+    baseUnitQuantity: sourceRow?.baseUnitQuantity ?? 1,
+    baseUnit: sourceRow?.baseUnit ?? 'EA',
+    packagePrice: sourceRow?.packagePrice ?? 5,
+    sourceItemCode: sourceRow?.sourceItemCode ?? null,
+    itemCodeStatus: sourceRow ? 'valid' : 'missing',
     supplierStatus: 'missing',
     rowStatus: 'new_item_candidate',
   });
@@ -177,6 +195,7 @@ beforeAll(async () => {
   if (SKIP) return;
 
   await ensureOrderlyReviewDecisionsSchema(db);
+  await ensureOrderlyPackIdentityEvidenceSchema(db);
   ({ registerOrderlyImportRoutes } = await import('./orderlyImportRoutes'));
 
   await db.insert(companiesTable).values({ id: IDs.company, name: `OAR Co ${IDs.RUN}` });
@@ -245,6 +264,57 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     const after = await batchState(batchId);
     expect(after?.status).toBe('approved');
     expect(after?.approvedBy).toBe(IDs.admin); // real identity recorded, not null
+  });
+
+  it('persists canonical pack geometry when approval enters through HTTP', async () => {
+    authState.userId = IDs.admin;
+    const sourceItemCode = `ROUTE-612-${IDs.RUN}`.toUpperCase();
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      row: {
+        sourceItemCode,
+        description: `Route Pack Geometry ${IDs.RUN}`,
+        packSizeRaw: '6/1 12OZ',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 12,
+        baseUnit: 'OZ',
+        packagePrice: 36,
+      },
+    });
+
+    const response = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
+    expect(response.status).toBe(200);
+    expect(response.body.itemsCreated).toBe(1);
+
+    const [approvedRow] = await db
+      .select({ inventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const [item] = await db
+      .select({
+        unitId: inventoryItems.unitId,
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        containerUnitId: inventoryItems.containerUnitId,
+        casePkgCount: inventoryItems.casePkgCount,
+        pricePerUnit: inventoryItems.pricePerUnit,
+      })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, approvedRow.inventoryItemId!));
+    const [unit] = await db
+      .select({ abbreviation: units.abbreviation })
+      .from(units)
+      .where(eq(units.id, item.unitId));
+    expect(unit.abbreviation.toUpperCase()).toBe('OZ');
+    expect(item).toMatchObject({
+      caseSize: 72,
+      containerSize: 12,
+      casePkgCount: 6,
+      pricePerUnit: 0.5,
+    });
+    expect(item.containerUnitId).toBe(item.unitId);
   });
 
   it('allows an assigned store manager to approve the destination store', async () => {

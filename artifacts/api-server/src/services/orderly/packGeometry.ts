@@ -14,6 +14,13 @@ export interface PackCompatibilityResult {
   totalBaseUnits: number | null;
 }
 
+export interface CatalogPackGeometry {
+  canonicalUnit: string;
+  containerSize: number;
+  casePkgCount: number;
+  caseSize: number;
+}
+
 interface NormalizedUnit {
   dimension: string;
   multiplier: number;
@@ -34,6 +41,9 @@ function normalizeUnit(value: string | null | undefined): NormalizedUnit | null 
   }
   if (['fl oz', 'floz', 'fluid ounce', 'fluid ounces'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount * 29.5735295625, label: 'ML' };
+  }
+  if (['gal', 'gallon', 'gallons'].includes(unit)) {
+    return { dimension: 'volume', multiplier: amount * 3785.41, label: 'ML' };
   }
   if (['ea', 'each', 'unit', 'units', 'ct', 'count'].includes(unit)) {
     return { dimension: 'each', multiplier: amount, label: 'EA' };
@@ -76,6 +86,48 @@ export function normalizePackGeometry(geometry: SourcePackGeometry): PackCompati
     reason: '',
     normalizedUnit: unit.label,
     totalBaseUnits: geometry.caseQuantity * geometry.innerPackQuantity * geometry.baseUnitQuantity * unit.multiplier,
+  };
+}
+
+/**
+ * Convert complete source geometry into the inventory_items hierarchy.
+ *
+ * Catalog quantities use the same normalized base unit as pack comparisons, so
+ * a source liter becomes 1,000 ML and a source pound becomes 16 OZ. This keeps
+ * caseSize, containerSize, and per-unit costs on one canonical basis.
+ */
+export function toCatalogPackGeometry(
+  geometry: SourcePackGeometry,
+): CatalogPackGeometry | null {
+  const unit = normalizeUnit(geometry.baseUnit);
+  if (
+    !unit ||
+    !isPositiveFinite(geometry.caseQuantity) ||
+    !isPositiveFinite(geometry.innerPackQuantity) ||
+    !isPositiveFinite(geometry.baseUnitQuantity)
+  ) {
+    return null;
+  }
+
+  const casePkgCount = geometry.caseQuantity * geometry.innerPackQuantity;
+  const containerSize = geometry.baseUnitQuantity * unit.multiplier;
+  const caseSize = casePkgCount * containerSize;
+  if (
+    !Number.isFinite(casePkgCount) ||
+    !Number.isFinite(containerSize) ||
+    !Number.isFinite(caseSize) ||
+    casePkgCount <= 0 ||
+    containerSize <= 0 ||
+    caseSize <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    canonicalUnit: unit.label,
+    containerSize,
+    casePkgCount,
+    caseSize,
   };
 }
 

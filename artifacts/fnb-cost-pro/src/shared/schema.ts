@@ -2525,17 +2525,23 @@ export const inventoryItemExternalMappings = pgTable("inventory_item_external_ma
   companyId: varchar("company_id").notNull(),
   inventoryItemId: varchar("inventory_item_id").notNull(),
   sourceSystem: text("source_system").notNull(),       // "ORDERLY" | "SYSCO" | "USFOODS" etc.
+  sourcePropertyId: text("source_property_id").notNull().default(""),
   sourceExternalId: text("source_external_id").notNull(), // item code from source system
   sourceDescription: text("source_description"),       // description snapshot for drift detection
+  packSizeRaw: text("pack_size_raw"),                   // original source pack expression
+  caseQuantity: real("case_quantity"),
+  innerPackQuantity: real("inner_pack_quantity"),
+  baseUnitQuantity: real("base_unit_quantity"),
+  baseUnit: text("base_unit"),
   matchStrategy: text("match_strategy"),               // "code" | "name_pack" | "fuzzy" | "manual"
   confidenceScore: real("confidence_score"),           // 0–1 match confidence at time of mapping
   createdAt: timestamp("created_at").notNull().defaultNow(),
   confirmedAt: timestamp("confirmed_at"),              // when a human confirmed this mapping
   confirmedBy: varchar("confirmed_by"),
 }, (t) => ({
-  uniqueSourceMapping: unique().on(t.companyId, t.sourceSystem, t.sourceExternalId),
+  uniqueSourceMapping: unique().on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceExternalId),
   itemIdx: index("inv_item_ext_mappings_item_idx").on(t.inventoryItemId),
-  sourceIdx: index("inv_item_ext_mappings_source_idx").on(t.companyId, t.sourceSystem, t.sourceExternalId),
+  sourceIdx: index("inv_item_ext_mappings_source_idx").on(t.companyId, t.sourceSystem, t.sourcePropertyId, t.sourceExternalId),
 }));
 
 export const insertInventoryItemExternalMappingSchema = createInsertSchema(inventoryItemExternalMappings)

@@ -12,6 +12,7 @@ export async function ensureOrderlyPackIdentityEvidenceSchema(
   schemaName = 'public',
 ): Promise<void> {
   const mappings = sql.raw(`"${schemaName}"."vendor_item_external_mappings"`);
+  const itemMappings = sql.raw(`"${schemaName}"."inventory_item_external_mappings"`);
   await runner.transaction(async (tx: any) => {
     await tx.execute(sql`
       SELECT pg_advisory_xact_lock(hashtext('fnb_orderly_pack_identity_evidence_schema'))
@@ -27,6 +28,10 @@ export async function ensureOrderlyPackIdentityEvidenceSchema(
     await tx.execute(sql`
       CREATE INDEX IF NOT EXISTS vendor_item_external_mappings_orderly_code_idx
         ON ${mappings}(company_id, source_system, source_property_id, source_item_code)
+    `);
+    await tx.execute(sql`
+      ALTER TABLE ${itemMappings}
+        ADD COLUMN IF NOT EXISTS pack_size_raw TEXT
     `);
   });
 }
