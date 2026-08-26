@@ -228,6 +228,11 @@ async function createProvenanceMapping(
       sourceDescription: [candidate.sourceIdentity.sourceSku, candidate.rawPackEvidence.packSizeDesc]
         .filter(Boolean)
         .join(' · ') || null,
+      sourceItemCode: candidate.sourceIdentity.sourceSku,
+      caseQuantity: candidate.normalizedPackGeometry.outerCount,
+      innerPackQuantity: candidate.normalizedPackGeometry.innerSize,
+      baseUnitQuantity: 1,
+      baseUnit: candidate.normalizedPackGeometry.normalizedUom,
       matchStrategy: 'orderly_adoption_manifest',
       confidenceScore: 1,
       confirmedAt: new Date(),

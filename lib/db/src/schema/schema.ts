@@ -345,6 +345,15 @@ export const inventoryItems = pgTable("inventory_items", {
   categoryId: varchar("category_id"), // Reference to categories table
   accountingAccountId: varchar("accounting_account_id"), // Optional current-account exception; managed by accounting service
   pluSku: text("plu_sku"),
+  /**
+   * FnB-owned, human-facing catalog number. This is assigned to every
+   * inventory item regardless of the import or POS system that introduced it.
+   * External identifiers stay in their own source-specific mapping tables.
+   */
+  // The startup migration makes this non-null with a database default. The
+  // schema stays nullable so isolated test schemas created before migrations
+  // can still exercise unrelated catalog behavior.
+  internalItemNumber: integer("internal_item_number"),
   /** Canonical inventory unit — the stable, vendor-independent unit for all
    *  cost calculations (e.g. LB, FL OZ, EA). Never changes because a vendor
    *  changes their pack format. price_per_unit and avg_cost_per_unit are
@@ -391,12 +400,15 @@ export const inventoryItems = pgTable("inventory_items", {
   // Optimize company-scoped inventory queries
   companyActiveIdx: index("inventory_items_company_active_idx").on(table.companyId, table.active),
   companyNameIdx: index("inventory_items_company_name_idx").on(table.companyId, table.name),
+  internalNumberIdx: uniqueIndex("inventory_items_internal_number_uniq").on(table.internalItemNumber),
   supersededIdx: index("inventory_items_superseded_idx").on(table.supersededByItemId),
 }));
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
   id: true,
   updatedAt: true,
+  // FnB-owned catalog number: assigned only by the database sequence.
+  internalItemNumber: true,
   accountingAccountId: true,
   // Supersession is written only by the remediation service.
   supersededByItemId: true,
@@ -2597,6 +2609,38 @@ export const insertInventoryImportRowSchema = createInsertSchema(inventoryImport
 export type InsertInventoryImportRow = z.infer<typeof insertInventoryImportRowSchema>;
 export type InventoryImportRow = typeof inventoryImportRows.$inferSelect;
 
+/**
+ * orderly_import_review_decisions
+ * Durable, reviewer-authored draft decisions for a pending Orderly batch.
+ *
+ * Source rows remain immutable. This table is intentionally separate so a
+ * reviewer can save, revise, and resume a proposed resolution without making
+ * catalog mutations before approval.
+ */
+export const orderlyImportReviewDecisions = pgTable("orderly_import_review_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  rowIndex: integer("row_index").notNull(),
+  decision: jsonb("decision").notNull(),
+  revision: integer("revision").notNull().default(1),
+  createdBy: varchar("created_by"),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  batchRowUnique: unique("orderly_import_review_decisions_batch_row_unique").on(t.batchId, t.rowIndex),
+  batchCompanyIdx: index("orderly_import_review_decisions_batch_company_idx").on(t.batchId, t.companyId),
+}));
+
+export const insertOrderlyImportReviewDecisionSchema = createInsertSchema(orderlyImportReviewDecisions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOrderlyImportReviewDecision = z.infer<typeof insertOrderlyImportReviewDecisionSchema>;
+export type OrderlyImportReviewDecision = typeof orderlyImportReviewDecisions.$inferSelect;
+
 // ─── Inventory Locations ─────────────────────────────────────────────────────
 // First-class location hierarchy — supports multi-outlet clubs, bars, kitchens etc.
 // Distinct from the legacy storageLocations table (company-scoped, flat, no hierarchy).
@@ -2698,6 +2742,14 @@ export const vendorItemExternalMappings = pgTable("vendor_item_external_mappings
   sourcePropertyId: text("source_property_id").notNull(),
   sourceExternalId: text("source_external_id").notNull(),
   sourceDescription: text("source_description"),
+  // Immutable source facts owned by this provenance identity. For an Orderly
+  // packSize.id mapping they preserve the source Item Code and normalized pack
+  // geometry even when vendor_items cannot represent a reused SKU twice.
+  sourceItemCode: text("source_item_code"),
+  caseQuantity: real("case_quantity"),
+  innerPackQuantity: real("inner_pack_quantity"),
+  baseUnitQuantity: real("base_unit_quantity"),
+  baseUnit: text("base_unit"),
   matchStrategy: text("match_strategy"),
   confidenceScore: real("confidence_score"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

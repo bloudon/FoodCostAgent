@@ -9,6 +9,7 @@
 - [Web test JSX transform](web-test-jsx-transform.md) — suite-wide "React is not defined" in component tests is one config gap, not a broken environment.
 - [Historical evidence retention](historical-evidence-retention.md) — retained source documents need DB-level immutability, three-way conflict granularity, and ownership-verified identity mapping.
 - [Import approval boundary](import-approval-boundary.md) — shared approval must fail closed, destination comes from a persisted source-property binding, and direct-service tests hide broken route connectors.
+- [Bulk pack-size approval boundary](bulk-pack-size-approval-boundary.md) — bulk UI eligibility is not authority; only verified incompatible pack evidence may create a variant.
 - [Remediation scope preflight](remediation-scope-preflight.md) — one shared scope function for preflight and apply; enumerate every blocker up front; missing scope metadata is never permission.
 - [Orderly costing validation](orderly-costing-validation.md) — source appendices lack conversion factors, so matching totals prove nothing; the two FnB conversion engines differ ~4% cross-kind.
 - [Orderly XLSX item identity](orderly-xlsx-item-identity.md) — XLSX code is property-scoped and not the API identity; the mapping row is the claim authority for every path, not just creation.
@@ -30,13 +31,19 @@
 - [Verify before granting immutability](verify-before-granting-immutability.md) — write the immutability flag last, in the same transaction, verifying through the tx handle; roll back rather than seal invalid data.
 - [Drizzle array params](drizzle-array-params.md) — arrays bound into sql templates become ROW expressions capped at 1664; pass one jsonb param and unnest instead.
 - [Deposit-aware reconciliation](deposit-aware-reconciliation.md) — four fail-closed conditions for explained keg-deposit gaps; deposits never touch price history; ledgers consume persisted events only.
+- [Controlled ledger resets](controlled-ledger-resets.md) — reset immutable deposit evidence only through transaction-local authorization, never by disabling its guard.
 - [Vendor-item dup program closure](vendor-item-dup-closure.md) — PM-closed; orphan cleanup stays bounded/read-only-first, NULL-SKU stays unconstrained, prod needs cleanup before deploy; assignment ≠ lifted PM hold.
 - [Orderly adoption evidence freeze](orderly-adoption-evidence-freeze.md) — preview may read approved parsed rows; any future APPLY must freeze immutable vendor-stable evidence and bind a fresh review snapshot.
 - [Orderly active-status gate](orderly-active-status-gate.md) — an all-false source `isActive` field is not an availability decision; preserve the PM gate until source semantics are evidenced.
 - [Post-apply migration metrics](post-apply-migration-metrics.md) — compare the frozen baseline to a fresh projection; a post-mutation projection resets its own “newly resolvable” delta.
 - [Manifest-based idempotency](manifest-based-idempotency.md) — prove reruns with frozen mapping and vendor-product identity, not a source projection that can hold geometry-absent rows.
 - [Orderly adoption root cause](orderly-adoption-root-cause.md) — missing relationships came from cross-batch adoption loss; the catalog intentionally supports many vendors and many vendor packs per ingredient.
+- [Orderly pack identity provenance](orderly-pack-identity-provenance.md) — per-pack source facts belong on immutable provenance mappings, not the unique vendor-item relationship.
+- [Orderly review-draft atomicity](orderly-review-draft-atomicity.md) — saved decisions and every identity cache must be revalidated and consumed from one under-lock preview.
+- [Orderly acceptance evidence](orderly-acceptance-evidence.md) — structural review cannot replace authenticated browser acceptance and an end-to-end approval dry run.
 - [Orderly production preflight boundary](orderly-production-preflight-boundary.md) — readiness proves scope/evidence/environment only; live classifications remain a separate PM-authorized production preview.
 - [VPS production operator boundary](vps-production-operator-boundary.md) — Replit supplies checksum-pinned commands and sanitized evidence expectations; the production operator executes on the VPS.
 - [Production database source-of-truth](production-db-source-of-truth.md) — Replit’s production query target may differ from the VPS app database; operator evidence decides VPS invariants.
 - [Vendor-item legacy reference contract](vendor-item-legacy-reference-contract.md) — only the reviewed invoice-import reference may be absent on restored production; every other reference drift stops classification.
+- [Vendor identity and immutable evidence](vendor-identity-immutable-evidence.md) — consolidate operational identity through auditable canonical mapping; retained invoices and deposit events keep original vendor provenance.
+- [Signed decision manifests](orderly-decision-manifests.md) — downloads are review artifacts, not authority: sign canonical scope/evidence and revalidate under lock before any draft write.

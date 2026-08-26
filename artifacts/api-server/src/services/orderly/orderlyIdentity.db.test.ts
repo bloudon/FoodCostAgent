@@ -6,10 +6,11 @@
  * create inventory items before a mapping is visible.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   companies as companiesTable,
+  categories,
   companyStores,
   importSourcePropertyBindings,
   inventoryImportBatches,
@@ -19,18 +20,24 @@ import {
   inventoryItemLocationAssignments,
   inventoryItems,
   inventoryLocations,
+  insertInventoryItemSchema,
   storeInventoryItems,
   units,
   users,
+  vendorItemExternalMappings,
+  vendorItems,
+  vendors,
 } from '@workspace/db';
 import {
   applyBatchApproval,
   ImportApprovalError,
   runResolutionPreview,
 } from './orderlyDomain';
+import { ensureInventoryItemNumberSchema } from '../../migrations/inventoryItemNumbers';
+import { ensureOrderlyPackIdentityEvidenceSchema } from '../../migrations/orderlyPackIdentityEvidence';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
-const RUN = vi.hoisted(() => Date.now().toString(36));
+const RUN = vi.hoisted(() => Date.now().toString(36).toUpperCase());
 const ID = {
   company: `oid-co-${RUN}`,
   store: `oid-store-${RUN}`,
@@ -63,6 +70,7 @@ type SourceRow = {
   code: string | null;
   description: string;
   location: string;
+  supplier?: string | null;
   caseQuantity?: number;
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
@@ -107,17 +115,89 @@ async function stageBatch(
     totalCost: row.totalCost ?? 30,
     sourceItemCode: row.code,
     itemCodeStatus: row.code ? 'valid' : 'blank',
-    supplierStatus: 'blank',
+    supplierRaw: row.supplier ?? null,
+    supplierStatus: row.supplier ? 'valid' : 'blank',
     storageLocation: row.location,
     rowStatus: 'new_item_candidate',
   })));
   return id;
 }
 
+/**
+ * Approval must fail before touching any table its transaction can mutate.
+ * Keep this broader than an item count: a partial resolution, mapping, vendor,
+ * location, relationship, or store link would be just as corrupting.
+ */
+async function approvalWriteSnapshot(batchId: string) {
+  const [
+    batches,
+    rows,
+    itemIds,
+    categoryIds,
+    externalMappingIds,
+    relationshipIds,
+    locationIds,
+    assignmentIds,
+    storeItemIds,
+    vendorRows,
+  ] = await Promise.all([
+    db.select({
+      status: inventoryImportBatches.status,
+      approvedAt: inventoryImportBatches.approvedAt,
+      targetStoreId: inventoryImportBatches.targetStoreId,
+    }).from(inventoryImportBatches).where(eq(inventoryImportBatches.id, batchId)),
+    db.select({
+      id: inventoryImportRows.id,
+      rowStatus: inventoryImportRows.rowStatus,
+      resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+    }).from(inventoryImportRows).where(eq(inventoryImportRows.batchId, batchId)).orderBy(inventoryImportRows.id),
+    db.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).orderBy(inventoryItems.id),
+    db.select({ id: categories.id }).from(categories).where(eq(categories.companyId, ID.company)).orderBy(categories.id),
+    db.select({ id: inventoryItemExternalMappings.id }).from(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, ID.company)).orderBy(inventoryItemExternalMappings.id),
+    db.select({ id: inventoryItemRelationships.id }).from(inventoryItemRelationships).where(eq(inventoryItemRelationships.companyId, ID.company)).orderBy(inventoryItemRelationships.id),
+    db.select({ id: inventoryLocations.id }).from(inventoryLocations).where(eq(inventoryLocations.companyId, ID.company)).orderBy(inventoryLocations.id),
+    db.select({ id: inventoryItemLocationAssignments.id }).from(inventoryItemLocationAssignments).where(eq(inventoryItemLocationAssignments.companyId, ID.company)).orderBy(inventoryItemLocationAssignments.id),
+    db.select({ id: storeInventoryItems.id }).from(storeInventoryItems).where(eq(storeInventoryItems.companyId, ID.company)).orderBy(storeInventoryItems.id),
+    db.select({ id: vendors.id }).from(vendors).where(eq(vendors.companyId, ID.company)).orderBy(vendors.id),
+  ]);
+  const vendorIds = vendorRows.map(row => row.id);
+  const vendorItemRows = vendorIds.length
+    ? await db.select({ id: vendorItems.id }).from(vendorItems).where(inArray(vendorItems.vendorId, vendorIds)).orderBy(vendorItems.id)
+    : [];
+  const vendorItemIds = vendorItemRows.map(row => row.id);
+  const vendorExternalMappingIds = vendorItemIds.length
+    ? await db.select({ id: vendorItemExternalMappings.id })
+      .from(vendorItemExternalMappings)
+      .where(and(
+        eq(vendorItemExternalMappings.companyId, ID.company),
+        inArray(vendorItemExternalMappings.vendorItemId, vendorItemIds),
+      ))
+      .orderBy(vendorItemExternalMappings.id)
+    : [];
+
+  return {
+    batches,
+    rows,
+    itemIds,
+    categoryIds,
+    externalMappingIds,
+    relationshipIds,
+    locationIds,
+    assignmentIds,
+    storeItemIds,
+    vendorRows,
+    vendorItemRows,
+    vendorExternalMappingIds,
+  };
+}
+
+
 const approvalAuth = { actingUserId: ID.admin, companyId: ID.company };
 
 beforeAll(async () => {
   if (SKIP) return;
+  await ensureInventoryItemNumberSchema(db);
+  await ensureOrderlyPackIdentityEvidenceSchema(db);
   await db.insert(companiesTable).values({ id: ID.company, name: `Orderly Identity ${RUN}` });
   await db.insert(companyStores).values({
     id: ID.store,
@@ -172,13 +252,23 @@ afterAll(async () => {
   if (batchIds.length) {
     await db.delete(inventoryImportRows).where(inArray(inventoryImportRows.batchId, batchIds)).catch(() => {});
   }
+  const vendorRows = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(eq(vendors.companyId, ID.company));
+  const vendorIds = vendorRows.map(vendor => vendor.id);
   await db.delete(inventoryImportBatches).where(eq(inventoryImportBatches.companyId, ID.company)).catch(() => {});
   await db.delete(storeInventoryItems).where(eq(storeInventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemLocationAssignments).where(eq(inventoryItemLocationAssignments.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryItemRelationships).where(eq(inventoryItemRelationships.companyId, ID.company)).catch(() => {});
+  await db.delete(vendorItemExternalMappings).where(eq(vendorItemExternalMappings.companyId, ID.company)).catch(() => {});
+  if (vendorIds.length) {
+    await db.delete(vendorItems).where(inArray(vendorItems.vendorId, vendorIds)).catch(() => {});
+  }
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, ID.company)).catch(() => {});
+  await db.delete(vendors).where(eq(vendors.companyId, ID.company)).catch(() => {});
   await db.delete(importSourcePropertyBindings).where(eq(importSourcePropertyBindings.companyId, ID.company)).catch(() => {});
   await db.delete(users).where(eq(users.id, ID.admin)).catch(() => {});
   await db.delete(companyStores).where(eq(companyStores.companyId, ID.company)).catch(() => {});
@@ -186,6 +276,64 @@ afterAll(async () => {
 });
 
 describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
+  it('keeps generated FnB item numbers out of public catalog payloads', () => {
+    expect(insertInventoryItemSchema.shape).not.toHaveProperty('internalItemNumber');
+    expect(
+      insertInventoryItemSchema.partial().parse({ internalItemNumber: 100_001 }),
+    ).not.toHaveProperty('internalItemNumber');
+  });
+
+  it('backfills legacy items and never rewinds the FnB number generator', async () => {
+    const schemaName = `fnb_item_number_${RUN.toLowerCase()}`;
+    await db.execute(sql.raw(`
+      CREATE SCHEMA "${schemaName}";
+      CREATE TABLE "${schemaName}"."inventory_items" (
+        id TEXT PRIMARY KEY,
+        internal_item_number INTEGER
+      );
+      INSERT INTO "${schemaName}"."inventory_items" (id, internal_item_number)
+      VALUES ('legacy-null', NULL), ('legacy-existing', 500);
+    `));
+
+    try {
+      await ensureInventoryItemNumberSchema(db, schemaName);
+      await db.execute(sql.raw(`
+        INSERT INTO "${schemaName}"."inventory_items" (id) VALUES ('after-first-run');
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM "${schemaName}"."inventory_items"
+            WHERE internal_item_number IS NULL
+          ) THEN
+            RAISE EXCEPTION 'FnB number backfill left a null value';
+          END IF;
+          IF (SELECT COUNT(*) FROM "${schemaName}"."inventory_items")
+             <> (SELECT COUNT(DISTINCT internal_item_number) FROM "${schemaName}"."inventory_items")
+          THEN
+            RAISE EXCEPTION 'FnB numbers are not unique after backfill';
+          END IF;
+        END $$;
+        SELECT setval('${schemaName}.inventory_items_internal_number_seq'::regclass, 1000, true);
+      `));
+
+      await ensureInventoryItemNumberSchema(db, schemaName);
+      await db.execute(sql.raw(`
+        INSERT INTO "${schemaName}"."inventory_items" (id) VALUES ('after-rerun');
+        DO $$
+        BEGIN
+          IF (
+            SELECT internal_item_number FROM "${schemaName}"."inventory_items"
+            WHERE id = 'after-rerun'
+          ) <= 1000 THEN
+            RAISE EXCEPTION 'FnB sequence moved backward during reconciliation';
+          END IF;
+        END $$;
+      `));
+    } finally {
+      await db.execute(sql.raw(`DROP SCHEMA IF EXISTS "${schemaName}" CASCADE`));
+    }
+  });
+
   it('creates one Chambord-equivalent item and preserves five location records in one workbook', async () => {
     const batchId = await stageBatch([
       { code: '9684722', description: 'Chambord', location: 'Liquor Cage', innerPackQuantity: 6 },
@@ -262,7 +410,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
 
   it('uses a later safe existing match for the whole reliable-code group, regardless of row order', async () => {
     const knownBatch = await stageBatch([
-      { code: 'known-product-code', description: 'Known Product', location: 'Bar Back' },
+      { code: 'KNOWN-7000000', description: 'Known Product', location: 'Bar Back' },
     ], '2026-08-01');
     await applyBatchApproval(knownBatch, approvalAuth);
     const [knownRow] = await db
@@ -568,7 +716,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     });
   });
 
-  it('keeps blank-code multi-location evidence unresolved rather than auto-creating uncertain items', async () => {
+  it('creates one FnB-numbered item for a new blank-code multi-location group', async () => {
     const batchId = await stageBatch([
       { code: null, description: 'House Cabernet', location: 'Member Lounge' },
       { code: null, description: 'House Cabernet', location: 'Pool Cafe' },
@@ -576,15 +724,286 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
 
     const preview = await runResolutionPreview(batchId, ID.company);
     expect(preview.identitySummary.blankCodeRows).toBe(2);
-    expect(preview.identitySummary.blankCodeUnresolved).toBe(2);
+    expect(preview.identitySummary.blankCodeUnresolved).toBe(0);
+    expect(preview.summary.itemsWillCreate).toBe(1);
+    expect(preview.identitySummary.blankCodeClassification).toEqual({
+      confirmed: { rows: 2, valueTotal: 60 },
+      reviewable: { rows: 0, valueTotal: 0 },
+      conflicted: { rows: 0, valueTotal: 0 },
+      held: { rows: 0, valueTotal: 0 },
+    });
+    expect(preview.summary.itemsHeldForReview).toBe(0);
+    expect(preview.rows.map(row => ({
+      heldForReview: row.heldForReview,
+      holdReason: row.holdReason,
+    }))).toEqual([
+      { heldForReview: false, holdReason: null },
+      { heldForReview: false, holdReason: null },
+    ]);
 
     const result = await applyBatchApproval(batchId, approvalAuth);
-    expect(result.itemsCreated).toBe(0);
+    expect(result.itemsCreated).toBe(1);
+    expect(result.rowsHeldForReview).toBe(0);
     const rows = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, batchId));
-    expect(rows.map(row => row.resolvedInventoryItemId)).toEqual([null, null]);
+    expect(new Set(rows.map(row => row.resolvedInventoryItemId)).size).toBe(1);
+    const [resolvedItemId] = rows.map(row => row.resolvedInventoryItemId);
+    expect(resolvedItemId).toBeTruthy();
+    const [createdItem] = await db
+      .select({ internalItemNumber: inventoryItems.internalItemNumber })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, resolvedItemId!));
+    expect(createdItem.internalItemNumber).toBeTypeOf('number');
+    expect(createdItem.internalItemNumber).toBeGreaterThan(0);
+  });
+
+  it('creates one coded identity and reconciles its blank-code location sibling', async () => {
+    const batchId = await stageBatch([
+      { code: null, description: `Evidence-led Cabernet ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `ALT-${RUN}`, description: `Evidence-led Cabernet ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
+    ], '2026-10-31');
+
+    const preview = await runResolutionPreview(batchId, ID.company);
+    expect(preview.identitySummary.blankCodeGroupsWithCodedSibling).toBe(1);
+    expect(preview.identitySummary.identityGroupsNewCandidates).toBe(1);
+    expect(preview.identitySummary.blankCodeClassification.confirmed).toEqual({
+      rows: 1,
+      valueTotal: 30,
+    });
+    const blankRow = preview.rows.find(row => row.itemCodeStatus === 'blank');
+    expect(blankRow?.identityGroupRows).toHaveLength(2);
+    expect(blankRow?.heldForReview).toBe(false);
+    expect(blankRow?.holdReason).toBeNull();
+    expect(preview.identitySummary.blankCodeSafelyMatched).toBe(1);
+    expect(preview.identitySummary.blankCodeUnresolved).toBe(0);
+    expect(preview.summary.itemsHeldForReview).toBe(0);
+
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    expect(result.itemsCreated).toBe(1);
+    expect(result.rowsHeldForReview).toBe(0);
+
+    const rows = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    expect(rows[0].resolvedInventoryItemId).toBeTruthy();
+    expect(rows[0].resolvedInventoryItemId).toBe(rows[1].resolvedInventoryItemId);
+
+    const mappings = await db
+      .select({ sourceExternalId: inventoryItemExternalMappings.sourceExternalId })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, rows[0].resolvedInventoryItemId!),
+      ));
+    expect(mappings.map(mapping => mapping.sourceExternalId)).toEqual(expect.arrayContaining([
+      `ALT-${RUN}`,
+      expect.stringMatching(/^ALT\|evidence led cabernet /),
+    ]));
+  });
+
+  it('keeps a blank row held when multiple coded siblings could establish its identity', async () => {
+    const batchId = await stageBatch([
+      { code: null, description: `Multiple Code Evidence ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `MULTI-A-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Pool Cafe', caseQuantity: 6, baseUnit: 'ML' },
+      { code: `MULTI-B-${RUN}`, description: `Multiple Code Evidence ${RUN}`, location: 'Main Kitchen', caseQuantity: 6, baseUnit: 'ML' },
+    ], '2026-11-15');
+
+    const preview = await runResolutionPreview(batchId, ID.company);
+    const blankRow = preview.rows.find(row => row.itemCodeStatus === 'blank');
+    expect(preview.identitySummary.blankCodeClassification).toEqual({
+      confirmed: { rows: 0, valueTotal: 0 },
+      reviewable: { rows: 0, valueTotal: 0 },
+      conflicted: { rows: 0, valueTotal: 0 },
+      held: { rows: 1, valueTotal: 30 },
+    });
+    expect(preview.summary.itemsHeldForReview).toBe(1);
+    expect(blankRow?.heldForReview).toBe(true);
+
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(1);
+
+    const rows = await db
+      .select({
+        sourceItemCode: inventoryImportRows.sourceItemCode,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const resolvedByCode = new Map(rows.map(row => [row.sourceItemCode, row.resolvedInventoryItemId]));
+    expect(resolvedByCode.get(null)).toBeNull();
+    expect(resolvedByCode.get(`MULTI-A-${RUN}`)).toBeTruthy();
+    expect(resolvedByCode.get(`MULTI-B-${RUN}`)).toBeTruthy();
+  });
+
+  it('does not let a direct blank-row match resolve another blank row in the same group', async () => {
+    const unitId = await eachUnitId();
+    const description = `Blank Group Location Evidence ${RUN}`;
+    const [{ id: locationMatchedCandidateId }, { id: otherCandidateId }] = await db
+      .insert(inventoryItems)
+      .values([
+        {
+          companyId: ID.company,
+          name: description,
+          unitId,
+          caseSize: 6,
+          pricePerUnit: 30,
+          avgCostPerUnit: 30,
+          active: 1,
+          yieldPercent: 100,
+        },
+        {
+          companyId: ID.company,
+          name: description,
+          unitId,
+          caseSize: 6,
+          pricePerUnit: 30,
+          avgCostPerUnit: 30,
+          active: 1,
+          yieldPercent: 100,
+        },
+      ])
+      .returning({ id: inventoryItems.id });
+    const locationId = `oid-location-${RUN}`;
+    const historicalLocation = `History Bar ${RUN}`;
+    await db.insert(inventoryLocations).values({
+      id: locationId,
+      companyId: ID.company,
+      name: historicalLocation,
+      normalizedName: historicalLocation.toLowerCase(),
+      active: 1,
+    });
+    await db.insert(inventoryItemLocationAssignments).values({
+      companyId: ID.company,
+      inventoryItemId: locationMatchedCandidateId,
+      locationId,
+      active: 1,
+    });
+
+    const batchId = await stageBatch([
+      { code: null, description, location: historicalLocation, caseQuantity: 6, baseUnit: 'ML' },
+      { code: null, description, location: `New Bar ${RUN}`, caseQuantity: 6, baseUnit: 'ML' },
+    ], '2026-11-20');
+
+    const preview = await runResolutionPreview(batchId, ID.company);
+    const matchedBlank = preview.rows.find(row => row.storageLocation === historicalLocation);
+    const unresolvedBlank = preview.rows.find(row => row.storageLocation === `New Bar ${RUN}`);
+    expect(matchedBlank?.itemMatch.strategy).toBe('location_history');
+    expect(matchedBlank?.heldForReview).toBe(false);
+    expect(unresolvedBlank?.itemMatch.confidence).toBe('ambiguous');
+    expect(unresolvedBlank?.heldForReview).toBe(true);
+    expect(preview.identitySummary.blankCodeClassification).toEqual({
+      confirmed: { rows: 1, valueTotal: 30 },
+      reviewable: { rows: 0, valueTotal: 0 },
+      conflicted: { rows: 1, valueTotal: 30 },
+      held: { rows: 0, valueTotal: 0 },
+    });
+    expect(preview.summary.itemsHeldForReview).toBe(1);
+
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    expect(result.itemsLinked).toBe(1);
+    expect(result.rowsHeldForReview).toBe(1);
+
+    const rows = await db
+      .select({
+        storageLocation: inventoryImportRows.storageLocation,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const resolvedByLocation = new Map(rows.map(row => [row.storageLocation, row.resolvedInventoryItemId]));
+    expect(resolvedByLocation.get(historicalLocation)).toBe(locationMatchedCandidateId);
+    expect(resolvedByLocation.get(`New Bar ${RUN}`)).toBeNull();
+    expect(otherCandidateId).not.toBe(locationMatchedCandidateId);
+  });
+
+  it('allows explicit links for ambiguous/fuzzy blanks and numbers a genuinely new blank group', async () => {
+    const unitId = await eachUnitId();
+    const [ambiguousA] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: ID.company,
+        name: `Held Ambiguous ${RUN}`,
+        unitId,
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+    await db.insert(inventoryItems).values({
+      companyId: ID.company,
+      name: `Held Ambiguous ${RUN}`,
+      unitId,
+      caseSize: 6,
+      pricePerUnit: 30,
+      avgCostPerUnit: 30,
+      active: 1,
+      yieldPercent: 100,
+    });
+    const [fuzzyCandidate] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: ID.company,
+        name: `Held Fuzzy ${RUN} Special Variant`,
+        unitId,
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+
+    const batchId = await stageBatch([
+      { code: null, description: `Held Ambiguous ${RUN}`, location: 'Member Lounge' },
+      { code: null, description: `Held Fuzzy ${RUN}`, location: 'Pool Cafe' },
+      { code: null, description: `Held Unlinked Evidence ${RUN}`, location: 'Main Kitchen' },
+    ], '2026-09-15');
+    const preview = await runResolutionPreview(batchId, ID.company);
+    const ambiguousRow = preview.rows.find(row => (
+      row.itemMatch.confidence === 'ambiguous' && row.itemMatch.candidateIds.includes(ambiguousA.id)
+    ));
+    const fuzzyRow = preview.rows.find(row => (
+      row.itemMatch.strategy === 'fuzzy' && row.itemMatch.matchedId === fuzzyCandidate.id
+    ));
+    const unlinkedRow = preview.rows.find(row => row.cleanedDescription === `Held Unlinked Evidence ${RUN}`);
+
+    expect(ambiguousRow?.heldForReview).toBe(true);
+    expect(fuzzyRow?.heldForReview).toBe(true);
+    expect(unlinkedRow?.heldForReview).toBe(false);
+
+    const result = await applyBatchApproval(batchId, approvalAuth, [
+      { rowIndex: ambiguousRow!.rowIndex, inventoryItemId: ambiguousA.id },
+      { rowIndex: fuzzyRow!.rowIndex, inventoryItemId: fuzzyCandidate.id },
+    ]);
+    expect(result.itemsCreated).toBe(1);
+    expect(result.itemsLinked).toBe(2);
+    expect(result.rowsHeldForReview).toBe(0);
+
+    const rows = await db
+      .select({
+        rowIndex: inventoryImportRows.rowIndex,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const resolvedByIndex = new Map(rows.map(row => [row.rowIndex, row.resolvedInventoryItemId]));
+    expect(resolvedByIndex.get(ambiguousRow!.rowIndex)).toBe(ambiguousA.id);
+    expect(resolvedByIndex.get(fuzzyRow!.rowIndex)).toBe(fuzzyCandidate.id);
+    const generatedItemId = resolvedByIndex.get(unlinkedRow!.rowIndex);
+    expect(generatedItemId).toBeTruthy();
+    const [generatedItem] = await db
+      .select({ internalItemNumber: inventoryItems.internalItemNumber })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, generatedItemId!));
+    expect(generatedItem.internalItemNumber).toBeGreaterThan(0);
   });
 
   it('returns a review conflict for incompatible same-code evidence and reports same-location duplicates separately', async () => {
@@ -651,6 +1070,16 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       innerPackQuantity: 1,
       baseUnitQuantity: 1,
       baseUnit: 'LT',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 6000,
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      caseQuantity: 5,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 50,
+      baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 250,
     });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth, [{
@@ -670,6 +1099,11 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .where(eq(inventoryImportRows.batchId, juneBatch));
     expect(juneRow.resolvedInventoryItemId).toBeTruthy();
     expect(juneRow.resolvedInventoryItemId).not.toBe(mayRow.resolvedInventoryItemId);
+    const [juneItem] = await db
+      .select({ name: inventoryItems.name })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, juneRow.resolvedInventoryItemId!));
+    expect(juneItem.name).toBe("Casamigo's Blanco — 5 × 50 ML");
 
     const links = await db
       .select({
@@ -688,6 +1122,151 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         relatedInventoryItemId: juneRow.resolvedInventoryItemId,
       },
     ]));
+  });
+
+  it('blocks a Milk-like catalog packSize conflict before a requested variant can write', async () => {
+    const baseBatch = await stageBatch([
+      {
+        code: 'MILK-1000',
+        description: 'Milk - Whole',
+        location: 'Walk-in',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+    ], '2026-12-31');
+    await applyBatchApproval(baseBatch, approvalAuth);
+    const [baseRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, baseBatch));
+    if (!baseRow?.resolvedInventoryItemId) throw new Error('Expected Milk base item to resolve');
+
+    const [sysco] = await db.insert(vendors).values({
+      companyId: ID.company,
+      name: 'Sysco',
+    }).returning({ id: vendors.id });
+    const unitId = await eachUnitId();
+    const [milkVendorItem] = await db.insert(vendorItems).values({
+      vendorId: sysco.id,
+      inventoryItemId: baseRow.resolvedInventoryItemId,
+      vendorSku: '4676306',
+      purchaseUnitId: unitId,
+      caseSize: 1,
+      innerPackSize: 1,
+      packUom: 'GAL',
+    }).returning({ id: vendorItems.id });
+    await db.insert(vendorItemExternalMappings).values([
+      {
+        companyId: ID.company,
+        vendorItemId: milkVendorItem.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `milk-pack-1-gal-${RUN}`,
+        sourceItemCode: '4676306',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+      {
+        companyId: ID.company,
+        vendorItemId: milkVendorItem.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `milk-pack-4-gal-${RUN}`,
+        sourceItemCode: '4676306',
+        caseQuantity: 4,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'GAL',
+      },
+    ]);
+
+    // One workbook row is enough: the contradiction exists only in the
+    // persisted Orderly catalog pack identities, not in this XLSX.
+    const conflictBatch = await stageBatch([
+      {
+        code: '4676306',
+        description: 'Milk - Whole',
+        supplier: 'Sysco',
+        location: 'Walk-in',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 250,
+        baseUnit: 'EA',
+      },
+    ], '2027-01-31');
+    const preview = await runResolutionPreview(conflictBatch, ID.company);
+    expect(preview.recodeSummary).toMatchObject({
+      newPackSizes: 0,
+      sourceDataConflicts: 1,
+    });
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      matchedId: baseRow.resolvedInventoryItemId,
+      possibleRecodeMatchedId: baseRow.resolvedInventoryItemId,
+      recodeEvidenceClass: 'source_data_conflict',
+      requiresReview: true,
+      sourceDataConflict: {
+        rowIndexes: [1],
+      },
+    });
+    expect(preview.rows[0].itemMatch.sourceDataConflict?.reason).toContain(`milk-pack-1-gal-${RUN}`);
+    expect(preview.rows[0].itemMatch.sourceDataConflict?.reason).toContain(`milk-pack-4-gal-${RUN}`);
+
+    const before = await approvalWriteSnapshot(conflictBatch);
+    await expect(applyBatchApproval(conflictBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: baseRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    const after = await approvalWriteSnapshot(conflictBatch);
+    expect(after).toEqual(before);
+  });
+
+  it('refuses a separate variant when the source pack evidence is incomplete', async () => {
+    const mayBatch = await stageBatch([
+      {
+        code: '7710021',
+        description: 'Evidence Tequila',
+        location: 'Liquor Cage',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2026-10-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+
+    const incompleteEvidenceBatch = await stageBatch([
+      {
+        code: '7710022',
+        description: 'Evidence Tequila',
+        location: 'Liquor Cage',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 0,
+        baseUnit: 'ML',
+      },
+    ], '2026-11-30');
+    await db
+      .update(inventoryImportRows)
+      .set({ baseUnitQuantity: null, baseUnit: null })
+      .where(eq(inventoryImportRows.batchId, incompleteEvidenceBatch));
+    const preview = await runResolutionPreview(incompleteEvidenceBatch, ID.company);
+    expect(preview.rows[0].itemMatch.recodeEvidenceClass).toBe('pack_evidence_missing');
+    expect(preview.rows[0].itemMatch.packCompatibility).toBe('unknown');
+
+    await expect(applyBatchApproval(incompleteEvidenceBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
   });
 
   it('accepts a true Red Breast 750 ml re-code only with an explicit compatible link', async () => {
@@ -726,6 +1305,16 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       innerPackQuantity: 1,
       baseUnitQuantity: 750,
       baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 750,
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 750,
     });
 
     await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({

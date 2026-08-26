@@ -70,6 +70,18 @@ vi.mock("@/components/ui/alert", () => ({
   Alert: ({ children }: any) => React.createElement("div", { role: "alert" }, children),
   AlertDescription: ({ children }: any) =>
     React.createElement("span", { "data-testid": "alert-description" }, children),
+  AlertTitle: ({ children }: any) => React.createElement("span", null, children),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogAction: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogCancel: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogContent: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogDescription: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogFooter: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogHeader: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogTitle: ({ children }: any) => React.createElement("span", null, children),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -136,7 +148,7 @@ vi.mock("lucide-react", async (importOriginal) => {
 // Import the component AFTER all mocks are in place
 // ---------------------------------------------------------------------------
 
-import { ResolutionPreviewStep } from "./orderly-import";
+import { ResolutionPreviewStep } from "@/components/orderly-resolution/ResolutionPreviewStep";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -268,14 +280,21 @@ function setupQueryMocks() {
   });
 }
 
-/** Returns all "All" chip buttons (one per filter row). */
+/** Returns the two filter reset buttons in their visual order. */
 function getAllChips() {
-  return screen.getAllByRole("button", { name: "All" });
+  return [
+    screen.getByRole("button", { name: "All Categories" }),
+    screen.getByRole("button", { name: "All Statuses" }),
+  ];
 }
 
-/** Returns the "Next →" pagination button. */
+function getStatusLine() {
+  return screen.getByTestId("resolution-row-status");
+}
+
+/** Returns the "Next" pagination button. */
 function getNextButton() {
-  return screen.getByRole("button", { name: /Next →/ });
+  return screen.getByRole("button", { name: /^Next$/ });
 }
 
 // ---------------------------------------------------------------------------
@@ -302,11 +321,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
   it("shows 'Showing 1–100 of 150 rows' on the first page by default", async () => {
     renderStep();
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("100") && text.includes("of 150 rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–100 of 150");
     });
   });
 
@@ -323,11 +338,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(getNextButton());
 
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 101") && text.includes("150") && text.includes("of 150 rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 101–150 of 150");
     });
   });
 
@@ -367,11 +378,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
 
     await waitFor(() => {
       // Dairy: 110 matching rows, page 1 → Showing 1–100 of 110
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("100") && text.includes("of 110 matching rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–100 of 110 matching rows");
     });
   });
 
@@ -389,15 +396,11 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
 
     await waitFor(() => {
       // Meat: 40 rows → single page, status shows full range
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("40") && text.includes("of 40 matching rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–40 of 40 matching rows");
     });
 
-    // Pagination "Next →" button should be absent (only 1 page)
-    expect(screen.queryByRole("button", { name: /Next →/ })).not.toBeInTheDocument();
+    // Pagination "Next" button should be absent (only 1 page)
+    expect(screen.queryByRole("button", { name: /^Next$/ })).not.toBeInTheDocument();
   });
 
   // ── Confidence filter resets page to 1 ────────────────────────────────────
@@ -434,11 +437,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
 
     await waitFor(() => {
       // high: 110 matching rows, page 1 → Showing 1–100 of 110
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("100") && text.includes("of 110 matching rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–100 of 110 matching rows");
     });
   });
 
@@ -455,13 +454,9 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(likelyChip);
 
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("40") && text.includes("of 40 matching rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–40 of 40 matching rows");
     });
-    expect(screen.queryByRole("button", { name: /Next →/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Next$/ })).not.toBeInTheDocument();
   });
 
   // ── "All" chip resets page to 1 ───────────────────────────────────────────
@@ -474,7 +469,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(screen.getByRole("button", { name: "Dairy" }));
     await waitFor(() => expect(screen.getByText("Page 1 of 2")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /Next →/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/ }));
     await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeInTheDocument());
 
     // Click the category "All" chip (first "All" button)
@@ -487,11 +482,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("100") && text.includes("of 150 rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–100 of 150");
     });
   });
 
@@ -503,7 +494,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(screen.getByRole("button", { name: "Matched" }));
     await waitFor(() => expect(screen.getByText("Page 1 of 2")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /Next →/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/ }));
     await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeInTheDocument());
 
     // Click the confidence "All" chip — it is the second "All" button
@@ -515,11 +506,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 1") && text.includes("100") && text.includes("of 150 rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 1–100 of 150");
     });
   });
 
@@ -542,15 +529,11 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     });
 
     // Navigate to page 2
-    fireEvent.click(screen.getByRole("button", { name: /Next →/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/ }));
 
     await waitFor(() => {
       // Page 2 of Dairy (110 rows): rows 101–110
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 101") && text.includes("110") && text.includes("of 110 matching rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 101–110 of 110 matching rows");
     });
   });
 
@@ -561,11 +544,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(getNextButton());
 
     await waitFor(() => {
-      expect(
-        screen.getByText((text) =>
-          text.includes("Showing 101") && text.includes("150") && text.includes("of 150 rows"),
-        ),
-      ).toBeInTheDocument();
+      expect(getStatusLine()).toHaveTextContent("Showing 101–150 of 150");
     });
   });
 
@@ -577,7 +556,7 @@ describe("ResolutionPreviewStep — pagination resets when filters change", () =
     fireEvent.click(screen.getByRole("button", { name: "Dairy" }));
     await waitFor(() => expect(screen.getByText("Page 1 of 2")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /Next →/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Next$/ }));
     await waitFor(() => expect(screen.getByText("Page 2 of 2")).toBeInTheDocument());
 
     // Switch to "Meat" filter — should reset to page 1

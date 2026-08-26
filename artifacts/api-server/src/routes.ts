@@ -8743,6 +8743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         categoryId: item.categoryId,
         category: category?.name || null,
         pluSku: item.pluSku,
+        internalItemNumber: item.internalItemNumber,
         pricePerUnit: item.pricePerUnit,
         avgCostPerUnit: item.avgCostPerUnit || item.pricePerUnit,
         effectiveUnitCost: getEffectiveUnitCost(item, company ?? null),

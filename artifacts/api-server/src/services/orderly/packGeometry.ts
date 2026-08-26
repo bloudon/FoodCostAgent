@@ -53,25 +53,29 @@ function isPositiveFinite(value: number | null | undefined): value is number {
 
 /**
  * Reduce an XLSX three-tier pack to a comparable total in a normalized unit.
- * Missing parse evidence is intentionally unknown rather than guessed.
+ * Every parsed tier must be explicit. Missing evidence is intentionally
+ * unknown rather than silently assuming a multiplier of one.
  */
 export function normalizePackGeometry(geometry: SourcePackGeometry): PackCompatibilityResult {
   const unit = normalizeUnit(geometry.baseUnit);
-  if (!unit || !isPositiveFinite(geometry.caseQuantity)) {
+  if (
+    !unit ||
+    !isPositiveFinite(geometry.caseQuantity) ||
+    !isPositiveFinite(geometry.innerPackQuantity) ||
+    !isPositiveFinite(geometry.baseUnitQuantity)
+  ) {
     return {
       status: 'unknown',
-      reason: 'complete parsed pack geometry and base unit are required',
+      reason: 'complete parsed case, inner-pack, base-unit quantity, and base unit are required',
       normalizedUnit: unit?.label ?? null,
       totalBaseUnits: null,
     };
   }
-  const innerPackQuantity = isPositiveFinite(geometry.innerPackQuantity) ? geometry.innerPackQuantity : 1;
-  const baseUnitQuantity = isPositiveFinite(geometry.baseUnitQuantity) ? geometry.baseUnitQuantity : 1;
   return {
     status: 'compatible',
     reason: '',
     normalizedUnit: unit.label,
-    totalBaseUnits: geometry.caseQuantity * innerPackQuantity * baseUnitQuantity * unit.multiplier,
+    totalBaseUnits: geometry.caseQuantity * geometry.innerPackQuantity * geometry.baseUnitQuantity * unit.multiplier,
   };
 }
 

@@ -36,6 +36,17 @@ export function isStoreUser(user: User): boolean {
 }
 
 /**
+ * Check if a user may approve an irreversible Orderly import.
+ *
+ * Store users may review and save decisions, but approval is reserved for
+ * administrative users and store managers. Global admins remain included as
+ * the highest administrative role.
+ */
+export function canApproveOrderlyImport(user: User): boolean {
+  return isGlobalAdmin(user) || isCompanyAdmin(user) || isStoreManager(user);
+}
+
+/**
  * Check if user has company-wide access (global_admin or company_admin for the specified company)
  */
 export function hasCompanyAccess(user: User, companyId: string): boolean {

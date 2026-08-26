@@ -1,4 +1,4 @@
-import { useState, Fragment, useMemo } from "react";
+import { useState, Fragment, useMemo, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -48,13 +48,17 @@ import {
   PlusCircle,
   HelpCircle,
   AlertCircle,
-  Undo2
+  Undo2,
+  Download,
+  Upload,
 } from "lucide-react";
 import {
   rowConfidenceKey,
   uniqueCategories as computeUniqueCategories,
   applyFilters,
   toggleSetValue,
+  buildBulkNewPackSizeDecisions,
+  getBulkNewPackSizeReview,
 } from "@/lib/orderlyImportFilterUtils";
 import { formatDate } from "@/lib/orderlyImportUtils";
 
@@ -77,15 +81,75 @@ type RecodeDecision = {
   comparableInventoryItemId: string;
 };
 type DecisionValue = string | null | RecodeDecision;
+type StoredDecisionPayload = RecodeDecision | { inventoryItemId: string | null };
+
+type SavedReviewDecision = {
+  rowIndex: number;
+  decision: StoredDecisionPayload;
+  revision: number;
+  decidedBy: string | null;
+  updatedAt: string | null;
+};
+
+type ReviewDecisionResponse = {
+  decisions: SavedReviewDecision[];
+};
+
+type ReviewDecisionChange = {
+  rowIndex: number;
+  expectedRevision: number | null;
+  decision?: StoredDecisionPayload;
+};
+
+type DecisionManifestImportResult = {
+  status: "accepted" | "rejected" | "stale";
+  accepted: Array<{ rowIndex: number }>;
+  rejected: Array<{ rowIndex: number; reason: string }>;
+  stale: Array<{ rowIndex: number; reason: string }>;
+  decisions: SavedReviewDecision[];
+};
 
 function isRecodeDecision(value: DecisionValue | undefined): value is RecodeDecision {
   return typeof value === "object" && value !== null && "action" in value;
 }
 
+function toStoredDecisionPayload(value: DecisionValue): StoredDecisionPayload {
+  return isRecodeDecision(value) ? value : { inventoryItemId: value };
+}
+
+function fromStoredDecisionPayload(value: StoredDecisionPayload): DecisionValue {
+  return "action" in value ? value : value.inventoryItemId;
+}
+
 // Helper components for UI
 
-function MatchStatusBadge({ confidence, strategy, possibleRecode }: { confidence: string, strategy: string, possibleRecode?: boolean }) {
-  if (possibleRecode) return <Badge className="bg-amber-50 text-amber-700 border-amber-200 shadow-none font-medium">Re-code?</Badge>;
+function recodeEvidenceLabel(evidenceClass: MatchResult["recodeEvidenceClass"]): string {
+  const labels: Record<NonNullable<MatchResult["recodeEvidenceClass"]>, string> = {
+    compatible_alternate: "Alternate code",
+    new_pack_size: "New pack size",
+    source_data_conflict: "Source conflict",
+    pack_evidence_missing: "Pack check",
+    unreliable_code: "Unreliable code",
+  };
+  return evidenceClass ? labels[evidenceClass] : "Re-code?";
+}
+
+function MatchStatusBadge({ confidence, strategy, possibleRecode, evidenceClass }: {
+  confidence: string;
+  strategy: string;
+  possibleRecode?: boolean;
+  evidenceClass?: MatchResult["recodeEvidenceClass"];
+}) {
+  if (possibleRecode || evidenceClass === "source_data_conflict" || evidenceClass === "unreliable_code") {
+    const tone = evidenceClass === "new_pack_size"
+      ? "bg-violet-50 text-violet-800 border-violet-200"
+      : evidenceClass === "source_data_conflict"
+        ? "bg-red-50 text-red-800 border-red-200"
+        : evidenceClass === "unreliable_code"
+          ? "bg-slate-100 text-slate-800 border-slate-300"
+          : "bg-amber-50 text-amber-700 border-amber-200";
+    return <Badge className={`${tone} shadow-none font-medium`}>{recodeEvidenceLabel(evidenceClass)}</Badge>;
+  }
   if (confidence === "high") return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none font-medium">Matched</Badge>;
   if (confidence === "medium") return <Badge className="bg-blue-50 text-blue-700 border-blue-200 shadow-none font-medium">Likely</Badge>;
   if (confidence === "low") return <Badge className="bg-orange-50 text-orange-700 border-orange-200 shadow-none font-medium">Fuzzy</Badge>;
@@ -94,10 +158,21 @@ function MatchStatusBadge({ confidence, strategy, possibleRecode }: { confidence
   return <Badge variant="outline" className="shadow-none font-medium">{confidence}</Badge>;
 }
 
-function StrategyLabel({ strategy, possibleRecode = false }: { strategy: string; possibleRecode?: boolean }) {
-  if (possibleRecode) return <span className="text-muted-foreground">Same name, new code</span>;
+function StrategyLabel({ strategy, possibleRecode = false, evidenceClass }: {
+  strategy: string;
+  possibleRecode?: boolean;
+  evidenceClass?: MatchResult["recodeEvidenceClass"];
+}) {
+  if (possibleRecode || evidenceClass === "source_data_conflict" || evidenceClass === "unreliable_code") {
+    if (evidenceClass === "new_pack_size") return <span className="text-muted-foreground">Same name, different pack</span>;
+    if (evidenceClass === "source_data_conflict") return <span className="text-muted-foreground">Conflicting source evidence</span>;
+    if (evidenceClass === "unreliable_code") return <span className="text-muted-foreground">Description in code field</span>;
+    return <span className="text-muted-foreground">Same name, new code</span>;
+  }
   const map: Record<string, string> = {
     external_mapping: "Prior mapping",
+    alternate_identity: "Prior product identity",
+    same_workbook_identity: "Workbook sibling",
     item_code: "Item code",
     name_pack: "Name match",
     fuzzy: "Fuzzy",
@@ -106,7 +181,10 @@ function StrategyLabel({ strategy, possibleRecode = false }: { strategy: string;
   return <span className="text-muted-foreground">{map[strategy] ?? strategy}</span>;
 }
 
-type PackGeometry = Pick<PackEvidence, "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit">;
+type PackGeometry = Pick<
+  PackEvidence,
+  "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit" | "normalizedUnit" | "totalBaseUnits"
+>;
 
 function formatPackGeometry(pack: PackGeometry | null | undefined): string {
   if (!pack) return "Not confirmed";
@@ -123,6 +201,11 @@ function formatPackGeometry(pack: PackGeometry | null | undefined): string {
   }
   if (caseQuantity != null) return `${caseQuantity} count (unit detail unavailable)`;
   return "Not confirmed";
+}
+
+function formatNormalizedPack(pack: PackGeometry | null | undefined): string {
+  if (!pack || pack.totalBaseUnits == null || !pack.normalizedUnit) return "Not confirmed";
+  return `${Number.isInteger(pack.totalBaseUnits) ? pack.totalBaseUnits : pack.totalBaseUnits.toFixed(2)} ${pack.normalizedUnit}`;
 }
 
 function packDecisionCopy(status: MatchResult["packCompatibility"]): string {
@@ -149,7 +232,9 @@ function PackComparison({
     : status === "incompatible"
       ? "border-red-200 bg-red-50/70 text-red-900"
       : "border-slate-200 bg-slate-50 text-slate-800";
-  const label = status === "compatible" ? "Same pack" : status === "incompatible" ? "Different pack" : "Pack unknown";
+  const label = status === "compatible" ? "Same pack" : status === "incompatible" ? "Different pack" : "Pack unconfirmed";
+  const sourceEvidence = source;
+  const candidateEvidence = candidate;
 
   if (compact) {
     return (
@@ -166,8 +251,12 @@ function PackComparison({
         >
           {label}
         </Badge>
-        <span className="font-medium text-foreground">Pack check:</span>{" "}
-        {formatPackGeometry(source)} <span aria-hidden="true">→</span> {formatPackGeometry(candidate)}
+        <span className="font-semibold text-foreground">
+          Normalized total: {formatNormalizedPack(sourceEvidence)} → {formatNormalizedPack(candidateEvidence)}
+        </span>
+        <span className="ml-1">
+          · Incoming shape: {formatPackGeometry(sourceEvidence)} · Catalog shape: {formatPackGeometry(candidateEvidence)}
+        </span>
       </div>
     );
   }
@@ -182,16 +271,72 @@ function PackComparison({
       <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
         <div>
           <div className="text-[10px] uppercase tracking-wide opacity-70">Incoming Orderly row</div>
-          <div className="font-semibold text-sm">{formatPackGeometry(source)}</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(sourceEvidence)}</div>
+          <div className="text-xs font-medium">Normalized total: {formatNormalizedPack(sourceEvidence)}</div>
         </div>
         <span className="hidden sm:block text-muted-foreground" aria-hidden="true">→</span>
         <div>
           <div className="text-[10px] uppercase tracking-wide opacity-70">Existing catalog evidence</div>
-          <div className="font-semibold text-sm">{formatPackGeometry(candidate)}</div>
+          <div className="font-semibold text-sm">{formatPackGeometry(candidateEvidence)}</div>
+          <div className="text-xs font-medium">Normalized total: {formatNormalizedPack(candidateEvidence)}</div>
         </div>
       </div>
       <p className="mt-2 text-xs leading-relaxed">{packDecisionCopy(status)}</p>
       {reason && <p className="mt-1 text-[11px] leading-relaxed opacity-80">Why: {reason}</p>}
+    </div>
+  );
+}
+
+function SourcePackEvidence({ source }: { source: PackGeometry | null | undefined }) {
+  return (
+    <div className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+      <Badge
+        variant="outline"
+        className="mr-1 h-4 px-1 text-[9px] leading-none border-slate-300 bg-slate-50 text-slate-700"
+      >
+        Pack evidence
+      </Badge>
+      <span className="font-semibold text-foreground">
+        Normalized total: {formatNormalizedPack(source)}
+      </span>
+      <span className="ml-1">· Incoming shape: {formatPackGeometry(source)}</span>
+    </div>
+  );
+}
+
+function HeldRowDetails({ row }: { row: RowPreview }) {
+  const matchNeedsConfirmation = row.itemMatch.requiresReview;
+  return (
+    <div
+      className="border-b border-amber-200 bg-amber-50/70 px-4 py-4 text-amber-950"
+      data-testid={`held-row-details-${row.rowIndex}`}
+    >
+      <div className="flex items-start gap-2">
+        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold">Held for review — conflicting item evidence</h4>
+          <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+            A blank Orderly Item Code is normally fine: FnB Cost Pro assigns a permanent internal item number to a genuinely new product group.
+            {matchNeedsConfirmation
+              ? " This row has competing catalog evidence, so it needs a choice before it can be linked or added."
+              : " This row is missing enough product identity evidence to create a safe internal item number."}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-amber-900/80">
+            Choosing an existing item saves this description-and-pack identity for future
+            imports at this property only. It never links another property.
+          </p>
+        </div>
+      </div>
+      <dl className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="rounded border border-amber-200 bg-background/70 p-2">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">Item Code evidence</dt>
+          <dd className="mt-0.5 font-mono font-semibold">{row.sourceItemCode?.trim() || "Blank / not provided"}</dd>
+        </div>
+        <div className="rounded border border-amber-200 bg-background/70 p-2">
+          <dt className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">Source description</dt>
+          <dd className="mt-0.5 font-semibold">{row.cleanedDescription?.trim() || "Blank / not provided"}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -210,7 +355,18 @@ function CandidatePicker({
   onDecision: (rowIndex: number, value: DecisionValue | undefined) => void;
 }) {
   const match = row.itemMatch;
-  const { confidence, candidates = [], matchedItem, possibleRecode, possibleRecodeItem, packCompatibility, packCompatibilityReason, candidatePackEvidence } = match;
+  const {
+    confidence,
+    candidates = [],
+    matchedItem,
+    possibleRecode,
+    possibleRecodeItem,
+    packCompatibility,
+    packCompatibilityReason,
+    candidatePackEvidence,
+    recodeEvidenceClass,
+    sourceDataConflict,
+  } = match;
 
   function ItemChip({ item, selected, onClick, disabled = false, badge }: { item: CandidateDetail; selected: boolean; onClick: () => void; disabled?: boolean; badge?: React.ReactNode }) {
     return (
@@ -234,6 +390,7 @@ function CandidatePicker({
             {badge && <div>{badge}</div>}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {item.internalItemNumber != null && <span>FnB #: <span className="font-medium text-foreground">{item.internalItemNumber}</span></span>}
             {item.caseSize != null && <span>Pack: <span className="font-medium text-foreground">{item.caseSize}</span></span>}
             {item.pluSku && <span>SKU: <span className="font-medium text-foreground">{item.pluSku}</span></span>}
           </div>
@@ -249,32 +406,86 @@ function CandidatePicker({
     );
   }
 
+  if (recodeEvidenceClass === "source_data_conflict") {
+    return (
+      <div className="border-t border-red-200 bg-red-50/70 px-4 py-4 text-red-950">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-700" />
+          <div>
+            <h4 className="text-sm font-semibold">Source data conflict — approval is blocked</h4>
+            <p className="mt-1 text-xs leading-relaxed text-red-900/80">
+              The same vendor and Orderly Item Code appear with different physical pack evidence.
+              Correct or verify the source data before deciding whether this is an existing item or a new pack size.
+            </p>
+            {sourceDataConflict?.reason && (
+              <p className="mt-2 text-xs font-medium text-red-900">Why: {sourceDataConflict.reason}</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (recodeEvidenceClass === "unreliable_code") {
+    return (
+      <div className="border-t border-slate-200 bg-slate-50 px-4 py-4 text-slate-950">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
+          <div>
+            <h4 className="text-sm font-semibold">Unreliable Item Code — manual source review required</h4>
+            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+              This Item Code looks like descriptive text rather than a vendor-stable code. It may help a reviewer,
+              but FnB Cost Pro will not use it to link items or create a permanent Orderly code mapping.
+            </p>
+            <p className="mt-2 text-xs font-medium text-slate-800">
+              Verify the source identifier outside this import, then re-upload or correct the source data.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Handle Possible Recode
   if (possibleRecode && possibleRecodeItem) {
     const recodeDecision = isRecodeDecision(decision) ? decision : undefined;
     const isLink = recodeDecision?.action === "link_existing";
     const isCreateNew = recodeDecision?.action === "create_variant";
+    const isHeld = row.heldForReview;
+    const isLeftUnlinked = isHeld && decision === null;
     const targetId = match.possibleRecodeMatchedId ?? possibleRecodeItem.id;
     
     const isCompatible = packCompatibility === 'compatible';
     const isIncompatible = packCompatibility === 'incompatible';
     const isUnknown = packCompatibility === 'unknown';
+    const linkIsAllowed = isCompatible;
 
     return (
-      <div className="px-4 py-4 space-y-4 bg-muted/20 border-t border-border">
+      <>
+        {isHeld && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-4 bg-muted/20 border-t border-border">
         <div className="flex items-start gap-2">
           <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
           <div>
-            <h4 className="text-sm font-semibold text-foreground">Possible Item Re-code Detected</h4>
+            <h4 className="text-sm font-semibold text-foreground">
+              {recodeEvidenceClass === "new_pack_size"
+                ? "New Pack Size Detected"
+                : isUnknown
+                  ? "Pack Evidence Incomplete"
+                  : "Alternate Item Code Detected"}
+            </h4>
             <p className="text-xs text-muted-foreground mt-1">
-              This row has a new item code, but its name matches an existing catalog item. 
-              Review pack size compatibility below to decide if they are the same product.
+              {recodeEvidenceClass === "new_pack_size"
+                ? "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
+                : isUnknown
+                  ? "The physical pack cannot be verified. Linking is blocked; correct the source evidence or create a separate variant after verification."
+                  : "This row has a new item code, but its name and physical pack match an existing catalog item."}
             </p>
           </div>
         </div>
 
         <PackComparison
-          source={row}
+          source={row.itemMatch.sourcePackEvidence ?? row}
           candidate={candidatePackEvidence}
           status={packCompatibility}
           reason={packCompatibilityReason}
@@ -284,10 +495,10 @@ function CandidatePicker({
           <ItemChip
             item={possibleRecodeItem}
             selected={isLink === true}
-            disabled={isIncompatible}
+            disabled={!linkIsAllowed}
             onClick={() => onDecision(
               row.rowIndex,
-              isLink ? undefined : { action: "link_existing", inventoryItemId: targetId },
+              isHeld ? targetId : isLink ? undefined : { action: "link_existing", inventoryItemId: targetId },
             )}
             badge={
               isCompatible ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Compatible</Badge> :
@@ -295,73 +506,127 @@ function CandidatePicker({
               isUnknown ? <Badge className="bg-slate-200 text-slate-800 border-slate-300">Unknown</Badge> : null
             }
           />
-          <button
-            onClick={() => onDecision(
-              row.rowIndex,
-              isCreateNew ? undefined : { action: "create_variant", comparableInventoryItemId: targetId },
-            )}
-            className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-              isCreateNew
-                ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isCreateNew ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
-               {isCreateNew && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
-            </div>
-            <div>
-              <div className="font-semibold flex items-center gap-1.5">
-                <PlusCircle className="h-4 w-4 text-muted-foreground" />
-                Create as separate variant
+          {isHeld ? (
+            <button
+              onClick={() => onDecision(row.rowIndex, null)}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isLeftUnlinked
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-border bg-card hover:bg-accent/50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isLeftUnlinked ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                {isLeftUnlinked && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
               </div>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Establish a new item record. Do this if the pack size or product fundamentally changed.
-              </p>
-            </div>
-          </button>
+              <div>
+                <div className="font-semibold">Leave unlinked</div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Keep this blank-code row held for review. No new item will be created.
+                </p>
+              </div>
+            </button>
+          ) : (
+            <button
+              onClick={() => onDecision(
+                row.rowIndex,
+                isCreateNew ? undefined : { action: "create_variant", comparableInventoryItemId: targetId },
+              )}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isCreateNew
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-border bg-card hover:bg-accent/50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isCreateNew ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                 {isCreateNew && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+              </div>
+              <div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <PlusCircle className="h-4 w-4 text-muted-foreground" />
+                  Create as separate variant
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Establish a new item record. Do this if the pack size or product fundamentally changed.
+                </p>
+              </div>
+            </button>
+          )}
         </div>
-
-      </div>
+        </div>
+      </>
     );
   }
 
   // Handle Ambiguous
   if (confidence === "ambiguous") {
-    const resolvedId = hasOverride && !isRecodeDecision(decision) ? decision : undefined;
+    const isHeld = row.heldForReview;
+    const explicitLink = typeof decision === "string" ? decision : undefined;
+    const resolvedId = isHeld
+      ? explicitLink
+      : hasOverride && !isRecodeDecision(decision)
+        ? decision
+        : undefined;
+    const isLeftUnlinked = isHeld && decision === null;
     return (
-      <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
-        <p className="text-sm font-medium text-foreground">
-          {candidates.length} items matched — pick one to link, or create a new item:
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {candidates.map(c => (
-            <ItemChip
-              key={c.id}
-              item={c}
-              selected={resolvedId === c.id}
-              onClick={() => onDecision(row.rowIndex, resolvedId === c.id ? undefined : c.id)}
-            />
-          ))}
-          <button
-            onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
-            className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
-              resolvedId === null
-                ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${resolvedId === null ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
-               {resolvedId === null && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
-            </div>
-            <span className="font-medium">Create new item record</span>
-          </button>
-        </div>
-        {!hasOverride && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-             <Info className="h-3.5 w-3.5" /> No selection will result in a new item upon approval.
+      <>
+        {row.heldForReview && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
+          <p className="text-sm font-medium text-foreground">
+            {isHeld
+              ? `${candidates.length} items matched — pick one to link, or leave this row unlinked:`
+              : `${candidates.length} items matched — pick one to link, or create a new item:`}
           </p>
-        )}
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {candidates.map(c => (
+              <ItemChip
+                key={c.id}
+                item={c}
+                selected={resolvedId === c.id}
+                onClick={() => onDecision(
+                  row.rowIndex,
+                  isHeld
+                    ? c.id
+                    : resolvedId === c.id ? undefined : c.id,
+                )}
+              />
+            ))}
+            {isHeld ? (
+              <button
+                onClick={() => onDecision(row.rowIndex, null)}
+                className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                  isLeftUnlinked
+                    ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isLeftUnlinked ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                   {isLeftUnlinked && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+                </div>
+                <span className="font-medium">Leave unlinked</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
+                className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                  resolvedId === null
+                    ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${resolvedId === null ? "border-primary bg-primary" : "border-muted-foreground/40"}`}>
+                   {resolvedId === null && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+                </div>
+                <span className="font-medium">Create new item record</span>
+              </button>
+            )}
+          </div>
+          {!hasOverride && !isHeld && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+               <Info className="h-3.5 w-3.5" /> No selection will result in a new item upon approval.
+            </p>
+          )}
+        </div>
+      </>
     );
   }
 
@@ -369,44 +634,70 @@ function CandidatePicker({
   if (confidence === "medium" || confidence === "low") {
     const item = matchedItem;
     if (!item) return null;
+    const isHeld = row.heldForReview;
+    const isExplicitLink = typeof decision === "string";
     const isCreateNew = hasOverride && !isRecodeDecision(decision) && decision === null;
+    const isLeftUnlinked = isHeld && decision === null;
     return (
-      <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-foreground">
-            Auto-matched by {confidence === "medium" ? "name similarity" : "fuzzy match"}. Confirm or override:
-          </p>
-        </div>
-        <div className="flex flex-col md:flex-row items-start gap-3">
-          <div className="flex-1 w-full">
-            <ItemChip
-              item={item}
-              selected={!isCreateNew}
-              onClick={() => onDecision(row.rowIndex, undefined)}
-            />
+      <>
+        {row.heldForReview && <HeldRowDetails row={row} />}
+        <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">
+              {isHeld
+                ? `Suggested by ${confidence === "medium" ? "name similarity" : "fuzzy match"}. Choose the existing item to link, or leave this row unlinked:`
+                : `Auto-matched by ${confidence === "medium" ? "name similarity" : "fuzzy match"}. Confirm or override:`}
+            </p>
           </div>
-          <button
-            onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
-            className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-              isCreateNew
-                ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
-                : "border-border bg-card hover:bg-accent/50 text-foreground"
-            }`}
-          >
-            {isCreateNew ? <><Undo2 className="h-4 w-4" /> Revert to matched</> : <><PlusCircle className="h-4 w-4" /> Create new instead</>}
-          </button>
-        </div>
-        {row.caseQuantity != null && item.caseSize != null && Math.abs(row.caseQuantity - item.caseSize) > 0.01 && (
-          <div className="text-xs text-amber-700 bg-amber-50/50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>Pack size differs: import has <strong>{row.caseQuantity}</strong>, catalog item has <strong>{item.caseSize}</strong></span>
+          <div className="flex flex-col md:flex-row items-start gap-3">
+            <div className="flex-1 w-full">
+              <ItemChip
+                item={item}
+                selected={isHeld ? isExplicitLink : !isCreateNew}
+                onClick={() => onDecision(
+                  row.rowIndex,
+                  isHeld
+                    ? item.id
+                    : undefined,
+                )}
+              />
+            </div>
+            {isHeld ? (
+              <button
+                onClick={() => onDecision(row.rowIndex, null)}
+                className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  isLeftUnlinked
+                    ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                Leave unlinked
+              </button>
+            ) : (
+              <button
+                onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
+                className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  isCreateNew
+                    ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-accent/50 text-foreground"
+                }`}
+              >
+                {isCreateNew ? <><Undo2 className="h-4 w-4" /> Revert to matched</> : <><PlusCircle className="h-4 w-4" /> Create new instead</>}
+              </button>
+            )}
           </div>
-        )}
-      </div>
+          {row.caseQuantity != null && item.caseSize != null && Math.abs(row.caseQuantity - item.caseSize) > 0.01 && (
+            <div className="text-xs text-amber-700 bg-amber-50/50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Pack size differs: import has <strong>{row.caseQuantity}</strong>, catalog item has <strong>{item.caseSize}</strong></span>
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
-  return null;
+  return row.heldForReview ? <HeldRowDetails row={row} /> : null;
 }
 
 // ─── Step: Resolution preview ─────────────────────────────────────────────────
@@ -427,11 +718,20 @@ export function ResolutionPreviewStep({
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [rowDecisions, setRowDecisions] = useState<Map<number, DecisionValue>>(() => new Map());
+  const [decisionRevisions, setDecisionRevisions] = useState<Map<number, number>>(() => new Map());
+  const [savingRowIndexes, setSavingRowIndexes] = useState<Set<number>>(() => new Set());
+  const [decisionSaveErrors, setDecisionSaveErrors] = useState<Map<number, string>>(() => new Map());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(() => new Set());
   const [duplicateDialogWarning, setDuplicateDialogWarning] = useState<DuplicateDateWarning | null>(null);
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
   const [noticesCollapsed, setNoticesCollapsed] = useState(false);
+  const [bulkVariantConfirmationOpen, setBulkVariantConfirmationOpen] = useState(false);
+  const [isManifestExporting, setIsManifestExporting] = useState(false);
+  const [isManifestImporting, setIsManifestImporting] = useState(false);
+  const [manifestImportResult, setManifestImportResult] = useState<DecisionManifestImportResult | null>(null);
+  const savingRowsRef = useRef<Set<number>>(new Set());
+  const manifestFileInputRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 100;
 
@@ -457,6 +757,87 @@ export function ResolutionPreviewStep({
     },
   });
 
+  const {
+    data: savedReviewDecisions,
+    isLoading: areReviewDecisionsLoading,
+    refetch: refetchReviewDecisions,
+  } = useQuery<ReviewDecisionResponse>({
+    queryKey: [`/api/inventory-import/orderly/batches/${batchId}/review-decisions`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/inventory-import/orderly/batches/${batchId}/review-decisions`);
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error ?? "Failed to load saved review decisions");
+      }
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (!savedReviewDecisions) return;
+    setRowDecisions(new Map(savedReviewDecisions.decisions.map(decision => [
+      decision.rowIndex,
+      fromStoredDecisionPayload(decision.decision),
+    ])));
+    setDecisionRevisions(new Map(savedReviewDecisions.decisions.map(decision => [decision.rowIndex, decision.revision])));
+  }, [batchId, savedReviewDecisions]);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (savingRowsRef.current.size === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
+
+  useEffect(() => {
+    // Wouter navigation goes through history.pushState. Guard routes outside
+    // this wizard while a server save is in flight so the same protection as
+    // the Back button applies to sidebar and top-bar navigation too.
+    const originalPushState = window.history.pushState.bind(window.history);
+    const reviewRoute = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    window.history.pushState = (
+      state: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) => {
+      const target = url ? new URL(String(url), window.location.href) : null;
+      const remainsInOrderlyImport = target?.pathname === window.location.pathname;
+      if (
+        savingRowsRef.current.size > 0 &&
+        !remainsInOrderlyImport &&
+        !window.confirm("A review decision is still saving. Leave this page anyway?")
+      ) {
+        return;
+      }
+      originalPushState(state, unused, url);
+    };
+
+    const guardBrowserHistoryNavigation = () => {
+      if (savingRowsRef.current.size === 0) return;
+      const remainsInOrderlyImport = window.location.pathname === new URL(reviewRoute, window.location.origin).pathname;
+      if (
+        !remainsInOrderlyImport &&
+        !window.confirm("A review decision is still saving. Leave this page anyway?")
+      ) {
+        // popstate arrives after the browser changes its URL. Restore the
+        // protected review route and notify Wouter before it can unmount the
+        // pending save screen.
+        window.history.replaceState(null, "", reviewRoute);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      }
+    };
+    window.addEventListener("popstate", guardBrowserHistoryNavigation);
+
+    return () => {
+      window.history.pushState = originalPushState;
+      window.removeEventListener("popstate", guardBrowserHistoryNavigation);
+    };
+  }, []);
+
   function toggleExpand(rowIndex: number) {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -466,29 +847,196 @@ export function ResolutionPreviewStep({
     });
   }
 
-  function setDecision(rowIndex: number, value: DecisionValue | undefined) {
-    setRowDecisions(prev => {
+  async function persistDecisionChanges(changes: ReviewDecisionChange[]): Promise<boolean> {
+    if (changes.some(change => savingRowsRef.current.has(change.rowIndex))) return false;
+    for (const change of changes) savingRowsRef.current.add(change.rowIndex);
+    setDecisionSaveErrors(prev => {
       const next = new Map(prev);
-      if (value === undefined) next.delete(rowIndex);
-      else next.set(rowIndex, value);
+      for (const change of changes) next.delete(change.rowIndex);
       return next;
+    });
+    setSavingRowIndexes(new Set(savingRowsRef.current));
+    try {
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ changes }),
+      });
+      const body: ReviewDecisionResponse & { clearedRowIndexes?: number[]; error?: string } = await res.json();
+      if (!res.ok) {
+        if (res.status === 409) await refetchReviewDecisions();
+        throw new Error(body.error ?? "Failed to save review decision");
+      }
+
+      const cleared = new Set(body.clearedRowIndexes ?? []);
+      setRowDecisions(prev => {
+        const next = new Map(prev);
+        for (const rowIndex of cleared) next.delete(rowIndex);
+        for (const saved of body.decisions) {
+          next.set(saved.rowIndex, fromStoredDecisionPayload(saved.decision));
+        }
+        return next;
+      });
+      setDecisionRevisions(prev => {
+        const next = new Map(prev);
+        for (const rowIndex of cleared) next.delete(rowIndex);
+        for (const saved of body.decisions) next.set(saved.rowIndex, saved.revision);
+        return next;
+      });
+      setDecisionSaveErrors(prev => {
+        const next = new Map(prev);
+        for (const change of changes) next.delete(change.rowIndex);
+        return next;
+      });
+      return true;
+    } catch (err: any) {
+      const message = err.message ?? "Review the row and try again.";
+      setDecisionSaveErrors(prev => {
+        const next = new Map(prev);
+        for (const change of changes) next.set(change.rowIndex, message);
+        return next;
+      });
+      toast({
+        title: "Decision was not saved",
+        description: message,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      for (const change of changes) savingRowsRef.current.delete(change.rowIndex);
+      setSavingRowIndexes(new Set(savingRowsRef.current));
+    }
+  }
+
+  function setDecision(rowIndex: number, value: DecisionValue | undefined) {
+    void persistDecisionChanges([{
+      rowIndex,
+      expectedRevision: decisionRevisions.get(rowIndex) ?? null,
+      ...(value === undefined ? {} : { decision: toStoredDecisionPayload(value) }),
+    }]);
+  }
+
+  async function queueBulkNewPackSizeVariants() {
+    const bulkDecisions = buildBulkNewPackSizeDecisions(bulkNewPackSizeReview.candidates);
+    const saved = await persistDecisionChanges(bulkDecisions.map(decision => ({
+      rowIndex: decision.rowIndex,
+      expectedRevision: decisionRevisions.get(decision.rowIndex) ?? null,
+      decision: {
+        action: decision.action,
+        comparableInventoryItemId: decision.comparableInventoryItemId,
+      },
+    })));
+    if (!saved) return;
+    setBulkVariantConfirmationOpen(false);
+    toast({
+      title: `${bulkNewPackSizeReview.candidates.length} pack-size ${bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} saved`,
+      description: "You can leave and resume this review; any saved row can still be changed before approval.",
     });
   }
 
+  async function exportDecisionManifest() {
+    setIsManifestExporting(true);
+    try {
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions/manifest`, {
+        credentials: "include",
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not export review decisions");
+
+      const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `orderly-review-decisions-${batchId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Review manifest downloaded",
+        description: "It is bound to this pending import and will be rechecked before it can be applied.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Could not export review decisions",
+        description: err.message ?? "Try again from the pending review.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsManifestExporting(false);
+    }
+  }
+
+  async function importDecisionManifest(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsManifestImporting(true);
+    setManifestImportResult(null);
+    try {
+      let manifest: unknown;
+      try {
+        manifest = JSON.parse(await file.text());
+      } catch {
+        throw new Error("Choose a valid Orderly review manifest JSON file.");
+      }
+      const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/review-decisions/manifest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ manifest }),
+      });
+      const body: DecisionManifestImportResult & { error?: string } = await res.json();
+      if (!res.ok && !body.status) throw new Error(body.error ?? "Could not import review decisions");
+
+      setManifestImportResult(body);
+      if (body.status === "accepted") {
+        await refetchReviewDecisions();
+        toast({
+          title: `${body.accepted.length} review ${body.accepted.length === 1 ? "decision" : "decisions"} applied`,
+          description: "Every imported decision was rechecked against the current batch before saving.",
+        });
+      } else if (body.status === "stale") {
+        toast({
+          title: "Manifest is stale",
+          description: "No decisions were changed. Export a fresh manifest after reviewing the current evidence.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Manifest was not applied",
+          description: "No decisions were changed because one or more entries no longer pass review.",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Could not import review decisions",
+        description: err.message ?? "No decisions were changed.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsManifestImporting(false);
+    }
+  }
+
   async function submitApproval(force = false) {
+    if (savingRowsRef.current.size > 0 || isManifestImporting) {
+      toast({
+        title: "Waiting for review decisions to save",
+        description: "Approve is available once all in-progress decision updates finish.",
+      });
+      return;
+    }
     setApproving(true);
     try {
-      const decisions = Array.from(rowDecisions.entries()).map(([rowIndex, decision]) => (
-        isRecodeDecision(decision)
-          ? { rowIndex, ...decision }
-          : { rowIndex, inventoryItemId: decision }
-      ));
       const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          rowDecisions: decisions,
           ...(force ? { force: true } : {}),
           ...(legacyApprovalStoreId ? { storeId: legacyApprovalStoreId } : {}),
         }),
@@ -524,7 +1072,17 @@ export function ResolutionPreviewStep({
     }
   }
 
-  if (isLoading) {
+  function handleBack() {
+    if (
+      savingRowsRef.current.size > 0 &&
+      !window.confirm("A review decision is still saving. Leave this page anyway?")
+    ) {
+      return;
+    }
+    onBack();
+  }
+
+  if (isLoading || areReviewDecisionsLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 min-h-[50vh] text-center">
         <RefreshCw className="h-8 w-8 mb-4 text-primary animate-spin" />
@@ -547,21 +1105,59 @@ export function ResolutionPreviewStep({
 
   const s = preview.summary;
   const matchPct = s.totalRows > 0 ? Math.round(((s.itemsMatchedHigh + s.itemsMatchedMedium) / s.totalRows) * 100) : 0;
+  // A browser can briefly hold a preview response from the prior API bundle
+  // while the web client has already hot-reloaded. Keep the review screen
+  // usable during that harmless rollout window; a fresh query gets the full
+  // read-only evidence report.
+  const blankCodeClassification = preview.identitySummary?.blankCodeClassification ?? {
+    confirmed: { rows: 0, valueTotal: 0 },
+    reviewable: { rows: 0, valueTotal: 0 },
+    conflicted: { rows: 0, valueTotal: 0 },
+    held: { rows: 0, valueTotal: 0 },
+  };
+  // The summary covers every held row, including coded re-codes and conflicts.
+  // The identity classification is blank-code-only supporting detail.
+  const heldForReviewRows = s.itemsHeldForReview;
+  const recodeSummary = preview.recodeSummary ?? {
+    compatibleAlternates: 0,
+    newPackSizes: 0,
+    sourceDataConflicts: 0,
+    unreliableCodes: 0,
+    packEvidenceMissing: 0,
+  };
+  const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
+  const queuedBulkVariantCount = bulkNewPackSizeReview.candidates.filter(candidate =>
+    candidate.rowIndexes.every(rowIndex => {
+      const decision = rowDecisions.get(rowIndex);
+      return isRecodeDecision(decision) &&
+        decision.action === "create_variant" &&
+        decision.comparableInventoryItemId === candidate.comparableInventoryItemId;
+    }),
+  ).length;
+  const actionableRecodeRows = preview.rows.filter(row =>
+    row.itemMatch.possibleRecode &&
+    row.sourceCodeReliability === "stable" &&
+    row.itemMatch.recodeEvidenceClass !== "source_data_conflict",
+  );
   const resolvedRecodeCodes = new Set(
-    preview.rows
+    actionableRecodeRows
       .filter(row => {
         const decision = rowDecisions.get(row.rowIndex);
-        return row.itemMatch.possibleRecode && row.sourceItemCode && isRecodeDecision(decision);
+        return row.sourceItemCode && isRecodeDecision(decision);
       })
       .map(row => row.sourceItemCode!.trim()),
   );
   const pendingRecodeCodes = Array.from(new Set(
-    preview.rows
-      .filter(row => row.itemMatch.possibleRecode && row.sourceItemCode)
+    actionableRecodeRows
+      .filter(row => row.sourceItemCode)
       .map(row => row.sourceItemCode!.trim()),
   )).filter(code => !resolvedRecodeCodes.has(code));
+  const resolvedHeldRows = preview.rows.filter(row => row.heldForReview && rowDecisions.has(row.rowIndex)).length;
+  const remainingHeldRows = Math.max(0, heldForReviewRows - resolvedHeldRows);
+  const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
-  const approvalDisabled = approving || hasPendingRecodeDecisions || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0 || recodeSummary.unreliableCodes > 0;
+  const approvalDisabled = approving || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -597,9 +1193,68 @@ export function ResolutionPreviewStep({
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={bulkVariantConfirmationOpen}
+        onOpenChange={setBulkVariantConfirmationOpen}
+      >
+        <AlertDialogContent className="max-w-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-violet-700" />
+              Confirm {bulkNewPackSizeReview.candidates.length} separate {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Each listed source Item Code has a verified incompatible pack and will create a separate inventory item.
+                  Names come from the source item description and pack descriptors come from the source Pack Size — no manual
+                  re-entry is needed.
+                </p>
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+                  {bulkNewPackSizeReview.groups.map(group => (
+                    <div key={`${group.vendorName}-${group.packDescriptor}`} className="rounded-md border bg-background p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-foreground">
+                        <span className="font-semibold">{group.vendorName}</span>
+                        <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-900">
+                          {group.packDescriptor}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs">
+                        {group.variantCount} {group.variantCount === 1 ? "variant" : "variants"} from {group.sourceRowCount} source {group.sourceRowCount === 1 ? "row" : "rows"}
+                      </p>
+                      <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs">
+                        {group.samples.map(sample => (
+                          <li key={sample.sourceItemCode}>
+                            {sample.sampleDescription} <span className="font-mono">({sample.sourceItemCode})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs">
+                  This only queues verified <strong>New pack size</strong> rows. Source conflicts, missing pack evidence,
+                  and other review blockers remain unresolved and can still block approval.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep reviewing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={queueBulkNewPackSizeVariants}
+              data-testid="confirm-bulk-new-pack-size-variants"
+              className="bg-violet-700 text-white hover:bg-violet-800"
+            >
+              Create {bulkNewPackSizeReview.candidates.length} {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center justify-between border-b pb-4">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={onBack} className="h-8 shadow-sm">
+          <Button variant="outline" size="sm" onClick={handleBack} className="h-8 shadow-sm">
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <div>
@@ -611,11 +1266,70 @@ export function ResolutionPreviewStep({
             </div>
           </div>
         </div>
-        <Button onClick={() => submitApproval(false)} disabled={approvalDisabled} size="lg" className="shadow-sm">
-          {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-          {approving ? "Approving Batch..." : "Approve Import"}
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <input
+            ref={manifestFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={importDecisionManifest}
+            data-testid="orderly-decision-manifest-input"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportDecisionManifest}
+            disabled={isManifestExporting || isManifestImporting}
+          >
+            {isManifestExporting ? <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+            Export decisions
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => manifestFileInputRef.current?.click()}
+            disabled={isManifestExporting || isManifestImporting}
+          >
+            {isManifestImporting ? <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+            Import decisions
+          </Button>
+          <Button onClick={() => submitApproval(false)} disabled={approvalDisabled} size="lg" className="shadow-sm">
+            {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+            {approving ? "Approving Batch..." : "Approve Import"}
+          </Button>
+        </div>
       </div>
+
+      {manifestImportResult && (
+        <div data-testid="orderly-decision-manifest-result">
+          <Alert
+            variant={manifestImportResult.status === "accepted" ? "default" : "destructive"}
+            className={manifestImportResult.status === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : undefined}
+          >
+            {manifestImportResult.status === "accepted"
+              ? <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+              : <ShieldAlert className="h-4 w-4" />}
+            <AlertTitle>
+              {manifestImportResult.status === "accepted"
+                ? "Manifest applied"
+                : manifestImportResult.status === "stale"
+                  ? "Manifest not applied — evidence changed"
+                  : "Manifest not applied — decisions rejected"}
+            </AlertTitle>
+            <AlertDescription className="mt-1 space-y-1">
+              {manifestImportResult.accepted.length > 0 && (
+                <p>{manifestImportResult.accepted.length} accepted {manifestImportResult.accepted.length === 1 ? "decision" : "decisions"} saved.</p>
+              )}
+              {manifestImportResult.rejected.map(entry => (
+                <p key={`rejected-${entry.rowIndex}`}>Row {entry.rowIndex} rejected: {entry.reason}</p>
+              ))}
+              {manifestImportResult.stale.map(entry => (
+                <p key={`stale-${entry.rowIndex}`}>Row {entry.rowIndex} is stale: {entry.reason}</p>
+              ))}
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -644,10 +1358,28 @@ export function ResolutionPreviewStep({
               <span className="text-sm font-semibold text-foreground">New Items</span>
             </div>
             <div className="text-3xl font-bold text-foreground">{s.itemsWillCreate.toLocaleString()}</div>
-            <div className="text-xs font-medium text-muted-foreground mt-1">
-              Will be created
-              {s.itemsHeldForReview > 0 && <span className="text-amber-600 ml-1">({s.itemsHeldForReview.toLocaleString()} held for review)</span>}
-            </div>
+            <div className="text-xs font-medium text-muted-foreground mt-1">Will be created</div>
+            {remainingHeldRows > 0 ? (
+              <button
+                type="button"
+                className="mt-3 flex w-full items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                onClick={() => {
+                  setSelectedCategories(new Set());
+                  setSelectedConfidences(new Set(["held"]));
+                  setCurrentPage(0);
+                }}
+              >
+                <span className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" /> Held for review</span>
+                <span>{remainingHeldRows.toLocaleString()} remaining</span>
+              </button>
+            ) : resolvedHeldRows > 0 ? (
+              <div className="mt-3 flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-800">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                {resolvedHeldRows.toLocaleString()} held {resolvedHeldRows === 1 ? "row decision" : "row decisions"} recorded
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-muted-foreground">No rows are held for review</div>
+            )}
           </CardContent>
         </Card>
 
@@ -683,6 +1415,125 @@ export function ResolutionPreviewStep({
           </CardContent>
         </Card>
       </div>
+
+      {(recodeCodeCount > 0 || hasSourceEvidenceBlockers) && (
+        <Card className="border-violet-200 bg-violet-50/30 shadow-sm" data-testid="orderly-pack-size-walkthrough">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-950">
+                  <Package className="h-4 w-4 text-violet-700" />
+                  Item code and pack-size review
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-violet-900/75">
+                  A matching name is not enough. Review the physical pack before deciding whether a new code represents the same item.
+                </p>
+              </div>
+              {recodeSummary.newPackSizes > 0 && (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {bulkNewPackSizeReview.candidates.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-violet-700 text-white hover:bg-violet-800"
+                      onClick={() => setBulkVariantConfirmationOpen(true)}
+                      data-testid="bulk-new-pack-size-variants"
+                    >
+                      Create {bulkNewPackSizeReview.candidates.length} new {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} in bulk
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
+                    onClick={() => {
+                      setSelectedCategories(new Set());
+                      setSelectedConfidences(new Set(["new-pack-size"]));
+                      setCurrentPage(0);
+                    }}
+                  >
+                    Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5">
+                <div className="font-semibold text-emerald-900">1. Same physical pack</div>
+                <div className="mt-1 text-emerald-800/80">{recodeSummary.compatibleAlternates} alternate {recodeSummary.compatibleAlternates === 1 ? "code can" : "codes can"} link to the existing item.</div>
+              </div>
+              <div className="rounded-md border border-violet-200 bg-violet-100/60 p-2.5">
+                <div className="font-semibold text-violet-950">2. New pack size</div>
+                <div className="mt-1 text-violet-900/80">{recodeSummary.newPackSizes} {recodeSummary.newPackSizes === 1 ? "decision requires" : "decisions require"} a separate item variant.</div>
+              </div>
+              <div className="rounded-md border border-red-200 bg-red-50/70 p-2.5">
+                <div className="font-semibold text-red-900">3. Conflicting source packs</div>
+                <div className="mt-1 text-red-800/80">{recodeSummary.sourceDataConflicts} {recodeSummary.sourceDataConflicts === 1 ? "conflict blocks" : "conflicts block"} approval until the source is verified.</div>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                <div className="font-semibold text-slate-900">4. Description in Item Code</div>
+                <div className="mt-1 text-slate-700">{recodeSummary.unreliableCodes} {recodeSummary.unreliableCodes === 1 ? "value needs" : "values need"} source correction; it cannot become a code mapping.</div>
+              </div>
+            </div>
+            {queuedBulkVariantCount > 0 && (
+              <p className="mt-3 text-xs font-medium text-violet-950" data-testid="bulk-new-pack-size-queued">
+                {queuedBulkVariantCount} pack-size {queuedBulkVariantCount === 1 ? "variant is" : "variants are"} saved. Open any row below to adjust an exception before approval.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {preview.identitySummary && (
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_1.4fr]">
+          <Card className="shadow-sm border-border/60 bg-slate-50/50">
+            <CardContent className="p-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Product identity evidence</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Grouped by normalized description and pack evidence before matching storage-location rows.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span><strong>{preview.identitySummary.uniqueIdentityGroups.toLocaleString()}</strong> groups</span>
+                <span className="text-emerald-700"><strong>{preview.identitySummary.identityGroupsResolvedToExisting.toLocaleString()}</strong> existing</span>
+                <span><strong>{preview.identitySummary.identityGroupsNewCandidates.toLocaleString()}</strong> new candidates</span>
+                <span className="text-amber-700"><strong>{preview.identitySummary.blankCodeGroupsAutoResolved.toLocaleString()}</strong> blank-code groups reconciled</span>
+                {preview.identitySummary.identityGroupsRequiringReview > 0 && (
+                  <span className="text-red-700"><strong>{preview.identitySummary.identityGroupsRequiringReview.toLocaleString()}</strong> need review</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-border/60">
+            <CardContent className="p-4">
+              <div className="text-sm font-semibold text-foreground">Blank Item Code classification</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Read-only evidence for this workbook. Dollar totals use the source snapshot values.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {([
+                  ["Confirmed", blankCodeClassification.confirmed, "text-emerald-700"],
+                  ["Reviewable", blankCodeClassification.reviewable, "text-sky-700"],
+                  ["Conflicted", blankCodeClassification.conflicted, "text-red-700"],
+                  ["Still held", blankCodeClassification.held, "text-amber-700"],
+                ] as const).map(([label, classification, tone]) => (
+                  <div key={label} className="rounded-md border bg-background/70 p-2">
+                    <div className={`font-semibold ${tone}`}>{label}</div>
+                    <div className="mt-1 font-medium text-foreground">
+                      {classification.rows.toLocaleString()} rows
+                    </div>
+                    <div className="mt-0.5 text-muted-foreground">
+                      ${classification.valueTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Notices */}
       {(() => {
@@ -746,8 +1597,8 @@ export function ResolutionPreviewStep({
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <AlertTitle className="text-amber-800 font-semibold">Possible Re-codes Detected</AlertTitle>
                     <AlertDescription className="text-amber-700">
-                      <strong>{s.itemsRecode} {s.itemsRecode === 1 ? "row has" : "rows have"}</strong> a new item code but the name perfectly matches an existing catalog item. 
-                      Use the <Badge variant="outline" className="bg-white px-1 py-0 shadow-sm text-[10px] mx-1">Re-code?</Badge> filter below to review and verify pack sizes to avoid creating duplicates.
+                      <strong>{s.itemsRecode} {s.itemsRecode === 1 ? "row has" : "rows have"}</strong> a new item code but the name perfectly matches an existing catalog item.
+                      These are grouped into <strong>{recodeCodeCount} product decisions</strong>, not {s.itemsRecode} separate decisions. Use the <Badge variant="outline" className="bg-white px-1 py-0 shadow-sm text-[10px] mx-1">Re-code?</Badge> filter below to review and verify pack sizes to avoid creating duplicates.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -817,18 +1668,132 @@ export function ResolutionPreviewStep({
         );
       })()}
 
+      {/* Plain-language review progress */}
+      <Alert className={
+        remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
+          ? "border-amber-200 bg-amber-50 shadow-sm"
+          : "border-emerald-200 bg-emerald-50 shadow-sm"
+      }>
+        {remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
+          ? <AlertTriangle className="h-5 w-5 text-amber-600" />
+          : <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+        <AlertTitle className={
+          remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
+            ? "text-amber-900 font-semibold"
+            : "text-emerald-900 font-semibold"
+        }>
+          {remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
+            ? "A few decisions remain"
+            : "Review complete"}
+        </AlertTitle>
+        <AlertDescription className={
+          remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers
+            ? "text-amber-800"
+            : "text-emerald-800"
+        }>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              {remainingHeldRows > 0 && (
+                <p>
+                  <strong>{remainingHeldRows} held {remainingHeldRows === 1 ? "row" : "rows"}</strong> still needs a choice.
+                </p>
+              )}
+              {hasPendingRecodeDecisions && (
+                <p>
+                  <strong>{pendingRecodeCodes.length} item-code {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
+                </p>
+              )}
+              {recodeSummary.sourceDataConflicts > 0 && (
+                <p>
+                  <strong>{recodeSummary.sourceDataConflicts} source {recodeSummary.sourceDataConflicts === 1 ? "conflict blocks" : "conflicts block"} approval.</strong> Verify the vendor pack evidence before importing.
+                </p>
+              )}
+              {recodeSummary.unreliableCodes > 0 && (
+                <p>
+                  <strong>{recodeSummary.unreliableCodes} descriptive Item Code {recodeSummary.unreliableCodes === 1 ? "needs" : "values need"} correction.</strong> These cannot become permanent mappings.
+                </p>
+              )}
+              {!remainingHeldRows && !hasPendingRecodeDecisions && !hasSourceEvidenceBlockers && (
+                <p>Every item needing a decision has one. You can approve the import.</p>
+              )}
+              {resolvedHeldRows > 0 && (
+                <p className="mt-1 text-xs opacity-80">
+                  {resolvedHeldRows} held {resolvedHeldRows === 1 ? "row" : "rows"} already has a recorded choice.
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {remainingHeldRows > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["held"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show held row
+                </Button>
+              )}
+              {!remainingHeldRows && hasPendingRecodeDecisions && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["recode"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show item-code reviews
+                </Button>
+              )}
+              {hasSourceEvidenceBlockers && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set([
+                      ...(recodeSummary.sourceDataConflicts > 0 ? ["source-conflict"] : []),
+                      ...(recodeSummary.unreliableCodes > 0 ? ["unreliable-code"] : []),
+                    ]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show blocked rows
+                </Button>
+              )}
+            </div>
+          </div>
+        </AlertDescription>
+      </Alert>
+
       {/* Row table */}
       <div className="space-y-4">
         {(() => {
           const uniqueCategories = computeUniqueCategories(preview.rows);
 
           const confidenceLevels: { key: string; label: string }[] = [
-            { key: "recode",    label: "Re-code?"  },
-            { key: "high",      label: "Matched"   },
-            { key: "medium",    label: "Likely"    },
-            { key: "low",       label: "Fuzzy"     },
-            { key: "ambiguous", label: "Ambiguous" },
-            { key: "new",       label: "New"       },
+            { key: "held",             label: "Held for review" },
+            { key: "alternate-code",   label: "Alternate code" },
+            { key: "new-pack-size",    label: "New pack size" },
+            { key: "source-conflict",  label: "Source conflict" },
+            { key: "unreliable-code",  label: "Unreliable code" },
+            { key: "pack-check",       label: "Pack check" },
+            { key: "recode",           label: "Other re-code"  },
+            { key: "high",             label: "Matched"   },
+            { key: "medium",           label: "Likely"    },
+            { key: "low",              label: "Fuzzy"     },
+            { key: "ambiguous",        label: "Ambiguous" },
+            { key: "new",              label: "New"       },
           ].filter(({ key }) => preview.rows.some(r => rowConfidenceKey(r) === key));
 
           const filteredRows = applyFilters(preview.rows, selectedCategories, selectedConfidences);
@@ -909,11 +1874,14 @@ export function ResolutionPreviewStep({
                       </div>
                     )}
                   </div>
-                  <div className="text-xs font-medium text-muted-foreground text-right shrink-0">
+                  <div
+                    data-testid="resolution-row-status"
+                    className="text-xs font-medium text-muted-foreground text-right shrink-0"
+                  >
                     {filteredRows.length === 0
                       ? "No matching rows"
                       : isFiltered
-                        ? `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${filteredRows.length.toLocaleString()} matching`
+                        ? `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${filteredRows.length.toLocaleString()} matching rows (${s.totalRows.toLocaleString()} total)`
                         : `Showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${s.totalRows.toLocaleString()}`
                     }
                   </div>
@@ -927,6 +1895,7 @@ export function ResolutionPreviewStep({
                       <TableHead className="w-10 text-center px-1 border-r"></TableHead>
                       <TableHead className="w-12 border-r text-center font-semibold text-xs">#</TableHead>
                       <TableHead className="font-semibold text-xs min-w-[200px]">Description</TableHead>
+                      <TableHead className="font-semibold text-xs min-w-[130px]">Pack size</TableHead>
                       <TableHead className="font-semibold text-xs">Location</TableHead>
                       <TableHead className="font-semibold text-xs">Vendor</TableHead>
                       <TableHead className="font-semibold text-xs">Category</TableHead>
@@ -937,7 +1906,7 @@ export function ResolutionPreviewStep({
                   <TableBody>
                     {displayRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                           <div className="flex flex-col items-center justify-center">
                             <Info className="h-8 w-8 mb-2 opacity-20" />
                             <p className="text-sm font-medium">No rows match the selected filters.</p>
@@ -949,10 +1918,12 @@ export function ResolutionPreviewStep({
                       </TableRow>
                     ) : (
                       displayRows.map((row) => {
-                        const needsReview = row.itemMatch.requiresReview || row.itemMatch.possibleRecode;
+                        const needsReview = row.heldForReview || row.itemMatch.requiresReview || row.itemMatch.possibleRecode;
                         const isExpanded = expandedRows.has(row.rowIndex);
                         const decision = rowDecisions.get(row.rowIndex);
                         const hasOverride = rowDecisions.has(row.rowIndex);
+                        const isSavingDecision = savingRowIndexes.has(row.rowIndex);
+                        const decisionSaveError = decisionSaveErrors.get(row.rowIndex);
                         
                         return (
                           <Fragment key={row.rowIndex}>
@@ -977,6 +1948,34 @@ export function ResolutionPreviewStep({
                                     {row.sourceItemCode}
                                   </div>
                                 )}
+                                {row.heldForReview && (
+                                  <div className="mt-1 text-[10px] font-medium text-amber-700">
+                                    Item Code: blank
+                                  </div>
+                                )}
+                                {row.identityGroupRows && row.identityGroupRows.length > 1 && (
+                                  <div className="mt-1 text-[10px] text-muted-foreground">
+                                    Identity group: {row.identityGroupRows.length} location rows
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                <div className="font-medium text-foreground">
+                                  {row.packSizeRaw || <span className="text-muted-foreground italic font-normal">Not provided</span>}
+                                </div>
+                                <div className={`mt-1 text-[10px] ${
+                                  row.packParseStatus === "ok"
+                                    ? "text-emerald-700"
+                                    : row.packParseStatus === "partial"
+                                      ? "text-amber-700"
+                                      : "text-muted-foreground"
+                                }`}>
+                                  {row.packParseStatus === "ok"
+                                    ? "Parsed"
+                                    : row.packParseStatus === "partial"
+                                      ? "Partial parse — verify"
+                                      : "Needs review"}
+                                </div>
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {row.storageLocation || "—"}
@@ -995,14 +1994,52 @@ export function ResolutionPreviewStep({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-col items-start gap-1.5">
-                                  <MatchStatusBadge confidence={row.itemMatch.confidence} strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                  {isSavingDecision && (
+                                    <Badge
+                                      variant="outline"
+                                      className="border-blue-200 bg-blue-50 text-blue-800 shadow-none font-medium"
+                                      data-testid={`orderly-decision-saving-${row.rowIndex}`}
+                                    >
+                                      <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                                      Saving decision
+                                    </Badge>
+                                  )}
+                                  {decisionSaveError && (
+                                    <span
+                                      className="text-[10px] font-medium text-destructive"
+                                      data-testid={`orderly-decision-save-error-${row.rowIndex}`}
+                                    >
+                                      Save failed — choose a decision again to retry.
+                                    </span>
+                                  )}
+                                  {row.heldForReview && hasOverride ? (
+                                    <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 shadow-none font-medium">
+                                      <CheckCircle2 className="mr-1 h-3 w-3" />Saved decision
+                                    </Badge>
+                                  ) : row.heldForReview ? (
+                                    <Badge className="bg-amber-50 text-amber-800 border-amber-200 shadow-none font-medium">Needs decision</Badge>
+                                  ) : (
+                                    <MatchStatusBadge
+                                      confidence={row.itemMatch.confidence}
+                                      strategy={row.itemMatch.strategy}
+                                      possibleRecode={row.itemMatch.possibleRecode}
+                                      evidenceClass={row.itemMatch.recodeEvidenceClass}
+                                    />
+                                  )}
+                                  {row.heldForReview && (
+                                    <span className={`text-[10px] font-medium ${hasOverride ? "text-emerald-700" : "text-amber-700"}`}>
+                                      {hasOverride ? "Originally held · choice will apply on approval" : "Blank Item Code"}
+                                    </span>
+                                  )}
                                   
                                   {hasOverride && (
                                     <div className="flex items-center gap-1.5">
                                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-background text-foreground shadow-sm">
                                          {isRecodeDecision(decision)
                                            ? decision.action === "create_variant" ? "→ Separate Variant" : "→ Link Existing"
-                                           : decision === null ? "→ Create New" : "→ Link Existing"}
+                                            : decision === null
+                                              ? row.heldForReview ? "→ Leave Unlinked" : "→ Create FnB item"
+                                              : "→ Link Existing"}
                                       </Badge>
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setDecision(row.rowIndex, undefined); }}
@@ -1019,23 +2056,29 @@ export function ResolutionPreviewStep({
                                        Action Required
                                      </span>
                                   )}
-                                  {row.itemMatch.possibleRecode && (
+                                   {row.itemMatch.possibleRecode ? (
                                     <PackComparison
-                                      source={row}
+                                       source={row.itemMatch.sourcePackEvidence ?? row}
                                       candidate={row.itemMatch.candidatePackEvidence}
                                       status={row.itemMatch.packCompatibility}
                                       compact
                                     />
-                                  )}
+                                   ) : needsReview ? (
+                                     <SourcePackEvidence source={row.itemMatch.sourcePackEvidence ?? row} />
+                                   ) : null}
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs">
-                                <StrategyLabel strategy={row.itemMatch.strategy} possibleRecode={row.itemMatch.possibleRecode} />
+                                    <StrategyLabel
+                                      strategy={row.itemMatch.strategy}
+                                      possibleRecode={row.itemMatch.possibleRecode}
+                                      evidenceClass={row.itemMatch.recodeEvidenceClass}
+                                    />
                               </TableCell>
                             </TableRow>
                             {isExpanded && (
                               <TableRow className="bg-muted/5 hover:bg-muted/5 border-b">
-                                <TableCell colSpan={8} className="p-0">
+                                <TableCell colSpan={9} className="p-0">
                                   <CandidatePicker
                                     row={row}
                                     decision={decision}
@@ -1109,8 +2152,14 @@ export function ResolutionPreviewStep({
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-20 md:left-[var(--sidebar-width)] md:data-[state=collapsed]:left-[var(--sidebar-width-icon)] transition-[left]">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="text-sm font-medium text-muted-foreground hidden md:block">
-            {hasPendingRecodeDecisions
-              ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} still required.`
+            {hasPendingRecodeDecisions && remainingHeldRows > 0
+              ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} and ${remainingHeldRows} held ${remainingHeldRows === 1 ? "row" : "rows"} still need a choice.`
+              : hasPendingRecodeDecisions
+                ? `${pendingRecodeCodes.length} re-code ${pendingRecodeCodes.length === 1 ? "decision" : "decisions"} still required.`
+                : remainingHeldRows > 0
+                  ? `${remainingHeldRows} held ${remainingHeldRows === 1 ? "row" : "rows"} still need a choice.`
+                  : resolvedHeldRows > 0
+                    ? `${resolvedHeldRows} held ${resolvedHeldRows === 1 ? "row decision" : "row decisions"} recorded. Ready to approve.`
               : `You are approving ${s.totalRows.toLocaleString()} rows for ingestion.`}
           </div>
           <Button

@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import supertest from 'supertest';
+import { createHmac } from 'node:crypto';
 import { db } from '../db';
 import { eq, inArray } from 'drizzle-orm';
 import {
@@ -23,12 +24,16 @@ import {
   companyStores,
   inventoryImportBatches,
   inventoryImportRows,
+  inventoryItemExternalMappings,
   importSourcePropertyBindings,
   inventoryItems,
   inventoryLocations,
   storeInventoryItems,
+  units,
   vendors,
 } from '@workspace/db';
+import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
+import { applyBatchApproval } from '../services/orderly/orderlyDomain';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 
@@ -40,7 +45,9 @@ const IDs = vi.hoisted(() => {
     store: `oar-store-${RUN}`,
     otherStore: `oar-other-${RUN}`,
     admin: `oar-admin-${RUN}`,
+    manager: `oar-manager-${RUN}`,
     scoped: `oar-scoped-${RUN}`,
+    staff: `oar-staff-${RUN}`,
     binding: `oar-bind-${RUN}`,
     sourceProperty: `24472-${RUN}`,
   };
@@ -54,7 +61,12 @@ const authState = vi.hoisted(() => ({ userId: '' as string }));
 // `req.userId`, matching production behavior, so the route must read `user.id`.
 vi.mock('../auth', () => ({
   requireAuth: vi.fn((req: any, _res: any, next: any) => {
-    req.user = { id: authState.userId, companyId: IDs.company };
+    const role = authState.userId === IDs.manager
+      ? 'store_manager'
+      : authState.userId === IDs.scoped || authState.userId === IDs.staff
+        ? 'store_user'
+        : 'company_admin';
+    req.user = { id: authState.userId, companyId: IDs.company, role };
     req.companyId = IDs.company;
     next();
   }),
@@ -66,19 +78,38 @@ vi.mock('../auth', () => ({
 let registerOrderlyImportRoutes: (app: express.Express) => void;
 
 let batchSeq = 0;
-async function stageBatch(opts: { targetStoreId?: string | null; withBinding?: boolean }) {
+let cachedEachUnitId: string | null = null;
+
+async function eachUnitId() {
+  if (cachedEachUnitId) return cachedEachUnitId;
+  const [unit] = await db
+    .select({ id: units.id })
+    .from(units)
+    .where(eq(units.abbreviation, 'ea'))
+    .limit(1);
+  if (!unit) throw new Error('Expected seeded "ea" unit for Orderly approval route fixtures');
+  cachedEachUnitId = unit.id;
+  return unit.id;
+}
+
+async function stageBatch(opts: {
+  targetStoreId?: string | null;
+  withBinding?: boolean;
+  sourceSystem?: string;
+  status?: string;
+}) {
   const id = `oar-batch-${IDs.RUN}-${batchSeq++}`;
   await db.insert(inventoryImportBatches).values({
     id,
     companyId: IDs.company,
-    sourceSystem: 'ORDERLY',
+    sourceSystem: opts.sourceSystem ?? 'ORDERLY',
     fileHash: `hash-${id}`,
     originalFilename: `${id}.xlsx`,
     sheetName: 'Inventory Detail',
     parserVersion: '1.0',
     inventoryDate: null,
     inventoryDateConfirmed: 0,
-    status: 'pending_review',
+    status: opts.status ?? 'pending_review',
     sourceRowCount: 1,
     targetStoreId: opts.targetStoreId ?? null,
     sourcePropertyBindingId: opts.withBinding ? IDs.binding : null,
@@ -119,9 +150,33 @@ function buildApp() {
   return app;
 }
 
+function canonicalManifestJson(value: unknown): string {
+  if (value === undefined) return 'null';
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalManifestJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map(key => `${JSON.stringify(key)}:${canonicalManifestJson(record[key])}`)
+    .join(',')}}`;
+}
+
+function signManifest(unsignedManifest: Record<string, unknown>) {
+  const key = process.env.SESSION_SECRET;
+  if (!key) throw new Error('SESSION_SECRET is required for signed manifest route tests');
+  return {
+    ...unsignedManifest,
+    integrity: {
+      algorithm: 'HMAC-SHA256',
+      signature: createHmac('sha256', key).update(canonicalManifestJson(unsignedManifest)).digest('hex'),
+    },
+  };
+}
+
 beforeAll(async () => {
   if (SKIP) return;
 
+  await ensureOrderlyReviewDecisionsSchema(db);
   ({ registerOrderlyImportRoutes } = await import('./orderlyImportRoutes'));
 
   await db.insert(companiesTable).values({ id: IDs.company, name: `OAR Co ${IDs.RUN}` });
@@ -131,10 +186,18 @@ beforeAll(async () => {
   ]);
   await db.insert(users).values([
     { id: IDs.admin, email: `oar-admin-${IDs.RUN}@test.local`, role: 'company_admin', companyId: IDs.company, active: 1 },
+    { id: IDs.manager, email: `oar-manager-${IDs.RUN}@test.local`, role: 'store_manager', companyId: IDs.company, active: 1 },
     { id: IDs.scoped, email: `oar-scoped-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
+    { id: IDs.staff, email: `oar-staff-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
   ]);
-  // Scoped user can reach only the "Other" store — never Bay Hill.
-  await db.insert(userStores).values([{ userId: IDs.scoped, storeId: IDs.otherStore }]);
+  // Scoped user can reach only the "Other" store — never Bay Hill. The
+  // manager and staff fixtures can reach Bay Hill, so role and destination
+  // authorization are tested independently.
+  await db.insert(userStores).values([
+    { userId: IDs.manager, storeId: IDs.store },
+    { userId: IDs.scoped, storeId: IDs.otherStore },
+    { userId: IDs.staff, storeId: IDs.store },
+  ]);
   await db.insert(importSourcePropertyBindings).values({
     id: IDs.binding,
     companyId: IDs.company,
@@ -160,8 +223,8 @@ afterAll(async () => {
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, IDs.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, IDs.company)).catch(() => {});
   await db.delete(vendors).where(eq(vendors.companyId, IDs.company)).catch(() => {});
-  await db.delete(userStores).where(eq(userStores.userId, IDs.scoped)).catch(() => {});
-  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.scoped])).catch(() => {});
+  await db.delete(userStores).where(inArray(userStores.userId, [IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
+  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
   await db.delete(companyStores).where(eq(companyStores.companyId, IDs.company)).catch(() => {});
   await db.delete(companiesTable).where(eq(companiesTable.id, IDs.company)).catch(() => {});
 });
@@ -184,6 +247,29 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     expect(after?.approvedBy).toBe(IDs.admin); // real identity recorded, not null
   });
 
+  it('allows an assigned store manager to approve the destination store', async () => {
+    authState.userId = IDs.manager;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(200);
+    expect((await batchState(batchId))?.status).toBe('approved');
+    expect((await batchState(batchId))?.approvedBy).toBe(IDs.manager);
+  });
+
+  it('rejects an unsaved client override instead of silently changing the persisted review draft', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({
+      rowDecisions: [{ rowIndex: 1, inventoryItemId: 'forged-item-id' }],
+    });
+
+    expect(res.status).toBe(400);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
   it('returns 403 (not 401) when the user lacks access to the destination store', async () => {
     authState.userId = IDs.scoped;
     const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
@@ -191,6 +277,29 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     const res = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
 
     expect(res.status).toBe(403);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('rejects a destination-authorized store user before any approval write', async () => {
+    authState.userId = IDs.staff;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('company admins and managers');
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('rejects a direct service approval from a destination-authorized store user', async () => {
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: IDs.staff, companyId: IDs.company }),
+    ).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+      message: 'Only company admins and managers can approve Orderly imports.',
+    });
     expect((await batchState(batchId))?.status).toBe('pending_review');
   });
 
@@ -224,5 +333,453 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
       .send({ rowDecisions: [] });
 
     expect(res.status).toBe(404);
+  });
+
+  it('rejects a non-Orderly batch instead of applying Orderly approval logic', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      sourceSystem: 'INVOICE',
+    });
+
+    const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+    expect(res.status).toBe(404);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it.each(['cancelled', 'failed', 'processing'])(
+    'rejects %s batches before any approval write',
+    async (status) => {
+      authState.userId = IDs.admin;
+      const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true, status });
+
+      const res = await supertest(buildApp()).post(url(batchId)).send({});
+
+      expect(res.status).toBe(409);
+      expect((await batchState(batchId))?.status).toBe(status);
+    },
+  );
+});
+
+describe.skipIf(SKIP)('Orderly review decision drafts', () => {
+  const decisionsUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/review-decisions`;
+  const manifestUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/review-decisions/manifest`;
+  const approvalUrl = (id: string) => `/api/inventory-import/orderly/batches/${id}/approve`;
+
+  it('stores a draft decision and returns it after a separate read', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.decisions).toHaveLength(1);
+    expect(saved.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions).toHaveLength(1);
+    expect(reloaded.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+  });
+
+  it('rejects draft access for a non-Orderly batch', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      sourceSystem: 'INVOICE',
+    });
+
+    const [read, write, preview] = await Promise.all([
+      supertest(buildApp()).get(decisionsUrl(batchId)),
+      supertest(buildApp()).put(decisionsUrl(batchId)).send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      }),
+      supertest(buildApp()).get(`/api/inventory-import/orderly/batches/${batchId}/resolution-preview`),
+    ]);
+
+    expect(read.status).toBe(404);
+    expect(write.status).toBe(404);
+    expect(preview.status).toBe(404);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('rejects a stale reviewer revision rather than silently overwriting a saved draft', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const firstSave = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+    expect(firstSave.status).toBe(200);
+
+    const staleSave = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+    expect(staleSave.status).toBe(409);
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions).toHaveLength(1);
+    expect(reloaded.body.decisions[0].revision).toBe(1);
+  });
+
+  it('still allows a destination-authorized store user to save a review draft', async () => {
+    authState.userId = IDs.staff;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId));
+    expect(reloaded.status).toBe(200);
+    expect(reloaded.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    });
+
+    const preview = await supertest(buildApp())
+      .get(`/api/inventory-import/orderly/batches/${batchId}/resolution-preview`);
+    expect(preview.status).toBe(200);
+    expect((await batchState(batchId))?.status).toBe('pending_review');
+  });
+
+  it('exports and imports a signed decision manifest back into its original pending batch', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      })
+      .expect(200);
+
+    const exported = await supertest(buildApp()).get(manifestUrl(batchId)).expect(200);
+    expect(exported.body).toMatchObject({
+      manifestVersion: 1,
+      batch: {
+        batchId,
+        companyId: IDs.company,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: IDs.sourceProperty,
+      },
+      decisions: [{
+        rowIndex: 1,
+        revision: 1,
+        decision: { inventoryItemId: null },
+      }],
+    });
+    expect(exported.body.integrity.signature).toMatch(/^[a-f0-9]{64}$/);
+    expect(exported.body.decisions[0].evidence).toMatchObject({
+      sourceItemCode: null,
+      description: expect.stringContaining('Route Test Item'),
+    });
+
+    const imported = await supertest(buildApp())
+      .post(manifestUrl(batchId))
+      .send({ manifest: exported.body })
+      .expect(200);
+    expect(imported.body).toMatchObject({
+      status: 'accepted',
+      accepted: [{ rowIndex: 1 }],
+      rejected: [],
+      stale: [],
+    });
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId)).expect(200);
+    expect(reloaded.body.decisions).toHaveLength(1);
+    expect(reloaded.body.decisions[0]).toMatchObject({
+      rowIndex: 1,
+      revision: 2,
+      decision: { inventoryItemId: null },
+    });
+  });
+
+  it('rejects a manifest for another batch without changing that batch’s decisions', async () => {
+    authState.userId = IDs.admin;
+    const sourceBatchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    const targetBatchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await supertest(buildApp())
+      .put(decisionsUrl(sourceBatchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      })
+      .expect(200);
+    const exported = await supertest(buildApp()).get(manifestUrl(sourceBatchId)).expect(200);
+
+    const rejected = await supertest(buildApp())
+      .post(manifestUrl(targetBatchId))
+      .send({ manifest: exported.body })
+      .expect(409);
+    expect(rejected.body.error).toContain('different import scope');
+
+    const targetDraft = await supertest(buildApp()).get(decisionsUrl(targetBatchId)).expect(200);
+    expect(targetDraft.body.decisions).toEqual([]);
+  });
+
+  it('returns stale manifest evidence without writing any decision when source rows change', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      })
+      .expect(200);
+    const exported = await supertest(buildApp()).get(manifestUrl(batchId)).expect(200);
+
+    await db
+      .update(inventoryImportRows)
+      .set({ cleanedDescription: `Changed evidence ${batchId}` })
+      .where(eq(inventoryImportRows.batchId, batchId));
+
+    const stale = await supertest(buildApp())
+      .post(manifestUrl(batchId))
+      .send({ manifest: exported.body })
+      .expect(409);
+    expect(stale.body).toMatchObject({
+      status: 'stale',
+      accepted: [],
+      rejected: [],
+      stale: [{ rowIndex: 1 }],
+    });
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId)).expect(200);
+    expect(reloaded.body.decisions).toMatchObject([{
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    }]);
+  });
+
+  it('rejects a forged manifest without replacing an existing saved decision', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      })
+      .expect(200);
+    const exported = await supertest(buildApp()).get(manifestUrl(batchId)).expect(200);
+    exported.body.decisions[0].decision = { inventoryItemId: 'forged-item-id' };
+
+    const rejected = await supertest(buildApp())
+      .post(manifestUrl(batchId))
+      .send({ manifest: exported.body })
+      .expect(409);
+    expect(rejected.body.error).toContain('integrity verification failed');
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId)).expect(200);
+    expect(reloaded.body.decisions).toMatchObject([{
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    }]);
+  });
+
+  it('rejects one invalid decision in a validly signed manifest without partially writing the valid one', async () => {
+    authState.userId = IDs.admin;
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { inventoryItemId: null },
+        }],
+      })
+      .expect(200);
+    const exported = await supertest(buildApp()).get(manifestUrl(batchId)).expect(200);
+    const { integrity: _integrity, ...unsigned } = exported.body;
+    const partialInvalid = signManifest({
+      ...unsigned,
+      decisions: [
+        ...unsigned.decisions,
+        {
+          ...unsigned.decisions[0],
+          decision: { inventoryItemId: 'forged-item-id' },
+        },
+      ],
+    });
+
+    const rejected = await supertest(buildApp())
+      .post(manifestUrl(batchId))
+      .send({ manifest: partialInvalid })
+      .expect(400);
+    expect(rejected.body).toMatchObject({
+      status: 'rejected',
+      accepted: [],
+      stale: [],
+      rejected: [{ rowIndex: 1 }],
+    });
+
+    const reloaded = await supertest(buildApp()).get(decisionsUrl(batchId)).expect(200);
+    expect(reloaded.body.decisions).toMatchObject([{
+      rowIndex: 1,
+      revision: 1,
+      decision: { inventoryItemId: null },
+    }]);
+  });
+
+  it('rejects malformed manifests and all manifest access once a batch is no longer pending review', async () => {
+    authState.userId = IDs.admin;
+    const pendingBatchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    const malformed = await supertest(buildApp())
+      .post(manifestUrl(pendingBatchId))
+      .send({ manifest: { manifestVersion: 1 } })
+      .expect(400);
+    expect(malformed.body.error).toContain('missing required sections');
+    expect((await supertest(buildApp()).get(decisionsUrl(pendingBatchId)).expect(200)).body.decisions).toEqual([]);
+
+    const approvedBatchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      status: 'approved',
+    });
+    const blocked = await supertest(buildApp()).get(manifestUrl(approvedBatchId)).expect(409);
+    expect(blocked.body.error).toContain('already been approved');
+  });
+
+  it('uses a saved compatible link when approval receives an empty request body', async () => {
+    authState.userId = IDs.admin;
+    const sourceItemCode = `DRAFT-${IDs.RUN}`.toUpperCase();
+    const candidateName = `Saved Draft Candidate ${IDs.RUN}`;
+    const [candidate] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: IDs.company,
+        name: candidateName,
+        unitId: await eachUnitId(),
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+
+    await db.insert(inventoryItemExternalMappings).values({
+      companyId: IDs.company,
+      inventoryItemId: candidate.id,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: IDs.sourceProperty,
+      sourceExternalId: `PRIOR-${IDs.RUN}`.toUpperCase(),
+      sourceDescription: candidateName,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      matchStrategy: 'manual',
+    });
+
+    const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
+    await db
+      .update(inventoryImportRows)
+      .set({
+        rawDescription: candidateName,
+        cleanedDescription: candidateName,
+        sourceItemCode,
+        itemCodeStatus: 'valid',
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      })
+      .where(eq(inventoryImportRows.batchId, batchId));
+
+    const saved = await supertest(buildApp())
+      .put(decisionsUrl(batchId))
+      .send({
+        changes: [{
+          rowIndex: 1,
+          expectedRevision: null,
+          decision: { action: 'link_existing', inventoryItemId: candidate.id },
+        }],
+      });
+    expect(saved.status).toBe(200);
+
+    const approval = await supertest(buildApp()).post(approvalUrl(batchId)).send({});
+    expect(approval.status).toBe(200);
+    expect(approval.body.itemsCreated).toBe(0);
+
+    const [approvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    expect(approvedRow.resolvedInventoryItemId).toBe(candidate.id);
+
+    const mappings = await db
+      .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+      .from(inventoryItemExternalMappings)
+      .where(
+        eq(inventoryItemExternalMappings.sourceExternalId, sourceItemCode),
+      );
+    expect(mappings).toEqual([{ inventoryItemId: candidate.id }]);
   });
 });

@@ -1,0 +1,478 @@
+# PM Reset — Revised Orderly Identity Logic for May → June
+
+Replit is a few steps behind the current product decision, so please treat this as the new source-of-truth direction for #1236.
+
+## Product objective
+
+FnB Cost Pro must preserve **one canonical inventory item across monthly Orderly imports**, even when Orderly source identifiers are incomplete or unstable.
+
+The canonical identity remains:
+
+`inventory_item.id`
+
+Orderly Item Codes, normalized descriptions, pack geometry, vendor/supplier, and historical mappings are **evidence about that canonical item**. They are not the canonical item themselves.
+
+The immediate goal is not to build a generalized identity framework.
+
+The immediate goal is:
+
+**Flush → import untouched May → approve → import untouched June → overwhelmingly reuse May canonical inventory items → repeat until correct.**
+
+---
+
+## What we now know from the real May and June workbooks
+
+Independent review plus Claude verification against the actual files established:
+
+- May detail rows: 5,358
+- June detail rows: 5,409
+- May blank Item Code rows: 1,039
+- June blank Item Code rows: 1,045
+- blank rows collapse to roughly 626 / 627 distinct product+pack groups
+- normalized product continuity between months is extremely high
+- about 43 same-product + same-pack identities change Item Code between May and June
+- only a small number of products are genuinely new in June
+- blank and coded representations of the same product can coexist in the same workbook
+- repeated storage-location rows are common
+- supplier/vendor changes can occur for the same product
+- pack representation can change between months
+
+Therefore:
+
+**Item Code alone cannot be treated as the canonical product identity.**
+
+---
+
+# Critical normalization finding
+
+`Item Description` is not a clean product-name field.
+
+It contains:
+
+- the actual product name
+- the supplier name
+- trailing pack/count text
+
+Example conceptually:
+
+`Banana Mr. Green's Produce 1 / 0 LB`
+
+The workbook also contains a structured `Supplier` column with the supplier name separately.
+
+This gives us a deterministic normalization path.
+
+## Required description normalization order
+
+Before identity matching:
+
+1. Start with the original Item Description.
+2. Remove the exact supplier substring using the row's structured `Supplier` field.
+3. Remove the trailing embedded pack/count suffix.
+4. Normalize punctuation, spacing, quotes, hyphens, and case.
+5. Preserve meaningful product qualifiers.
+
+Do NOT strip meaningful words such as:
+
+- Ground / Whole / Seed
+- Red / White
+- cuts
+- varietals
+- styles
+- flavor/type descriptors
+
+Example false-merge safeguard:
+
+`Coriander Ground`
+
+must remain distinct from:
+
+`Coriander Whole`
+
+Supplier stripping is deterministic source cleanup.
+
+Product-word stripping is not.
+
+---
+
+# Revised identity hierarchy
+
+## 1. Existing confirmed mapping wins
+
+If the incoming Orderly source identity already maps to an FnB canonical item, reuse it.
+
+Do not rediscover identity every month.
+
+---
+
+## 2. Reliable Orderly Item Code is strong source evidence
+
+When present and already mapped, use it.
+
+But:
+
+**A new or different Item Code does NOT automatically mean a new canonical inventory item.**
+
+If June presents the same normalized product identity as May with a different Item Code, that new Item Code may represent:
+
+- a vendor switch
+- a vendor SKU change
+- an Orderly correction
+- a new source/vendor identity for the same product
+
+The new code should be allowed to attach to the existing canonical item when the evidence supports that conclusion.
+
+Do not replace the old source identity simply because a new one appears.
+
+---
+
+## 3. Derived Orderly identity for blank or unstable codes
+
+When Item Code is blank, or when code evidence alone is insufficient, derive a source-scoped alternate identity from:
+
+- sourceSystem = ORDERLY
+- sourcePropertyId
+- normalized product name
+- normalized/canonical pack geometry
+
+This is a **source identity**, not a new canonical key.
+
+Conceptually:
+
+`ORDERLY : property : normalized-name : normalized-pack`
+
+Do not include in the identity:
+
+- storage location
+- price
+- counted quantity
+
+Supplier/vendor should be supporting/disambiguating evidence, not automatically part of the alternate key, because the same underlying item may move between suppliers.
+
+---
+
+# Pre-ingestion reconciliation
+
+The importer should reason across the workbook **before creating canonical items**.
+
+Conceptual pipeline:
+
+Raw workbook
+→ parse
+→ deterministic normalization
+→ derive source identities
+→ group equivalent physical rows
+→ reconcile blank/coded siblings
+→ consult existing mappings/canonical inventory
+→ classify
+→ preview
+→ approval
+
+This is important because Orderly exports physical storage rows, not one clean product row per item.
+
+---
+
+# Same-workbook grouping
+
+Multiple rows that represent the same product in different storage locations should not become multiple identity decisions.
+
+Example:
+
+- Coriander Ground — Dry Storeroom — blank code
+- Coriander Ground — Main Kitchen — blank code
+- Coriander - Ground Sysco — coded
+
+If normalization produces one unambiguous product+pack group, the coded row is strong supporting evidence for the blank rows.
+
+The reviewer should not be asked to resolve each physical location row separately.
+
+Review is at the **identity-group level**.
+
+---
+
+# Blank Item Code behavior
+
+Blank Item Code must NOT mean:
+
+`manual review required`
+
+for every row.
+
+We do not want:
+
+`1,039 blank rows → 1,039 human decisions`
+
+Instead:
+
+`1,039 rows`
+→ `~626 identity groups`
+→ auto-resolve unambiguous groups
+→ only true ambiguity groups require review
+
+## Blank groups may auto-resolve when evidence is unambiguous
+
+Examples of useful evidence:
+
+- coded sibling in the same workbook
+- prior confirmed mapping from May
+- exact normalized identity continuity into June
+- compatible pack evidence
+- consistent supplier evidence when useful
+- multiple storage rows reinforcing the same group
+
+## Blank rows must not auto-create canonical items merely because they lack Item Code
+
+If identity remains ambiguous, hold the **group**, not every row.
+
+---
+
+# Changed Item Codes between months
+
+We already confirmed roughly 43 same-product + same-pack cases where Item Code changes.
+
+Required behavior:
+
+If June normalized identity strongly corresponds to a May canonical item:
+
+- reuse May `inventory_item.id`
+- attach the new Orderly Item Code/source identity to that item
+- retain existing source mappings
+- do not create a duplicate canonical item
+
+Item Code churn is a source-identity event, not automatically a product-identity event.
+
+---
+
+# Pack changes
+
+Pack changes are evidence, not verdicts.
+
+A changed pack must not automatically mean:
+
+- same item
+or
+- new item
+
+It should feed the normal confidence/ambiguity classification.
+
+Do not create a separate elaborate pack-review subsystem.
+
+Examples may represent:
+
+- real purchase-pack change
+- vendor switch
+- corrected source data
+- genuinely different product variant
+
+If evidence is insufficient, classify as ambiguous and present one group-level review.
+
+---
+
+# Persistence
+
+Before adding any new table, use the existing source/external mapping infrastructure.
+
+The current mapping shape should remain conceptually:
+
+`source identity → canonical inventory_item.id`
+
+A source identity may be:
+
+- a real Orderly Item Code
+- a derived Orderly alternate identity
+
+The implementation should reuse existing mapping structures if they can represent that cleanly.
+
+Do NOT introduce a separate fingerprint subsystem unless Replit can demonstrate the existing mapping mechanism cannot support this.
+
+---
+
+# May bootstrap behavior
+
+May is our clean bootstrap fixture.
+
+We will flush/reset the Orderly test state and import the original untouched May workbook.
+
+May may legitimately create canonical inventory items where FnB has no prior identity.
+
+But before creating them, the importer must:
+
+- normalize descriptions correctly
+- collapse repeated locations
+- reconcile same-workbook blank/coded siblings
+- avoid duplicate canonical creation for equivalent source identities
+- group ambiguous cases intelligently
+
+May establishes the initial canonical/source mapping state.
+
+---
+
+# June is the real acceptance test
+
+After May approval, import the original untouched June workbook.
+
+June should overwhelmingly resolve back to May canonical items.
+
+Given the actual data continuity, a June preview that wants to create hundreds or thousands of new canonical items is wrong.
+
+June should identify separately:
+
+- existing May canonical matches
+- matches where Item Code changed
+- matches based on retained alternate identity
+- same-workbook blank/coded reconciliations
+- pack-change ambiguities
+- genuinely new June products
+- unresolved/conflicted identity groups
+
+---
+
+# Development methodology
+
+This is critical.
+
+Do not fix the source data.
+
+Use:
+
+**FLUSH → MAY → APPROVE → JUNE → MEASURE → FIX → FLUSH → REPEAT**
+
+Every iteration starts from clean Orderly test state.
+
+Use the exact original untouched May and June workbooks.
+
+Do NOT:
+
+- edit workbook Item Codes
+- add IDs to blank rows
+- rename product descriptions externally
+- pre-clean spreadsheets manually
+- seed DB mappings just to make the test pass
+- manually patch identity rows between imports
+- special-case Bay Hill products in code
+- reuse corrective database artifacts from a failed cycle
+
+The application must reconstruct the correct identity state from the original source every time.
+
+---
+
+# Required reporting per test cycle
+
+After each clean May → June run, report:
+
+## May
+
+- total physical rows
+- unique normalized identity groups
+- canonical inventory items created
+- existing items reused
+- blank rows grouped
+- blank groups auto-resolved
+- same-workbook blank/coded groups reconciled
+- ambiguous groups requiring review
+- duplicate canonical items detected/proposed
+
+## June
+
+- total rows
+- matches to May canonical items
+- matches via existing Item Code
+- matches via derived alternate identity
+- changed-code matches
+- blank-code retained matches
+- same-workbook reconciliation matches
+- pack-change ambiguous groups
+- genuinely new products
+- unresolved groups
+- duplicate canonical items proposed
+
+Primary metric:
+
+**How many June product identities resolve to the correct May canonical inventory item?**
+
+Secondary UX metric:
+
+**How many actual human review groups remain?**
+
+The 1,000+ blank physical rows are not the review count.
+
+---
+
+# Acceptance target
+
+We are not setting an artificial perfect-number requirement yet.
+
+But given the verified source continuity:
+
+- June should overwhelmingly reuse May canonical inventory
+- genuinely new June items should be a small minority
+- duplicate canonical creation for continuing products should approach zero
+- manual review should be limited to genuinely ambiguous identity groups, likely dozens rather than hundreds
+- repeated clean runs must produce the same results
+
+---
+
+# Explicit architecture constraints
+
+Do not build:
+
+- global product fingerprints
+- a new identity service
+- cross-source canonical identity architecture
+- historical rewrite machinery
+- new provenance infrastructure
+- elaborate concurrency machinery
+- a separate pack-review engine
+
+unless the clean May → June test proves one is necessary.
+
+Prefer:
+
+- deterministic normalization
+- existing matcher improvements
+- existing source mapping persistence
+- group-level reconciliation
+- clear ambiguous-state handling
+
+---
+
+# Claude independent review findings
+
+Claude independently validated the actual workbooks and agreed with the simplified architecture.
+
+Key findings:
+
+- row and blank-code counts validated
+- ~626 / 627 blank product+pack groups
+- ~43 code changes validated exactly
+- extremely high May→June normalized identity continuity
+- blank/coded coexistence confirmed
+- supplier text must be stripped using the structured Supplier column
+- meaningful qualifier words must be preserved
+- existing source/external mapping model should be extended rather than creating a new table
+
+Claude's simplest architecture recommendation was essentially:
+
+**Normalize**
+→ **group within workbook**
+→ **check existing external mapping**
+→ **classify existing/new/ambiguous**
+→ **normal approval persists/reuses mapping**
+
+That is the direction to implement.
+
+---
+
+# PM request to Replit
+
+Please revise #1236 to match this model.
+
+Before coding, return:
+
+1. revised task
+2. which existing mapping structure will be reused
+3. exact normalization rules
+4. proposed classification states
+5. flush/reset method for repeatable May→June testing
+6. baseline expected test report format
+
+Do not expand the architecture beyond what is necessary to make the untouched May→June workflow pass.

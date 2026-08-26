@@ -7,10 +7,34 @@
 import { describe, it, expect } from 'vitest';
 import {
   breakTieByLocation,
+  classifySourceItemCode,
   computeResolutionSummary,
+  getHoldReason,
   type LocationAssignment,
   type MatchResult,
 } from './OrderlyMatcher';
+
+describe('classifySourceItemCode', () => {
+  it('keeps compact vendor-style codes eligible for a durable mapping', () => {
+    expect(classifySourceItemCode('KETEL-750', 'valid')).toBe('stable');
+    expect(classifySourceItemCode('012345678901', 'valid')).toBe('stable');
+  });
+
+  it('holds free-text pseudo-codes rather than treating them as vendor identities', () => {
+    expect(classifySourceItemCode('oni jum', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('tuna saku 2 lb', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('Onions', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('ONIONS', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('2% Milk', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('12OZ Coke', 'valid')).toBe('pseudo_code');
+    expect(classifySourceItemCode('1 Onion', 'valid')).toBe('pseudo_code');
+  });
+
+  it('does not infer a code from blank or parser-rejected values', () => {
+    expect(classifySourceItemCode(null, 'blank')).toBe('unavailable');
+    expect(classifySourceItemCode('N/A', 'placeholder')).toBe('unavailable');
+  });
+});
 
 // ─── breakTieByLocation ───────────────────────────────────────────────────────
 
@@ -125,6 +149,37 @@ describe('computeResolutionSummary — will-create vs held split', () => {
     ]);
     expect(s.itemsWillCreate).toBe(3);
     expect(s.itemsHeldForReview).toBe(1);
+  });
+});
+
+describe('getHoldReason', () => {
+  const unresolved = {
+    strategy: 'none' as const,
+    confidence: 'none' as const,
+    matchedId: null,
+    candidateIds: [],
+    requiresReview: false,
+  };
+
+  it('holds only blank-code rows that cannot be safely resolved', () => {
+    expect(getHoldReason('blank', unresolved)).toBe('blank_item_code');
+    expect(getHoldReason('valid', unresolved)).toBeNull();
+    expect(getHoldReason('blank', {
+      ...unresolved,
+      strategy: 'item_code',
+      confidence: 'high',
+      matchedId: 'item-1',
+    })).toBeNull();
+  });
+
+  it('keeps a blank-code review match held instead of treating it as a create candidate', () => {
+    expect(getHoldReason('blank', {
+      ...unresolved,
+      strategy: 'fuzzy',
+      confidence: 'low',
+      matchedId: 'item-1',
+      requiresReview: true,
+    })).toBe('blank_item_code');
   });
 });
 

@@ -98,6 +98,7 @@ export interface ImportBatch {
 export interface CandidateDetail {
   id: string;
   name: string;
+  internalItemNumber?: number | null;
   pluSku?: string | null;
   caseSize?: number | null;
   /** Storage locations this item has previously been counted at (from import history). */
@@ -110,6 +111,9 @@ export interface PackEvidence {
   innerPackQuantity: number | null;
   baseUnitQuantity: number | null;
   baseUnit: string | null;
+  /** Computed by the server from complete pack geometry; never inferred in UI. */
+  normalizedUnit?: string | null;
+  totalBaseUnits?: number | null;
 }
 
 export interface MatchResult {
@@ -130,7 +134,18 @@ export interface MatchResult {
   possibleRecodeMatchedId?: string | null;
   packCompatibility?: 'compatible' | 'incompatible' | 'unknown' | null;
   packCompatibilityReason?: string | null;
+  sourcePackEvidence?: PackEvidence | null;
   candidatePackEvidence?: PackEvidence | null;
+  recodeEvidenceClass?:
+    | 'compatible_alternate'
+    | 'new_pack_size'
+    | 'source_data_conflict'
+    | 'pack_evidence_missing'
+    | 'unreliable_code';
+  sourceDataConflict?: {
+    rowIndexes: number[];
+    reason: string;
+  };
 }
 
 export interface RowPreview {
@@ -138,6 +153,8 @@ export interface RowPreview {
   storageLocation: string | null;
   sourceItemCode: string | null;
   itemCodeStatus: string | null;
+  sourceCodeReliability: 'stable' | 'pseudo_code' | 'unavailable';
+  packSizeRaw: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
   sourceCategory: string | null;
@@ -151,6 +168,13 @@ export interface RowPreview {
   itemMatch: MatchResult;
   vendorMatch: { vendorId: string | null; isNew: boolean; confidence: string; requiresReview: boolean };
   locationMatch: { locationId: string | null; isNew: boolean; normalizedName: string };
+  /** Derived by the API using the same blank-code rule used during approval. */
+  heldForReview: boolean;
+  holdReason: 'blank_item_code' | null;
+  /** Rows sharing normalized description + canonical pack evidence. */
+  identityGroupKey?: string | null;
+  identityGroupRows?: number[];
+  identityGroupStatus?: 'existing_item' | 'new_candidate' | 'review_required' | 'unavailable';
 }
 
 export interface ResolutionPreview {
@@ -185,6 +209,30 @@ export interface ResolutionPreview {
   newLocations: string[];
 
   newVendors: string[];
+
+  recodeSummary: {
+    compatibleAlternates: number;
+    newPackSizes: number;
+    sourceDataConflicts: number;
+    unreliableCodes: number;
+    packEvidenceMissing: number;
+  };
+
+  identitySummary?: {
+    uniqueIdentityGroups: number;
+    identityGroupsResolvedToExisting: number;
+    identityGroupsNewCandidates: number;
+    identityGroupsRequiringReview: number;
+    blankCodeGroupsWithCodedSibling: number;
+    blankCodeGroupsAutoResolved: number;
+    alternateIdentityMatches: number;
+    blankCodeClassification: {
+      confirmed: { rows: number; valueTotal: number };
+      reviewable: { rows: number; valueTotal: number };
+      conflicted: { rows: number; valueTotal: number };
+      held: { rows: number; valueTotal: number };
+    };
+  };
 }
 
 export interface ApprovalResult {
@@ -200,6 +248,7 @@ export interface ApprovalResult {
   locationsLinked: number;
   vendorItemsCreated: number;
   rowsSkipped: number;
+  rowsHeldForReview: number;
   rowsProcessed: number;
   storeItemsCreated: number;
   storeItemsReactivated: number;
@@ -1324,7 +1373,9 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
         <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
         <h2 className="text-xl font-semibold">Import Approved</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          All rows have been committed to your inventory catalog.
+          {result.rowsHeldForReview > 0
+            ? `${result.rowsHeldForReview.toLocaleString()} blank-code ${result.rowsHeldForReview === 1 ? "row remains" : "rows remain"} held and unlinked; the rest of the import was committed.`
+            : "All rows have been committed to your inventory catalog."}
         </p>
       </div>
 
@@ -1347,6 +1398,7 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
         {[
           { label: "Rows processed", value: result.rowsProcessed },
           { label: "Rows skipped", value: result.rowsSkipped },
+          { label: "Rows held for review", value: result.rowsHeldForReview },
           { label: "Items created", value: result.itemsCreated },
           { label: "Items linked", value: result.itemsLinked },
           { label: "Categories assigned", value: result.categoriesCreated },
@@ -1381,11 +1433,34 @@ function ApprovedSummary({ result, onDone, onConvertNow }: { result: ApprovalRes
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function OrderlyImport() {
-  const [step, setStep] = useState<WizardStep>("list");
-  const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [resumeTarget] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const batchId = params.get("orderlyBatch");
+    const step = params.get("orderlyStep");
+    // The server still authorizes the batch before any preview data is shown.
+    // This only preserves the pending wizard destination across a full reload.
+    if (batchId && (step === "date" || step === "preview")) {
+      return { step: step as WizardStep, batchId };
+    }
+    return { step: "list" as WizardStep, batchId: null };
+  });
+  const [step, setStep] = useState<WizardStep>(resumeTarget.step);
+  const [activeBatchId, setActiveBatchId] = useState<string | null>(resumeTarget.batchId);
   const [detectedDate, setDetectedDate] = useState<string | null>(null);
   const [approvalResult, setApprovalResult] = useState<ApprovalResult | null>(null);
   const [countSessionResult, setCountSessionResult] = useState<CreateCountSessionResult | null>(null);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (activeBatchId && (step === "date" || step === "preview")) {
+      url.searchParams.set("orderlyBatch", activeBatchId);
+      url.searchParams.set("orderlyStep", step);
+    } else {
+      url.searchParams.delete("orderlyBatch");
+      url.searchParams.delete("orderlyStep");
+    }
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [activeBatchId, step]);
 
   function selectBatch(batch: ImportBatch) {
     setActiveBatchId(batch.id);

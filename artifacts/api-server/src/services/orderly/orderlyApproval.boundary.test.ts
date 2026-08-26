@@ -31,6 +31,7 @@ import {
   inventoryImportRows,
   importSourcePropertyBindings,
   inventoryItems,
+  inventoryItemExternalMappings,
   inventoryLocations,
   storeInventoryItems,
   vendors,
@@ -48,7 +49,7 @@ const ID = {
   storeCompanyB: `iap-costore-b-${RUN}`,
   adminA: `iap-adminA-${RUN}`,
   adminB: `iap-adminB-${RUN}`,
-  scopedUser: `iap-scoped-${RUN}`,
+  scopedManager: `iap-scoped-manager-${RUN}`,
   inactiveUser: `iap-inactive-${RUN}`,
   bindingBayHill: `iap-bind-bh-${RUN}`,
   bindingOther: `iap-bind-other-${RUN}`,
@@ -67,13 +68,25 @@ async function stageBatch(opts: {
   targetStoreId?: string | null;
   sourcePropertyBindingId?: string | null;
   sourcePropertyId?: string | null;
+  sourceSystem?: string;
   status?: string;
+  rows?: Array<{
+    sourceItemCode?: string | null;
+    itemCodeStatus?: string;
+    rawDescription?: string;
+    cleanedDescription?: string;
+    supplierRaw?: string | null;
+    caseQuantity?: number | null;
+    innerPackQuantity?: number | null;
+    baseUnitQuantity?: number | null;
+    baseUnit?: string | null;
+  }>;
 }): Promise<string> {
   const id = `iap-batch-${RUN}-${batchSeq++}`;
   await db.insert(inventoryImportBatches).values({
     id,
     companyId: opts.companyId,
-    sourceSystem: 'ORDERLY',
+    sourceSystem: opts.sourceSystem ?? 'ORDERLY',
     fileHash: `hash-${id}`,
     originalFilename: `${id}.xlsx`,
     sheetName: 'Inventory Detail',
@@ -87,20 +100,27 @@ async function stageBatch(opts: {
     sourcePropertyId: opts.sourcePropertyId ?? null,
   });
 
-  // One simple row so an approved run has real work to do.
-  await db.insert(inventoryImportRows).values({
+  // One simple row so an approved run has real work to do. Targeted callers
+  // can stage evidence edge cases without bypassing the shared service.
+  const rows = opts.rows ?? [{}];
+  await db.insert(inventoryImportRows).values(rows.map((row, index) => ({
     batchId: id,
-    rowIndex: 1,
+    rowIndex: index + 1,
     sheetName: 'Inventory Detail',
-    rawData: { desc: 'Test Item' },
-    rawDescription: `Boundary Test Item ${id}`,
-    cleanedDescription: `Boundary Test Item ${id}`,
-    caseQuantity: 1,
+    rawData: { desc: row.rawDescription ?? 'Test Item' },
+    rawDescription: row.rawDescription ?? `Boundary Test Item ${id}`,
+    cleanedDescription: row.cleanedDescription ?? row.rawDescription ?? `Boundary Test Item ${id}`,
+    sourceItemCode: row.sourceItemCode ?? null,
+    supplierRaw: row.supplierRaw ?? null,
+    caseQuantity: row.caseQuantity ?? 1,
+    innerPackQuantity: row.innerPackQuantity ?? null,
+    baseUnitQuantity: row.baseUnitQuantity ?? null,
+    baseUnit: row.baseUnit ?? null,
     packagePrice: 10,
-    itemCodeStatus: 'missing',
-    supplierStatus: 'missing',
+    itemCodeStatus: row.itemCodeStatus ?? 'missing',
+    supplierStatus: row.supplierRaw ? 'valid' : 'missing',
     rowStatus: 'new_item_candidate',
-  });
+  })));
 
   return id;
 }
@@ -121,12 +141,13 @@ async function snapshotBatch(batchId: string) {
 
 /** Count domain records that an approval would create. */
 async function countDomainRecords(companyId: string) {
-  const [items, locs, vends] = await Promise.all([
+  const [items, locs, vends, mappings] = await Promise.all([
     db.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.companyId, companyId)),
     db.select({ id: inventoryLocations.id }).from(inventoryLocations).where(eq(inventoryLocations.companyId, companyId)),
     db.select({ id: vendors.id }).from(vendors).where(eq(vendors.companyId, companyId)),
+    db.select({ id: inventoryItemExternalMappings.id }).from(inventoryItemExternalMappings).where(eq(inventoryItemExternalMappings.companyId, companyId)),
   ]);
-  return { items: items.length, locations: locs.length, vendors: vends.length };
+  return { items: items.length, locations: locs.length, vendors: vends.length, mappings: mappings.length };
 }
 
 beforeAll(async () => {
@@ -148,14 +169,15 @@ beforeAll(async () => {
     { id: ID.adminA, email: `iap-admina-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyA, active: 1 },
     // Company admin for company B — must not touch company A.
     { id: ID.adminB, email: `iap-adminb-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyB, active: 1 },
-    // Store user in company A assigned ONLY to "Other Club" — not Bay Hill.
-    { id: ID.scopedUser, email: `iap-scoped-${RUN}@test.local`, role: 'store_user', companyId: ID.companyA, active: 1 },
+    // Store manager in company A assigned ONLY to "Other Club" — not Bay Hill.
+    // This must reach the destination guard after passing the approval role gate.
+    { id: ID.scopedManager, email: `iap-scoped-manager-${RUN}@test.local`, role: 'store_manager', companyId: ID.companyA, active: 1 },
     // Deactivated user in company A.
     { id: ID.inactiveUser, email: `iap-inactive-${RUN}@test.local`, role: 'company_admin', companyId: ID.companyA, active: 0 },
   ]);
 
   await db.insert(userStores).values([
-    { userId: ID.scopedUser, storeId: ID.storeOther },
+    { userId: ID.scopedManager, storeId: ID.storeOther },
   ]);
 
   await db.insert(importSourcePropertyBindings).values([
@@ -199,8 +221,8 @@ afterAll(async () => {
   await db.delete(inventoryItems).where(inArray(inventoryItems.companyId, companyIds)).catch(() => {});
   await db.delete(inventoryLocations).where(inArray(inventoryLocations.companyId, companyIds)).catch(() => {});
   await db.delete(vendors).where(inArray(vendors.companyId, companyIds)).catch(() => {});
-  await db.delete(userStores).where(eq(userStores.userId, ID.scopedUser)).catch(() => {});
-  await db.delete(users).where(inArray(users.id, [ID.adminA, ID.adminB, ID.scopedUser, ID.inactiveUser])).catch(() => {});
+  await db.delete(userStores).where(eq(userStores.userId, ID.scopedManager)).catch(() => {});
+  await db.delete(users).where(inArray(users.id, [ID.adminA, ID.adminB, ID.scopedManager, ID.inactiveUser])).catch(() => {});
   await db.delete(companyStores).where(inArray(companyStores.companyId, companyIds)).catch(() => {});
   await db.delete(companiesTable).where(inArray(companiesTable.id, companyIds)).catch(() => {});
 });
@@ -251,6 +273,98 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
     expect(afterSecond?.status).toBe('approved');
     expect(afterSecond?.targetStoreId).toBe(afterFirst?.targetStoreId);
     expect(afterSecond?.approvedAt?.toISOString()).toBe(afterFirst?.approvedAt?.toISOString());
+  });
+
+  it('blocks a descriptive pseudo-code before any item or external mapping can be created', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: 'ONIONS',
+        itemCodeStatus: 'valid',
+        rawDescription: 'Onions',
+        supplierRaw: 'Evidence Vendor',
+        caseQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      }],
+    });
+    const beforeBatch = await snapshotBatch(batchId);
+    const beforeDomain = await countDomainRecords(ID.companyA);
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ).rejects.toThrow(/look like descriptions require manual source review/i);
+
+    expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);
+  });
+
+  it('blocks numeric-looking description text in Item Code before it can persist a mapping', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: '2% Milk',
+        itemCodeStatus: 'valid',
+        rawDescription: 'Milk - 2%',
+        supplierRaw: 'Evidence Vendor',
+        caseQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      }],
+    });
+    const beforeBatch = await snapshotBatch(batchId);
+    const beforeDomain = await countDomainRecords(ID.companyA);
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ).rejects.toThrow(/look like descriptions require manual source review/i);
+
+    expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);
+  });
+
+  it('blocks contradictory same-vendor code pack evidence before any approval write', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [
+        {
+          sourceItemCode: 'MILK-1',
+          itemCodeStatus: 'valid',
+          rawDescription: 'Milk - Whole',
+          supplierRaw: 'Evidence Vendor',
+          caseQuantity: 1,
+          baseUnitQuantity: 1,
+          baseUnit: 'EA',
+        },
+        {
+          sourceItemCode: 'MILK-1',
+          itemCodeStatus: 'valid',
+          rawDescription: 'Milk - Whole',
+          supplierRaw: 'Evidence Vendor',
+          caseQuantity: 4,
+          baseUnitQuantity: 1,
+          baseUnit: 'EA',
+        },
+      ],
+    });
+    const beforeBatch = await snapshotBatch(batchId);
+    const beforeDomain = await countDomainRecords(ID.companyA);
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ).rejects.toThrow(/contradictory pack evidence/i);
+
+    expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);
   });
 
   it('serializes concurrent approval calls so only one can apply the batch', async () => {
@@ -313,12 +427,15 @@ describe.skipIf(SKIP)('applyBatchApproval — authorization enforcement', () => 
   });
 
   it('rejects a user without permission for the target store', async () => {
-    // scopedUser is in company A but assigned only to "Other Club".
+    // The manager is in company A but assigned only to "Other Club", so this
+    // reaches the destination-scope guard after passing the role gate.
+    const beforeCounts = await countDomainRecords(ID.companyA);
     await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.scopedUser, companyId: ID.companyA }),
+      applyBatchApproval(batchId, { actingUserId: ID.scopedManager, companyId: ID.companyA }),
     ).rejects.toThrow(/do not have access/i);
 
     expect((await snapshotBatch(batchId))?.status).toBe('pending_review');
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
   });
 
   it('rejects an inactive acting user', async () => {
@@ -350,6 +467,45 @@ describe.skipIf(SKIP)('applyBatchApproval — authorization enforcement', () => 
 
     expect((await snapshotBatch(crossBatch))?.status).toBe('pending_review');
   });
+});
+
+describe.skipIf(SKIP)('applyBatchApproval — batch eligibility', () => {
+  it('rejects a same-company non-Orderly batch before any domain write', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourceSystem: 'INVOICE',
+    });
+    const beforeCounts = await countDomainRecords(ID.companyA);
+
+    await expect(
+      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    expect(await snapshotBatch(batchId)).toMatchObject({ status: 'pending_review' });
+    expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
+  });
+
+  it.each(['cancelled', 'failed', 'processing'])(
+    'rejects a %s batch before any domain write',
+    async (status) => {
+      const batchId = await stageBatch({
+        companyId: ID.companyA,
+        targetStoreId: ID.storeBayHill,
+        sourcePropertyBindingId: ID.bindingBayHill,
+        sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+        status,
+      });
+      const beforeCounts = await countDomainRecords(ID.companyA);
+
+      await expect(
+        applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+      expect(await snapshotBatch(batchId)).toMatchObject({ status });
+      expect(await countDomainRecords(ID.companyA)).toEqual(beforeCounts);
+    },
+  );
 });
 
 // ─── 7. Omitted / null authorization context ──────────────────────────────────
@@ -497,7 +653,7 @@ describe.skipIf(SKIP)('applyBatchApproval — zero writes on rejected approval',
 
     // Unauthorized store access for this user.
     await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.scopedUser, companyId: ID.companyA }),
+      applyBatchApproval(batchId, { actingUserId: ID.scopedManager, companyId: ID.companyA }),
     ).rejects.toThrow();
 
     const afterBatch = await snapshotBatch(batchId);

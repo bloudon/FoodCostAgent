@@ -1,0 +1,19 @@
+Suggestions on simplifying the June acceptance process on new pack size other than walking through each one and linking?
+
+Thought for 33s
+
+A few ways to cut this down, starting from what actually makes these 31 different from the "same physical pack" bucket.
+
+The core insight: these 31 aren't really 31 separate decisions
+
+Per #1237's own definition, "New pack size" means the classifier has already determined this must become a separate item variant — never linked to the existing one. Unlike "Same physical pack" (where the reviewer is genuinely choosing whether to link), there's no judgment call left in "New pack size" — the outcome is fixed by definition. So walking through all 31 and clicking "create" on each isn't really 31 independent decisions, it's the same decision applied 31 times.
+
+That argues for a bulk-accept action, not individual review — with the review effort spent verifying the classification is trustworthy (a smaller, one-time question), not verifying each individual outcome (which is already determined).
+
+Concrete ways to simplify
+Bulk-accept the class, backed by sampling instead of 100% review. I already independently verified two of these against live Orderly data — Ketel One and Casamigo's Blanco both turned out to be genuine same-vendor/different-pack-tier cases (mini bottles vs. full bottles), confirming the classifier called it correctly both times. That's real evidence, not just trust in the tool. If you want, I can spot-check a larger sample of the 31 the same way before you commit to a bulk-accept — enough to be confident without touching all 31 individually.
+Group by root cause, not by item. A meaningful chunk of "New pack size" cases share one underlying pattern — same vendor (often Southern Glazer's) selling the same product across multiple real pack tiers. If Replit's UI grouped these by vendor+pattern rather than listing 31 flat rows, a reviewer could approve "yes, Southern Glazer's legitimately sells this in both mini and full formats" once, covering several items at a time, instead of re-confirming the same underlying fact repeatedly.
+Auto-generate the new variant's name/identity from the base name + pack descriptor (e.g., "Ketel One" + "50mL mini" → "Ketel One - 50mL"), so even where a click is still required, there's no manual typing per item.
+Don't spend review effort on invoice-frequency checks for this class specifically — unlike the "compatible alternate" class (where frequency told us whether two vendors were genuinely concurrent), every "New pack size" item gets the same action regardless of purchase frequency. That kind of deeper verification is worth reserving for the classes where it actually changes the outcome.
+
+This is a workflow/UI suggestion for Replit to build (a bulk-accept path with sampling-based confidence, or vendor-pattern grouping), not something I can execute from here — want me to draft it as a ticket, or run the broader spot-check across more of the 31 first so you have stronger evidence behind the ask?

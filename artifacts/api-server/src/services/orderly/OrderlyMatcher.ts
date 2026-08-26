@@ -10,14 +10,67 @@
  * All functions are pure and synchronous — no DB access.
  */
 
-export type MatchStrategy = 'external_mapping' | 'item_code' | 'name_pack' | 'fuzzy' | 'location_history' | 'none';
+export type MatchStrategy =
+  | 'external_mapping'
+  | 'alternate_identity'
+  | 'same_workbook_identity'
+  | 'item_code'
+  | 'name_pack'
+  | 'fuzzy'
+  | 'location_history'
+  | 'none';
 export type MatchConfidence = 'high' | 'medium' | 'low' | 'ambiguous' | 'none';
+export type SourceCodeReliability = 'stable' | 'pseudo_code' | 'unavailable';
+export type RecodeEvidenceClass =
+  | 'compatible_alternate'
+  | 'new_pack_size'
+  | 'source_data_conflict'
+  | 'pack_evidence_missing'
+  | 'unreliable_code';
+
+/**
+ * Orderly exports occasionally place a description or shorthand in Item Code.
+ * Treat only compact, code-like values as durable source identities. This is
+ * intentionally conservative: a value that looks like prose may still be
+ * reviewed manually, but it must not be used to create a permanent code link.
+ */
+export function classifySourceItemCode(
+  sourceItemCode: string | null | undefined,
+  itemCodeStatus: string | null | undefined,
+): SourceCodeReliability {
+  if (itemCodeStatus !== 'valid' || !sourceItemCode?.trim()) return 'unavailable';
+
+  const code = sourceItemCode.trim();
+  const words = code.split(/\s+/).filter(Boolean);
+  // Punctuation and uppercase letters are too easy to get from a product label
+  // (for example "ONION", "TUNA-SAKU", or "2% Milk"). Until a vendor-stable
+  // identifier is independently available, accept only compact, no-space
+  // uppercase identifier syntax that contains a numeric marker.
+  const hasCodeMarker = /\d/.test(code) && /^[A-Z0-9._/-]+$/.test(code);
+  const looksLikeDescription =
+    !hasCodeMarker ||
+    code.length > 32 ||
+    words.length >= 3 ||
+    (words.length >= 2 && !/\d/.test(code));
+
+  return looksLikeDescription ? 'pseudo_code' : 'stable';
+}
+
+export function isStableSourceItemCode(
+  sourceItemCode: string | null | undefined,
+  itemCodeStatus: string | null | undefined,
+): boolean {
+  return classifySourceItemCode(sourceItemCode, itemCodeStatus) === 'stable';
+}
 
 export interface PackEvidence {
   caseQuantity: number | null;
   innerPackQuantity: number | null;
   baseUnitQuantity: number | null;
   baseUnit: string | null;
+  /** Server-computed normalized comparison facts; clients must not infer these. */
+  normalizedUnit?: string | null;
+  totalBaseUnits?: number | null;
 }
 
 export interface MatchResult {
@@ -56,11 +109,21 @@ export interface MatchResult {
    * comparison that also gates a link_existing decision.
    */
   candidatePackEvidence?: PackEvidence | null;
+  /** The incoming row's parsed pack evidence, including server normalization. */
+  sourcePackEvidence?: PackEvidence | null;
+  /** Evidence class for a possible re-code candidate. */
+  recodeEvidenceClass?: RecodeEvidenceClass;
+  /** Source rows for which the same code/vendor carries contradictory pack evidence. */
+  sourceDataConflict?: {
+    rowIndexes: number[];
+    reason: string;
+  };
 }
 
 export interface MatchableItem {
   id: string;
   name: string;
+  internalItemNumber?: number | null;
   pluSku?: string | null;
   caseSize?: number | null;
 }
@@ -72,11 +135,17 @@ export interface MatchableVendor {
 
 // ─── String normalisation ────────────────────────────────────────────────────
 
-/** Lower-case, collapse whitespace, strip non-alphanumeric except spaces. */
+/**
+ * Lower-case, Unicode-normalize, collapse whitespace, and reduce punctuation
+ * to separators. Meaningful words (cuts, colors, varietals, flavors) remain.
+ */
 export function normalizeForMatch(s: string): string {
   return s
+    .normalize('NFKC')
     .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/[’'`]/g, '')
+    .replace(/[‐‑‒–—-]/g, ' ')
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -421,6 +490,24 @@ export interface RowResolution {
    * whole group, and a wholly-unresolved group creates exactly one item.
    */
   sourceItemCode?: string | null;
+  sourceCodeReliability?: SourceCodeReliability;
+  supplierRaw?: string | null;
+}
+
+export type HoldReason = 'blank_item_code';
+
+/**
+ * Returns the reason a staged row remains held instead of creating or
+ * auto-linking an item. This is deliberately narrower than "requiresReview":
+ * coded unresolved rows are valid create candidates, while blank-code rows
+ * cannot safely establish a new identity.
+ */
+export function getHoldReason(
+  itemCodeStatus: string | null | undefined,
+  itemMatch: Pick<MatchResult, 'matchedId' | 'requiresReview'>,
+): HoldReason | null {
+  const unresolved = itemMatch.matchedId == null || itemMatch.requiresReview;
+  return itemCodeStatus === 'blank' && unresolved ? 'blank_item_code' : null;
 }
 
 export interface ResolutionSummary {
@@ -513,7 +600,7 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
     else itemsNew++;
 
     if (m.strategy === 'location_history') itemsResolvedByLocationHistory++;
-    if (m.possibleRecode) itemsRecode++;
+    if (m.possibleRecode && m.recodeEvidenceClass !== 'unreliable_code') itemsRecode++;
 
     if (m.requiresReview) rowsRequiringReview++;
 
@@ -527,10 +614,12 @@ export function computeResolutionSummary(rows: RowResolution[]): ResolutionSumma
       rowsMatchedSafe++;
     }
     if (unresolved) {
-      if (row.itemCodeStatus === 'blank') {
+      if (getHoldReason(row.itemCodeStatus, m)) {
         itemsHeldForReview++;
       } else {
-        const code = row.itemCodeStatus === 'valid' ? row.sourceItemCode?.trim() : null;
+        const code = isStableSourceItemCode(row.sourceItemCode, row.itemCodeStatus)
+          ? row.sourceItemCode?.trim()
+          : null;
         if (code) {
           // Reliable-code group: create once per wholly-unresolved group;
           // create nothing when any sibling safely matched an existing item.

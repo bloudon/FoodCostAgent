@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { expect as vitestExpect } from "vitest";
 import React from "react";
@@ -62,6 +62,18 @@ vi.mock("@/components/ui/alert", () => ({
   Alert: ({ children }: any) => React.createElement("div", { role: "alert" }, children),
   AlertDescription: ({ children }: any) =>
     React.createElement("span", { "data-testid": "alert-description" }, children),
+  AlertTitle: ({ children }: any) => React.createElement("span", null, children),
+}));
+
+vi.mock("@/components/ui/alert-dialog", () => ({
+  AlertDialog: ({ children, open }: any) => open ? React.createElement("div", null, children) : null,
+  AlertDialogAction: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogCancel: ({ children, onClick }: any) => React.createElement("button", { onClick }, children),
+  AlertDialogContent: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogDescription: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogFooter: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogHeader: ({ children }: any) => React.createElement("div", null, children),
+  AlertDialogTitle: ({ children }: any) => React.createElement("span", null, children),
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -106,7 +118,7 @@ vi.mock("@/components/ui/table", () => ({
     React.createElement("td", { colSpan }, children),
   TableHead: ({ children }: any) => React.createElement("th", null, children),
   TableHeader: ({ children }: any) => React.createElement("thead", null, children),
-  TableRow: ({ children }: any) => React.createElement("tr", null, children),
+  TableRow: ({ children, onClick }: any) => React.createElement("tr", { onClick }, children),
 }));
 
 // Lucide icons — stub to empty spans so SVG doesn't trip up jsdom
@@ -124,7 +136,7 @@ vi.mock("lucide-react", async (importOriginal) => {
 // Import the component AFTER all mocks are in place
 // ---------------------------------------------------------------------------
 
-import { ResolutionPreviewStep } from "./orderly-import";
+import { ResolutionPreviewStep } from "@/components/orderly-resolution/ResolutionPreviewStep";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -135,12 +147,16 @@ interface RowPreview {
   storageLocation: string | null;
   sourceItemCode: string | null;
   itemCodeStatus: string | null;
+  packSizeRaw: string | null;
+  packParseStatus: string | null;
   cleanedDescription: string | null;
   supplierRaw: string | null;
   sourceCategory: string | null;
   caseQuantity: number | null;
   packagePrice: number | null;
   totalCost: number | null;
+  heldForReview?: boolean;
+  holdReason?: 'blank_item_code' | null;
   itemMatch: { strategy: string; confidence: string; matchedId: string | null; candidateIds: string[]; requiresReview: boolean };
   vendorMatch: { vendorId: string | null; isNew: boolean; confidence: string; requiresReview: boolean };
   locationMatch: { locationId: string | null; isNew: boolean; normalizedName: string };
@@ -157,6 +173,8 @@ function makePreviewRow(
     storageLocation: "Dry Storage",
     sourceItemCode: `CODE-${rowIndex}`,
     itemCodeStatus: null,
+    packSizeRaw: rowIndex === 1 ? "6/1 LT" : null,
+    packParseStatus: rowIndex === 1 ? "ok" : null,
     cleanedDescription: `Item ${rowIndex}`,
     supplierRaw: "Test Vendor",
     sourceCategory,
@@ -216,15 +234,105 @@ const MOCK_PREVIEW = {
   newVendors: [],
 };
 
+const HELD_PREVIEW = {
+  ...MOCK_PREVIEW,
+  totalRows: 6,
+  summary: {
+    ...MOCK_PREVIEW.summary,
+    totalRows: 6,
+    itemsNew: 2,
+    itemsHeldForReview: 1,
+  },
+  rows: [
+    ...MOCK_ROWS,
+    {
+      ...makePreviewRow(6, "Wine", "none", "none"),
+      sourceItemCode: null,
+      itemCodeStatus: "blank",
+      heldForReview: true,
+      holdReason: "blank_item_code" as const,
+    },
+  ],
+};
+
+function packComparisonPreview(
+  sourcePackEvidence: Record<string, unknown>,
+  candidatePackEvidence: Record<string, unknown> | null,
+  packCompatibility: "compatible" | "incompatible" | "unknown",
+) {
+  return {
+    ...MOCK_PREVIEW,
+    totalRows: 1,
+    summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 0 },
+    rows: [{
+      ...makePreviewRow(1, "Spirits", "name_pack", "high"),
+      sourceItemCode: "PACK-1",
+      itemMatch: {
+        ...makePreviewRow(1, "Spirits", "name_pack", "high").itemMatch,
+        possibleRecode: true,
+        possibleRecodeMatchedId: "catalog-item",
+        possibleRecodeItem: { id: "catalog-item", name: "House Spirit", caseSize: 24 },
+        packCompatibility,
+        packCompatibilityReason: packCompatibility === "unknown"
+          ? "the existing source mapping lacks complete pack evidence"
+          : undefined,
+        sourcePackEvidence,
+        candidatePackEvidence,
+      },
+    }],
+  };
+}
+
+function heldMatchPreview(confidence: "ambiguous" | "low") {
+  const candidate = {
+    id: `candidate-${confidence}`,
+    name: `${confidence} candidate`,
+    caseSize: 1,
+    pluSku: "CAND-1",
+    knownLocations: [],
+  };
+  return {
+    ...MOCK_PREVIEW,
+    totalRows: 1,
+    summary: {
+      ...MOCK_PREVIEW.summary,
+      totalRows: 1,
+      itemsHeldForReview: 1,
+      itemsWillCreate: 0,
+    },
+    rows: [
+      {
+        ...makePreviewRow(6, "Wine", confidence === "low" ? "fuzzy" : "name_pack", confidence),
+        sourceItemCode: null,
+        itemCodeStatus: "blank",
+        heldForReview: true,
+        holdReason: "blank_item_code" as const,
+        itemMatch: {
+          strategy: confidence === "low" ? "fuzzy" : "name_pack",
+          confidence,
+          matchedId: candidate.id,
+          candidateIds: [candidate.id],
+          requiresReview: true,
+          candidates: confidence === "ambiguous" ? [candidate] : [],
+          matchedItem: confidence === "low" ? candidate : null,
+        },
+      },
+    ],
+  };
+}
+
+let currentPreview: any = MOCK_PREVIEW;
+let currentSavedReviewDecisions: any = { decisions: [] };
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderStep() {
+function renderStep(onApproved = vi.fn()) {
   return render(
     React.createElement(ResolutionPreviewStep, {
       batchId: "batch-test-1",
-      onApproved: vi.fn(),
+      onApproved,
       onBack: vi.fn(),
     }),
   );
@@ -234,9 +342,17 @@ function setupQueryMocks() {
   mockUseQuery.mockImplementation((opts: any) => {
     const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
     if (typeof key === "string" && key.includes("resolution-preview")) {
-      return { data: MOCK_PREVIEW, isLoading: false, isError: false };
+      return { data: currentPreview, isLoading: false, isError: false };
     }
-    return { data: undefined, isLoading: false, isError: false };
+    if (typeof key === "string" && key.includes("review-decisions")) {
+      return {
+        data: currentSavedReviewDecisions,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      };
+    }
+    return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
   });
 }
 
@@ -245,12 +361,32 @@ function setupQueryMocks() {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  currentPreview = MOCK_PREVIEW;
+  currentSavedReviewDecisions = { decisions: [] };
   setupQueryMocks();
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    const payload = JSON.parse(String(init?.body ?? "{}"));
+    return new Response(JSON.stringify({
+      decisions: (payload.changes ?? [])
+        .filter((change: { decision?: unknown }) => change.decision !== undefined)
+        .map((change: { rowIndex: number; decision: unknown }) => ({
+          rowIndex: change.rowIndex,
+          decision: change.decision,
+          revision: 1,
+          decidedBy: "test-reviewer",
+          updatedAt: new Date().toISOString(),
+        })),
+      clearedRowIndexes: (payload.changes ?? [])
+        .filter((change: { decision?: unknown }) => change.decision === undefined)
+        .map((change: { rowIndex: number }) => change.rowIndex),
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }));
 });
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // ---------------------------------------------------------------------------
@@ -278,12 +414,9 @@ function getCategoryChip(label: string) {
   return screen.getByRole("button", { name: label });
 }
 
-/**
- * Returns all buttons whose accessible name is "All".
- * The component renders one "All" button per filter row (category + confidence).
- */
+/** Returns the category and status reset chips. */
 function getAllChips() {
-  return screen.getAllByRole("button", { name: "All" });
+  return screen.getAllByRole("button", { name: /^All (Categories|Statuses)$/ });
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +424,208 @@ function getAllChips() {
 // ---------------------------------------------------------------------------
 
 describe("ResolutionPreviewStep — confidence filter chips", () => {
+  it("requires a confirmation with source evidence before queueing eligible pack-size variants in bulk", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 1,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 0 },
+      recodeSummary: {
+        compatibleAlternates: 0,
+        newPackSizes: 1,
+        sourceDataConflicts: 0,
+        unreliableCodes: 0,
+        packEvidenceMissing: 0,
+      },
+      rows: [{
+        ...makePreviewRow(1, "Spirits", "name_pack", "high"),
+        sourceItemCode: "PACK-5X50",
+        sourceCodeReliability: "stable",
+        supplierRaw: "Acme Liquor",
+        packSizeRaw: "5/50 ML",
+        cleanedDescription: "House Tequila",
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: "ML",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          matchedId: "existing-tequila",
+          candidateIds: ["existing-tequila"],
+          requiresReview: false,
+          possibleRecode: true,
+          recodeEvidenceClass: "new_pack_size",
+          packCompatibility: "incompatible",
+          possibleRecodeMatchedId: "existing-tequila",
+        },
+      }],
+    };
+    renderStep();
+
+    expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Create 1 new variant in bulk" }));
+
+    const confirmationHeading = await screen.findByText("Confirm 1 separate variant");
+    const confirmationDialog = confirmationHeading.parentElement?.parentElement;
+    expect(confirmationDialog).not.toBeNull();
+    expect(within(confirmationDialog!).getByText("Acme Liquor")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText("5/50 ML")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText("House Tequila")).toBeInTheDocument();
+    expect(within(confirmationDialog!).getByText((_, element) =>
+      element?.classList.contains("font-mono") && element.textContent === "(PACK-5X50)",
+    )).toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-new-pack-size-queued")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create 1 variant" }));
+
+    expect(await screen.findByTestId("bulk-new-pack-size-queued")).toHaveTextContent("1 pack-size variant is saved");
+    expect(screen.queryByText("Confirm 1 separate variant")).not.toBeInTheDocument();
+  });
+
+  it("does not expose a bulk variant action for a catalog pack identity conflict", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 1,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 1, itemsHeldForReview: 1 },
+      recodeSummary: {
+        compatibleAlternates: 0,
+        newPackSizes: 0,
+        sourceDataConflicts: 1,
+        unreliableCodes: 0,
+        packEvidenceMissing: 0,
+      },
+      rows: [{
+        ...makePreviewRow(1, "Dairy", "name_pack", "high"),
+        sourceItemCode: "4676306",
+        sourceCodeReliability: "stable",
+        supplierRaw: "Sysco",
+        packSizeRaw: "1/250 EA",
+        cleanedDescription: "Milk - Whole",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          matchedId: "whole-milk",
+          candidateIds: ["whole-milk"],
+          requiresReview: true,
+          possibleRecode: true,
+          possibleRecodeMatchedId: "whole-milk",
+          recodeEvidenceClass: "source_data_conflict",
+          sourceDataConflict: {
+            rowIndexes: [1],
+            reason: "Catalog pack IDs milk-pack-1-gal and milk-pack-4-gal disagree.",
+          },
+        },
+      }],
+    };
+    renderStep();
+
+    await screen.findByText("Resolution Preview");
+    expect(screen.queryByRole("button", { name: /Create .*new variant in bulk/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("bulk-new-pack-size-queued")).not.toBeInTheDocument();
+  });
+
+  it("leads with server-normalized totals for equivalent multi-level packs", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 1,
+        innerPackQuantity: 24,
+        baseUnitQuantity: 1,
+        baseUnit: "EA",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      {
+        caseQuantity: 2,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: "each",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      "compatible",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: 24 EA → 24 EA")).toBeInTheDocument();
+    expect(screen.getByText(/Incoming shape: 1 × 24 × 1 EA/)).toBeInTheDocument();
+
+    fireEvent.click((await screen.findByText("Item 1")).closest("tr")!);
+    expect(screen.getAllByText("Normalized total: 24 EA")).toHaveLength(2);
+    expect(screen.getByText("Same physical pack — you may link this new code to the existing item.")).toBeInTheDocument();
+  });
+
+  it("shows both normalized totals for a truly incompatible pack", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: "ML",
+        normalizedUnit: "ML",
+        totalBaseUnits: 250,
+      },
+      {
+        caseQuantity: 6,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: "LT",
+        normalizedUnit: "ML",
+        totalBaseUnits: 6000,
+      },
+      "incompatible",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: 250 ML → 6000 ML")).toBeInTheDocument();
+    fireEvent.click((await screen.findByText("Item 1")).closest("tr")!);
+    expect(screen.getByText("Different physical pack — linking is blocked. Create a separate variant instead.")).toBeInTheDocument();
+  });
+
+  it("states that normalized evidence is unconfirmed when pack geometry is incomplete", async () => {
+    currentPreview = packComparisonPreview(
+      {
+        caseQuantity: 2,
+        innerPackQuantity: null,
+        baseUnitQuantity: null,
+        baseUnit: null,
+        normalizedUnit: null,
+        totalBaseUnits: null,
+      },
+      {
+        caseQuantity: 2,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: "EA",
+        normalizedUnit: "EA",
+        totalBaseUnits: 24,
+      },
+      "unknown",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Normalized total: Not confirmed → 24 EA")).toBeInTheDocument();
+    expect(screen.getByText("Pack unconfirmed")).toBeInTheDocument();
+    expect(screen.getByText(/Not confirmed/)).toBeInTheDocument();
+  });
+
+  it("shows server-normalized incoming evidence on review rows without a catalog comparison", async () => {
+    currentPreview = heldMatchPreview("low");
+    currentPreview.rows[0].itemMatch.sourcePackEvidence = {
+      caseQuantity: 1,
+      innerPackQuantity: 24,
+      baseUnitQuantity: 1,
+      baseUnit: "EA",
+      normalizedUnit: "EA",
+      totalBaseUnits: 24,
+    };
+    renderStep();
+
+    expect(await screen.findByText("Pack evidence")).toBeInTheDocument();
+    expect(screen.getByText("Normalized total: 24 EA")).toBeInTheDocument();
+    expect(screen.getByText(/Incoming shape: 1 × 24 × 1 EA/)).toBeInTheDocument();
+    expect(screen.queryByText(/Catalog shape:/)).not.toBeInTheDocument();
+  });
+
   it("renders a chip for each confidence level present in the batch", async () => {
     renderStep();
     // All 4 confidence levels from our fixture should appear as chip buttons
@@ -310,6 +645,80 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
         screen.getByText((text) => text.includes("of 5 rows")),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows the raw Orderly pack size alongside each import row", async () => {
+    renderStep();
+
+    expect(await screen.findByRole("columnheader", { name: "Pack size" })).toBeInTheDocument();
+    expect(screen.getByText("6/1 LT")).toBeInTheDocument();
+    expect(screen.getByText("Parsed")).toBeInTheDocument();
+  });
+
+  it("shows identity-group evidence without changing row-level filters", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      identitySummary: {
+        uniqueIdentityGroups: 3,
+        identityGroupsResolvedToExisting: 1,
+        identityGroupsNewCandidates: 1,
+        identityGroupsRequiringReview: 1,
+        blankCodeGroupsWithCodedSibling: 1,
+        blankCodeGroupsAutoResolved: 1,
+        alternateIdentityMatches: 1,
+        blankCodeClassification: {
+          confirmed: { rows: 1, valueTotal: 24.5 },
+          reviewable: { rows: 1, valueTotal: 12 },
+          conflicted: { rows: 0, valueTotal: 0 },
+          held: { rows: 0, valueTotal: 0 },
+        },
+      },
+      rows: MOCK_ROWS.map((row, index) => ({
+        ...row,
+        identityGroupRows: index === 0 ? [1, 2] : [row.rowIndex],
+      })),
+    };
+    renderStep();
+
+    expect(await screen.findByText("Product identity evidence")).toBeInTheDocument();
+    expect(screen.getByText((_, element) =>
+      element?.tagName === "SPAN" && element.textContent === "3 groups",
+    )).toBeInTheDocument();
+    expect(screen.getByText("Blank Item Code classification")).toBeInTheDocument();
+    expect(screen.getByText("$24.50")).toBeInTheDocument();
+    expect(screen.getByText("Identity group: 2 location rows")).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes("of 5 rows"))).toBeInTheDocument();
+  });
+
+  it("uses identity classification instead of the legacy held count in the summary card", async () => {
+    currentPreview = {
+      ...HELD_PREVIEW,
+      summary: {
+        ...HELD_PREVIEW.summary,
+        itemsHeldForReview: 5, // includes one coded conflict beyond blank-code evidence
+      },
+      identitySummary: {
+        uniqueIdentityGroups: 3,
+        identityGroupsResolvedToExisting: 0,
+        identityGroupsNewCandidates: 1,
+        identityGroupsRequiringReview: 2,
+        blankCodeGroupsWithCodedSibling: 1,
+        blankCodeGroupsAutoResolved: 1,
+        alternateIdentityMatches: 0,
+        blankCodeClassification: {
+          confirmed: { rows: 1, valueTotal: 10 },
+          reviewable: { rows: 1, valueTotal: 10 },
+          conflicted: { rows: 1, valueTotal: 10 },
+          held: { rows: 2, valueTotal: 20 },
+        },
+      },
+    };
+    renderStep();
+
+    expect(
+      await screen.findByRole("button", { name: /Held for review.*5 remaining/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Held for review.*4 remaining/ })).not.toBeInTheDocument();
   });
 
   it("clicking the 'Matched' chip filters to high-confidence rows only", async () => {
@@ -402,5 +811,241 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+
+  it("filters, labels, and explains the exact held blank-code rows", async () => {
+    currentPreview = HELD_PREVIEW;
+    renderStep();
+
+    const heldSummaryAction = await screen.findByRole("button", { name: /Held for review.*1 remaining/ });
+    fireEvent.click(heldSummaryAction);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText((text) =>
+          text.includes("of 1 matching rows") && text.includes("6 total"),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Blank Item Code")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Item 6").closest("tr")!);
+    expect(await screen.findByTestId("held-row-details-6")).toHaveTextContent("Blank / not provided");
+    expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("assigns a permanent internal item number");
+  });
+
+  it("marks an ambiguous held row as an explicit existing-item link without offering creation", async () => {
+    currentPreview = heldMatchPreview("ambiguous");
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /ambiguous candidate/ }));
+
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create new item record" })).not.toBeInTheDocument();
+  });
+
+  it("marks a fuzzy held row as an explicit existing-item link or leave-unlinked decision", async () => {
+    currentPreview = heldMatchPreview("low");
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Leave unlinked" }));
+    expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+  });
+
+  it("hydrates a saved review decision without issuing another save", async () => {
+    currentPreview = heldMatchPreview("low");
+    currentSavedReviewDecisions = {
+      decisions: [{
+        rowIndex: 6,
+        decision: { inventoryItemId: null },
+        revision: 3,
+        decidedBy: "reviewer-1",
+        updatedAt: "2026-08-24T12:00:00.000Z",
+      }],
+    };
+
+    renderStep();
+
+    expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed decision unsaved and shows a row-level retry message", async () => {
+    currentPreview = heldMatchPreview("low");
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify({ error: "The saved decision changed in another session." }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    renderStep();
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+
+    expect(await screen.findByTestId("orderly-decision-save-error-6")).toHaveTextContent(
+      "Save failed — choose a decision again to retry.",
+    );
+    expect(screen.queryByText("→ Link Existing")).not.toBeInTheDocument();
+  });
+
+  it("asks before a sidebar-style route change while a decision save is still in progress", async () => {
+    currentPreview = heldMatchPreview("low");
+    let resolveSave: ((response: Response) => void) | undefined;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+      resolveSave = resolve;
+    })));
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal("confirm", confirm);
+    const initialPathname = window.location.pathname;
+
+    renderStep();
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+    expect(await screen.findByText("Saving decision")).toBeInTheDocument();
+
+    window.history.pushState(null, "", "/inventory-items");
+
+    expect(confirm).toHaveBeenCalledWith("A review decision is still saving. Leave this page anyway?");
+    expect(window.location.pathname).toBe(initialPathname);
+
+    // Browser Back/Forward emits popstate after the URL has already changed.
+    // Declining the prompt restores the protected review route.
+    window.history.replaceState(null, "", "/inventory-items");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(window.location.pathname).toBe(initialPathname);
+
+    resolveSave?.(new Response(JSON.stringify({
+      decisions: [{
+        rowIndex: 6,
+        decision: { inventoryItemId: "candidate-low" },
+        revision: 1,
+        decidedBy: "test-reviewer",
+        updatedAt: new Date().toISOString(),
+      }],
+      clearedRowIndexes: [],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+  });
+
+  it("imports a review manifest and clearly reports accepted saved decisions", async () => {
+    const refetch = vi.fn();
+    mockUseQuery.mockImplementation((opts: any) => {
+      const key = Array.isArray(opts.queryKey) ? opts.queryKey[0] : opts.queryKey;
+      if (typeof key === "string" && key.includes("resolution-preview")) {
+        return { data: currentPreview, isLoading: false, isError: false };
+      }
+      if (typeof key === "string" && key.includes("review-decisions")) {
+        return { data: currentSavedReviewDecisions, isLoading: false, isError: false, refetch };
+      }
+      return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "accepted",
+          accepted: [{ rowIndex: 6 }],
+          rejected: [],
+          stale: [],
+          decisions: [],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest applied",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "1 accepted decision saved.",
+    );
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("reports stale imported evidence and leaves the reviewer in the current preview", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "stale",
+          accepted: [],
+          rejected: [],
+          stale: [{ rowIndex: 6, reason: "The catalog or source evidence changed after this manifest was exported." }],
+          decisions: [],
+        }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "stale-review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest not applied — evidence changed",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Row 6 is stale:",
+    );
+    expect(screen.getByRole("heading", { name: "Resolution Preview" })).toBeInTheDocument();
+  });
+
+  it("reports rejected manifest decisions without claiming that any draft was saved", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/manifest")) {
+        return new Response(JSON.stringify({
+          status: "rejected",
+          accepted: [],
+          rejected: [{ rowIndex: 6, reason: "This decision is no longer valid for the current preview." }],
+          stale: [],
+          decisions: [],
+        }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+    fireEvent.click(screen.getByRole("button", { name: "Import decisions" }));
+    const file = new File(["{}"], "rejected-review.json", { type: "application/json" });
+    Object.defineProperty(file, "text", { value: vi.fn(async () => "{}") });
+    fireEvent.change(screen.getByTestId("orderly-decision-manifest-input"), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Manifest not applied — decisions rejected",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).toHaveTextContent(
+      "Row 6 rejected:",
+    );
+    expect(screen.getByTestId("orderly-decision-manifest-result")).not.toHaveTextContent(
+      "accepted decision saved",
+    );
   });
 });

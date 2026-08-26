@@ -1,0 +1,108 @@
+## PM APPROVED — #1236
+
+GO to implementation in Dev.
+
+The revised task now matches the required Orderly identity model.
+
+### Two implementation clarifications
+
+#### 1. Do not let the classification-state list become architecture
+
+The proposed states are useful reporting labels:
+
+- existing_source_mapping
+- existing_item_code_match
+- retained_alternate_identity
+- same_workbook_blank_coded_reconciliation
+- changed_code_existing_item
+- new_canonical_candidate
+- pack_change_ambiguous
+- conflicted_identity
+- ambiguous_review
+- unresolved_hold
+
+Keep them as explainable outcomes/evidence where possible.
+
+Do not build ten separate matching workflows around them.
+
+The underlying decision can remain simple:
+
+**existing canonical item / new canonical candidate / needs review**
+
+with the detailed reason explaining how it reached that result.
+
+#### 2. Flush means test-fixture reset only
+
+The proposed reset is approved for the dedicated Dev/test fixture.
+
+Do not generalize the flush/reset mechanism into a production cleanup feature.
+
+Its only purpose is to prove repeatedly:
+
+FLUSH
+→ untouched May
+→ approve
+→ untouched June
+→ measure
+
+Production migration will get its own authorization after the behavior is proven.
+
+---
+
+## Implementation priority
+
+Build the smallest vertical slice that proves the identity logic:
+
+1. deterministic normalization
+2. workbook-level grouping
+3. same-workbook blank/coded reconciliation
+4. existing external mapping lookup
+5. derived `ALT|...` source identity persistence
+6. changed-code attachment to an existing canonical item
+7. group-level preview/review
+8. May → June reconciliation report
+
+Do not spend time polishing generalized UI or infrastructure before the clean May → June loop works.
+
+---
+
+## PM acceptance gate
+
+I want the first complete evidence report from a clean run showing:
+
+### May
+- 5,358 source rows accounted for
+- normalized identity-group count
+- canonical items created/reused
+- 1,039 blank rows reduced to group-level identities
+- number auto-resolved
+- number actually requiring human review
+- same-workbook blank/coded reconciliations
+- duplicate canonical creations
+
+### June
+- 5,409 source rows accounted for
+- percentage/count resolving back to May `inventory_item.id`
+- stable-code matches
+- retained ALT identity matches
+- changed-code matches
+- blank-code retained matches
+- genuinely new items
+- ambiguous groups
+- duplicate canonical creations
+
+Do not optimize toward our expected counts by special-casing the fixtures.
+
+Let the results tell us whether the matcher is correct.
+
+### Success principle
+
+The key result is not:
+
+> “All rows got an ID.”
+
+It is:
+
+> **The same real product consistently gets the same FnB canonical inventory item across months, while genuinely different products remain separate and human review is limited to actual ambiguity.**
+
+Proceed.

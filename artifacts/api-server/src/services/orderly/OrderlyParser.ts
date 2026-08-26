@@ -161,7 +161,7 @@ export interface OrderlyParseResult {
 
 // ─── Pack size parsing ────────────────────────────────────────────────────────
 
-function parseOrderlyPackSize(packSizeStr: string): Pick<
+export function parseOrderlyPackSize(packSizeStr: string): Pick<
   OrderlyRow,
   'caseQuantity' | 'innerPackQuantity' | 'baseUnitQuantity' | 'caseUnit' | 'innerUnit' | 'baseUnit' | 'packParseStatus'
 > {
@@ -177,9 +177,36 @@ function parseOrderlyPackSize(packSizeStr: string): Pick<
 
   if (!packSizeStr || !packSizeStr.trim()) return empty;
 
+  // Orderly commonly exports a three-tier physical pack as
+  // "case/inner base-unit", e.g. "1/1 750ML" or "12/1 750ML".
+  // This is complete evidence: 1 case × 1 bottle × 750 mL, not an
+  // ambiguous variant or an unparseable free-text value.
+  const threeTier = packSizeStr.trim().match(
+    /^([\d.]+)\s*\/\s*([\d.]+)\s+([\d.]+)\s*([A-Za-z]+)$/i,
+  );
+  if (threeTier) {
+    const caseQuantity = Number(threeTier[1]);
+    const innerPackQuantity = Number(threeTier[2]);
+    const baseUnitQuantity = Number(threeTier[3]);
+    if (
+      Number.isFinite(caseQuantity) &&
+      Number.isFinite(innerPackQuantity) &&
+      Number.isFinite(baseUnitQuantity)
+    ) {
+      return {
+        caseQuantity,
+        innerPackQuantity,
+        baseUnitQuantity,
+        caseUnit: 'Case',
+        innerUnit: 'Pack',
+        baseUnit: threeTier[4].toUpperCase(),
+        packParseStatus: 'ok',
+      };
+    }
+  }
+
   // Reuse the existing CsvOrderGuide compound pack parser
-  // e.g. "12/1 750ML" → {caseSize: 12, innerPack: 1, unit: "750ML"}
-  //      "6/2.5 LB"   → {caseSize: 6, innerPack: 2.5, unit: "LB"}
+  // e.g. "6/2.5 LB" → {caseSize: 6, innerPack: 2.5, unit: "LB"}
   const parsed = parseCompoundPackSize(packSizeStr.trim());
   if (!parsed) return empty;
 
@@ -325,52 +352,50 @@ export function cleanDescription(
 
   const supplier = supplierName?.trim();
 
+  let current = raw;
+  let cleaningMethod: CleaningMethod = 'none';
+  let cleaningConfidence = 1.0;
+  let removedSuffix = '';
+
   if (supplier && supplier.length >= 2) {
-    // Transform 2 checked FIRST: " - Supplier ..." separator (more specific)
-    const dashIdx = raw.lastIndexOf(' - ' + supplier);
-    if (dashIdx > 0) {
-      const before = raw.slice(0, dashIdx).trim();
+    // Use only the structured Supplier value, but tolerate capitalization
+    // differences in the export. The final literal occurrence is the source
+    // suffix; supplier-like words elsewhere are never guessed away.
+    const escapedSupplier = supplier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const supplierRe = new RegExp(escapedSupplier, 'ig');
+    let lastIndex = -1;
+    let match: RegExpExecArray | null;
+    while ((match = supplierRe.exec(current)) !== null) lastIndex = match.index;
+    if (lastIndex > 0) {
+      const hadDashSeparator = /[\s]*[-–][\s]*$/.test(current.slice(0, lastIndex));
+      const before = current.slice(0, lastIndex).replace(/[\s\-–]+$/, '').trim();
       if (before.length >= 2) {
-        return {
-          cleanedDescription: before,
-          cleaningMethod: 'dash_supplier_strip',
-          cleaningConfidence: 0.85,
-          removedSuffix: raw.slice(dashIdx),
-        };
-      }
-    }
-
-    // Transform 1: supplier name verbatim in description (last occurrence)
-    const idx = raw.lastIndexOf(supplier);
-    if (idx > 0) {
-      // Strip trailing punctuation left by the separator (e.g. " - " before supplier)
-      const before = raw.slice(0, idx).replace(/[\s\-–]+$/, '').trim();
-      if (before.length >= 2) {
-        return {
-          cleanedDescription: before,
-          cleaningMethod: 'supplier_suffix_strip',
-          cleaningConfidence: 0.9,
-          removedSuffix: raw.slice(idx),
-        };
+        removedSuffix = current.slice(lastIndex);
+        current = before;
+        cleaningMethod = hadDashSeparator ? 'dash_supplier_strip' : 'supplier_suffix_strip';
+        cleaningConfidence = cleaningMethod === 'dash_supplier_strip' ? 0.85 : 0.9;
       }
     }
   }
 
-  // Transform 3: strip trailing pack reference " N / M UNIT" or " N/M UNIT"
-  const packRefMatch = raw.match(/(\s+\d+\s*[/]\s*\d+\s*[A-Za-z]*\s*)$/);
+  // Strip a trailing numeric pack reference only after supplier cleanup.
+  // This deliberately removes no ordinary product words.
+  const packRefMatch = current.match(/(\s+\d+(?:\.\d+)?\s*[/]\s*\d+(?:\.\d+)?\s*[A-Za-z]*(?:\s+[A-Za-z]+)?\s*)$/);
   if (packRefMatch) {
-    const before = raw.slice(0, packRefMatch.index!).trim();
+    const before = current.slice(0, packRefMatch.index!).trim();
     if (before.length >= 2) {
-      return {
-        cleanedDescription: before,
-        cleaningMethod: 'pack_text_strip',
-        cleaningConfidence: 0.6,
-        removedSuffix: packRefMatch[0],
-      };
+      removedSuffix = `${removedSuffix}${packRefMatch[0]}`;
+      current = before;
+      if (cleaningMethod === 'none') {
+        cleaningMethod = 'pack_text_strip';
+        cleaningConfidence = 0.6;
+      }
     }
   }
 
-  return noOp;
+  return cleaningMethod === 'none'
+    ? noOp
+    : { cleanedDescription: current, cleaningMethod, cleaningConfidence, removedSuffix };
 }
 
 // ─── Inventory date detection ─────────────────────────────────────────────────

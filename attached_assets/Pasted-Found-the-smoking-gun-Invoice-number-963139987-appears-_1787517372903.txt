@@ -1,0 +1,49 @@
+Found the smoking gun. Invoice number 963139987 appears in BOTH lists — the exact same invoice, logged under two different vendor names. And every invoice number across both lists sits in one continuous numeric sequence (963136539 → 963139987 → 963142737... → 963163056), interleaved between "GFs Store" and "Gordon Food Service" with no break in the pattern.
+
+This settles it — same vendor, inconsistent data entry, not two facilities
+Different supplierIds in Orderly (25636 vs. 487) — two separate vendor records were created, but that's an Orderly data-entry artifact, not evidence of two real entities.
+One shared, continuous invoice-numbering sequence across both — a single vendor's own invoice system doesn't interleave with someone else's numbering by coincidence.
+A literal duplicate invoice number (963139987) captured under both names — this is the clearest possible proof. Same physical invoice, entered twice under two different vendor labels.
+
+No evidence of different facilities, different account reps, or genuinely separate relationships — this reads exactly like what you called it: old bad data entry, where whoever was capturing invoices sometimes typed/selected "GFs Store" and sometimes "Gordon Food Service" for what has always been one real distributor relationship.
+
+For Replit
+
+Your instruction — combine into one vendor when it's genuinely one vendor — is well-supported here specifically. I'd hand them this exact evidence chain (shared invoice-number sequence, the literal duplicate 963139987) as the justification, not just "the names look similar." Two things worth being explicit about in the ask:
+
+This is a vendor-identity merge, not a #1238-style pack-conflict block. Different fix, different code path — #1238's job is "block pack disagreements," this is "recognize duplicate vendor entities and consolidate them." Worth keeping them as separate tickets so #1238 doesn't grow scope.
+Don't generalize this specific finding to every same-spec/different-supplier pair automatically. I already found one counter-example in the same neighborhood — "POTATO H/BRN IQF LOOSE SHRED" under this same GFs/Gordon pairing shows a real pack difference (6/3 POUND vs 1/5 POUND), not just duplicate labeling. The vendor-identity merge is sound; it shouldn't be read as "therefore every product under these two names is safe to blindly collapse" — the invoice evidence proves the vendor is one entity, not that every historical pack entry under it was recorded correctly.
+
+Want me to check whether this same "shared invoice-number sequence" signature shows up for any of the other vendor-name pairs in the Tier 2/Tier 3 lists (Albert Uster/AUI, Pinkney/RLB), so Replit gets a complete picture of which duplicates are provably the same vendor versus which are still unconfirmed?
+
+yes,  I want a clean model to move forward with
+
+Used Claude in Chrome integration
+
+Same conclusion here — the single "Albert Uster Fine Foods" invoice (Aug 2024, IVC1562089) sits chronologically right inside AUI's own continuous IVC-numbered sequence. A one-time full-name data-entry slip, not a separate vendor. Now let's check the third pair.
+
+Javascript tool
+
+This is a genuinely different signature — not the same pattern as the other two. Pinkney uses a "P"-prefixed sequence (P5335, P5372...) starting Jan 2024; RLB uses plain numbers (1023, 1057...) starting fresh at a different point in Sept 2024. Different format, different starting number — this doesn't look like careless dual-labeling of one vendor. Let me check for a clean transition date.
+
+Javascript tool
+Clean model: three cases, three different signatures — not one rule fits all
+
+I checked the invoice-number pattern for all three vendor-name pairs the same way. They don't all tell the same story, and that matters for what Replit should actually build.
+
+Pair	Evidence	Verdict
+GFs Store / Gordon Food Service	Same continuous invoice-number sequence (963136xxx → 963163xxx), interleaved between both names. One invoice number (963139987) literally duplicated under both.	Same vendor, careless dual-labeling. Merge.
+Albert Uster Fine Foods / AUI Fine Foods	Only 1 invoice under the full name, sitting chronologically right inside AUI's own continuous IVC-numbered sequence (33 invoices, Feb 2024–Jun 2026).	Same vendor, one-time full-name typo. Merge.
+Pinkney Transportation LLC / RLB Transport	Completely different invoice-number formats (P5335-style vs. plain 1023-style). Pinkney's last invoice: Aug 30, 2024. RLB's first: Sept 2, 2024 — three days later, zero overlap, clean cutover.	Looks like a genuine vendor change, not a labeling error. Do NOT merge without more evidence.
+The distinguishing test, stated as a rule Replit can actually implement
+
+A shared or interleaved invoice-number sequence is real, checkable evidence of one vendor. A clean, non-overlapping handoff between two different numbering formats is evidence of an actual vendor change, not a data-entry mistake — this is structurally the same shape as the Ginger Beer/Sysco→Breakthru switch from earlier, just on the vendor-identity level instead of the item-code level.
+
+The concrete test: pull each pair's invoice numbers, check (a) do the formats match, and (b) do the date ranges overlap or interleave. GFs/Gordon and Albert Uster/AUI both pass — same format, same continuous sequence, real overlap or a stray entry inside the other's range. Pinkney/RLB fails both — different format, zero overlap, clean cutover.
+
+What I'd tell Replit
+Merge GFs Store → Gordon Food Service (or vice versa, whichever ID has more history) and Albert Uster Fine Foods → AUI Fine Foods now, citing this exact evidence — it's conclusive, not a judgment call.
+Leave Pinkney Transportation LLC and RLB Transport as two distinct vendors. The data doesn't support treating this as the same "old bad data" issue — it looks like Bay Hill genuinely switched delivery vendors on a specific date, which is legitimate business history, not something to collapse away.
+Don't build a name-similarity merge tool. The thing that actually settles each case is invoice-number continuity, not how similar the two names look — "Pinkney"/"RLB" look nothing alike and turned out probably-distinct-vendors-with-a-clean-handoff, while "GFs Store"/"Gordon Food Service" look related and turned out to be a proven duplicate. Name similarity would have gotten this backwards on its own.
+
+This gives you a real, three-example-validated rule rather than "combine when it looks like the same vendor" — worth handing to Replit as the actual decision logic, not just the one resolved pair.

@@ -1,0 +1,40 @@
+The wizard dropped back to the batch list on its own while idle — likely a dev-server hot reload. That's the failure mode #1245 describes, occurring unprompted. Re-entering.
+
+Used Claude in Chrome integration · 1 note
+
+All three map cleanly to what I filed: #1245 → #1241 (persistence), #1246 → #1242 (display), #1247 → #1241's requested item 3 (manifest). #1244 is still unaccounted for, but the coverage is there. These are well-specified — the validate-before-approve and "never present an unsaved choice as recorded" clauses in #1245 are exactly right.
+
+Two data points from just now, before the substance:
+
+The wizard reset itself while idle during this session, unprompted — I hadn't touched it. Probably a dev-server hot reload. That's #1245's failure mode occurring without any user action, which strengthens the case that a beforeunload guard alone isn't sufficient; the loss vector isn't only navigation.
+
+And for #1246: I sampled 13 rows spread across all 88 alternate-code rows. All 13 resolved cleanly — 750 ML, 24 EA, 640 OZ, 165 EA, 176 OZ, 16 OZ. Zero unresolved geometry. So "unit detail unavailable" appears to be purely a display artifact on this batch, not a signal of genuinely missing data. Build the "unconfirmed" branch anyway, but don't expect it to fire much — and it means these 88 rows are likely near-fully mechanically resolvable once the display is honest.
+
+The gap: nothing covers #1238
+
+Both tickets explicitly exclude it:
+
+#1245 out of scope: "pack-conflict rules"
+#1246 out of scope: "Changing pack-classification rules"
+
+So the detector that reads 0 conflicts while five Milk-Whole rows (4676306) sit in the New-pack-size bucket is untouched by all three.
+
+This matters more once #1245 and #1246 ship, not less. Right now the bulk button is unattractive — the display looks broken and work doesn't save, so reviewers proceed cautiously. Afterwards it becomes a trustworthy-looking one-click action that still silently includes those five rows. Improved UX over an uncorrected detector raises the chance of a confident wrong bulk write. #1245 and #1247 protect the process; nothing in this set protects correctness.
+
+That needs its own ticket, and I'd argue it gates the production seed harder than #1247 does — 7.65% of codes historically carry this shape, and the tool reports none of them.
+
+Questions worth resolving before build
+
+1. Is staleness per-decision or per-batch? #1247 specifies "an integrity fingerprint of the source batch and preview state." If that fingerprint is preview-wide, a single catalog change invalidates every saved decision at once. That's not hypothetical during a seed: approving May mutates the catalog June is compared against, so all saved June decisions could go stale in one event. Staleness should key to the specific candidate identity each decision targets, not the whole preview.
+
+2. How do bulk actions save? #1245 step 2 specifies endpoints that save "one pending batch decision at a time." The bulk button creates 31 decisions in a single click. Thirty-one sequential calls is slow and has a partial-failure state — if #17 fails, what does the reviewer see, and what's persisted? This needs either a batch endpoint or explicit partial-failure UX.
+
+3. Does the footer count reflect saved or optimistic state? Our whole verification method leans on that count, and it's what caught a wrong row in a prior session. If it decrements on click before the save confirms, it stops being a reliable check.
+
+4. Two reviewers at once. #1245 anticipates "a different authorized reviewer resumes the batch" — sequential handoff. Simultaneous editing looks like last-write-wins. Is there a lock or conflict detection?
+
+5. Is Approve a single transaction? #1245 step 4 mentions "the existing approval transaction," which hints atomicity already exists — worth confirming outright, along with timeout behavior on 5,409 rows. None of the three tickets validate Approve, and it's still the step nobody has observed.
+
+One expectation to set
+
+#1247's out-of-scope line — "Replaying decisions against a different month, environment, company, or source-property catalog" — is correct, and matches the month-interdependence finding in the runbook. But it means the manifest will not carry dev decisions onto production. That transfer stays human: the runbook plus the decision log, re-derived against production's own catalog state. Worth saying plainly now so nobody plans the seed expecting to export from dev and import to prod.

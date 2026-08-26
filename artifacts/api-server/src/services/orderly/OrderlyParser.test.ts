@@ -19,6 +19,10 @@ import {
   detectInventoryDate,
   parseOrderlyWorkbook,
 } from './OrderlyParser';
+import {
+  buildBulkPackSizeFixtureWorkbook,
+  BULK_PACK_SIZE_FIXTURE_FILENAME,
+} from './orderlyBulkPackSize.fixture';
 
 // ─── detectOrderlyFormat ─────────────────────────────────────────────────────
 
@@ -344,5 +348,47 @@ describe('parseOrderlyWorkbook (Bay Hill June 2026)', () => {
       r => r.caseQuantity != null && r.packParseStatus === 'ok',
     );
     expect(hasPackData).toBe(true);
+  });
+
+  it('parses an ordinary 1/1 750ML bottle as complete three-tier evidence', () => {
+    const bottle = result.rows.find(row => row.rawData['Pack Size'] === '1/1 750ML');
+    expect(bottle).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packParseStatus: 'ok',
+    });
+  });
+});
+
+describe('bulk pack-size acceptance fixture', () => {
+  it('contains a stable complete-pack candidate and a missing-pack-evidence row', () => {
+    const result = parseOrderlyWorkbook(
+      buildBulkPackSizeFixtureWorkbook(),
+      BULK_PACK_SIZE_FIXTURE_FILENAME,
+    );
+
+    expect(result.sheetName).toBe('Inventory Detail');
+    expect(result.sourceRowCount).toBe(2);
+    expect(result.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceItemCode: 'TEQ-5050',
+        cleanedDescription: 'House Tequila',
+        supplierRaw: 'Acme Liquor',
+        packParseStatus: 'ok',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 50,
+        baseUnit: 'ML',
+        itemCodeStatus: 'valid',
+      }),
+      expect.objectContaining({
+        sourceItemCode: 'TEQ-5051',
+        cleanedDescription: 'House Tequila',
+        packParseStatus: 'unparseable',
+        itemCodeStatus: 'valid',
+      }),
+    ]));
   });
 });

@@ -35,7 +35,7 @@ import {
 } from '../services/orderly/orderlyCountSession';
 import multer from 'multer';
 import { requireAuth, requireTier } from '../auth';
-import { getAccessibleStores } from '../permissions';
+import { canApproveOrderlyImport, getAccessibleStores } from '../permissions';
 import { db } from '../db';
 import { sql, eq, and, isNull, ne } from 'drizzle-orm';
 import {
@@ -54,8 +54,11 @@ import {
 import {
   runResolutionPreview,
   applyBatchApproval,
+  getOrderlyReviewDecisions,
+  exportOrderlyReviewDecisionManifest,
+  importOrderlyReviewDecisionManifest,
+  saveOrderlyReviewDecisionChanges,
   ImportApprovalError,
-  type RowDecision,
 } from '../services/orderly/orderlyDomain';
 import {
   getReconciliationReport,
@@ -242,6 +245,20 @@ function approvalErrorStatus(err: unknown): number {
   return 500;
 }
 
+/** Route-level defense for the irreversible Orderly approval action. */
+function requireOrderlyApprovalRole(req: any, res: any, next: any) {
+  const user = req.user;
+  if (!user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  if (!canApproveOrderlyImport(user)) {
+    return res.status(403).json({
+      error: 'Only company admins and managers can approve Orderly imports.',
+    });
+  }
+  return next();
+}
+
 /** Build the unified preview response shape. */
 function buildPreviewResponse(batchId: string, parseResult: OrderlyParseResult) {
   return {
@@ -265,6 +282,9 @@ function buildPreviewResponse(batchId: string, parseResult: OrderlyParseResult) 
       cleaningConfidence: r.cleaningConfidence,
       supplierRaw: r.supplierRaw,
       supplierStatus: r.supplierStatus,
+      packSizeRaw: typeof r.rawData['Pack Size'] === 'string' && r.rawData['Pack Size'].trim()
+        ? r.rawData['Pack Size']
+        : null,
       packSizeDisplay: [r.caseQuantity, r.innerPackQuantity, r.baseUnit]
         .filter(v => v != null && v !== '')
         .join('/'),
@@ -682,6 +702,128 @@ export function registerOrderlyImportRoutes(app: Express): void {
   );
 
   /**
+   * GET /api/inventory-import/orderly/batches/:batchId/review-decisions
+   *
+   * Returns the durable, pending-review decision draft. The matching preview
+   * remains a read-only calculation; review choices are stored separately so
+   * reloading the wizard never changes source rows or catalog data.
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const result = await getOrderlyReviewDecisions(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+        );
+        res.json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision load error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * PUT /api/inventory-import/orderly/batches/:batchId/review-decisions
+   *
+   * Saves one or more reviewer choices atomically. Every change carries the
+   * revision the browser read; a concurrent reviewer therefore gets a conflict
+   * instead of silently overwriting another saved choice.
+   */
+  app.put(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const result = await saveOrderlyReviewDecisionChanges(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+          req.body?.changes,
+        );
+        res.json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision save error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * GET /api/inventory-import/orderly/batches/:batchId/review-decisions/manifest
+   *
+   * Produces a signed, batch-bound record of the current saved decisions and
+   * the reviewer-facing evidence that supported them. It is never an approval
+   * token: imports re-check the current preview and all decision rules.
+   */
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions/manifest',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const manifest = await exportOrderlyReviewDecisionManifest(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+        );
+        res
+          .type('application/json')
+          .attachment(`orderly-review-decisions-${req.params.batchId}.json`)
+          .send(manifest);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision manifest export error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
+   * POST /api/inventory-import/orderly/batches/:batchId/review-decisions/manifest
+   *
+   * Applies a signed manifest only to its original pending batch. The entire
+   * manifest is rejected on stale, cross-scope, or invalid evidence; no partial
+   * decision set is ever written.
+   */
+  app.post(
+    '/api/inventory-import/orderly/batches/:batchId/review-decisions/manifest',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string | null ?? null;
+        const result = await importOrderlyReviewDecisionManifest(
+          String(req.params.batchId),
+          { actingUserId: userId as string, companyId },
+          req.body?.manifest ?? req.body,
+        );
+        const status = result.status === 'accepted' ? 200 : result.status === 'stale' ? 409 : 400;
+        res.status(status).json(result);
+      } catch (err: any) {
+        console.error('[OrderlyImport] review decision manifest import error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  /**
    * POST /api/inventory-import/orderly/batches/:batchId/approve
    *
    * Commits the import — creates/links items, vendors, vendor-items, locations,
@@ -696,13 +838,22 @@ export function registerOrderlyImportRoutes(app: Express): void {
     requireAuth,
     // @ts-ignore
     requireTier('basic'),
+    requireOrderlyApprovalRole,
     // @ts-ignore
     async (req, res) => {
       try {
         const companyId = (req as any).companyId as string;
         const userId = (req as any).user?.id as string | null ?? null;
         const { batchId } = req.params;
-        const rowDecisions: RowDecision[] = req.body?.rowDecisions ?? [];
+        // Review choices are written through the draft endpoint before this
+        // irreversible operation. Refusing a client-supplied override means a
+        // reload, stale tab, or forged request cannot swap the peer-reviewed
+        // saved decision set at approval time.
+        if (Array.isArray(req.body?.rowDecisions) && req.body.rowDecisions.length > 0) {
+          return res.status(400).json({
+            error: 'Review decisions must be saved to the batch before approval.',
+          });
+        }
         const force: boolean = req.body?.force === true;
 
         // Destination binding is NOT accepted from the client. The shared
@@ -774,7 +925,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const result = await applyBatchApproval(
           String(batchId),
           { actingUserId: userId as string, companyId },
-          rowDecisions,
+          null,
         );
         res.json(result);
       } catch (err: any) {

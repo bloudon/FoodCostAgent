@@ -1,0 +1,229 @@
+# Orderly Import Review — Process Record & Production Seed Runbook
+
+**Version:** 0.4
+**Last updated:** 2026-08-24
+**Scope:** Seeding May, June, and July 2026 batches onto the production server.
+**Verdict:** **Not ready.** See §2 for the specific remaining gates.
+
+---
+
+## 1. Validation status
+
+| Stage | Status | Notes |
+|---|---|---|
+| Upload | Validated | |
+| Date confirmation | Validated, with defect | Dead-ends on URL-resumed sessions — see §9, ticket #1249 |
+| Preview — classification review | Validated in method | Evidence method proven on ~18 rows of one batch; never completed for a full batch |
+| Preview — decision persistence | **Validated 2026-08-24** | #1245 verified behaviorally: server write, survives reload and full navigation, durable record with revision and reviewer attribution, undo clears server-side |
+| Preview — saved decision controls the write | **Unverified** | Persistence is proven; that a saved decision changes the approval *outcome* is not. Replit follow-up #3 covers this |
+| **Approve** | **Never executed** | No session has reached this step in any environment |
+| Post-approve verification | **Undefined** | No method exists yet |
+
+### Approve unknowns — still open
+
+Safely testable on dev, which is test data. All five remain unanswered:
+
+1. **Atomic?** If it fails partway through 5,409 rows, does it roll back or leave a half-written catalog?
+2. **Duration?** A 5,409-row commit may exceed a proxy or gateway timeout. What does the UI do if it does?
+3. **Idempotent?** Does a double-click or a retry after apparent failure double-write?
+4. **Reversible?** Any unwind path, or is a bad approval permanent?
+5. **What does it write?** Which outputs become permanent mappings affecting later months?
+
+Replit's follow-up work has not touched any of these.
+
+---
+
+## 2. Production readiness gate
+
+Answering "what is left to call May–July solid enough for production."
+
+### 2.1 The three months are in three different states
+
+| Month | Dev state | Decision record | Ever approved by this process |
+|---|---|---|---|
+| **May 2026** | Approved 8/22/2026 | **None** — approved before durable decisions existed | No |
+| **June 2026** | Pending review | Partial — 63 + 1 outstanding, ~18 rows evidence-verified | No |
+| **July 2026** | **File does not exist on dev** | None | No |
+
+Only June has been meaningfully exercised, and even June has never been approved. July has never been uploaded, previewed, or seen in any environment. May was approved under the old regime, so whatever was decided is unrecorded and unrecoverable.
+
+### 2.2 Why this compounds
+
+Approving a month mutates the catalog the next month is classified against (§3). May's dev decisions are unrecorded, so production's May will not reproduce dev's May. That yields a different post-May catalog on production, therefore a different June classification, therefore different June decisions, and so on into July.
+
+**Dev is not currently a rehearsal of the production sequence.** It is a partial rehearsal of June alone, against a catalog state production will not share.
+
+Dev also cannot rehearse May as things stand: May is already approved there, and re-approving after a discard may be blocked by the duplicate-inventory-date guard (Replit follow-up #2 — unresolved, and directly relevant here).
+
+### 2.3 Gates
+
+**A. Engineering — must land before any dry run**
+
+- [ ] **Diagnose the six failing Orderly identity tests** (Replit #4). Highest priority on their list. Undiagnosed failures in the subsystem that decides item matching and catalog mappings; cannot distinguish harness noise from real regression. Blocks everything downstream.
+- [ ] **End-to-end saved-draft test** (Replit #3). Proves a saved decision actually controls the resulting mapping/variant. Currently the untested link in #1245.
+- [ ] **Decide approval permissions** (Replit #1). **Shipped as #1250** — manager/company-admin gate at both route and service layers, correctly scoped so store users retain draft save/load access.
+- [ ] **Confirm `global_admin` can approve.** #1250's test matrix covered company admin, assigned store manager, store-user rejection, and service bypass — **not `global_admin`**. The intended seed operator account (`admin@pizza.com`) is `role: global_admin` with `companyId: null` and a separate `selectedCompanyId`. If the role predicate enumerates company-admin/manager, or resolves scope via `companyId`, this account may be rejected at the final irreversible click. Verify by unit test before the dry run, not by attempting an approval.
+- [ ] **Fix #1249.** Live defect; degrades the resume feature just shipped.
+- [ ] **Answer the duplicate-date guard question** (from Replit #2): after discard and re-upload, can a month be re-approved? A blocked re-approval mid-seed is a real failure mode.
+
+Deferred for a single-operator sequential seed: Replit #2 full transactional enforcement, Replit #5 catalog locking.
+
+**B. Rehearsal — the part that does not exist yet**
+
+- [ ] **Obtain July_2026.xlsx** and upload to dev. Cannot validate an unseen file. Preview it and record row count, decision counts, and any new failure shapes.
+- [ ] **Reset dev to a pre-May catalog state**, so the full May → June → July sequence can be rehearsed as production will actually run it. Without this, the dry run tests June in isolation against the wrong baseline.
+- [ ] **Complete a full dry run on dev through Approve**, in chronological order, recording a decision log (§6) for every month.
+- [ ] **Answer the five Approve unknowns** (§1) from that run.
+- [ ] **Define and test post-approve verification** — how to confirm a month landed correctly.
+
+**C. Production preconditions**
+
+- [ ] Verified database backup and tested restore point, taken immediately before the seed.
+- [ ] Decision logs from the dev dry run in hand, understood to be reference material, not a replay script (§3).
+- [ ] Second reviewer available to sign off before each Approve.
+- [ ] Explicit written go-ahead for each Approve click.
+
+### 2.4 Honest summary
+
+Gate A is ordinary engineering and will close quickly. **Gate B is the real work and has barely started.** The minimum credible claim of "solid" requires one complete, recorded, chronological dry run of all three months on dev, ending in three successful approvals — which requires a July file and a catalog reset that nobody has yet.
+
+If the seed must proceed before Gate B completes, treat production as the first real run: back up, go one month at a time, verify between months, and accept that rollback may mean database restore.
+
+---
+
+## 3. Months are not independent
+
+The classifier compares incoming rows against existing catalog records (the evidence panel cites concrete items, e.g. `FnB #: 24136`). Approve writes into that same catalog. **Approving month N changes the classification of month N+1.**
+
+Consequences:
+
+- Seed in strict chronological order. Do not parallelise.
+- A decision set is **not portable**. Decisions recorded on dev cannot be replayed onto production unless the catalog matches at that moment. Ticket #1247 correctly refuses cross-environment manifest replay for this reason.
+- Expect decision counts to differ between dev and production for the same file. Investigate large divergences; small ones are inherent.
+- Re-running an earlier month after a later one is approved should be assumed unsafe.
+
+*(Inferred from the evidence panel's structure, not from source. Worth confirming with Replit.)*
+
+---
+
+## 4. Per-batch procedure
+
+### 4.1 Enter
+
+1. Go to `/orderly-import`. Confirm the target file shows `pending review` with the expected row count.
+2. Click **Review**.
+3. Verify the detected date matches the count date on the Orderly report. **Do not accept a mismatch or a blank field** — see §9.
+4. Click **Confirm Date & Preview Matches**.
+
+### 4.2 Baseline
+
+Record before touching anything: total rows; Matched / New / Vendors / Locations; the four categories; footer decision count.
+
+**"Conflicting source packs: 0" is not trustworthy** while #1248 is unbuilt. Zero means the check does not flag these cases, not that none exist.
+
+### 4.3 Pre-screen for ambiguous pack sizes — MANDATORY
+
+With #1248 cancelled, this is a required manual step, not a precaution.
+
+Filter STATUS = **New pack size** and search for known multi-pack-size codes — at minimum `4676306` (Milk - Whole, resolves to both `1/1 GALLON` and `4/1 GALLON` in the source). Any hit must be excluded manually and never bulk-accepted.
+
+Historically **407 of 5,319 codes (7.65%)** carry this shape. This manual screen catches only cases known by name; it does not scale. Revisit #1248 before this becomes routine.
+
+### 4.4 Resolve decisions
+
+For each row:
+
+1. Expand it (§9 for technique).
+2. **Read the `Why:` line in the expanded panel — not the pack-check summary.** The summary is unreliable until #1246 ships; the `Why:` line carries the backend's true normalised comparison, e.g. `both packs normalize to 24 EA`.
+3. Decide: same normalised value → **link to existing**; genuinely different → **create as separate variant**; inconsistent or missing `Why:` → **stop and cross-check Orderly** (`app.bepbackoffice.com`, restaurantId `24472`). Do not guess.
+4. **Verify the footer count moved.**
+5. Log the decision (§6).
+
+**Bulk actions:** only after §4.3 is clean. Bulk saves are now atomic and durable, so one confident click commits the whole set to the draft — including anything §4.3 would have caught.
+
+### 4.5 Held rows and descriptive codes
+
+- Held rows offer fuzzy candidates; select on name + pack + location agreement.
+- **Category 4 (descriptive Item Codes)** is expected and by design — cannot become permanent mappings, needs no resolution. 414 on the June batch. Do not try to "fix" these.
+
+### 4.6 Approve
+
+1. Footer shows zero outstanding decisions.
+2. Second reviewer signs off on the decision log.
+3. Explicit written confirmation that approval is intended for this batch.
+4. Click Approve.
+5. Record duration, errors, resulting status, post-approve catalog counts.
+
+**Approve is the only irreversible step.**
+
+---
+
+## 5. Persistence regression test
+
+Run before every batch and after any deploy. Two minutes.
+
+1. Enter Preview. Note the footer count.
+2. Record one decision. Confirm a `PUT .../review-decisions` returns 200 and the count decrements.
+3. Reload.
+4. **Pass:** page resumes on Preview, count still decremented, row shows its decision.
+   **Fail:** count reset — **stop, do not proceed.**
+5. Optional server check: `GET /api/inventory-import/orderly/batches/{batchId}/review-decisions` should list the decision with its `revision` and reviewer attribution.
+
+---
+
+## 6. Decision log template
+
+The manifest (#1247) does not carry decisions across environments, so this log is the transfer mechanism to production and the only audit trail.
+
+| Row # | Description | Code | Bucket | `Why:` line | Decision | Rationale / source |
+|---|---|---|---|---|---|---|
+| 924 | Red Breast - Irish Whiskey 12Yr | 417747 | Alternate code | both packs normalize to 750 ML | Link existing (FnB #23896) | Clean normalisation, 1×750ML both sides |
+| 2583 | Milk - Whole | 4676306 | New pack size | — | **Exclude — do not accept** | Source maps code to two pack sizes. Tool does not flag. #1248 |
+| 1022 | Stella Artois - Bottled | 99753 | Alternate code | both packs normalize to 24 EA | Link existing | Display shows 2→1; backend and Orderly both confirm 24 EA. #1246 |
+
+---
+
+## 7. Verified findings worth keeping
+
+- **Pack normalisation is sound.** 13 rows sampled across the full spread of the 88 alternate-code rows: all resolved cleanly (`750 ML`, `24 EA`, `640 OZ`, `165 EA`, `176 OZ`, `16 OZ`). Zero unresolved geometry. "unit detail unavailable" is a display artifact only — the classifier never uses the displayed number, so it cannot manufacture false agreements.
+- **Stella Artois corroboration.** Backend normalisation (24 EA both sides) independently matches manual Orderly research (City Beverages `77001`, `99753`, `99682` all totalling 24). Good evidence the backend is trustworthy.
+- **#1245 works.** Verified behaviorally, not from report.
+
+---
+
+## 8. Open tickets
+
+| Ticket | Subject | Status |
+|---|---|---|
+| #1245 | Durable review decisions | **Shipped, verified** |
+| #1246 | Accurate pack evidence display | Proposed — highest value for dry-run speed |
+| #1247 | Decision manifest export/import | Proposed |
+| #1248 | Flag ambiguous source pack sizes | **Cancelled** — forces mandatory §4.3 manual screen |
+| #1249 | Restore detected date on resume | **Cancelled** — live defect, see §9 |
+| #1250 | Approval restricted to manager/admin | **Shipped** — not browser-verifiable; happy path can only be confirmed by an actual approval, so it is validated by the dry run. See §2.3 for the untested `global_admin` case |
+
+---
+
+## 9. Technical notes on driving the UI
+
+- **The Date-step dead end (#1249).** Trigger is **URL resume + Back**, not Back alone. Enter → Preview → **reload** (resume restores Preview without passing through Upload/Date) → **Back** → `Detected: unknown`, empty date, Confirm `disabled: true`, no forward path. Entering via Review → Preview → Back *without* a reload works fine. Recovery: go to bare `/orderly-import` and re-enter via **Review**. Saved decisions survive intact. **Never type the date manually to work around this** — that defeats the step that prevents wrong-period postings.
+- **Expanding a row.** Coordinate clicks are unreliable. Use `document.createTreeWalker` over text nodes to find the description, walk up to the `<tr>`, find its `svg`, click the closest button ancestor.
+- **Match on substring, not exact text.** Descriptions carry unnormalised whitespace — `Red Breast -  Irish Whiskey 12Yr` has a double space (#1243).
+- **Do not loop expand-then-collapse across many rows.** It froze the renderer and timed out CDP. Expand a modest sample in one pass and read them together.
+- **Selecting a candidate.** The candidate card is a `<button>`, not a radio. Walk up from the `Compatible` badge text node to the nearest `BUTTON`.
+- **The `Why:` line exists only in the expanded panel**, which is why the collapsed view misleads.
+- **Status filters** are pill `<button>`s matched by exact label text.
+- **Re-read the footer after every action.** Only reliable confirmation a click registered; it caught a wrong-row error in a prior session.
+- **The wizard now preserves state in the URL** (`?orderlyBatch=…&orderlyStep=preview`), so reloads resume Preview. Bare `/orderly-import` still returns to the batch list.
+- **Dev restarts silently.** The wizard reset itself mid-session with no user action, likely a hot reload. Durable decisions now survive this; in-memory wizard state does not.
+
+---
+
+## 10. Change log
+
+| Version | Date | Change |
+|---|---|---|
+| 0.4 | 2026-08-24 | #1245 verified and marked validated; added §2 production readiness gate and the three-months-three-states finding; corrected #1249 trigger to URL-resume + Back; §4.3 pre-screen made mandatory after #1248 cancelled; added pack-normalisation sampling results; added ticket status table |
+| 0.3 | 2026-08-23 | Added persistence failure and regression test; corrected §4.4 to read the `Why:` line; added month-interdependence finding; added Approve unknowns |
+| 0.2 | prior | Row-expansion technique, Orderly cross-check method |
+| 0.1 | prior | Initial capture of wizard steps |

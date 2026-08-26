@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePackGeometry } from './packGeometry';
+import { comparePackGeometry, normalizePackGeometry } from './packGeometry';
 
 describe('Orderly source pack compatibility', () => {
   it('keeps Casamigos 6 × 1 L and 5 × 50 ml as incompatible pack variants', () => {
@@ -40,5 +40,20 @@ describe('Orderly source pack compatibility', () => {
     );
 
     expect(result.status).toBe('unknown');
+  });
+
+  it.each([
+    ['case quantity', { caseQuantity: null, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: 'EA' }],
+    ['inner-pack quantity', { caseQuantity: 1, innerPackQuantity: null, baseUnitQuantity: 24, baseUnit: 'EA' }],
+    ['base-unit quantity', { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'EA' }],
+  ])('treats missing %s as unconfirmed rather than assuming one', (_missingTier, incomplete) => {
+    const normalized = normalizePackGeometry(incomplete);
+    const comparison = comparePackGeometry(
+      incomplete,
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: 'EA' },
+    );
+
+    expect(normalized).toMatchObject({ status: 'unknown', totalBaseUnits: null });
+    expect(comparison).toMatchObject({ status: 'unknown', totalBaseUnits: null });
   });
 });
