@@ -1,0 +1,93 @@
+The two confirmed rows are both Red Breast. Every other row shows Catalog shape: N count (unit detail unavailable) — while the incoming Orderly side parses fine (5/50 ML, 2/12 EA, 6/12 OZ).
+
+So Orderly's data has geometry; the FnB catalog doesn't. Let me find where those catalog items came from.
+
+Used Claude in Chrome integration · 1 note
+
+Every item in the catalog uses unit ea. All 3,052 have containerSize: null and containerUnitId: null. No vendor SKUs. 100%.
+
+Answering your second question first: no, the sizes are not correct
+
+Not "some are wrong" — none of the catalog carries pack size at all. Each item stores an outer case count and a generic "each" unit. There is no record of what's inside the case:
+
+Item	FnB #	caseSize	containerSize	unit
+Red Breast Irish Whiskey	23896	1	null	ea
+Stella Artois - Bottled	23976	1	null	ea
+Casamigo's - Blanco	23382	6	null	ea
+Milk - Whole	24244	4	null	ea
+
+Milk-Whole is instructive: caseSize: 4 with no unit. The 4/1-GALLON reading got baked in, the 1/1-GALLON reading was discarded, and nothing records which was right. The ambiguity we've been treating as a June problem was already silently resolved — wrongly — in the catalog.
+
+This is why June is blocked. It isn't a #1246 regression. #1246 simply stopped the backend inferring inner-pack values it never had, and the honest answer turns out to be "unconfirmed" for essentially everything. My earlier "13/13 resolved cleanly" reading was of inferences on top of null data.
+
+On flushing and repeating May
+
+The instinct is right, but it won't work, for two reasons.
+
+It's not reachable in-app. POST /discard returns a hard 409 on approved batches. Flushing May means database-level intervention by Replit, not a button.
+
+More importantly, re-running May would reproduce the same result. The catalog has nowhere to put inner-pack geometry — containerSize and containerUnitId are null across all 3,052 items, and every unit is ea. Whether that's because the approval write path drops the parsed geometry, or because the schema was never populated, re-running the identical import through the identical path yields an identical catalog. You'd spend the reset and get the same blocked June.
+
+So the ordering is: find out why geometry isn't persisted, fix that, then decide about May. A flush before that is wasted.
+
+The question for Replit
+
+The Orderly rows parse geometry correctly — 5/50 ML, 2/12 EA, 6/12 OZ, all tagged "Parsed." The catalog has containerSize/containerUnitId columns sitting null. So:
+
+Does the approval write path ever populate containerSize and containerUnitId, or does it only ever write caseSize and default the unit to ea?
+
+That's a single question about applyBatchApproval's item-creation code, and the answer determines everything downstream. If approval never writes those fields, then no import will ever produce a correct catalog, and the seed can't proceed on any month — which would make this the real Gate A blocker, ahead of the identity test failures.
+
+I'd hold off on the flush and on further June work until that's answered. Want me to check the approval write path in the source I've already pulled? I can look at what applyBatchApproval actually sets when creating an item.
+
+I'm fine with telling Replit to get rid of May I already have once and that is the Goal to get a clean may thru june on dev without fixing and working around the data
+
+Thought for 9s
+
+Agreed on not working around the data — that's the right call, and it makes one thing decisive: whether a clean re-run can even produce correct geometry. If approval never writes it, a flushed May rebuilds the same geometry-less catalog and June blocks identically.
+
+I have the source locally. Checking the write path.
+
+Ran 3 commands
+
+That settles it. The approval write path is this:
+
+js
+.values({
+  companyId, name,
+  unitId: eachUnitId,                      // hardcoded "each", always
+  caseSize: rowPreview.caseQuantity ?? 1,  // outer count only
+  pricePerUnit, avgCostPerUnit, active, yieldPercent, categoryId
+})
+
+No containerSize, no containerUnitId, no containerLabel. And eachUnitId is a cached lookup of a single "each" unit, so every item gets it.
+
+Meanwhile rowPreview carries the full parsed geometry — caseQuantity, innerPackQuantity, baseUnitQuantity, baseUnit, packSizeRaw. Approval reads one of those five and discards the rest.
+
+Don't flush May yet
+
+A clean re-run would rebuild the identical geometry-less catalog. The write path discards inner-pack data regardless of how good the input is, so 2/12 EA goes in and caseSize: 1, unit: ea, containerSize: null comes out. You'd spend the reset and land in exactly the same place, with June blocked identically.
+
+This isn't a data problem to work around — which is what you said you didn't want to do, and you're right. It's a five-field gap at the moment of writing.
+
+What this explains
+
+Everything traces back to this one insert:
+
+3,052 of 3,052 items with containerSize: null — because it's never set
+Every unit ea — because unitId is hardcoded
+June's rows all reading "Catalog shape: N count (unit detail unavailable)" — the catalog genuinely has no unit detail to show
+Milk-Whole flattened to caseSize: 4 — the 4/1-GALLON reading kept, the 1/1-GALLON reading dropped, no record that a choice was ever made
+
+It also reframes #1246. That ticket didn't regress anything; it stopped the backend inferring inner-pack values on top of nulls and surfaced a pre-existing hole. The honest "Not confirmed" is correct.
+
+And it means May is not a usable base for June regardless of whether it's flushed — not because May's decisions were wrong, but because no approval under this code can produce a catalog with pack sizes in it.
+
+Sequence I'd recommend
+Fix the write path — persist innerPackQuantity → containerSize, baseUnit → containerUnitId, keep packSizeRaw for provenance, and stop hardcoding unitId. The data is already sitting in rowPreview at the point of the insert.
+Then flush May — the reset is worth spending once the re-run can produce something correct.
+Then the clean May → June → July run, which is the goal and is now actually achievable.
+
+This should go ahead of the six identity test failures in Gate A. Those affect confidence in test results; this determines whether any seeded month is usable at all.
+
+Want me to draft it as a ticket in their format? I'd include the exact insert location, the available rowPreview fields, and the Milk-Whole case as the verification target — since a correct fix should make that row's ambiguity visible instead of silently picking 4.
