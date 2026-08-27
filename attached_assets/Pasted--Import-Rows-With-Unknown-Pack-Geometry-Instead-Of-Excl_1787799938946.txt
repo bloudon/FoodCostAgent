@@ -1,0 +1,94 @@
+# Import Rows With Unknown Pack Geometry Instead Of Excluding Them
+
+**Priority:** Blocker for the May–July seed
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Evidence batch:** `31bb8a48-417c-4cdc-999a-6e1c6c64e853` (May_2026.xlsx, approved 2026-08-27T02:58:20Z)
+
+> **Numbering note:** two separate tickets are currently both called #1256 — the descriptive-code identity work (shipped, verified) and the revived #1255 parser scope (shipped, verified). Please assign this one a fresh number and resolve that collision in the record.
+
+## What & Why
+
+Approving May produced a **3.67% inventory value shortfall** against the source. The cause is not valuation or parsing — it is that 246 rows were silently dropped.
+
+| Metric | Value |
+|---|---|
+| Orderly approved May total | $254,285.74 |
+| FnB snapshot total | $254,286.67 |
+| FnB imported total | $244,956.43 |
+| **Reconciliation delta** | **−$9,330.24 (3.67%)** |
+| Source rows | 5,358 |
+| Imported rows | 5,112 |
+| **Excluded rows** | **246** |
+| `packParseUnparseable` | **246** |
+
+`packParseUnparseable` equals `excludedRowCount` exactly. Every excluded row was excluded because its pack geometry could not be parsed — overwhelmingly rows whose base unit is `Case` (e.g. `1/1 Case`, `12/10 Case`), which the revived #1255 fail-closed change correctly classifies as an unsupported unit.
+
+The snapshot total is within **$0.93** of Orderly's figure, so file reading and valuation are sound. The entire gap is missing rows.
+
+### The gap between two correct decisions
+
+Two recently shipped behaviours are each individually right and collectively wrong:
+
+* **Descriptive-code identity** admits rows that have no usable vendor *code*, creating the item and skipping the code mapping.
+* **Fail-closed pack geometry** rejects rows that have no usable *unit*, so `normalizePackGeometry` returns unknown.
+
+Nobody scoped the row that has *valid identity but unknown geometry*. It currently falls through to "no resolved item" and is dropped from the import entirely.
+
+Dropping is the wrong failure mode. An unknown pack size is a reason to withhold pack comparison and unit conversion — it is not a reason to omit the item from inventory or to discard its value.
+
+### Why this blocks the seed
+
+* The stated goal is that FnB inventory value matches Orderly after import. A 3.67% shortfall fails that on the first month.
+* The stated goal is that all unique items and sizes are registered. Real products are absent from the catalog — `GUINNESS 4PK`, `TAYLOR DRY SHERRY`, `GUINES DRAUGHT`, `SHOOTERS STRAWBERRY MOUSSE`.
+* Approved batches cannot be discarded, so June building on this catalog compounds the problem. June would create these items fresh, and May's history for them would be permanently absent.
+* The exclusion is reported only after approval, in the reconciliation report. Nothing on the approval surface warns that 246 rows will be dropped.
+
+## Done looks like
+
+* A row whose identity resolves but whose pack geometry is unparseable **creates or resolves its inventory item** and is included in the import, with geometry recorded as explicitly unknown.
+* Its snapshot value is included in `importedTotal`, so reconciliation delta approaches zero.
+* Unknown geometry continues to fail closed everywhere it matters: no normalized total, no pack-compatibility claim, no auto-link on pack evidence, no invented canonical unit. `Case` remains an unsupported unit.
+* The preview surfaces, **before** approval, how many rows carry unparseable geometry and what will happen to them — matching the existing advisory pattern for descriptive-code rows.
+* `excludedRowCount` is reserved for rows that genuinely cannot be represented at all, and any remaining exclusions are itemised in the preview rather than discovered afterwards.
+* Re-importing the same row in a later month resolves to the same item rather than creating a duplicate.
+
+## Out of scope
+
+* Adding `Case` (or any other unsupported unit) as a convertible unit. It has no intrinsic size and must stay unknown.
+* Changing `canonicalOrderlyPackKey` or the raw-unit identity boundary.
+* Changing valuation. Dollar totals continue to come from the source snapshot.
+* Correcting data in Orderly. The source is read-only.
+
+## Steps
+
+1. Trace why an unparseable-geometry row yields no resolved item during approval, and separate "cannot compare this pack" from "cannot import this row."
+2. Allow item creation/resolution for these rows, persisting geometry as explicitly unknown rather than substituting defaults.
+3. Keep every downstream pack-evidence guard fail-closed for unknown geometry.
+4. Add a pre-approval advisory for unparseable-geometry rows, mirroring the descriptive-code advisory.
+5. Add regressions: an unsupported-unit row imports and creates an item; its value appears in `importedTotal`; it produces no normalized total and no pack-compatibility claim; it does not auto-link on pack evidence; re-import resolves to the same item.
+
+## Verification
+
+Flush and re-run May on dev:
+
+* `excludedRowCount` for pack-parse reasons is 0.
+* `importedTotal` reconciles to `snapshotTotal` within rounding, and to Orderly's **$254,285.74** within ~$1.
+* `GUINNESS 4PK`, `TAYLOR DRY SHERRY`, `GUINES DRAUGHT` exist in the catalog with unknown pack geometry.
+* Those items still show no normalized pack total anywhere in the UI.
+
+Subsequent months for reference: June $261,006.73, July $254,298.83.
+
+## Related findings from the same report — not in this ticket's scope
+
+Worth separate records:
+
+1. **986 imported items have no vendor assigned** (supplier blank, placeholder, or ambiguous). Vendor pricing, purchasing, and vendor comparison are unavailable for roughly a third of the catalog. This is on the critical path for using the seeded data even once value reconciles.
+2. **862 items have Orderly par targets staged but not applied** to inventory par levels.
+3. **Parse results are frozen at upload time.** A batch staged before a parser change keeps its old parse state and must be re-uploaded to pick up the fix. This caused a stale batch to display `1/1 Case` as "Parsed" after the fail-closed change had shipped. Worth surfacing the parser version a batch was staged under, and warning when it is behind.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts`
+* `artifacts/api-server/src/services/orderly/packGeometry.ts`
+* `artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx`
+* `artifacts/api-server/src/routes/orderlyApprovalRoute.test.ts`

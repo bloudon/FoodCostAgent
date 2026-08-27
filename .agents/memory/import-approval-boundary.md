@@ -68,3 +68,21 @@ gates ahead of Bay Hill bulk migration.
 **How to apply:** Record #1095 as closed with Reviewer PASS, QA PASS WITH
 FOLLOW-UP, and procedural independence unverified. Keep bulk Bay Hill work
 blocked until the remaining pre-migration gates pass.
+
+# Unsupported source geometry may remain unresolved evidence
+
+An approved import row does not need to manufacture a catalog identity. When
+source pack geometry is unsupported or incomplete and no authoritative existing
+identity resolves the row, approval may preserve the row with a null resolution
+while skipping every identity-producing write.
+
+**Why:** Rejecting an otherwise valid historical snapshot makes unsupported
+source notation an all-or-nothing migration blocker, while coercing that
+notation into catalog geometry corrupts inventory identity. The safe middle
+ground is immutable unresolved evidence.
+
+**How to apply:** Require catalog-safe geometry before creating an item or
+mapping. Existing authoritative mappings may still resolve the row. Otherwise
+leave its resolution null and do not create item relationships, location
+assignments, vendor-item links, or store-item links; test both incomplete tiers
+and unsupported units against the live database.

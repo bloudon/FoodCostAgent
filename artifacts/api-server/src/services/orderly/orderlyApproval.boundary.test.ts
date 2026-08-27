@@ -112,10 +112,10 @@ async function stageBatch(opts: {
     cleanedDescription: row.cleanedDescription ?? row.rawDescription ?? `Boundary Test Item ${id}`,
     sourceItemCode: row.sourceItemCode ?? null,
     supplierRaw: row.supplierRaw ?? null,
-    caseQuantity: row.caseQuantity ?? 1,
-    innerPackQuantity: row.innerPackQuantity ?? 1,
-    baseUnitQuantity: row.baseUnitQuantity ?? 1,
-    baseUnit: row.baseUnit ?? 'EA',
+    caseQuantity: row.caseQuantity === undefined ? 1 : row.caseQuantity,
+    innerPackQuantity: row.innerPackQuantity === undefined ? 1 : row.innerPackQuantity,
+    baseUnitQuantity: row.baseUnitQuantity === undefined ? 1 : row.baseUnitQuantity,
+    baseUnit: row.baseUnit === undefined ? 'EA' : row.baseUnit,
     packagePrice: 10,
     itemCodeStatus: row.itemCodeStatus ?? 'missing',
     supplierStatus: row.supplierRaw ? 'valid' : 'missing',
@@ -250,6 +250,62 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
     expect(after?.status).toBe('approved');
     expect(after?.approvedBy).toBe(ID.adminA);
     expect(after?.targetStoreId).toBe(ID.storeBayHill);
+  });
+
+  it('imports unsupported pack evidence using an opaque package count without claiming normalized geometry', async () => {
+    const batchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: `CASE-${RUN.toUpperCase()}`,
+        itemCodeStatus: 'valid',
+        rawDescription: `Unsupported Case ${RUN}`,
+        cleanedDescription: `Unsupported Case ${RUN}`,
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: null,
+        baseUnit: 'CASE',
+      }],
+    });
+    const before = await countDomainRecords(ID.companyA);
+
+    const result = await applyBatchApproval(batchId, {
+      actingUserId: ID.adminA,
+      companyId: ID.companyA,
+    });
+
+    const [sourceRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    const after = await countDomainRecords(ID.companyA);
+
+    expect(result.itemsCreated).toBe(1);
+    expect(result.rowsHeldForReview).toBe(0);
+    expect(sourceRow.resolvedInventoryItemId).not.toBeNull();
+    expect(after.items).toBe(before.items + 1);
+    expect(after.mappings).toBe(before.mappings + 2);
+    expect((await snapshotBatch(batchId))?.status).toBe('approved');
+
+    const [createdItem] = await db
+      .select({
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        containerUnitId: inventoryItems.containerUnitId,
+        casePkgCount: inventoryItems.casePkgCount,
+        pricePerUnit: inventoryItems.pricePerUnit,
+      })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, sourceRow.resolvedInventoryItemId!));
+    expect(createdItem).toMatchObject({
+      caseSize: 1,
+      containerSize: null,
+      containerUnitId: null,
+      casePkgCount: null,
+      pricePerUnit: 10,
+    });
   });
 
   // ── 9. Idempotent retry ────────────────────────────────────────────────────

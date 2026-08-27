@@ -435,7 +435,7 @@ function CandidatePicker({
             <h4 className="text-sm font-semibold">Description in Item Code — using name and pack identity</h4>
             <p className="mt-1 text-xs leading-relaxed text-slate-700">
               This value is descriptive text rather than a vendor-stable code. FnB Cost Pro will create or resolve
-              the item using its normalized product name and canonical pack geometry, so its quantity and value are counted.
+              the item using its normalized product name and retained source pack evidence, so its quantity and value are counted.
             </p>
             <p className="mt-2 text-xs font-medium text-slate-800">
               No permanent Orderly code mapping will be created from the descriptive text.
@@ -1125,6 +1125,7 @@ export function ResolutionPreviewStep({
     unreliableCodes: 0,
     packEvidenceMissing: 0,
   };
+  const unknownPackRows = preview.rows.filter(row => row.packParseStatus === "unparseable").length;
   const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
   const queuedBulkVariantCount = bulkNewPackSizeReview.candidates.filter(candidate =>
     candidate.rowIndexes.every(rowIndex => {
@@ -1415,6 +1416,18 @@ export function ResolutionPreviewStep({
           </CardContent>
         </Card>
       </div>
+
+      {unknownPackRows > 0 && (
+        <Alert className="border-amber-300 bg-amber-50/80 text-amber-950" data-testid="unknown-pack-import-advisory">
+          <ShieldAlert className="h-4 w-4 text-amber-700" />
+          <AlertTitle>Unknown pack geometry will still be imported</AlertTitle>
+          <AlertDescription className="mt-1 text-amber-900/80">
+            {unknownPackRows.toLocaleString()} {unknownPackRows === 1 ? "row has" : "rows have"} unsupported or incomplete pack geometry.
+            FnB Cost Pro will create or resolve the inventory identity and retain its quantity and value using an opaque package count.
+            No normalized pack total, unit conversion, or pack-compatibility claim will be created.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {(recodeCodeCount > 0 || hasSourceEvidenceBlockers) && (
         <Card className="border-violet-200 bg-violet-50/30 shadow-sm" data-testid="orderly-pack-size-walkthrough">
@@ -1985,10 +1998,10 @@ export function ResolutionPreviewStep({
                                       : "text-muted-foreground"
                                 }`}>
                                   {row.packParseStatus === "ok"
-                                    ? "Parsed"
+                                    ? "Source format parsed"
                                     : row.packParseStatus === "partial"
-                                      ? "Partial parse — verify"
-                                      : "Needs review"}
+                                      ? "Partial source parse — imports as unknown"
+                                      : "Unknown geometry — will import"}
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs text-muted-foreground">

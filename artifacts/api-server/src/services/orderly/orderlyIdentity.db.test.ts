@@ -157,6 +157,10 @@ async function approvalWriteSnapshot(batchId: string) {
       id: inventoryImportRows.id,
       rowStatus: inventoryImportRows.rowStatus,
       resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      caseQuantity: inventoryImportRows.caseQuantity,
+      innerPackQuantity: inventoryImportRows.innerPackQuantity,
+      baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+      baseUnit: inventoryImportRows.baseUnit,
     }).from(inventoryImportRows).where(eq(inventoryImportRows.batchId, batchId)).orderBy(inventoryImportRows.id),
     db.select({ id: inventoryItems.id }).from(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).orderBy(inventoryItems.id),
     db.select({ id: categories.id }).from(categories).where(eq(categories.companyId, ID.company)).orderBy(categories.id),
@@ -506,7 +510,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       'an unknown unit',
       { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'FURLONG' },
     ],
-  ])('rolls back approval when a new item has %s', async (_label, geometry) => {
+  ])('imports a new item with %s using explicitly unknown pack geometry', async (_label, geometry) => {
     const batchId = await stageBatch([{
       code: `BAD-${batchSequence}-${RUN}`.slice(0, 24),
       description: `Invalid Geometry ${batchSequence} ${RUN}`,
@@ -515,11 +519,61 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     }], '2026-05-31');
     const before = await approvalWriteSnapshot(batchId);
 
-    await expect(applyBatchApproval(batchId, approvalAuth)).rejects.toMatchObject<
-      Partial<ImportApprovalError>
-    >({ code: 'CONFLICT' });
+    const result = await applyBatchApproval(batchId, approvalAuth);
+    const after = await approvalWriteSnapshot(batchId);
 
-    expect(await approvalWriteSnapshot(batchId)).toEqual(before);
+    expect(result).toMatchObject({
+      itemsCreated: 1,
+      itemsLinked: 0,
+      rowsHeldForReview: 0,
+      rowsProcessed: 1,
+      storeItemsCreated: 1,
+      storeItemsSkipped: 0,
+    });
+    expect(after.batches[0]).toMatchObject({ status: 'approved' });
+    expect(after.rows[0]).toMatchObject({
+      ...geometry,
+    });
+    expect(after.rows[0].resolvedInventoryItemId).toBeTruthy();
+    expect(after.itemIds).toHaveLength(before.itemIds.length + 1);
+    expect(after.externalMappingIds).toHaveLength(before.externalMappingIds.length + 2);
+    expect(after.relationshipIds).toEqual(before.relationshipIds);
+    expect(after.assignmentIds).toHaveLength(before.assignmentIds.length + 1);
+    expect(after.storeItemIds).toHaveLength(before.storeItemIds.length + 1);
+    expect(after.vendorItemRows).toEqual(before.vendorItemRows);
+    expect(after.vendorExternalMappingIds).toEqual(before.vendorExternalMappingIds);
+
+    const [item] = await db
+      .select({
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        containerUnitId: inventoryItems.containerUnitId,
+        casePkgCount: inventoryItems.casePkgCount,
+      })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, after.rows[0].resolvedInventoryItemId!));
+    expect(item).toEqual({
+      caseSize: 1,
+      containerSize: null,
+      containerUnitId: null,
+      casePkgCount: null,
+    });
+
+    const nextBatch = await stageBatch([{
+      code: `BAD-${batchSequence - 1}-${RUN}`.slice(0, 24),
+      description: `Invalid Geometry ${batchSequence - 1} ${RUN}`,
+      location: 'Geometry Lab',
+      ...geometry,
+    }], '2026-06-30');
+    const nextPreview = await runResolutionPreview(nextBatch, ID.company);
+    expect(nextPreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      matchedId: after.rows[0].resolvedInventoryItemId,
+      sourcePackEvidence: {
+        totalBaseUnits: null,
+      },
+    });
+    expect(nextPreview.rows[0].itemMatch.packCompatibility).toBeUndefined();
   });
 
   it('creates one Chambord-equivalent item and preserves five location records in one workbook', async () => {

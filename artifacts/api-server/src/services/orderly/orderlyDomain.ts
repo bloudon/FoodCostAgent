@@ -3146,40 +3146,41 @@ export async function applyBatchApproval(
         !rowPreview.itemMatch.requiresReview &&
         rowPreview.itemMatch.matchedId != null &&
         rowPreview.itemMatch.strategy !== 'same_workbook_identity';
-
       const insertNewItem = async (): Promise<string> => {
         const catalogGeometry = toCatalogPackGeometry(sourcePackGeometry(rowPreview));
-        if (!catalogGeometry) {
-          throw new ImportApprovalError(
-            'CONFLICT',
-            `Orderly row ${rowPreview.rowIndex} cannot create a catalog item without complete positive pack geometry.`,
-          );
-        }
-        const canonicalUnitId = catalogUnitByKey.get(
-          normalizeForMatch(catalogGeometry.canonicalUnit),
-        );
+        const canonicalUnitId = catalogGeometry
+          ? catalogUnitByKey.get(normalizeForMatch(catalogGeometry.canonicalUnit))
+          : catalogUnitByKey.get('ea') ?? catalogUnitByKey.get('each');
         if (!canonicalUnitId) {
           throw new ImportApprovalError(
             'CONFLICT',
-            `Orderly row ${rowPreview.rowIndex} uses pack unit ${catalogGeometry.canonicalUnit}, which is not configured in FnB.`,
+            catalogGeometry
+              ? `Orderly row ${rowPreview.rowIndex} uses pack unit ${catalogGeometry.canonicalUnit}, which is not configured in FnB.`
+              : `Orderly row ${rowPreview.rowIndex} cannot use the opaque package-count basis because the Each unit is not configured in FnB.`,
           );
         }
         const name = identityDecision?.action === 'create_variant'
           ? sourcePackVariantName(rowPreview)
           : rowPreview.cleanedDescription?.trim() || `Orderly Item ${rowPreview.rowIndex}`;
+        // Unknown source geometry is still a real inventory identity. Count it
+        // as one opaque source package so the historical quantity/value is
+        // retained, while leaving container geometry null and preserving the
+        // raw source evidence on the mapping. This is not a normalized pack
+        // claim: all compatibility/conversion paths continue to return unknown.
+        const caseSize = catalogGeometry?.caseSize ?? 1;
         const canonicalUnitCost = rowPreview.packagePrice == null
           ? 0
-          : rowPreview.packagePrice / catalogGeometry.caseSize;
+          : rowPreview.packagePrice / caseSize;
         const [newItem] = await tx
           .insert(inventoryItems)
           .values({
             companyId,
             name,
             unitId: canonicalUnitId,
-            caseSize: catalogGeometry.caseSize,
-            containerSize: catalogGeometry.containerSize,
-            containerUnitId: canonicalUnitId,
-            casePkgCount: catalogGeometry.casePkgCount,
+            caseSize,
+            containerSize: catalogGeometry?.containerSize ?? null,
+            containerUnitId: catalogGeometry ? canonicalUnitId : null,
+            casePkgCount: catalogGeometry?.casePkgCount ?? null,
             pricePerUnit: canonicalUnitCost,
             avgCostPerUnit: canonicalUnitCost,
             active: 1,
@@ -3278,6 +3279,8 @@ export async function applyBatchApproval(
           return { itemId: null, created: false };
         }
         // No confident auto-link (no match, fuzzy, or ambiguous) → new item.
+        // Unknown pack geometry uses an opaque one-package count basis; it is
+        // not evidence for pack compatibility or unit conversion.
         return { itemId: await insertNewItem(), created: true };
       };
 
@@ -3287,25 +3290,28 @@ export async function applyBatchApproval(
         // single identity authority for this code within this source property.
         // Without this, two concurrent approvals could link the same code to
         // two different existing items while only one mapping row survived.
+        const claimEvidence = {
+          description: rowPreview.cleanedDescription,
+          packSizeRaw: rowPreview.packSizeRaw,
+          strategy: rowPreview.itemMatch.strategy,
+          score: rowPreview.itemMatch.score ?? null,
+          geometry: sourcePackGeometry(rowPreview),
+        };
+        const claimCandidate = async () => {
+          const candidate = await resolveRowCandidate();
+          if (candidate.itemId == null) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Orderly Item Code ${reliableCode} could not be resolved to an inventory item.`,
+            );
+          }
+          return { itemId: candidate.itemId, created: candidate.created };
+        };
+
         const claim = await claimReliableCodeItemId(
           reliableCode,
-          async () => {
-            const candidate = await resolveRowCandidate();
-            if (candidate.itemId == null) {
-              throw new ImportApprovalError(
-                'CONFLICT',
-                `Orderly Item Code ${reliableCode} could not be resolved to an inventory item.`,
-              );
-            }
-            return { itemId: candidate.itemId, created: candidate.created };
-          },
-          {
-            description: rowPreview.cleanedDescription,
-            packSizeRaw: rowPreview.packSizeRaw,
-            strategy: rowPreview.itemMatch.strategy,
-            score: rowPreview.itemMatch.score ?? null,
-            geometry: sourcePackGeometry(rowPreview),
-          },
+          claimCandidate,
+          claimEvidence,
         );
         resolvedItemId = claim.itemId;
         if (claim.created) {
@@ -3324,8 +3330,8 @@ export async function applyBatchApproval(
           itemsLinked++;
         }
       }
-      if (reliableCode) reliableCodeItemIds.set(reliableCode, resolvedItemId);
-      if (identityGroupKey && blankRowMayUseGroupEvidence) {
+      if (reliableCode && resolvedItemId) reliableCodeItemIds.set(reliableCode, resolvedItemId);
+      if (identityGroupKey && blankRowMayUseGroupEvidence && resolvedItemId) {
         identityGroupItemIds.set(identityGroupKey, resolvedItemId);
       }
       if (rowPreview.heldForReview && !resolvedItemId) rowsHeldForReview++;

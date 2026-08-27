@@ -652,7 +652,25 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
 
     expect(await screen.findByRole("columnheader", { name: "Pack size" })).toBeInTheDocument();
     expect(screen.getByText("6/1 LT")).toBeInTheDocument();
-    expect(screen.getByText("Parsed")).toBeInTheDocument();
+    expect(screen.getByText("Source format parsed")).toBeInTheDocument();
+  });
+
+  it("warns before approval that unknown pack geometry will import without normalization", async () => {
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      rows: MOCK_PREVIEW.rows.map((row, index) => index === 0
+        ? { ...row, packParseStatus: "unparseable" }
+        : row),
+    };
+    renderStep();
+
+    expect(await screen.findByTestId("unknown-pack-import-advisory")).toHaveTextContent(
+      "Unknown pack geometry will still be imported",
+    );
+    expect(screen.getByText("Unknown geometry — will import")).toBeInTheDocument();
+    expect(screen.getByTestId("unknown-pack-import-advisory")).toHaveTextContent(
+      "No normalized pack total, unit conversion, or pack-compatibility claim will be created.",
+    );
   });
 
   it("shows identity-group evidence without changing row-level filters", async () => {
