@@ -1,0 +1,128 @@
+# Resolve Container-Label Units As Counts, And Kegs As Volume
+
+**Priority:** Should land before the Bay Hill reseed — changes what is written to the catalog
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Follows:** #1264 (measurable Orderly units), which added `GAL`, `QT`, `PT`, `Cup`, `DZ`, `KG`, `GR`
+
+> **Numbering:** two shipped tickets are both recorded as #1256 (descriptive-code identity, and the revived #1255 parser scope). Please resolve that collision.
+
+## What & Why
+
+Two unit tokens remain unsupported after #1264. Both carry information the source actually states, and both currently leave otherwise-countable items permanently unresolved.
+
+The governing principle:
+
+> **A container label is a valid counting unit.** When the source provides multipliers, resolve the count. Never infer the container's contents.
+
+This separates two different questions that are currently conflated:
+
+* **Count geometry** — how many countable units are in the purchase unit. Knowable from the source.
+* **Measure geometry** — what is inside each container. Not knowable, and correctly left unknown.
+
+Failing to resolve the count because the measure is unknown means these items are invisible to counting logic indefinitely, at a value low enough that nobody notices.
+
+---
+
+## 1. `#10` — resolve as a count unit
+
+A #10 can is a standard foodservice container and a legitimate counting unit. Its fill weight varies by product (pie filling vs chickpeas vs pumpkin purée), so the weight must not be inferred — but the count is stated outright.
+
+### Evidence (May batch)
+
+Two shapes, both meaningful:
+
+| Shape | Rows | Meaning |
+|---|---|---|
+| `6/1 #10` | 10 | 6 cans per case |
+| `1/1 #10` | 8 | sold as a single can |
+
+Price arithmetic confirms the counting unit is the can:
+
+| Item | Pack | Case price | Units | Cost |
+|---|---|---|---|---|
+| Chickpea/Garbanzo | `6/1 #10` | $39.13 | 6.0 | $39.13 |
+| Beets | `6/1 #10` | $37.59 | 6.0 | $37.59 |
+| Coconut milk | `6/1 #10` | $98.27 | **1.5** | **$24.57** |
+
+Coconut milk is decisive: $98.27 ÷ 6 × 1.5 = $24.57 exactly. Counts are expressed in cans, and the source states cans per case.
+
+### Requested
+
+Treat `#10` the same way `ea` / `ct` / `count` are already treated:
+
+```
+dimension: 'each', multiplier: amount
+```
+
+`6/1 #10` then resolves to **6 EA**. This asserts only what the source states — six cans — and asserts nothing about ounces.
+
+### Explicitly out of scope
+
+Do **not** map `#10` to a nominal weight (e.g. 109 oz). Fill weight is product-dependent and would assert false precision on a permanent record. Weight belongs at the inventory-item level later, from a product spec or an invoice line.
+
+### Scope
+
+17–18 distinct items per month, ~$250–410 in value. Low value, but they remain permanently unresolved and uncountable without this.
+
+---
+
+## 2. `KEG 5.16G` — resolve as volume
+
+The size is stated in the token: **5.16 gallons**, a sixth-barrel. Nothing is inferred. `normalizeUnit` currently extracts a numeric prefix only, so a leading word (`KEG`) causes the token to fall through to `null`.
+
+### Corroboration
+
+Three item names independently state the same fact:
+
+* `SAM 0CT K **1/6BBL**`
+* `STELLA ARTOIS **1/6 BBL**`
+* `SIDEWARD BREWING MOON BOOTS KEG **(1/6 BBL)**`
+
+A sixth-barrel is 5.166 US gallons.
+
+### Requested
+
+Extend unit parsing to find a `<number><unit>` pattern anywhere in the token, not only at the start, so `KEG 5.16G` resolves via the existing `gal` alias added in #1264 (× 3785.41 ML).
+
+### Scope
+
+19 rows, 9 distinct items, consistent across all three months. Worth resolving because draft costing (cost per ounce poured) is unavailable while a keg carries no volume.
+
+### Known data anomaly — flag, do not special-case
+
+`Miso - White` from **Mr. Green's Produce** is tagged `KEG 5.16G` in the source. Miso is not sold in kegs; this is an Orderly data-entry error. A general fix will assign it 19,532 ML — harmless for value, wrong for costing. Surface it rather than blocking on it.
+
+---
+
+## Done looks like
+
+* `6/1 #10` resolves to 6 EA; `1/1 #10` resolves to 1 EA.
+* `#10` never produces a weight or volume normalization.
+* `KEG 5.16G` resolves to 19,532.72 ML (5.16 × 3785.41).
+* Unsupported tokens with no recoverable information — notably bare `1/1 Case` — remain explicitly unknown and fail closed as they do today.
+* Existing supported units and the fail-closed behaviour from #1264 are unchanged.
+* Regressions cover: `6/1 #10` count resolution, `1/1 #10`, `KEG 5.16G` volume resolution, a token with a leading word and no number (still unknown), and `1/1 Case` (still unknown).
+
+## Out of scope
+
+* Inferring container contents for any container label.
+* Changing `canonicalOrderlyPackKey` or identity behaviour. The identity key uses the raw normalized `baseUnit` string, so these changes must not alter it — otherwise previously-seeded items would fork.
+* Correcting the `Miso - White` source row.
+* Vendor classification, cross-vendor identity, or approval progress work.
+
+## Verification
+
+Against a fresh May import:
+
+* Chickpea/Garbanzo, Beets, Coconut milk show a normalized total in **EA**, not "Not confirmed".
+* Coconut milk's 1.5 units still values at $24.57.
+* The nine keg items show a normalized volume.
+* `1/1 Case` rows (e.g. `GUINNESS 4PK`, `GUINES DRAUGHT`) still read as unknown geometry.
+* May still reconciles: 5,358 rows, 0 excluded, imported total $254,286.67.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/packGeometry.ts` — `normalizeUnit`
+* `artifacts/api-server/src/services/orderly/packGeometry.test.ts`
+* `artifacts/api-server/src/services/orderly/OrderlyParser.ts`
+* `artifacts/api-server/src/services/orderly/OrderlyParser.test.ts`

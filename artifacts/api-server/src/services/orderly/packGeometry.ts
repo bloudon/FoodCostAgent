@@ -28,10 +28,45 @@ interface NormalizedUnit {
 }
 
 export function normalizePackUnit(value: string | null | undefined): NormalizedUnit | null {
-  const raw = (value ?? '').trim().toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ');
+  // Keep decimal points because quantities such as 5.16G are meaningful, while
+  // still treating punctuation after a unit token (LB., FL.OZ) as a separator.
+  const raw = (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]/g, ' ')
+    .replace(/\.(?!\d)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!raw) return null;
+
+  // A keg's trailing "G" means gallons, not grams. The keg label supplies the
+  // context that makes this otherwise ambiguous single-letter unit safe.
+  const kegVolumeMatch = raw.match(/\bkeg\s+(\d+(?:\.\d+)?)\s*g\b/);
+  if (kegVolumeMatch) {
+    const amount = Number(kegVolumeMatch[1]);
+    if (Number.isFinite(amount) && amount > 0) {
+      return { dimension: 'volume', multiplier: amount * 3785.41, label: 'ML' };
+    }
+  }
+
+  // Source labels can precede the measurable token (for example, "PACK 5 LB").
+  // Extract only a complete number + known unit pair; a label without such a
+  // pair remains unknown rather than being guessed as a unit.
+  const unitPattern = String.raw`(?:fl\s*oz|fluid\s+ounces?|milliliters?|millilitres?|liters?|litres?|gallons?|quarts?|pints?|cups?|ounces?|pounds?|kilograms?|grams?|ml|lt|l|gal|qt|pt|cup|oz|lb|kg|gr|g|ea|each|unit|units|ct|count|dz|dozen|dozens|#10(?:\s*can)?)`;
+  const embeddedAmountMatch = raw.match(
+    new RegExp(String.raw`(?:^|\s)(\d+(?:\.\d+)?)\s*(${unitPattern})(?=$|\s)`, 'i'),
+  );
   const amountMatch = raw.match(/^(\d+(?:\.\d+)?)\s*(.+)$/);
-  const amount = amountMatch ? Number(amountMatch[1]) : 1;
-  const unit = amountMatch ? amountMatch[2] : raw;
+  const amount = embeddedAmountMatch
+    ? Number(embeddedAmountMatch[1])
+    : amountMatch
+      ? Number(amountMatch[1])
+      : 1;
+  const unit = embeddedAmountMatch
+    ? embeddedAmountMatch[2]
+    : amountMatch
+      ? amountMatch[2]
+      : raw;
   if (!unit || !Number.isFinite(amount) || amount <= 0) return null;
   if (['ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount, label: 'ML' };
@@ -54,7 +89,7 @@ export function normalizePackUnit(value: string | null | undefined): NormalizedU
   if (['cup', 'cups'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount * 236.588, label: 'ML' };
   }
-  if (['ea', 'each', 'unit', 'units', 'ct', 'count'].includes(unit)) {
+  if (['ea', 'each', 'unit', 'units', 'ct', 'count', '#10', '#10 can'].includes(unit)) {
     return { dimension: 'each', multiplier: amount, label: 'EA' };
   }
   if (['dz', 'dozen', 'dozens'].includes(unit)) {

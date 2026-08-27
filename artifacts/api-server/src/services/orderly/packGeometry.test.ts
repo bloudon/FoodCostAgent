@@ -2,11 +2,39 @@ import { describe, expect, it } from 'vitest';
 import {
   comparePackGeometry,
   isSupportedPackUnit,
+  normalizePackUnit,
   normalizePackGeometry,
   toCatalogPackGeometry,
 } from './packGeometry';
 
 describe('Orderly source pack compatibility', () => {
+  it.each([
+    ['#10', { dimension: 'each', multiplier: 1, label: 'EA' }],
+    ['6 #10', { dimension: 'each', multiplier: 6, label: 'EA' }],
+  ])('normalizes container label %s as count geometry without inferring contents', (value, expected) => {
+    expect(normalizePackUnit(value)).toEqual(expected);
+  });
+
+  it('normalizes a labeled keg volume token using its explicit gallon quantity', () => {
+    expect(normalizePackUnit('KEG 5.16G')).toEqual({
+      dimension: 'volume',
+      multiplier: 5.16 * 3785.41,
+      label: 'ML',
+    });
+  });
+
+  it.each([
+    ['PACK 5 LB', { dimension: 'weight', multiplier: 80, label: 'OZ' }],
+    ['LB.', { dimension: 'weight', multiplier: 16, label: 'OZ' }],
+    ['FL.OZ', { dimension: 'volume', multiplier: 29.5735295625, label: 'ML' }],
+  ])('preserves supported unit behavior for labeled or punctuated token %s', (value, expected) => {
+    expect(normalizePackUnit(value)).toEqual(expected);
+  });
+
+  it('keeps a leading label without a recoverable quantity unknown', () => {
+    expect(normalizePackUnit('KEG')).toBeNull();
+  });
+
   it.each([
     ['grams', { caseQuantity: 1, innerPackQuantity: 170, baseUnitQuantity: 1, baseUnit: 'GR' }, 'OZ', 5.997],
     ['pints', { caseQuantity: 1, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'PT' }, 'ML', 5678.112],
