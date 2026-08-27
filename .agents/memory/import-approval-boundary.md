@@ -69,20 +69,19 @@ gates ahead of Bay Hill bulk migration.
 FOLLOW-UP, and procedural independence unverified. Keep bulk Bay Hill work
 blocked until the remaining pre-migration gates pass.
 
-# Unsupported source geometry may remain unresolved evidence
+# Unknown source geometry still needs stable identity
 
-An approved import row does not need to manufacture a catalog identity. When
-source pack geometry is unsupported or incomplete and no authoritative existing
-identity resolves the row, approval may preserve the row with a null resolution
-while skipping every identity-producing write.
+When source identity is valid but pack geometry is unsupported or incomplete,
+approval must create or resolve an inventory identity and retain the source
+value. Use an opaque one-package stock-count basis only where the catalog schema
+requires a unit; keep all physical geometry fields null.
 
-**Why:** Rejecting an otherwise valid historical snapshot makes unsupported
-source notation an all-or-nothing migration blocker, while coercing that
-notation into catalog geometry corrupts inventory identity. The safe middle
-ground is immutable unresolved evidence.
+**Why:** Excluding valid rows breaks source-total reconciliation and prevents
+subsequent periods from converging to the same item. Inventing conversion
+geometry is equally unsafe. Stable identity and physical pack comparison are
+separate contracts.
 
-**How to apply:** Require catalog-safe geometry before creating an item or
-mapping. Existing authoritative mappings may still resolve the row. Otherwise
-leave its resolution null and do not create item relationships, location
-assignments, vendor-item links, or store-item links; test both incomplete tiers
-and unsupported units against the live database.
+**How to apply:** Persist raw source pack evidence, include the row in imported
+totals, and permit normal store/location linking. Never expose a normalized
+total, conversion, compatibility claim, container size, package count, or
+invented canonical pack unit. Unsupported `Case` remains non-convertible.
