@@ -1,0 +1,40 @@
+Verdict: real progress, but not yet a full seed — and Approve is blocked
+
+First, a correction to what I told you last session. I said the approval write path discards pack geometry. That was wrong. Geometry is persisted, just on inventoryItemExternalMappings rather than on the item record — all three tiers, per item-code. containerSize being null on items isn't the defect I took it for. So no write-path fix is needed, and flushing May was the right call after all.
+
+What's good
+Catalog fully cleared — 0 items, genuine clean slate
+May re-uploaded, 5,358 rows, date detected correctly (5/31/2026)
+3,168 new items, 0 matched, 0 held rows, 0 re-code decisions
+The large majority of rows parse complete three-tier geometry (12/1 750ML, 6/50 ML, 1/24 EA)
+Three problems
+
+1. Approve is disabled, and the blocker has no in-app fix.
+
+391 rows carry a description in the Item Code field ("BV CAB SAUV LATOUR PRIV RSV 21 6B 750ML"). The panel is explicit:
+
+This Item Code looks like descriptive text rather than a vendor-stable code… Verify the source identifier outside this import, then re-upload or correct the source data.
+
+There's no radio, no override, no decision. These are labeled "blocked rows," nothing else is outstanding, and Approve is disabled: true. May cannot be approved as it stands — it needs correction in Orderly and a re-upload.
+
+Worth noting: the June session logged 414 of these as "expected, by design" and assumed the held row and re-codes were the real blockers. They never got far enough to discover these block on their own. They do.
+
+2. Thousand separators break the parser.
+
+1/2,000 EA → "Needs review". Affects Equal, Sugar - Individual, Sugar - Individual Raw, Sweet n Low, Ketchup - Individual — packet items legitimately running 1,000–2,000 per case. Roughly five items across their location rows. Small, but those mappings would be written with null geometry and become the "lacks complete pack evidence" rows in June. This is a code fix, not a data workaround.
+
+3. GAL, QT, and "Case" aren't recognized units.
+
+normalizeUnit handles ml/l/fl-oz, oz/lb, and ea/ct. Everything else falls to other:<token>, which only ever matches an identical spelling and never converts. Consequences visible right now — 1/1 Case renders as "Normalized total: Not confirmed". And GAL will not match GALLON, which is exactly the spelling Orderly's catalog uses for Milk-Whole.
+
+The structural caveat
+
+Because the catalog was empty, May has zero decisions to make — no pack comparisons, no alternate codes, no conflicts. Approving it exercises the write path only. The whole review apparatus we've spent this effort on only engages in June, against May's catalog.
+
+So a successful May approval won't tell you June works. It's a necessary step, not a validation of the process.
+
+Suggested order
+Fix comma parsing.
+Decide GAL/QT/Case — add them to the normalizer or make them explicitly unknown rather than silently other:.
+Correct the 391 descriptive codes in Orderly, re-upload May.
+Approve, then verify the mappings actually carry all three tiers — that's the check that proves the seed is sound.
