@@ -161,27 +161,36 @@ const GENERIC_COLUMN_PATTERNS: Record<keyof CsvColumnMapping, string[]> = {
 export function parseCompoundPackSize(value: string): { caseSize: number; innerPack?: number; unit?: string } | null {
   if (!value) return null;
   const trimmed = value.trim();
+  const numberPattern = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?`;
+  const parsePositiveNumber = (token: string): number | null => {
+    const parsed = Number(token.replace(/,/g, ''));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
 
   // "6/5 LB", "6/5", "6/#10Can" — slash-separated with optional leading "#" on second segment
-  const slashMatch = trimmed.match(/^([\d.]+)\s*\/\s*#?([\d.]+)\s*([A-Za-z]+)?$/);
+  const slashMatch = trimmed.match(new RegExp(
+    String.raw`^(${numberPattern})\s*\/\s*#?(${numberPattern})\s*([A-Za-z]+)?$`,
+  ));
   if (slashMatch) {
-    const cs = parseFloat(slashMatch[1]);
-    const ip = parseFloat(slashMatch[2]);
+    const cs = parsePositiveNumber(slashMatch[1]);
+    const ip = parsePositiveNumber(slashMatch[2]);
     const u = slashMatch[3] ? slashMatch[3].toUpperCase() : undefined;
-    if (!isNaN(cs) && !isNaN(ip)) return { caseSize: cs, innerPack: ip, unit: u };
+    if (cs !== null && ip !== null) return { caseSize: cs, innerPack: ip, unit: u };
   }
 
-  const singleUnitMatch = trimmed.match(/^([\d.]+)\s+([A-Za-z]+)$/);
+  const singleUnitMatch = trimmed.match(new RegExp(
+    String.raw`^(${numberPattern})\s+([A-Za-z]+)$`,
+  ));
   if (singleUnitMatch) {
-    const cs = parseFloat(singleUnitMatch[1]);
+    const cs = parsePositiveNumber(singleUnitMatch[1]);
     const u = singleUnitMatch[2].toUpperCase();
-    if (!isNaN(cs)) return { caseSize: cs, unit: u };
+    if (cs !== null) return { caseSize: cs, unit: u };
   }
 
-  const plainMatch = trimmed.match(/^([\d.]+)$/);
+  const plainMatch = trimmed.match(new RegExp(String.raw`^(${numberPattern})$`));
   if (plainMatch) {
-    const cs = parseFloat(plainMatch[1]);
-    if (!isNaN(cs)) return { caseSize: cs };
+    const cs = parsePositiveNumber(plainMatch[1]);
+    if (cs !== null) return { caseSize: cs };
   }
 
   return null;

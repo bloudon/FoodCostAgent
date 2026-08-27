@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   comparePackGeometry,
+  isSupportedPackUnit,
   normalizePackGeometry,
   toCatalogPackGeometry,
 } from './packGeometry';
@@ -125,6 +126,71 @@ describe('Orderly source pack compatibility', () => {
       status: 'compatible',
       normalizedUnit: 'ML',
       totalBaseUnits: 3785.41,
+    });
+  });
+
+  it('normalizes QT and GAL against equivalent ML volume evidence', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'QT' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 946.353, baseUnit: 'ML' },
+    )).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 946.353,
+    });
+
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'GAL' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 3785.41, baseUnit: 'ML' },
+    ).status).toBe('compatible');
+  });
+
+  it('normalizes kilograms and dozens without treating them as opaque units', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'KG' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 35.27396195, baseUnit: 'OZ' },
+    ).status).toBe('compatible');
+    expect(comparePackGeometry(
+      { caseQuantity: 9, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'DZ' },
+      { caseQuantity: 1, innerPackQuantity: 1296, baseUnitQuantity: 1, baseUnit: 'EA' },
+    )).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: 'EA',
+      totalBaseUnits: 1296,
+    });
+  });
+
+  it('keeps Case and other unsupported units unknown', () => {
+    expect(isSupportedPackUnit('Case')).toBe(false);
+    expect(normalizePackGeometry({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'Case',
+    })).toMatchObject({ status: 'unknown', totalBaseUnits: null });
+    expect(toCatalogPackGeometry({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'FURLONG',
+    })).toBeNull();
+  });
+
+  it('fails closed when normalized pack multiplication overflows', () => {
+    const overflow = {
+      caseQuantity: Number.MAX_VALUE,
+      innerPackQuantity: Number.MAX_VALUE,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    };
+
+    expect(normalizePackGeometry(overflow)).toMatchObject({
+      status: 'unknown',
+      totalBaseUnits: null,
+    });
+    expect(comparePackGeometry(overflow, overflow)).toMatchObject({
+      status: 'unknown',
+      totalBaseUnits: null,
     });
   });
 });

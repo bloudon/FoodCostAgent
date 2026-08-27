@@ -17,8 +17,10 @@ import {
   cleanDescription,
   detectNonAuthoritativeCodes,
   detectInventoryDate,
+  parseOrderlyPackSize,
   parseOrderlyWorkbook,
 } from './OrderlyParser';
+import { parseCompoundPackSize } from '../../integrations/csv/CsvOrderGuide';
 import {
   buildBulkPackSizeFixtureWorkbook,
   BULK_PACK_SIZE_FIXTURE_FILENAME,
@@ -176,6 +178,51 @@ describe('detectNonAuthoritativeCodes', () => {
     }));
     const result = detectNonAuthoritativeCodes(rows);
     expect(result.has('12345')).toBe(true);
+  });
+});
+
+describe('Orderly pack-size parsing', () => {
+  it('accepts grouped thousands in a complete EA pack', () => {
+    expect(parseOrderlyPackSize('1/2,000 EA')).toEqual({
+      caseQuantity: 1,
+      innerPackQuantity: 2000,
+      baseUnitQuantity: 1,
+      caseUnit: 'Case',
+      innerUnit: 'Pack',
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+    });
+  });
+
+  it.each(['1/0 EA', '1/-2 EA', '1/2,00 EA', '1/2,,000 EA'])(
+    'rejects non-positive or malformed grouped quantity %s',
+    (packSize) => {
+      expect(parseOrderlyPackSize(packSize).packParseStatus).toBe('unparseable');
+    },
+  );
+
+  it('keeps unsupported Case units visibly unparseable', () => {
+    expect(parseOrderlyPackSize('1/1 Case')).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnit: 'CASE',
+      packParseStatus: 'unparseable',
+    });
+    expect(parseOrderlyPackSize('1/1 750 FURLONG')).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'FURLONG',
+      packParseStatus: 'unparseable',
+    });
+  });
+
+  it.each([
+    ['1/2,000 EA', { caseSize: 1, innerPack: 2000, unit: 'EA' }],
+    ['1/2,000', { caseSize: 1, innerPack: 2000 }],
+    ['2,000 EA', { caseSize: 2000, unit: 'EA' }],
+  ])('parses grouped quantities in shared compound parser: %s', (value, expected) => {
+    expect(parseCompoundPackSize(value)).toEqual(expected);
   });
 });
 

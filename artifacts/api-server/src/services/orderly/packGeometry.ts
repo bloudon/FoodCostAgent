@@ -27,12 +27,12 @@ interface NormalizedUnit {
   label: string;
 }
 
-function normalizeUnit(value: string | null | undefined): NormalizedUnit | null {
+export function normalizePackUnit(value: string | null | undefined): NormalizedUnit | null {
   const raw = (value ?? '').trim().toLowerCase().replace(/[._-]/g, ' ').replace(/\s+/g, ' ');
   const amountMatch = raw.match(/^(\d+(?:\.\d+)?)\s*(.+)$/);
   const amount = amountMatch ? Number(amountMatch[1]) : 1;
   const unit = amountMatch ? amountMatch[2] : raw;
-  if (!unit) return null;
+  if (!unit || !Number.isFinite(amount) || amount <= 0) return null;
   if (['ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount, label: 'ML' };
   }
@@ -45,8 +45,14 @@ function normalizeUnit(value: string | null | undefined): NormalizedUnit | null 
   if (['gal', 'gallon', 'gallons'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount * 3785.41, label: 'ML' };
   }
+  if (['qt', 'quart', 'quarts'].includes(unit)) {
+    return { dimension: 'volume', multiplier: amount * 946.353, label: 'ML' };
+  }
   if (['ea', 'each', 'unit', 'units', 'ct', 'count'].includes(unit)) {
     return { dimension: 'each', multiplier: amount, label: 'EA' };
+  }
+  if (['dz', 'dozen', 'dozens'].includes(unit)) {
+    return { dimension: 'each', multiplier: amount * 12, label: 'EA' };
   }
   if (['oz', 'ounce', 'ounces'].includes(unit)) {
     return { dimension: 'weight', multiplier: amount, label: 'OZ' };
@@ -54,7 +60,14 @@ function normalizeUnit(value: string | null | undefined): NormalizedUnit | null 
   if (['lb', 'lbs', 'pound', 'pounds'].includes(unit)) {
     return { dimension: 'weight', multiplier: amount * 16, label: 'OZ' };
   }
-  return { dimension: `other:${unit}`, multiplier: amount, label: unit.toUpperCase() };
+  if (['kg', 'kilogram', 'kilograms'].includes(unit)) {
+    return { dimension: 'weight', multiplier: amount * 35.27396195, label: 'OZ' };
+  }
+  return null;
+}
+
+export function isSupportedPackUnit(value: string | null | undefined): boolean {
+  return normalizePackUnit(value) !== null;
 }
 
 function isPositiveFinite(value: number | null | undefined): value is number {
@@ -67,7 +80,7 @@ function isPositiveFinite(value: number | null | undefined): value is number {
  * unknown rather than silently assuming a multiplier of one.
  */
 export function normalizePackGeometry(geometry: SourcePackGeometry): PackCompatibilityResult {
-  const unit = normalizeUnit(geometry.baseUnit);
+  const unit = normalizePackUnit(geometry.baseUnit);
   if (
     !unit ||
     !isPositiveFinite(geometry.caseQuantity) ||
@@ -81,11 +94,24 @@ export function normalizePackGeometry(geometry: SourcePackGeometry): PackCompati
       totalBaseUnits: null,
     };
   }
+  const totalBaseUnits =
+    geometry.caseQuantity *
+    geometry.innerPackQuantity *
+    geometry.baseUnitQuantity *
+    unit.multiplier;
+  if (!isPositiveFinite(totalBaseUnits)) {
+    return {
+      status: 'unknown',
+      reason: 'normalized pack total must be a positive finite number',
+      normalizedUnit: unit.label,
+      totalBaseUnits: null,
+    };
+  }
   return {
     status: 'compatible',
     reason: '',
     normalizedUnit: unit.label,
-    totalBaseUnits: geometry.caseQuantity * geometry.innerPackQuantity * geometry.baseUnitQuantity * unit.multiplier,
+    totalBaseUnits,
   };
 }
 
@@ -99,7 +125,7 @@ export function normalizePackGeometry(geometry: SourcePackGeometry): PackCompati
 export function toCatalogPackGeometry(
   geometry: SourcePackGeometry,
 ): CatalogPackGeometry | null {
-  const unit = normalizeUnit(geometry.baseUnit);
+  const unit = normalizePackUnit(geometry.baseUnit);
   if (
     !unit ||
     !isPositiveFinite(geometry.caseQuantity) ||

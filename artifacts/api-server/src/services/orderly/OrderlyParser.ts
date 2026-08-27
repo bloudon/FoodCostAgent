@@ -20,6 +20,7 @@
 import * as XLSX from 'xlsx';
 import crypto from 'crypto';
 import { parseCompoundPackSize } from '../../integrations/csv/CsvOrderGuide';
+import { isSupportedPackUnit } from './packGeometry';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -177,30 +178,40 @@ export function parseOrderlyPackSize(packSizeStr: string): Pick<
 
   if (!packSizeStr || !packSizeStr.trim()) return empty;
 
+  const numberPattern = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?`;
+  const parsePositiveNumber = (token: string): number | null => {
+    const parsed = Number(token.replace(/,/g, ''));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
   // Orderly commonly exports a three-tier physical pack as
   // "case/inner base-unit", e.g. "1/1 750ML" or "12/1 750ML".
   // This is complete evidence: 1 case × 1 bottle × 750 mL, not an
   // ambiguous variant or an unparseable free-text value.
   const threeTier = packSizeStr.trim().match(
-    /^([\d.]+)\s*\/\s*([\d.]+)\s+([\d.]+)\s*([A-Za-z]+)$/i,
+    new RegExp(
+      String.raw`^(${numberPattern})\s*\/\s*(${numberPattern})\s+(${numberPattern})\s*([A-Za-z]+)$`,
+      'i',
+    ),
   );
   if (threeTier) {
-    const caseQuantity = Number(threeTier[1]);
-    const innerPackQuantity = Number(threeTier[2]);
-    const baseUnitQuantity = Number(threeTier[3]);
+    const caseQuantity = parsePositiveNumber(threeTier[1]);
+    const innerPackQuantity = parsePositiveNumber(threeTier[2]);
+    const baseUnitQuantity = parsePositiveNumber(threeTier[3]);
     if (
-      Number.isFinite(caseQuantity) &&
-      Number.isFinite(innerPackQuantity) &&
-      Number.isFinite(baseUnitQuantity)
+      caseQuantity !== null &&
+      innerPackQuantity !== null &&
+      baseUnitQuantity !== null
     ) {
+      const baseUnit = threeTier[4].toUpperCase();
       return {
         caseQuantity,
         innerPackQuantity,
         baseUnitQuantity,
         caseUnit: 'Case',
         innerUnit: 'Pack',
-        baseUnit: threeTier[4].toUpperCase(),
-        packParseStatus: 'ok',
+        baseUnit,
+        packParseStatus: isSupportedPackUnit(baseUnit) ? 'ok' : 'unparseable',
       };
     }
   }
@@ -212,6 +223,21 @@ export function parseOrderlyPackSize(packSizeStr: string): Pick<
 
   const hasUnit = !!parsed.unit;
   const hasInner = parsed.innerPack != null;
+  const hasSupportedUnit = hasUnit && isSupportedPackUnit(parsed.unit);
+
+  // Orderly also emits two-tier notation such as "1/2,000 EA". The unit-bearing
+  // inner quantity is complete evidence with one base unit per inner pack.
+  if (hasUnit && hasInner && hasSupportedUnit) {
+    return {
+      caseQuantity: parsed.caseSize,
+      innerPackQuantity: parsed.innerPack!,
+      baseUnitQuantity: 1,
+      caseUnit: 'Case',
+      innerUnit: 'Pack',
+      baseUnit: parsed.unit!,
+      packParseStatus: 'ok',
+    };
+  }
 
   return {
     caseQuantity: parsed.caseSize,
@@ -220,7 +246,7 @@ export function parseOrderlyPackSize(packSizeStr: string): Pick<
     caseUnit: 'Case',
     innerUnit: hasInner ? 'Pack' : null,
     baseUnit: parsed.unit ?? null,
-    packParseStatus: hasUnit ? 'ok' : hasInner ? 'partial' : 'partial',
+    packParseStatus: hasUnit && !hasSupportedUnit ? 'unparseable' : hasInner ? 'partial' : 'partial',
   };
 }
 

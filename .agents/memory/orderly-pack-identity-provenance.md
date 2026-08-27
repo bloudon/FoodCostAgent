@@ -20,3 +20,9 @@ Descriptive values in Orderly's Item Code column are not vendor code identity, b
 **Why:** Orderly is read-only and repeatedly exports some wine and spirits descriptions in the Item Code field. Rejecting those rows makes entire inventory periods impossible to approve, while mapping the prose as a code falsely claims vendor-stable identity.
 
 **How to apply:** Treat these rows as advisory. Resolve only through an existing derived identity or exactly one same-name catalog candidate with fully compatible persisted pack evidence. Zero or multiple compatible candidates take the new-item path; fuzzy, location-history, and partial-pack matches are never authority. Repeated rows in one batch must converge on one item, and mapping collisions remain fail-closed.
+
+Pack comparison normalization and persistent pack identity are separate contracts. Comparison may convert approved aliases such as gallons, quarts, kilograms, and dozens to canonical dimensions, while the identity key must continue to use the raw normalized source unit string.
+
+**Why:** Reusing comparison aliases in the identity key would silently re-key existing alternate identities when a new alias is introduced, potentially forking cross-month continuity during a seed.
+
+**How to apply:** Keep unit-alias conversion out of identity-key construction. New aliases may improve compatibility checks and catalog geometry only. Unsupported units and non-finite derived totals must remain unknown rather than producing a custom canonical unit or a compatible result.

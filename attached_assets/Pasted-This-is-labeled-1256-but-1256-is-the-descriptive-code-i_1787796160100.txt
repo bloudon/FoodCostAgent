@@ -1,0 +1,35 @@
+This is labeled #1256, but #1256 is the descriptive-code identity ticket that shipped and I verified an hour ago — 391 rows now advisory, name+pack filter live, Approve enabled. This new ticket is the revived #1255 scope. Two different tickets share a number, and one of them is already deployed. Worth renumbering before the record gets tangled.
+
+The one real risk: "centralize the aliases"
+
+Step 2 is where this could go wrong. The identity key currently builds its unit component like this:
+
+js
+function normalizedPackUnit(value) {
+  return normalizeForMatch(value ?? '') || 'null';   // raw string
+}
+
+canonicalOrderlyPackKey deliberately uses the raw normalized string, not normalizeUnit. That's why I said the alias work is safe mid-seed — it touches comparison, not identity.
+
+But "centralize the approved pack-unit aliases" is exactly the refactor that would sweep normalizedPackUnit into the shared normalizer. If it does, GAL becomes ML in the key, and every alternate-identity row using GAL re-keys. orderlyIdentity.ts isn't in the relevant-files list, though orderlyIdentity.db.test.ts is — so it's half in scope.
+
+Make it an explicit non-goal: canonicalOrderlyPackKey must continue to key on the raw normalized baseUnit string. Identity and comparison are separate concerns and should stay that way.
+
+Sequence removes the risk entirely
+
+If this lands before May is approved, there's no fork exposure at all — nothing has been written yet, so re-keying costs nothing. The freeze constraint only ever applied to changes landing between approvals.
+
+So: land this, then approve May. That's strictly better than approving first, and it's what the ticket's own "No May batch is approved" line already implies.
+
+Missing aliases I found in the data
+
+The alias list covers GAL/GALLON and QT/QUART. Sampling the 391 descriptive-code rows turned up two more that aren't mentioned:
+
+1/1 KG — weight, would normalize to OZ
+9/12 DZ and 12/12 DZ — dozen, a count unit
+
+DZ is worth care: 9/12 DZ should resolve to 9 × 12 × 12 = 1,296 EA. Treating DZ as an opaque other: token leaves it uncomparable; treating it as 1 silently undercounts by 12×.
+
+Since you're centralizing anyway, both are cheap to include. If they're deliberately left unknown, that's fine too — but they should be a decision rather than an oversight, because they're live in this batch.
+
+One note on the comma fix: it changes innerPackQuantity from null to 2000 for the five packet items. Those all carry real stable codes, so they're keyed by code mapping and won't fork regardless. Confirmed zero comma-quantity rows among the 391 alternate-identity rows.
