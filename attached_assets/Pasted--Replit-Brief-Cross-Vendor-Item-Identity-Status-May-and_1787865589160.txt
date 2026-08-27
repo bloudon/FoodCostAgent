@@ -1,0 +1,139 @@
+# Replit Brief — Cross-Vendor Item Identity
+
+**Status:** May and June approved and reconciling on dev. A continuity defect requires a re-seed from May.
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+
+> **Numbering:** two shipped tickets are both recorded as #1256 (descriptive-code identity, and the revived #1255 parser scope). Please resolve that collision.
+
+---
+
+## What is working — do not disturb
+
+Both months import faithfully. This is an identity/continuity problem, not an accuracy one.
+
+| Month | Rows | Excluded | Snapshot | Imported | Delta |
+|---|---|---|---|---|---|
+| May | 5,358 / 5,358 | 0 | $254,286.67 | $254,286.67 | ~7e-10 |
+| June | 5,409 / 5,409 | 0 | $261,007.67 | $261,007.67 | ~-9e-11 |
+
+Also confirmed working and verified in the browser: durable review decisions (#1245), descriptive-code name+pack identity (#1256), the revived parser scope, Category 1 bulk link (#1257), and the unknown-geometry decision fix (#1261/#1262 — row 3442 now saves, `PUT` 200, persists across refresh).
+
+**Reconciliation note:** FnB matches each workbook's Detail-sheet sum exactly. Orderly's displayed total is ~$0.93 lower every month because Orderly's Summary row carries full float precision (`254285.737889`) while Detail rows are cent-rounded. Both are internally consistent; FnB matches the auditable rows. This is explained, not an open issue.
+
+---
+
+## P1 — Item identity is decided by pack compatibility (requires re-seed)
+
+`periodComparison` after June: **57 added, 39 removed**. All 39 removals pair by name with an addition — nothing left inventory. **39 items forked into duplicates**, with May's history on one record and June's on another. Only 18 additions are genuinely new products.
+
+Examples (different `inventoryItemId` on each side):
+
+| May | June |
+|---|---|
+| `Avocado` | `Avocado` |
+| `Arugula` | `Arugula — 1 × 1.5 × 1 LB` |
+| `Celery` | `Celery — 1 × 15 × 1 EA` |
+| `Beef - Ground Chuck` | `Beef - Ground Chuck — 1 × 120 × 1 EA` |
+
+### Root cause
+
+The review flow offers only two outcomes: **link** (requires normalized packs to match) or **create a separate inventory item**. A product supplied by two vendors in different pack sizes always fails the link test and forks.
+
+The distinction that matters is not captured:
+
+| Situation | Correct outcome |
+|---|---|
+| Same vendor, genuinely different pack (Casamigos 5×50 ML minis vs full bottles; Milk-Whole 1 GAL vs 4 GAL) | Separate item — different physical product form |
+| **Different vendor, different pack** (Avocado `1/24 EA` from Mr. Green's vs `1/48 EA` from Harvill's) | **Same item, second vendor record** |
+
+The vendor is already on the row and is the signal that separates these.
+
+### Why it matters beyond tidiness
+
+The multi-vendor population is **92 products across three months, $22,619.98**, concentrated in produce and dry goods. Cross-vendor price comparison depends on one inventory item holding several vendor records — fragmenting the item makes the comparison impossible. Verified from the source data that the comparison is meaningful:
+
+* Asparagus: Harvill's $3.09/LB vs Mr. Green's $5.56/LB
+* Avocado: Harvill's $0.80/EA (1/48) vs Mr. Green's $1.93/EA (1/24)
+* Lays chips: Sysco $0.68/EA (1/60) vs Cheney $1.56/EA (1/30)
+
+### Requested
+
+1. **A third review outcome: link to the existing item as a different vendor's pack** — one `inventory_item`, a new `vendor_item` carrying that vendor's geometry and price.
+2. **Default cross-vendor pack differences to linking, not forking**, when name matches and vendor differs.
+3. **Surface it in the Category 2 bulk dialog** — flag which proposed variants already exist under another vendor, so an operator sees "this will create a second Avocado" before confirming.
+
+### Questions to answer first
+
+* **Does the import populate `vendor_items` at all?** After May, `vendorSkus` was empty on all 3,052 items. If a cross-vendor link does not create a vendor record, the second vendor's pack and price are silently lost — worse than the fork.
+* **Which of the 30 Category 2 decisions are genuinely different products?** Casamigos/Ketel One minis and Milk-Whole gallon tiers should stay separate; the produce items should not. That split determines the correct default.
+
+---
+
+## P2 — Approval duration and retry safety
+
+May took ~129s, June ~104s, with the UI showing no progress and appearing frozen.
+
+* Approval is irreversible and approved batches cannot be discarded (`POST /discard` returns 409 on approved).
+* **Idempotency is unverified.** An operator seeing an apparently hung UI may retry — the pairing of "looks failed", "cannot be undone", and "may double-apply" is the risk.
+* July is 5,518 rows; production may be slower.
+
+Requested: progress indication or async job status, confirmation that approval is idempotent, and a stated timeout budget.
+
+---
+
+## P3 — Parser: recover units the source already provides
+
+Per month, ~66 rows carry unsupported base units that are real measurable units or self-describing:
+
+| Unit | May rows | Note |
+|---|---|---|
+| `GR` | 17 | grams |
+| `PT` | 2 | pint |
+| `Cup` | 1 | volume |
+| `KEG 5.16G` | 19 | self-describing: 5.16 gal |
+| `#10` | 18 | standard foodservice can |
+
+Separately, `N/M Case` rows carry real multipliers that are currently discarded. Orderly stores Default Pack Size and Default UOM as distinct fields, so `12/10 Case` means 12 × 10 = 120 units. Price arithmetic confirms it independently:
+
+| Item | Pack | Units | Price | Per unit |
+|---|---|---|---|---|
+| Captain Morgan Mini | 12/10 | 120 | $117.60 | $0.98 |
+| Bacardi Mini | 12/10 | 120 | $122.40 | $1.02 |
+| Tanqueray Mini | 12/10 | 120 | $200.40 | $1.67 |
+| Titos Mini | 12/5 | 60 | $117.80 | $1.96 |
+| Casamigos Mini | 5/12 | 60 | $251.00 | $4.18 |
+
+Contrast `Crown Royal Mini` — `1/50` with UOM `Milliliter` — which parses fine today. Same information content; the only difference is that `Milliliter` is on the supported list and `Case` is not. Recommend keeping `1/1 Case` opaque (no multipliers to recover) but recovering `N/M <container>` as a count.
+
+**Note:** this changes what lands in the catalog, so it must ship before the re-seed, not after.
+
+---
+
+## P4 — Vendor classification not set on import
+
+All 55 vendors arrive as `receiveByUnit: 0`, `orderGuideType: "manual"`. None is named "Misc Grocery". Publix — a miscellaneous grocer buying loose units and partial cases — is indistinguishable from Reyes Beer Division, a case-based distributor.
+
+Consequence beyond the import: purchasing and receiving for Publix will use case math when it should use unit math, because nothing marked it.
+
+This does not require a re-seed and can be applied to the vendor records afterward.
+
+---
+
+## P5 — Pack contradicts price on ~300 rows per month
+
+`units × price ÷ packQty` holds for 5,031 of 5,343 testable May rows, confirming the pricing model. The ~300 that fail have suspect geometry:
+
+* `Budweiser - Bud Light` — packQty 288, price $24.79, 57 units → formula predicts $4.91, actual $58.88
+* `Zing Zang` — packQty 384; `Filthy Olives` — packQty 384
+
+Value still reconciles (price and cost are internally consistent), but the stated pack is not trustworthy on these. Suggest adopting this as a mechanical validation rule and surfacing failures.
+
+---
+
+## Sequence
+
+1. Answer the two P1 questions (`vendor_items` population; which Category 2 decisions are truly distinct products)
+2. Build P1, plus P3 since it also changes catalog contents
+3. Wipe and re-seed **May → June → July**
+4. Verify: 0 excluded, each month matches its Detail sum, and `periodComparison` shows **no name-paired added/removed duplicates**
+5. P2, P4, P5 can follow without a re-seed
