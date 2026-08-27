@@ -21,6 +21,7 @@ import {
   inventoryItems,
   inventoryLocations,
   insertInventoryItemSchema,
+  orderlyImportReviewDecisions,
   storeInventoryItems,
   units,
   users,
@@ -32,6 +33,7 @@ import {
   applyBatchApproval,
   ImportApprovalError,
   runResolutionPreview,
+  saveOrderlyReviewDecisionChanges,
 } from './orderlyDomain';
 import { ensureInventoryItemNumberSchema } from '../../migrations/inventoryItemNumbers';
 import { ensureOrderlyPackIdentityEvidenceSchema } from '../../migrations/orderlyPackIdentityEvidence';
@@ -1566,5 +1568,123 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, juneBatch));
     expect(juneRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
+  });
+
+  it('saves compatible alternate-code rows as one atomic, rerun-safe code-group decision', async () => {
+    const mayBatch = await stageBatch([
+      {
+        code: 'BASE-ALT-750',
+        description: 'Atomic Group Whiskey',
+        location: 'Liquor Cage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2027-02-28');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected the base item to resolve');
+
+    const juneBatch = await stageBatch([
+      {
+        code: 'NEW-ALT-750',
+        description: 'Atomic Group Whiskey',
+        location: 'Liquor Cage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+      {
+        code: 'NEW-ALT-750',
+        description: 'Atomic Group Whiskey',
+        location: 'Main Bar',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2027-03-31');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows).toHaveLength(2);
+    expect(preview.rows.every(row =>
+      row.itemMatch.recodeEvidenceClass === 'compatible_alternate' &&
+      row.itemMatch.packCompatibility === 'compatible' &&
+      row.itemMatch.possibleRecodeMatchedId === mayRow.resolvedInventoryItemId
+    )).toBe(true);
+
+    const linkDecision = {
+      action: 'link_existing' as const,
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    };
+    await expect(saveOrderlyReviewDecisionChanges(
+      juneBatch,
+      approvalAuth,
+      [{ rowIndex: 1, expectedRevision: null, decision: linkDecision }],
+      { preserveExistingActions: true },
+    )).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    expect(await db
+      .select()
+      .from(orderlyImportReviewDecisions)
+      .where(eq(orderlyImportReviewDecisions.batchId, juneBatch))).toEqual([]);
+
+    const saved = await saveOrderlyReviewDecisionChanges(
+      juneBatch,
+      approvalAuth,
+      [1, 2].map(rowIndex => ({ rowIndex, expectedRevision: null, decision: linkDecision })),
+      { preserveExistingActions: true },
+    );
+    expect(saved.decisions.map(decision => [decision.rowIndex, decision.revision])).toEqual([[1, 1], [2, 1]]);
+
+    const rerun = await saveOrderlyReviewDecisionChanges(
+      juneBatch,
+      approvalAuth,
+      [1, 2].map(rowIndex => ({ rowIndex, expectedRevision: 1, decision: linkDecision })),
+      { preserveExistingActions: true },
+    );
+    expect(rerun.decisions.map(decision => [decision.rowIndex, decision.revision])).toEqual([[1, 1], [2, 1]]);
+
+    await db
+      .update(orderlyImportReviewDecisions)
+      .set({
+        decision: {
+          action: 'create_variant',
+          comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+        },
+      })
+      .where(and(
+        eq(orderlyImportReviewDecisions.batchId, juneBatch),
+        eq(orderlyImportReviewDecisions.rowIndex, 1),
+      ));
+    const beforeConflict = await db
+      .select({
+        rowIndex: orderlyImportReviewDecisions.rowIndex,
+        decision: orderlyImportReviewDecisions.decision,
+        revision: orderlyImportReviewDecisions.revision,
+      })
+      .from(orderlyImportReviewDecisions)
+      .where(eq(orderlyImportReviewDecisions.batchId, juneBatch))
+      .orderBy(orderlyImportReviewDecisions.rowIndex);
+
+    await expect(saveOrderlyReviewDecisionChanges(
+      juneBatch,
+      approvalAuth,
+      [1, 2].map(rowIndex => ({ rowIndex, expectedRevision: 1, decision: linkDecision })),
+      { preserveExistingActions: true },
+    )).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    const afterConflict = await db
+      .select({
+        rowIndex: orderlyImportReviewDecisions.rowIndex,
+        decision: orderlyImportReviewDecisions.decision,
+        revision: orderlyImportReviewDecisions.revision,
+      })
+      .from(orderlyImportReviewDecisions)
+      .where(eq(orderlyImportReviewDecisions.batchId, juneBatch))
+      .orderBy(orderlyImportReviewDecisions.rowIndex);
+    expect(afterConflict).toEqual(beforeConflict);
   });
 });

@@ -9,7 +9,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { resolveOrCreateCategoryId } from './orderlyDomain';
+import {
+  assertReviewDecisionCodeGroupConsistency,
+  resolveOrCreateCategoryId,
+  type ResolutionPreviewResult,
+  type ReviewDecisionChange,
+  type SavedReviewDecision,
+} from './orderlyDomain';
 
 // ─── Mock chain builders ──────────────────────────────────────────────────────
 
@@ -173,5 +179,141 @@ describe('category cache key logic', () => {
     );
     expect(uniqueKeys.size).toBe(1);
     expect([...uniqueKeys]).toEqual(['meat']);
+  });
+});
+
+describe('assertReviewDecisionCodeGroupConsistency', () => {
+  function previewRow(rowIndex: number, overrides: Record<string, unknown> = {}) {
+    return {
+      rowId: `row-${rowIndex}`,
+      rowIndex,
+      storageLocation: `Location ${rowIndex}`,
+      sourceItemCode: 'ALT-750',
+      itemCodeStatus: 'valid',
+      sourceCodeReliability: 'stable',
+      packSizeRaw: '1/750 ML',
+      cleanedDescription: 'House Tequila',
+      supplierRaw: 'Acme Liquor',
+      sourceCategory: 'Spirits',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packParseStatus: 'ok',
+      packagePrice: 20,
+      totalCost: 20,
+      itemMatch: {
+        strategy: 'name_pack',
+        confidence: 'high',
+        matchedId: null,
+        candidateIds: [],
+        requiresReview: true,
+        possibleRecode: true,
+        possibleRecodeMatchedId: 'existing-tequila',
+        recodeEvidenceClass: 'compatible_alternate',
+        packCompatibility: 'compatible',
+      },
+      vendorMatch: { vendorId: 'vendor-1', isNew: false, confidence: 'high', requiresReview: false },
+      locationMatch: { locationId: `location-${rowIndex}`, isNew: false, normalizedName: `location ${rowIndex}` },
+      heldForReview: false,
+      holdReason: null,
+      identityGroupKey: 'house tequila|750ml',
+      identityGroupRows: [1, 2],
+      identityGroupStatus: 'review_required',
+      ...overrides,
+    };
+  }
+
+  function preview(rows = [previewRow(1), previewRow(2)]): ResolutionPreviewResult {
+    return {
+      rows,
+      identitySummary: { conflictingReliableCodeGroups: [] },
+    } as unknown as ResolutionPreviewResult;
+  }
+
+  const decision = {
+    action: 'link_existing' as const,
+    inventoryItemId: 'existing-tequila',
+  };
+
+  function change(rowIndex: number, expectedRevision: number | null = null): ReviewDecisionChange {
+    return { rowIndex, expectedRevision, decision };
+  }
+
+  function saved(rowIndex: number, savedDecision = decision): SavedReviewDecision {
+    return {
+      rowIndex,
+      decision: savedDecision,
+      revision: 1,
+      decidedBy: 'reviewer',
+      updatedAt: new Date(),
+    };
+  }
+
+  it('accepts one compatible decision covering every row in the source-code group', () => {
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview(),
+      [change(1), change(2)],
+    )).not.toThrow();
+  });
+
+  it('rejects a partial source-code decision before any draft write can occur', () => {
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview(),
+      [change(1)],
+    )).toThrow(/complete group/);
+  });
+
+  it('allows reruns to omit identical saved rows while rejecting a conflicting saved action', () => {
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview(),
+      [change(2)],
+      [saved(1)],
+    )).not.toThrow();
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview(),
+      [change(2)],
+      [saved(1, { action: 'create_variant', comparableInventoryItemId: 'existing-tequila' })],
+    )).toThrow(/same re-code decision/);
+  });
+
+  it('rejects the whole group when one row is no longer a verified compatible link', () => {
+    const incompatible = previewRow(2, {
+      itemMatch: {
+        ...previewRow(2).itemMatch,
+        recodeEvidenceClass: 'new_pack_size',
+        packCompatibility: 'incompatible',
+      },
+    });
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([previewRow(1), incompatible]),
+      [change(1), change(2)],
+    )).toThrow(/no longer matches its compatible review candidate/);
+  });
+
+  it('rejects a forged complete-group save when the server preview reports divergent identities', () => {
+    const divergentRows = [
+      previewRow(1),
+      previewRow(2, {
+        cleanedDescription: 'Different Product',
+        identityGroupKey: 'different product|750ml',
+      }),
+    ];
+    const divergentPreview = {
+      ...preview(divergentRows),
+      identitySummary: {
+        conflictingReliableCodeGroups: [{
+          sourceItemCode: 'ALT-750',
+          rowIndexes: [1, 2],
+          reasons: ['description and pack identity differs'],
+        }],
+      },
+    } as ResolutionPreviewResult;
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      divergentPreview,
+      [change(1), change(2)],
+    )).toThrow(/conflicting description or pack identities/);
   });
 });

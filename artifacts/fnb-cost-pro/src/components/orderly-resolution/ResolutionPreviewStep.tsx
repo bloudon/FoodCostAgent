@@ -57,8 +57,11 @@ import {
   uniqueCategories as computeUniqueCategories,
   applyFilters,
   toggleSetValue,
+  buildBulkCompatiblePackDecisions,
   buildBulkNewPackSizeDecisions,
+  getBulkCompatiblePackReview,
   getBulkNewPackSizeReview,
+  getPendingRecodeCodes,
 } from "@/lib/orderlyImportFilterUtils";
 import { formatDate } from "@/lib/orderlyImportUtils";
 
@@ -348,11 +351,13 @@ function CandidatePicker({
   decision,
   hasOverride,
   onDecision,
+  codeGroupRowCount = 1,
 }: {
   row: RowPreview;
   decision: DecisionValue | undefined;
   hasOverride: boolean;
   onDecision: (rowIndex: number, value: DecisionValue | undefined) => void;
+  codeGroupRowCount?: number;
 }) {
   const match = row.itemMatch;
   const {
@@ -490,6 +495,11 @@ function CandidatePicker({
           status={packCompatibility}
           reason={packCompatibilityReason}
         />
+        {codeGroupRowCount > 1 && (
+          <p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-900">
+            This choice applies to all {codeGroupRowCount} source rows for Item Code <span className="font-mono">{row.sourceItemCode}</span>.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <ItemChip
@@ -726,6 +736,7 @@ export function ResolutionPreviewStep({
   const [legacyApprovalStores, setLegacyApprovalStores] = useState<{ id: string; name: string }[] | null>(null);
   const [legacyApprovalStoreId, setLegacyApprovalStoreId] = useState<string>("");
   const [noticesCollapsed, setNoticesCollapsed] = useState(false);
+  const [bulkCompatibleConfirmationOpen, setBulkCompatibleConfirmationOpen] = useState(false);
   const [bulkVariantConfirmationOpen, setBulkVariantConfirmationOpen] = useState(false);
   const [isManifestExporting, setIsManifestExporting] = useState(false);
   const [isManifestImporting, setIsManifestImporting] = useState(false);
@@ -847,7 +858,10 @@ export function ResolutionPreviewStep({
     });
   }
 
-  async function persistDecisionChanges(changes: ReviewDecisionChange[]): Promise<boolean> {
+  async function persistDecisionChanges(
+    changes: ReviewDecisionChange[],
+    options: { preserveExistingActions?: boolean } = {},
+  ): Promise<boolean> {
     if (changes.some(change => savingRowsRef.current.has(change.rowIndex))) return false;
     for (const change of changes) savingRowsRef.current.add(change.rowIndex);
     setDecisionSaveErrors(prev => {
@@ -861,7 +875,10 @@ export function ResolutionPreviewStep({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ changes }),
+        body: JSON.stringify({
+          changes,
+          ...(options.preserveExistingActions ? { preserveExistingActions: true } : {}),
+        }),
       });
       const body: ReviewDecisionResponse & { clearedRowIndexes?: number[]; error?: string } = await res.json();
       if (!res.ok) {
@@ -910,11 +927,51 @@ export function ResolutionPreviewStep({
   }
 
   function setDecision(rowIndex: number, value: DecisionValue | undefined) {
-    void persistDecisionChanges([{
-      rowIndex,
-      expectedRevision: decisionRevisions.get(rowIndex) ?? null,
+    if (!preview) return;
+    const sourceRow = preview.rows.find(row => row.rowIndex === rowIndex);
+    const groupRows = sourceRow?.itemMatch.possibleRecode && sourceRow.sourceCodeReliability === "stable" && sourceRow.sourceItemCode
+      ? preview.rows.filter(row =>
+          row.sourceCodeReliability === "stable" &&
+          row.sourceItemCode?.trim() === sourceRow.sourceItemCode!.trim()
+        )
+      : sourceRow
+        ? [sourceRow]
+        : [];
+    const targetRows = groupRows.length > 0 ? groupRows : [{ rowIndex } as RowPreview];
+    void persistDecisionChanges(targetRows.map(row => ({
+      rowIndex: row.rowIndex,
+      expectedRevision: decisionRevisions.get(row.rowIndex) ?? null,
       ...(value === undefined ? {} : { decision: toStoredDecisionPayload(value) }),
-    }]);
+    })));
+  }
+
+  async function queueBulkCompatiblePackLinks() {
+    const bulkDecisions = buildBulkCompatiblePackDecisions(bulkCompatiblePackReview.candidates);
+    const changes = bulkDecisions.flatMap(decision => {
+      const existing = rowDecisions.get(decision.rowIndex);
+      if (
+        isRecodeDecision(existing) &&
+        existing.action === "link_existing" &&
+        existing.inventoryItemId === decision.inventoryItemId
+      ) {
+        return [];
+      }
+      return [{
+        rowIndex: decision.rowIndex,
+        expectedRevision: decisionRevisions.get(decision.rowIndex) ?? null,
+        decision: {
+          action: decision.action,
+          inventoryItemId: decision.inventoryItemId,
+        },
+      }];
+    });
+    if (changes.length > 0 && !(await persistDecisionChanges(changes, { preserveExistingActions: true }))) return;
+    setBulkCompatibleConfirmationOpen(false);
+    const sourceRows = bulkCompatiblePackReview.candidates.reduce((sum, candidate) => sum + candidate.sourceRowCount, 0);
+    toast({
+      title: `${bulkCompatiblePackReview.candidates.length} compatible ${bulkCompatiblePackReview.candidates.length === 1 ? "code" : "codes"} linked`,
+      description: `${sourceRows} source ${sourceRows === 1 ? "row now uses" : "rows now use"} the verified existing inventory items. Identical saved links were left unchanged.`,
+    });
   }
 
   async function queueBulkNewPackSizeVariants() {
@@ -1126,7 +1183,16 @@ export function ResolutionPreviewStep({
     packEvidenceMissing: 0,
   };
   const unknownPackRows = preview.rows.filter(row => row.packParseStatus === "unparseable").length;
+  const bulkCompatiblePackReview = getBulkCompatiblePackReview(preview.rows);
   const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
+  const queuedCompatibleLinkCount = bulkCompatiblePackReview.candidates.filter(candidate =>
+    candidate.rowIndexes.every(rowIndex => {
+      const decision = rowDecisions.get(rowIndex);
+      return isRecodeDecision(decision) &&
+        decision.action === "link_existing" &&
+        decision.inventoryItemId === candidate.targetInventoryItemId;
+    }),
+  ).length;
   const queuedBulkVariantCount = bulkNewPackSizeReview.candidates.filter(candidate =>
     candidate.rowIndexes.every(rowIndex => {
       const decision = rowDecisions.get(rowIndex);
@@ -1140,19 +1206,18 @@ export function ResolutionPreviewStep({
     row.sourceCodeReliability === "stable" &&
     row.itemMatch.recodeEvidenceClass !== "source_data_conflict",
   );
-  const resolvedRecodeCodes = new Set(
-    actionableRecodeRows
-      .filter(row => {
-        const decision = rowDecisions.get(row.rowIndex);
-        return row.sourceItemCode && isRecodeDecision(decision);
-      })
-      .map(row => row.sourceItemCode!.trim()),
+  const actionableRecodeRowsByCode = new Map<string, RowPreview[]>();
+  for (const row of actionableRecodeRows) {
+    const code = row.sourceItemCode?.trim();
+    if (!code) continue;
+    const rows = actionableRecodeRowsByCode.get(code) ?? [];
+    rows.push(row);
+    actionableRecodeRowsByCode.set(code, rows);
+  }
+  const pendingRecodeCodes = getPendingRecodeCodes(
+    preview.rows,
+    row => row.rowIndex != null && isRecodeDecision(rowDecisions.get(row.rowIndex)),
   );
-  const pendingRecodeCodes = Array.from(new Set(
-    actionableRecodeRows
-      .filter(row => row.sourceItemCode)
-      .map(row => row.sourceItemCode!.trim()),
-  )).filter(code => !resolvedRecodeCodes.has(code));
   const resolvedHeldRows = preview.rows.filter(row => row.heldForReview && rowDecisions.has(row.rowIndex)).length;
   const remainingHeldRows = Math.max(0, heldForReviewRows - resolvedHeldRows);
   const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
@@ -1189,6 +1254,85 @@ export function ResolutionPreviewStep({
             <AlertDialogCancel onClick={() => setDuplicateDialogWarning(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { setDuplicateDialogWarning(null); submitApproval(true); }}>
               Approve Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkCompatibleConfirmationOpen}
+        onOpenChange={setBulkCompatibleConfirmationOpen}
+      >
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-emerald-700" />
+              Confirm {bulkCompatiblePackReview.candidates.length} compatible {bulkCompatiblePackReview.candidates.length === 1 ? "code link" : "code links"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Every included Item Code was classified by the server as the same physical pack as one existing inventory item.
+                  Confirming saves one group-wide decision for every source row shown below; it does not approve the import.
+                </p>
+                <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border bg-muted/20 p-3">
+                  {bulkCompatiblePackReview.candidates.map(candidate => (
+                    <div key={candidate.sourceItemCode} className="rounded-md border bg-background p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-foreground">{candidate.targetItemName}</div>
+                          <div className="mt-0.5 text-xs">
+                            {candidate.sampleDescription} <span className="font-mono">({candidate.sourceItemCode})</span>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                          {candidate.sourceRowCount} source {candidate.sourceRowCount === 1 ? "row" : "rows"}
+                        </Badge>
+                      </div>
+                      <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                        <div className="rounded border bg-muted/20 p-2">
+                          <dt className="font-semibold text-muted-foreground">Incoming normalized total</dt>
+                          <dd className="mt-0.5 font-medium text-foreground">{candidate.sourceNormalizedTotal}</dd>
+                        </div>
+                        <div className="rounded border bg-muted/20 p-2">
+                          <dt className="font-semibold text-muted-foreground">Catalog normalized total</dt>
+                          <dd className="mt-0.5 font-medium text-foreground">{candidate.catalogNormalizedTotal}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+                {bulkCompatiblePackReview.excludedGroups.length > 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950" data-testid="bulk-compatible-pack-exclusions">
+                    <p className="font-semibold">
+                      {bulkCompatiblePackReview.excludedGroups.length} Item Code {bulkCompatiblePackReview.excludedGroups.length === 1 ? "group is" : "groups are"} excluded
+                    </p>
+                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs">
+                      {bulkCompatiblePackReview.excludedGroups.slice(0, 8).map(group => (
+                        <li key={group.sourceItemCode}>
+                          <span className="font-mono">{group.sourceItemCode}</span>: {group.reasonLabel} ({group.rowIndexes.length} {group.rowIndexes.length === 1 ? "row" : "rows"})
+                        </li>
+                      ))}
+                      {bulkCompatiblePackReview.excludedGroups.length > 8 && (
+                        <li>And {bulkCompatiblePackReview.excludedGroups.length - 8} more excluded groups.</li>
+                      )}
+                    </ul>
+                    <p className="mt-2 text-xs">
+                      Unknown, conflicting, missing, incompatible, or divergent pack evidence stays in individual review and is never bulk-linked.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep reviewing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={queueBulkCompatiblePackLinks}
+              data-testid="confirm-bulk-compatible-pack-links"
+              className="bg-emerald-700 text-white hover:bg-emerald-800"
+            >
+              Link {bulkCompatiblePackReview.candidates.length} compatible {bulkCompatiblePackReview.candidates.length === 1 ? "code" : "codes"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1442,8 +1586,20 @@ export function ResolutionPreviewStep({
                   A matching name is not enough. Review the physical pack before deciding whether a new code represents the same item.
                 </p>
               </div>
-              {recodeSummary.newPackSizes > 0 && (
+              {(bulkCompatiblePackReview.candidates.length > 0 || recodeSummary.newPackSizes > 0) && (
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  {bulkCompatiblePackReview.candidates.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-emerald-700 text-white hover:bg-emerald-800"
+                      onClick={() => setBulkCompatibleConfirmationOpen(true)}
+                      data-testid="bulk-compatible-pack-links"
+                    >
+                      <Link2 className="mr-1.5 h-4 w-4" />
+                      Link {bulkCompatiblePackReview.candidates.length} compatible {bulkCompatiblePackReview.candidates.length === 1 ? "code" : "codes"}
+                    </Button>
+                  )}
                   {bulkNewPackSizeReview.candidates.length > 0 && (
                     <Button
                       type="button"
@@ -1455,19 +1611,21 @@ export function ResolutionPreviewStep({
                       Create {bulkNewPackSizeReview.candidates.length} new {bulkNewPackSizeReview.candidates.length === 1 ? "variant" : "variants"} in bulk
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
-                    onClick={() => {
-                      setSelectedCategories(new Set());
-                      setSelectedConfidences(new Set(["new-pack-size"]));
-                      setCurrentPage(0);
-                    }}
-                  >
-                    Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
-                  </Button>
+                  {recodeSummary.newPackSizes > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-violet-300 bg-background text-violet-900 hover:bg-violet-100"
+                      onClick={() => {
+                        setSelectedCategories(new Set());
+                        setSelectedConfidences(new Set(["new-pack-size"]));
+                        setCurrentPage(0);
+                      }}
+                    >
+                      Review {recodeSummary.newPackSizes} new {recodeSummary.newPackSizes === 1 ? "pack size" : "pack sizes"}
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -1492,6 +1650,11 @@ export function ResolutionPreviewStep({
             {queuedBulkVariantCount > 0 && (
               <p className="mt-3 text-xs font-medium text-violet-950" data-testid="bulk-new-pack-size-queued">
                 {queuedBulkVariantCount} pack-size {queuedBulkVariantCount === 1 ? "variant is" : "variants are"} saved. Open any row below to adjust an exception before approval.
+              </p>
+            )}
+            {queuedCompatibleLinkCount > 0 && (
+              <p className="mt-3 text-xs font-medium text-emerald-900" data-testid="bulk-compatible-pack-queued">
+                {queuedCompatibleLinkCount} compatible {queuedCompatibleLinkCount === 1 ? "code decision is" : "code decisions are"} saved across the complete source-row groups.
               </p>
             )}
           </CardContent>
@@ -2111,6 +2274,11 @@ export function ResolutionPreviewStep({
                                     decision={decision}
                                     hasOverride={hasOverride}
                                     onDecision={setDecision}
+                                    codeGroupRowCount={
+                                      row.sourceItemCode
+                                        ? (actionableRecodeRowsByCode.get(row.sourceItemCode.trim())?.length ?? 1)
+                                        : 1
+                                    }
                                   />
                                 </TableCell>
                               </TableRow>

@@ -4,8 +4,11 @@ import {
   uniqueCategories,
   applyFilters,
   toggleSetValue,
+  buildBulkCompatiblePackDecisions,
   buildBulkNewPackSizeDecisions,
+  getBulkCompatiblePackReview,
   getBulkNewPackSizeReview,
+  getPendingRecodeCodes,
   type RowPreviewLike,
 } from "./orderlyImportFilterUtils";
 
@@ -222,6 +225,154 @@ describe("getBulkNewPackSizeReview", () => {
     ]);
 
     expect(review.candidates).toEqual([]);
+  });
+});
+
+describe("getBulkCompatiblePackReview", () => {
+  function compatibleRow(overrides: Partial<RowPreviewLike> = {}): RowPreviewLike {
+    return {
+      rowIndex: 1,
+      sourceCategory: "Spirits",
+      sourceItemCode: "TEQ-750",
+      sourceCodeReliability: "stable",
+      supplierRaw: "Acme Liquor",
+      packSizeRaw: "1/750 ML",
+      cleanedDescription: "House Tequila",
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: "ML",
+      identityGroupKey: "house tequila|750ml",
+      itemMatch: {
+        strategy: "name_pack",
+        confidence: "high",
+        possibleRecode: true,
+        recodeEvidenceClass: "compatible_alternate",
+        packCompatibility: "compatible",
+        possibleRecodeMatchedId: "existing-tequila",
+        possibleRecodeItem: { id: "existing-tequila", name: "House Tequila" },
+        sourcePackEvidence: {
+          caseQuantity: 1,
+          innerPackQuantity: 1,
+          baseUnitQuantity: 750,
+          baseUnit: "ML",
+          normalizedUnit: "ml",
+          totalBaseUnits: 750,
+        },
+        candidatePackEvidence: {
+          caseQuantity: 1,
+          innerPackQuantity: 1,
+          baseUnitQuantity: 0.75,
+          baseUnit: "L",
+          normalizedUnit: "ml",
+          totalBaseUnits: 750,
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  it("includes only complete verified compatible code groups and expands every source row", () => {
+    const review = getBulkCompatiblePackReview([
+      compatibleRow({ rowIndex: 4 }),
+      compatibleRow({ rowIndex: 9 }),
+    ]);
+
+    expect(review.candidates).toEqual([expect.objectContaining({
+      sourceItemCode: "TEQ-750",
+      targetInventoryItemId: "existing-tequila",
+      targetItemName: "House Tequila",
+      rowIndexes: [4, 9],
+      sourceRowCount: 2,
+      sourceNormalizedTotal: "750 ml",
+      catalogNormalizedTotal: "750 ml",
+    })]);
+    expect(review.excludedGroups).toEqual([]);
+    expect(buildBulkCompatiblePackDecisions(review.candidates)).toEqual([
+      { rowIndex: 4, action: "link_existing", inventoryItemId: "existing-tequila" },
+      { rowIndex: 9, action: "link_existing", inventoryItemId: "existing-tequila" },
+    ]);
+  });
+
+  it("excludes unknown, conflicting, missing, incompatible, and divergent groups", () => {
+    const unknown = compatibleRow({
+      rowIndex: 10,
+      sourceItemCode: "UNKNOWN",
+      itemMatch: {
+        ...compatibleRow().itemMatch,
+        recodeEvidenceClass: "pack_evidence_missing",
+        packCompatibility: "unknown",
+      },
+    });
+    const conflicting = compatibleRow({
+      rowIndex: 11,
+      sourceItemCode: "CONFLICT",
+      itemMatch: {
+        ...compatibleRow().itemMatch,
+        recodeEvidenceClass: "source_data_conflict",
+      },
+    });
+    const incompatible = compatibleRow({
+      rowIndex: 12,
+      sourceItemCode: "INCOMPATIBLE",
+      itemMatch: {
+        ...compatibleRow().itemMatch,
+        recodeEvidenceClass: "new_pack_size",
+        packCompatibility: "incompatible",
+      },
+    });
+    const divergentA = compatibleRow({ rowIndex: 13, sourceItemCode: "DIVERGENT" });
+    const divergentB = compatibleRow({
+      rowIndex: 14,
+      sourceItemCode: "DIVERGENT",
+      identityGroupKey: "house tequila|1l",
+      baseUnitQuantity: 1,
+      baseUnit: "L",
+      itemMatch: {
+        ...compatibleRow().itemMatch,
+        sourcePackEvidence: {
+          caseQuantity: 1,
+          innerPackQuantity: 1,
+          baseUnitQuantity: 1,
+          baseUnit: "L",
+          normalizedUnit: "ml",
+          totalBaseUnits: 1000,
+        },
+      },
+    });
+
+    const review = getBulkCompatiblePackReview([unknown, conflicting, incompatible, divergentA, divergentB]);
+    expect(review.candidates).toEqual([]);
+    expect(new Map(review.excludedGroups.map(group => [group.sourceItemCode, group.reason]))).toEqual(new Map([
+      ["CONFLICT", "conflicting_pack"],
+      ["DIVERGENT", "divergent_group"],
+      ["INCOMPATIBLE", "incompatible_pack"],
+      ["UNKNOWN", "missing_pack_evidence"],
+    ]));
+  });
+});
+
+describe("getPendingRecodeCodes", () => {
+  it("keeps a code outstanding until every source row has a saved action", () => {
+    const rows: RowPreviewLike[] = [
+      {
+        sourceCategory: "Spirits",
+        rowIndex: 1,
+        sourceItemCode: "GROUP-A",
+        sourceCodeReliability: "stable",
+        itemMatch: { strategy: "name_pack", confidence: "high", possibleRecode: true, recodeEvidenceClass: "compatible_alternate" },
+      },
+      {
+        sourceCategory: "Spirits",
+        rowIndex: 2,
+        sourceItemCode: "GROUP-A",
+        sourceCodeReliability: "stable",
+        itemMatch: { strategy: "name_pack", confidence: "high", possibleRecode: true, recodeEvidenceClass: "compatible_alternate" },
+      },
+    ];
+
+    expect(getPendingRecodeCodes(rows, row => row.rowIndex === 1)).toEqual(["GROUP-A"]);
+    expect(getPendingRecodeCodes(rows, () => true)).toEqual([]);
   });
 });
 

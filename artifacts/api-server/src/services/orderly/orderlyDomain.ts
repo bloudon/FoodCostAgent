@@ -262,6 +262,87 @@ function assertReviewDecisionMatchesPreview(
   }
 }
 
+function reviewDecisionActionSignature(decision: ReviewDecisionPayload): string {
+  return JSON.stringify({
+    action: decision.action,
+    inventoryItemId: decision.inventoryItemId,
+    comparableInventoryItemId: decision.comparableInventoryItemId,
+  });
+}
+
+/**
+ * Re-code decisions are source-code decisions, not location-row decisions.
+ * A draft may contain the same action on rows saved in earlier requests, but
+ * the effective action for every row sharing that reliable code must agree.
+ *
+ * This is intentionally checked under the batch lock, using the saved rows
+ * from that same transaction. The browser can select a group for convenience,
+ * but it cannot define the group boundary or authorize a partial write.
+ */
+export function assertReviewDecisionCodeGroupConsistency(
+  preview: ResolutionPreviewResult,
+  changes: ReviewDecisionChange[],
+  savedDecisions: SavedReviewDecision[] = [],
+): void {
+  const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const savedByRow = new Map(savedDecisions.map(decision => [decision.rowIndex, decision.decision]));
+  const changesByRow = new Map(changes.map(change => [change.rowIndex, change]));
+  const impactedCodes = new Set<string>();
+
+  for (const change of changes) {
+    const row = rowsByIndex.get(change.rowIndex);
+    if (!row || !isReliableItemCode(row)) continue;
+    const saved = savedByRow.get(change.rowIndex);
+    if (change.decision?.action !== undefined || saved?.action !== undefined || change.decision === undefined) {
+      impactedCodes.add(row.sourceItemCode!.trim());
+    }
+  }
+
+  for (const sourceCode of impactedCodes) {
+    const groupRows = preview.rows.filter(row =>
+      isReliableItemCode(row) && row.sourceItemCode!.trim() === sourceCode,
+    );
+    const effective = groupRows.map(row => {
+      const change = changesByRow.get(row.rowIndex);
+      if (change) return change.decision;
+      return savedByRow.get(row.rowIndex);
+    });
+    const actionDecisions = effective.filter(
+      (decision): decision is ReviewDecisionPayload => decision?.action !== undefined,
+    );
+    if (actionDecisions.length === 0) continue;
+
+    const conflictingSummaryGroup = preview.identitySummary.conflictingReliableCodeGroups
+      .find(group => group.sourceItemCode.trim() === sourceCode);
+    const identityGroupKeys = new Set(groupRows.map(row => row.identityGroupKey).filter(Boolean));
+    if (conflictingSummaryGroup || identityGroupKeys.size !== 1 || groupRows.some(row => !row.identityGroupKey)) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Reliable Orderly Item Code ${sourceCode} spans conflicting description or pack identities and cannot receive a shared review decision.`,
+      );
+    }
+
+    if (actionDecisions.length !== groupRows.length) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `All rows for reliable Orderly Item Code ${sourceCode} must use the same re-code decision. Save the complete group before continuing.`,
+      );
+    }
+
+    const signature = reviewDecisionActionSignature(actionDecisions[0]);
+    if (actionDecisions.some(decision => reviewDecisionActionSignature(decision) !== signature)) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `All rows for reliable Orderly Item Code ${sourceCode} must use the same re-code decision.`,
+      );
+    }
+
+    for (const row of groupRows) {
+      assertReviewDecisionMatchesPreview(row, actionDecisions[0]);
+    }
+  }
+}
+
 function assertSavedReviewDecisionsRemainValid(
   preview: ResolutionPreviewResult,
   decisions: RowDecision[],
@@ -2435,7 +2516,11 @@ export async function saveOrderlyReviewDecisionChanges(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
   rawChanges: unknown,
-  options: { expectedPreviewFingerprint?: string } = {},
+  options: {
+    expectedPreviewFingerprint?: string;
+    /** Bulk helpers may add missing/identical actions but never overwrite a different saved choice. */
+    preserveExistingActions?: boolean;
+  } = {},
 ): Promise<{ decisions: SavedReviewDecision[]; clearedRowIndexes: number[] }> {
   const contract = await resolveApprovalContract(batchId, auth);
   if (contract.batch.status !== 'pending_review') {
@@ -2482,17 +2567,17 @@ export async function saveOrderlyReviewDecisionChanges(
     if (lockedBatch.status !== 'pending_review') {
       throw new ImportApprovalError('CONFLICT', 'This batch is no longer available for review.');
     }
+    const underLockPreview = await runResolutionPreview(contract.batch.id, contract.companyId, tx);
+    if (
+      options.expectedPreviewFingerprint &&
+      fingerprintOrderlyPreview(underLockPreview) !== options.expectedPreviewFingerprint
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        'The catalog or source evidence changed while this manifest was being imported.',
+      );
+    }
     if (decisionChanges.length > 0) {
-      const underLockPreview = await runResolutionPreview(contract.batch.id, contract.companyId, tx);
-      if (
-        options.expectedPreviewFingerprint &&
-        fingerprintOrderlyPreview(underLockPreview) !== options.expectedPreviewFingerprint
-      ) {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          'The catalog or source evidence changed while this manifest was being imported.',
-        );
-      }
       const rowsByIndex = new Map(underLockPreview.rows.map(row => [row.rowIndex, row]));
       for (const change of decisionChanges) {
         const row = rowsByIndex.get(change.rowIndex);
@@ -2508,6 +2593,7 @@ export async function saveOrderlyReviewDecisionChanges(
       .select({
         rowIndex: orderlyImportReviewDecisions.rowIndex,
         revision: orderlyImportReviewDecisions.revision,
+        decision: orderlyImportReviewDecisions.decision,
       })
       .from(orderlyImportReviewDecisions)
       .where(and(
@@ -2519,8 +2605,8 @@ export async function saveOrderlyReviewDecisionChanges(
         inArray(orderlyImportReviewDecisions.rowIndex, targetRows),
       ))
       .for('update');
-    const existingByRow = new Map<number, { rowIndex: number; revision: number }>(
-      existingRows.map((row: { rowIndex: number; revision: number }) => [row.rowIndex, row]),
+    const existingByRow = new Map<number, { rowIndex: number; revision: number; decision: unknown }>(
+      existingRows.map((row: { rowIndex: number; revision: number; decision: unknown }) => [row.rowIndex, row]),
     );
 
     for (const change of changes) {
@@ -2537,6 +2623,26 @@ export async function saveOrderlyReviewDecisionChanges(
           `The saved review decision for row ${change.rowIndex} changed in another session. Refresh before saving.`,
         );
       }
+      if (options.preserveExistingActions && existing && change.decision?.action !== undefined) {
+        const existingDecision = normalizeReviewDecision(change.rowIndex, existing.decision);
+        if (
+          reviewDecisionActionSignature(existingDecision) !== reviewDecisionActionSignature(change.decision)
+        ) {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `The saved review decision for row ${change.rowIndex} conflicts with this bulk action. Review the existing choice before retrying.`,
+          );
+        }
+      }
+    }
+
+    if (changes.length > 0) {
+      const saved = await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId, tx);
+      assertReviewDecisionCodeGroupConsistency(
+        underLockPreview,
+        changes,
+        saved,
+      );
     }
 
     const now = new Date();
@@ -2561,6 +2667,12 @@ export async function saveOrderlyReviewDecisionChanges(
       }
 
       if (existing) {
+        if (options.preserveExistingActions && change.decision.action !== undefined) {
+          const existingDecision = normalizeReviewDecision(change.rowIndex, existing.decision);
+          if (reviewDecisionActionSignature(existingDecision) === reviewDecisionActionSignature(change.decision)) {
+            continue;
+          }
+        }
         await tx
           .update(orderlyImportReviewDecisions)
           .set({

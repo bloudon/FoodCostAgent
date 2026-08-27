@@ -17,6 +17,7 @@ export interface RowPreviewLike {
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
   baseUnit?: string | null;
+  identityGroupKey?: string | null;
   /** Server-derived from the same fail-closed rule used by approval. */
   heldForReview?: boolean;
   itemMatch: {
@@ -32,7 +33,18 @@ export interface RowPreviewLike {
       | "unreliable_code";
     possibleRecodeMatchedId?: string | null;
     possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
+    sourcePackEvidence?: PackEvidenceLike | null;
+    candidatePackEvidence?: PackEvidenceLike | null;
   };
+}
+
+interface PackEvidenceLike {
+  caseQuantity?: number | null;
+  innerPackQuantity?: number | null;
+  baseUnitQuantity?: number | null;
+  baseUnit?: string | null;
+  normalizedUnit?: string | null;
+  totalBaseUnits?: number | null;
 }
 
 /**
@@ -98,6 +110,32 @@ export function toggleSetValue<T>(prev: ReadonlySet<T>, value: T): Set<T> {
     next.add(value);
   }
   return next;
+}
+
+/** Returns source-code decisions that are not saved on every actionable row. */
+export function getPendingRecodeCodes<T extends RowPreviewLike>(
+  rows: T[],
+  hasSavedAction: (row: T) => boolean,
+): string[] {
+  const rowsByCode = new Map<string, T[]>();
+  for (const row of rows) {
+    const code = row.sourceItemCode?.trim();
+    if (
+      !code ||
+      row.sourceCodeReliability !== "stable" ||
+      !row.itemMatch.possibleRecode ||
+      row.itemMatch.recodeEvidenceClass === "source_data_conflict"
+    ) {
+      continue;
+    }
+    const group = rowsByCode.get(code) ?? [];
+    group.push(row);
+    rowsByCode.set(code, group);
+  }
+  return Array.from(rowsByCode.entries())
+    .filter(([, group]) => !group.every(hasSavedAction))
+    .map(([code]) => code)
+    .sort();
 }
 
 export interface BulkNewPackSizeCandidate {
@@ -233,6 +271,166 @@ export function buildBulkNewPackSizeDecisions(
       rowIndex,
       action: "create_variant" as const,
       comparableInventoryItemId: candidate.comparableInventoryItemId,
+    })),
+  );
+}
+
+export interface BulkCompatiblePackCandidate {
+  /** One reliable source code creates one durable alternate-code link. */
+  sourceItemCode: string;
+  targetInventoryItemId: string;
+  targetItemName: string;
+  rowIndexes: number[];
+  sourceRowCount: number;
+  vendorName: string;
+  sampleDescription: string;
+  sourceNormalizedTotal: string;
+  catalogNormalizedTotal: string;
+}
+
+export interface BulkCompatiblePackExclusion {
+  sourceItemCode: string;
+  rowIndexes: number[];
+  reason:
+    | "unknown_pack"
+    | "conflicting_pack"
+    | "missing_pack_evidence"
+    | "incompatible_pack"
+    | "divergent_group"
+    | "not_verified_compatible";
+  reasonLabel: string;
+}
+
+export interface BulkCompatiblePackReview {
+  candidates: BulkCompatiblePackCandidate[];
+  excludedGroups: BulkCompatiblePackExclusion[];
+}
+
+function geometryValue(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(Number(value.toFixed(6))) : "null";
+}
+
+function packEvidenceSignature(
+  evidence: PackEvidenceLike | null | undefined,
+  fallback: Pick<RowPreviewLike, "caseQuantity" | "innerPackQuantity" | "baseUnitQuantity" | "baseUnit">,
+): string {
+  const source: PackEvidenceLike = evidence ?? fallback;
+  return [
+    geometryValue(source.caseQuantity),
+    geometryValue(source.innerPackQuantity),
+    geometryValue(source.baseUnitQuantity),
+    source.baseUnit?.trim().toLowerCase() || "null",
+    source.normalizedUnit?.trim().toLowerCase() || "null",
+    geometryValue(source.totalBaseUnits),
+  ].join("|");
+}
+
+function normalizedTotalLabel(evidence: PackEvidenceLike | null | undefined): string {
+  if (!evidence || evidence.totalBaseUnits == null || !evidence.normalizedUnit) return "Not confirmed";
+  const total = Number.isInteger(evidence.totalBaseUnits)
+    ? evidence.totalBaseUnits
+    : evidence.totalBaseUnits.toFixed(2);
+  return `${total} ${evidence.normalizedUnit}`;
+}
+
+function compatiblePackExclusion(
+  sourceItemCode: string,
+  rows: RowPreviewLike[],
+): BulkCompatiblePackExclusion {
+  const rowIndexes = rows.map(row => row.rowIndex).filter((index): index is number => index != null).sort((a, b) => a - b);
+  if (rows.some(row => row.itemMatch.recodeEvidenceClass === "source_data_conflict")) {
+    return { sourceItemCode, rowIndexes, reason: "conflicting_pack", reasonLabel: "conflicting source pack evidence" };
+  }
+  if (rows.some(row => row.itemMatch.recodeEvidenceClass === "pack_evidence_missing")) {
+    return { sourceItemCode, rowIndexes, reason: "missing_pack_evidence", reasonLabel: "missing pack evidence" };
+  }
+  if (rows.some(row => row.itemMatch.packCompatibility === "unknown")) {
+    return { sourceItemCode, rowIndexes, reason: "unknown_pack", reasonLabel: "unknown pack geometry" };
+  }
+  if (rows.some(row => row.itemMatch.packCompatibility === "incompatible")) {
+    return { sourceItemCode, rowIndexes, reason: "incompatible_pack", reasonLabel: "incompatible pack" };
+  }
+  if (new Set(rows.map(row => row.identityGroupKey ?? "")).size > 1 ||
+      new Set(rows.map(row => packEvidenceSignature(row.itemMatch.sourcePackEvidence, row)).values()).size > 1 ||
+      new Set(rows.map(row => packEvidenceSignature(row.itemMatch.candidatePackEvidence, row)).values()).size > 1) {
+    return { sourceItemCode, rowIndexes, reason: "divergent_group", reasonLabel: "divergent description or pack group evidence" };
+  }
+  return { sourceItemCode, rowIndexes, reason: "not_verified_compatible", reasonLabel: "not classified as a verified compatible alternate code" };
+}
+
+/**
+ * Produces only stable source-code groups that are already classified by the
+ * server as the same physical pack. Every row for a code must agree on its
+ * target, vendor, identity group, and pack evidence. This is a selector for
+ * the existing review-decision contract, not an authorization boundary.
+ */
+export function getBulkCompatiblePackReview(rows: RowPreviewLike[]): BulkCompatiblePackReview {
+  const rowsByCode = new Map<string, RowPreviewLike[]>();
+  for (const row of rows) {
+    const code = row.sourceItemCode?.trim();
+    if (!code) continue;
+    const group = rowsByCode.get(code) ?? [];
+    group.push(row);
+    rowsByCode.set(code, group);
+  }
+
+  const candidates: BulkCompatiblePackCandidate[] = [];
+  const excludedGroups: BulkCompatiblePackExclusion[] = [];
+  for (const [sourceItemCode, codeRows] of rowsByCode) {
+    const eligible =
+      codeRows.every(row =>
+        row.rowIndex != null &&
+        row.sourceCodeReliability === "stable" &&
+        !row.heldForReview &&
+        row.itemMatch.possibleRecode === true &&
+        row.itemMatch.recodeEvidenceClass === "compatible_alternate" &&
+        row.itemMatch.packCompatibility === "compatible" &&
+        Boolean(row.itemMatch.possibleRecodeMatchedId),
+      );
+    const targetIds = new Set(codeRows.map(row => row.itemMatch.possibleRecodeMatchedId).filter(Boolean));
+    const vendors = new Set(codeRows.map(row => row.supplierRaw?.trim() || "Vendor not provided"));
+    const identityGroups = new Set(codeRows.map(row => row.identityGroupKey ?? ""));
+    const sourcePacks = new Set(codeRows.map(row => packEvidenceSignature(row.itemMatch.sourcePackEvidence, row)));
+    const candidatePacks = new Set(codeRows.map(row => packEvidenceSignature(row.itemMatch.candidatePackEvidence, row)));
+
+    if (!eligible || targetIds.size !== 1 || vendors.size !== 1 || identityGroups.size !== 1 || sourcePacks.size !== 1 || candidatePacks.size !== 1) {
+      excludedGroups.push(compatiblePackExclusion(sourceItemCode, codeRows));
+      continue;
+    }
+
+    const firstRow = codeRows[0];
+    const target = firstRow.itemMatch.possibleRecodeItem;
+    if (!target) {
+      excludedGroups.push({ sourceItemCode, rowIndexes: codeRows.map(row => row.rowIndex!), reason: "not_verified_compatible", reasonLabel: "target item details are unavailable" });
+      continue;
+    }
+    candidates.push({
+      sourceItemCode,
+      targetInventoryItemId: Array.from(targetIds)[0]!,
+      targetItemName: target.name,
+      rowIndexes: codeRows.map(row => row.rowIndex!).sort((a, b) => a - b),
+      sourceRowCount: codeRows.length,
+      vendorName: firstRow.supplierRaw?.trim() || "Vendor not provided",
+      sampleDescription: firstRow.cleanedDescription?.trim() || sourceItemCode,
+      sourceNormalizedTotal: normalizedTotalLabel(firstRow.itemMatch.sourcePackEvidence),
+      catalogNormalizedTotal: normalizedTotalLabel(firstRow.itemMatch.candidatePackEvidence),
+    });
+  }
+
+  candidates.sort((left, right) => left.sourceItemCode.localeCompare(right.sourceItemCode));
+  excludedGroups.sort((left, right) => left.sourceItemCode.localeCompare(right.sourceItemCode));
+  return { candidates, excludedGroups };
+}
+
+/** Builds link_existing decisions for every source row in each eligible code group. */
+export function buildBulkCompatiblePackDecisions(
+  candidates: BulkCompatiblePackCandidate[],
+): Array<{ rowIndex: number; action: "link_existing"; inventoryItemId: string }> {
+  return candidates.flatMap(candidate =>
+    candidate.rowIndexes.map(rowIndex => ({
+      rowIndex,
+      action: "link_existing" as const,
+      inventoryItemId: candidate.targetInventoryItemId,
     })),
   );
 }

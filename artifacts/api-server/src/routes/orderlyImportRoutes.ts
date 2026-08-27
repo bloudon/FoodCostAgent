@@ -751,6 +751,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
           String(req.params.batchId),
           { actingUserId: userId as string, companyId },
           req.body?.changes,
+          { preserveExistingActions: req.body?.preserveExistingActions === true },
         );
         res.json(result);
       } catch (err: any) {
