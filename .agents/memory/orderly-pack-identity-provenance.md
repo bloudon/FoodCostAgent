@@ -14,3 +14,9 @@ For Orderly pack comparison, all three parsed tiers (case quantity, inner-pack q
 **Why:** A display or classifier that turns partial geometry into a numeric total can make missing source evidence look like a safe match.
 
 **How to apply:** Return an unknown/null normalized total for any absent tier. Preview clients may format server-provided normalized facts, but must show incomplete evidence as unconfirmed and never derive a total themselves.
+
+Descriptive values in Orderly's Item Code column are not vendor code identity, but they do not make the financial row unusable. Such rows may use a source-property-scoped identity derived from normalized product name plus complete canonical pack geometry; the descriptive text itself must never become a code mapping.
+
+**Why:** Orderly is read-only and repeatedly exports some wine and spirits descriptions in the Item Code field. Rejecting those rows makes entire inventory periods impossible to approve, while mapping the prose as a code falsely claims vendor-stable identity.
+
+**How to apply:** Treat these rows as advisory. Resolve only through an existing derived identity or exactly one same-name catalog candidate with fully compatible persisted pack evidence. Zero or multiple compatible candidates take the new-item path; fuzzy, location-history, and partial-pack matches are never authority. Repeated rows in one batch must converge on one item, and mapping collisions remain fail-closed.

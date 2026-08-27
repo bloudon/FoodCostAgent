@@ -1,0 +1,72 @@
+# #1256 - Admit Descriptive-Code Rows With Name-and-Pack Identity
+
+## What & Why
+
+Orderly's export contains rows where the Item Code column holds the product description instead of a vendor SKU — 391 rows in the clean May Bay Hill Dev batch, almost entirely wine and spirits. These are classified `pseudo_code` and currently abort the entire approval.
+
+The classification is correct: a description is not a vendor-stable identifier and must never become a code mapping. But the enforcement is batch-fatal rather than per-row, and the Orderly source is **read-only**, so the remedy the error message offers ("correct the source data") does not exist. As built, no batch containing these rows can ever be approved, and the condition recurs every month.
+
+Two consequences make this urgent rather than cosmetic:
+
+1. **Approval is all-or-nothing.** 391 blocked rows take the other 4,967 down with them. Nothing imports, so no inventory value lands at all — and value reconciliation against Orderly's approved May total of **$254,285.74** cannot even begin.
+2. **The safe handling already exists.** Mapping creation is already gated (code mappings require `stable`; alternate mappings currently exclude `pseudo_code`). The apply path is written to create the item and skip the mapping. Three `throw`s prevent that path from ever running.
+
+This ticket admits these rows with an honest identity — normalized product name plus canonical pack geometry — while preserving the rule that descriptive text never becomes a code mapping.
+
+## Done looks like
+
+* A batch containing `pseudo_code` rows can be approved. The condition is surfaced as advisory, not as a blocker.
+* Every `pseudo_code` row creates or resolves an inventory item and records `resolvedInventoryItemId`, so its quantity and value are included in the count session and the reconciliation report.
+* `pseudo_code` rows receive an **alternate** identity mapping (`ORDERLY_ALT:<normalized name>|<canonical pack key>`), giving deterministic cross-month identity so May, June, and July resolve to the same item rather than creating duplicates.
+* `pseudo_code` rows still **never** produce a code mapping from descriptive text. The `sourceCodeReliability === 'stable'` gate on code-mapping creation is unchanged.
+* Mappings created this way are recorded with `matchStrategy: 'name_pack'` so name-matched items are queryable and distinguishable from code-matched ones later.
+* The existing fail-closed collision behaviour on alternate mappings is preserved — a collision with another canonical item must not silently rebind a known source mapping.
+* The preview clearly states what will happen: these items will be created and counted, identified by name and pack, and will not receive a permanent Orderly code mapping.
+
+## Out of scope
+
+* Editing Orderly. The source is read-only.
+* Editing or pre-processing the XLSX export to synthesise Item Code values.
+* Inventing, deriving, or inferring a vendor SKU for a row that has none.
+* Changing `classifySourceItemCode`. The classification is correct and should not be loosened.
+* Changing pack parsing or normalization (see #1255).
+* Attaching real vendor codes to these items from invoice data — a separate exercise after the seed.
+
+## Steps
+
+1. Downgrade `unreliable_code` from a batch-fatal blocker to an advisory condition. Three sites in `orderlyDomain.ts` currently throw `ImportApprovalError('CONFLICT', …)`:
+   - the pre-approval validation (~line 275)
+   - the under-lock approval validation (~line 2724)
+   - Keep the row-level decision guard (~line 196) as-is: these rows need no review decision, and the guard only fires if one is submitted.
+2. Permit alternate identity for these rows: the condition at ~line 3408 currently reads `rowPreview.sourceCodeReliability !== 'pseudo_code'`. Allow `pseudo_code` through while leaving the code-mapping gate at ~line 3377 untouched.
+3. Record `matchStrategy: 'name_pack'` on mappings created for `pseudo_code` rows.
+4. Replace the preview copy. Current text — "Verify the source identifier outside this import, then re-upload or correct the source data" — describes an action that is impossible against a read-only source. It should state that the item will be created and counted, matched on name and pack, with no permanent code mapping.
+5. Move the count out of the blocking banner into an advisory summary, and keep the row list reachable for review.
+6. Add regressions: a batch containing only `pseudo_code` rows approves; items are created with `resolvedInventoryItemId` set; an alternate mapping is written and a code mapping is not; re-importing the same descriptive row in a later batch resolves to the existing item rather than creating a duplicate; an alternate-id collision still fails closed.
+
+## Verification
+
+Against the clean Bay Hill Dev seed:
+
+* Batch `0484406c-d13b-4718-87cd-bb81fcdf5bcb` (May_2026.xlsx, 5,358 rows) approves.
+* All 391 descriptive-code rows produce inventory items with pack geometry intact (all parse cleanly today — e.g. `BV CAB SAUV LATOUR PRIV RSV 21 6B 750ML` → `1 × 750 ML`).
+* The reconciliation report total is compared against Orderly's approved May figure of **$254,285.74**. Orderly's June is $261,006.73 and July is $254,298.83.
+* Loading June after May: the wine items resolve to existing items rather than arriving as new. The count of newly-created wine items is the direct measure of description churn between months.
+
+## Known risk
+
+Identity depends on the product description remaining stable in Orderly between months. A renamed product forks into a new item. This is measurable rather than theoretical — the June load quantifies it in one number, and with only a few months of Orderly remaining, the exposure is bounded.
+
+Pack geometry is part of the identity key, which is deliberate: a genuine pack change should fork a new item rather than silently merge into the old one.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts`
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.ts`
+* `artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx`
+* `artifacts/api-server/src/routes/orderlyApprovalRoute.test.ts`
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts`
+
+## Dependencies
+
+Independent of #1255, but both should land before May is approved. Mappings are written once and are immutable, so a row approved with unparsed geometry (#1255) or with no identity (#1256) carries that defect permanently.

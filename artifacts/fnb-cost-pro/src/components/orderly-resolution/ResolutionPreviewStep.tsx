@@ -129,7 +129,7 @@ function recodeEvidenceLabel(evidenceClass: MatchResult["recodeEvidenceClass"]):
     new_pack_size: "New pack size",
     source_data_conflict: "Source conflict",
     pack_evidence_missing: "Pack check",
-    unreliable_code: "Unreliable code",
+    unreliable_code: "Name + pack identity",
   };
   return evidenceClass ? labels[evidenceClass] : "Re-code?";
 }
@@ -432,13 +432,13 @@ function CandidatePicker({
         <div className="flex items-start gap-2">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
           <div>
-            <h4 className="text-sm font-semibold">Unreliable Item Code — manual source review required</h4>
+            <h4 className="text-sm font-semibold">Description in Item Code — using name and pack identity</h4>
             <p className="mt-1 text-xs leading-relaxed text-slate-700">
-              This Item Code looks like descriptive text rather than a vendor-stable code. It may help a reviewer,
-              but FnB Cost Pro will not use it to link items or create a permanent Orderly code mapping.
+              This value is descriptive text rather than a vendor-stable code. FnB Cost Pro will create or resolve
+              the item using its normalized product name and canonical pack geometry, so its quantity and value are counted.
             </p>
             <p className="mt-2 text-xs font-medium text-slate-800">
-              Verify the source identifier outside this import, then re-upload or correct the source data.
+              No permanent Orderly code mapping will be created from the descriptive text.
             </p>
           </div>
         </div>
@@ -1156,7 +1156,7 @@ export function ResolutionPreviewStep({
   const remainingHeldRows = Math.max(0, heldForReviewRows - resolvedHeldRows);
   const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
-  const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0 || recodeSummary.unreliableCodes > 0;
+  const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0;
   const approvalDisabled = approving || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
 
   return (
@@ -1472,8 +1472,8 @@ export function ResolutionPreviewStep({
                 <div className="mt-1 text-red-800/80">{recodeSummary.sourceDataConflicts} {recodeSummary.sourceDataConflicts === 1 ? "conflict blocks" : "conflicts block"} approval until the source is verified.</div>
               </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
-                <div className="font-semibold text-slate-900">4. Description in Item Code</div>
-                <div className="mt-1 text-slate-700">{recodeSummary.unreliableCodes} {recodeSummary.unreliableCodes === 1 ? "value needs" : "values need"} source correction; it cannot become a code mapping.</div>
+                <div className="font-semibold text-slate-900">4. Name + pack identity</div>
+                <div className="mt-1 text-slate-700">{recodeSummary.unreliableCodes} descriptive-code {recodeSummary.unreliableCodes === 1 ? "row will be" : "rows will be"} counted using product name and pack, without creating code mappings.</div>
               </div>
             </div>
             {queuedBulkVariantCount > 0 && (
@@ -1710,7 +1710,7 @@ export function ResolutionPreviewStep({
               )}
               {recodeSummary.unreliableCodes > 0 && (
                 <p>
-                  <strong>{recodeSummary.unreliableCodes} descriptive Item Code {recodeSummary.unreliableCodes === 1 ? "needs" : "values need"} correction.</strong> These cannot become permanent mappings.
+                  <strong>{recodeSummary.unreliableCodes} descriptive-code {recodeSummary.unreliableCodes === 1 ? "row will use" : "rows will use"} name and pack identity.</strong> These rows will be counted and will not create permanent code mappings.
                 </p>
               )}
               {!remainingHeldRows && !hasPendingRecodeDecisions && !hasSourceEvidenceBlockers && (
@@ -1763,12 +1763,26 @@ export function ResolutionPreviewStep({
                     setSelectedCategories(new Set());
                     setSelectedConfidences(new Set([
                       ...(recodeSummary.sourceDataConflicts > 0 ? ["source-conflict"] : []),
-                      ...(recodeSummary.unreliableCodes > 0 ? ["unreliable-code"] : []),
                     ]));
                     setCurrentPage(0);
                   }}
                 >
                   Show blocked rows
+                </Button>
+              )}
+              {recodeSummary.unreliableCodes > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-slate-300 bg-background"
+                  onClick={() => {
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(["unreliable-code"]));
+                    setCurrentPage(0);
+                  }}
+                >
+                  Show name + pack rows
                 </Button>
               )}
             </div>
@@ -1786,7 +1800,7 @@ export function ResolutionPreviewStep({
             { key: "alternate-code",   label: "Alternate code" },
             { key: "new-pack-size",    label: "New pack size" },
             { key: "source-conflict",  label: "Source conflict" },
-            { key: "unreliable-code",  label: "Unreliable code" },
+            { key: "unreliable-code",  label: "Name + pack identity" },
             { key: "pack-check",       label: "Pack check" },
             { key: "recode",           label: "Other re-code"  },
             { key: "high",             label: "Matched"   },

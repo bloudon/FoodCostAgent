@@ -20,7 +20,7 @@ describe('classifySourceItemCode', () => {
     expect(classifySourceItemCode('012345678901', 'valid')).toBe('stable');
   });
 
-  it('holds free-text pseudo-codes rather than treating them as vendor identities', () => {
+  it('classifies free-text pseudo-codes without treating them as vendor code identities', () => {
     expect(classifySourceItemCode('oni jum', 'valid')).toBe('pseudo_code');
     expect(classifySourceItemCode('tuna saku 2 lb', 'valid')).toBe('pseudo_code');
     expect(classifySourceItemCode('Onions', 'valid')).toBe('pseudo_code');

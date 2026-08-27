@@ -113,9 +113,9 @@ async function stageBatch(opts: {
     sourceItemCode: row.sourceItemCode ?? null,
     supplierRaw: row.supplierRaw ?? null,
     caseQuantity: row.caseQuantity ?? 1,
-    innerPackQuantity: row.innerPackQuantity ?? null,
-    baseUnitQuantity: row.baseUnitQuantity ?? null,
-    baseUnit: row.baseUnit ?? null,
+    innerPackQuantity: row.innerPackQuantity ?? 1,
+    baseUnitQuantity: row.baseUnitQuantity ?? 1,
+    baseUnit: row.baseUnit ?? 'EA',
     packagePrice: 10,
     itemCodeStatus: row.itemCodeStatus ?? 'missing',
     supplierStatus: row.supplierRaw ? 'valid' : 'missing',
@@ -275,35 +275,64 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
     expect(afterSecond?.approvedAt?.toISOString()).toBe(afterFirst?.approvedAt?.toISOString());
   });
 
-  it('blocks a descriptive pseudo-code before any item or external mapping can be created', async () => {
+  it('approves a descriptive pseudo-code with name-and-pack identity but no code mapping', async () => {
     const batchId = await stageBatch({
       companyId: ID.companyA,
       targetStoreId: ID.storeBayHill,
       sourcePropertyBindingId: ID.bindingBayHill,
       sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
-      rows: [{
-        sourceItemCode: 'ONIONS',
-        itemCodeStatus: 'valid',
-        rawDescription: 'Onions',
-        supplierRaw: 'Evidence Vendor',
-        caseQuantity: 1,
-        baseUnitQuantity: 1,
-        baseUnit: 'EA',
-      }],
+      rows: [
+        {
+          sourceItemCode: 'ONIONS',
+          itemCodeStatus: 'valid',
+          rawDescription: 'Onions',
+          supplierRaw: 'Evidence Vendor',
+          caseQuantity: 1,
+          baseUnitQuantity: 1,
+          baseUnit: 'EA',
+        },
+        {
+          sourceItemCode: 'ONIONS',
+          itemCodeStatus: 'valid',
+          rawDescription: 'Onions',
+          supplierRaw: 'Evidence Vendor',
+          caseQuantity: 1,
+          baseUnitQuantity: 1,
+          baseUnit: 'EA',
+        },
+      ],
     });
-    const beforeBatch = await snapshotBatch(batchId);
-    const beforeDomain = await countDomainRecords(ID.companyA);
+    await applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA });
 
-    await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
-    ).rejects.toThrow(/look like descriptions require manual source review/i);
+    const approvedRows = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, batchId));
+    expect(approvedRows).toHaveLength(2);
+    expect(approvedRows[0].resolvedInventoryItemId).toBeTruthy();
+    expect(new Set(approvedRows.map(row => row.resolvedInventoryItemId)).size).toBe(1);
 
-    expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
-    expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);
+    const mappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        matchStrategy: inventoryItemExternalMappings.matchStrategy,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(eq(
+        inventoryItemExternalMappings.inventoryItemId,
+        approvedRows[0].resolvedInventoryItemId!,
+      ));
+    expect(mappings).toEqual([
+      expect.objectContaining({
+        sourceExternalId: expect.stringMatching(/^ALT\|onions\|/),
+        matchStrategy: 'name_pack',
+      }),
+    ]);
+    expect(mappings.some(mapping => mapping.sourceExternalId === 'ONIONS')).toBe(false);
   });
 
-  it('blocks numeric-looking description text in Item Code before it can persist a mapping', async () => {
-    const batchId = await stageBatch({
+  it('reuses the same name-and-pack identity for a later descriptive-code batch', async () => {
+    const firstBatchId = await stageBatch({
       companyId: ID.companyA,
       targetStoreId: ID.storeBayHill,
       sourcePropertyBindingId: ID.bindingBayHill,
@@ -318,15 +347,114 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
         baseUnit: 'EA',
       }],
     });
-    const beforeBatch = await snapshotBatch(batchId);
-    const beforeDomain = await countDomainRecords(ID.companyA);
+    await applyBatchApproval(firstBatchId, {
+      actingUserId: ID.adminA,
+      companyId: ID.companyA,
+    });
 
-    await expect(
-      applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
-    ).rejects.toThrow(/look like descriptions require manual source review/i);
+    const laterBatchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: '2% Milk',
+        itemCodeStatus: 'valid',
+        rawDescription: 'Milk - 2%',
+        supplierRaw: 'Evidence Vendor',
+        caseQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      }],
+    });
+    await applyBatchApproval(laterBatchId, {
+      actingUserId: ID.adminA,
+      companyId: ID.companyA,
+    });
 
-    expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
-    expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);
+    const rows = await db
+      .select({
+        batchId: inventoryImportRows.batchId,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(inArray(inventoryImportRows.batchId, [firstBatchId, laterBatchId]));
+    const resolvedByBatch = new Map(rows.map(row => [row.batchId, row.resolvedInventoryItemId]));
+    expect(resolvedByBatch.get(firstBatchId)).toBeTruthy();
+    expect(resolvedByBatch.get(laterBatchId)).toBe(resolvedByBatch.get(firstBatchId));
+
+    const mappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        matchStrategy: inventoryItemExternalMappings.matchStrategy,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(eq(
+        inventoryItemExternalMappings.inventoryItemId,
+        resolvedByBatch.get(firstBatchId)!,
+      ));
+    expect(mappings).toHaveLength(1);
+    expect(mappings[0]).toEqual(expect.objectContaining({
+      sourceExternalId: expect.stringMatching(/^ALT\|milk 2\|/),
+      matchStrategy: 'name_pack',
+    }));
+    expect(mappings.some(mapping => mapping.sourceExternalId === '2% Milk')).toBe(false);
+  });
+
+  it('creates a separate item when a descriptive-code row has different canonical pack geometry', async () => {
+    const firstBatchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: 'HOUSE CABERNET',
+        itemCodeStatus: 'valid',
+        rawDescription: 'House Cabernet',
+        supplierRaw: 'Evidence Vendor',
+        caseQuantity: 1,
+        innerPackQuantity: 6,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      }],
+    });
+    await applyBatchApproval(firstBatchId, {
+      actingUserId: ID.adminA,
+      companyId: ID.companyA,
+    });
+
+    const changedPackBatchId = await stageBatch({
+      companyId: ID.companyA,
+      targetStoreId: ID.storeBayHill,
+      sourcePropertyBindingId: ID.bindingBayHill,
+      sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
+      rows: [{
+        sourceItemCode: 'HOUSE CABERNET',
+        itemCodeStatus: 'valid',
+        rawDescription: 'House Cabernet',
+        supplierRaw: 'Evidence Vendor',
+        caseQuantity: 1,
+        innerPackQuantity: 6,
+        baseUnitQuantity: 1,
+        baseUnit: 'L',
+      }],
+    });
+    await applyBatchApproval(changedPackBatchId, {
+      actingUserId: ID.adminA,
+      companyId: ID.companyA,
+    });
+
+    const rows = await db
+      .select({
+        batchId: inventoryImportRows.batchId,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(inArray(inventoryImportRows.batchId, [firstBatchId, changedPackBatchId]));
+    const resolvedByBatch = new Map(rows.map(row => [row.batchId, row.resolvedInventoryItemId]));
+    expect(resolvedByBatch.get(firstBatchId)).toBeTruthy();
+    expect(resolvedByBatch.get(changedPackBatchId)).toBeTruthy();
+    expect(resolvedByBatch.get(changedPackBatchId)).not.toBe(resolvedByBatch.get(firstBatchId));
   });
 
   it('blocks contradictory same-vendor code pack evidence before any approval write', async () => {
@@ -361,7 +489,7 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
 
     await expect(
       applyBatchApproval(batchId, { actingUserId: ID.adminA, companyId: ID.companyA }),
-    ).rejects.toThrow(/contradictory pack evidence/i);
+    ).rejects.toThrow(/contradictory pack evidence|incompatible or divergent identity evidence/i);
 
     expect(await snapshotBatch(batchId)).toEqual(beforeBatch);
     expect(await countDomainRecords(ID.companyA)).toEqual(beforeDomain);

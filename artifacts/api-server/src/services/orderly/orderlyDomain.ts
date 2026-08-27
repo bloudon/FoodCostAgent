@@ -274,16 +274,6 @@ function assertSavedReviewDecisionsRemainValid(
       `Orderly source data changed to contradictory pack evidence before approval: ${conflicts.map(row => `row ${row.rowIndex}`).join(', ')}.`,
     );
   }
-  const unreliableCodes = preview.rows.filter(
-    row => row.itemMatch.recodeEvidenceClass === 'unreliable_code',
-  );
-  if (unreliableCodes.length > 0) {
-    throw new ImportApprovalError(
-      'CONFLICT',
-      `Orderly Item Code evidence changed and now requires source review (rows ${unreliableCodes.map(row => row.rowIndex).join(', ')}).`,
-    );
-  }
-
   const recodeDecisionByCode = new Map<string, RowDecision>();
   for (const decision of decisions) {
     const row = rowsByIndex.get(decision.rowIndex);
@@ -1566,12 +1556,50 @@ export async function runResolutionPreview(
     }
 
     // A descriptive value in Orderly's Item Code column is not source identity
-    // evidence, even if it has no exact name candidate. Keep every such row in
-    // the review path and prevent both raw and derived external mappings later.
+    // evidence. It may resolve only through the exact derived identity
+    // (normalized name + canonical pack) or an exact name-and-pack catalog
+    // match. Fuzzy and location-history candidates are not identity authority.
     if (sourceCodeReliability === 'pseudo_code') {
+      const derivedIdentityMatch = itemMatch.strategy === 'alternate_identity'
+        ? itemMatch.matchedId
+        : null;
+      const normalizedDescription = normalizeForMatch(row.cleanedDescription ?? '');
+      const compatibleNamePackCandidates = normalizedDescription
+        ? matchableItems
+            .filter(candidate => normalizeForMatch(candidate.name) === normalizedDescription)
+            .map(candidate => ({
+              candidate,
+              assessment: assessCandidatePackCompatibility(
+                sourcePackGeometry(row as any),
+                packEvidenceByItemId.get(candidate.id) ?? [],
+              ),
+            }))
+            .filter(result => result.assessment.status === 'compatible')
+        : [];
+      const compatibleNamePackMatch = compatibleNamePackCandidates.length === 1
+        ? compatibleNamePackCandidates[0]
+        : null;
+      const identityMatch = derivedIdentityMatch ?? compatibleNamePackMatch;
       itemMatch = {
         ...itemMatch,
-        requiresReview: true,
+        strategy: derivedIdentityMatch
+          ? 'alternate_identity'
+          : compatibleNamePackMatch
+            ? 'name_pack'
+            : 'none',
+        confidence: identityMatch ? 'high' : 'none',
+        matchedId: derivedIdentityMatch ?? compatibleNamePackMatch?.candidate.id ?? null,
+        candidateIds: [],
+        requiresReview: false,
+        possibleRecode: false,
+        possibleRecodeMatchedId: null,
+        packCompatibility: compatibleNamePackMatch ? 'compatible' : itemMatch.packCompatibility,
+        packCompatibilityReason: compatibleNamePackMatch
+          ? compatibleNamePackMatch.assessment.reason
+          : itemMatch.packCompatibilityReason,
+        candidatePackEvidence: compatibleNamePackMatch
+          ? compatibleNamePackMatch.assessment.candidatePackEvidence
+          : itemMatch.candidatePackEvidence,
         recodeEvidenceClass: 'unreliable_code',
       };
     }
@@ -2696,15 +2724,6 @@ export async function applyBatchApproval(
       `Orderly source data contains contradictory pack evidence for the same vendor and Item Code. Correct or verify the source before approval: ${details}`,
     );
   }
-  const unreliableCodeRows = preview.rows.filter(
-    row => row.itemMatch.recodeEvidenceClass === 'unreliable_code',
-  );
-  if (unreliableCodeRows.length > 0) {
-    throw new ImportApprovalError(
-      'CONFLICT',
-      `Orderly Item Code values that look like descriptions require manual source review before approval (rows ${unreliableCodeRows.map(row => row.rowIndex).join(', ')}). No permanent mapping will be inferred from descriptive code text.`,
-    );
-  }
   const recodeDecisionByReliableCode = new Map<string, RowDecision>();
   for (const decision of decisionsToApply.filter(decision => decision.action !== undefined)) {
     const row = previewRowsByIndex.get(decision.rowIndex);
@@ -3422,7 +3441,7 @@ export async function applyBatchApproval(
         rowPreview.cleanedDescription,
         sourcePackGeometry(rowPreview),
       );
-      if (resolvedItemId && alternateSourceId && rowPreview.sourceCodeReliability !== 'pseudo_code') {
+      if (resolvedItemId && alternateSourceId) {
         const inserted = await tx
           .insert(inventoryItemExternalMappings)
           .values({
@@ -3437,7 +3456,9 @@ export async function applyBatchApproval(
             innerPackQuantity: rowPreview.innerPackQuantity,
             baseUnitQuantity: rowPreview.baseUnitQuantity,
             baseUnit: rowPreview.baseUnit,
-            matchStrategy: 'alternate_identity',
+            matchStrategy: rowPreview.sourceCodeReliability === 'pseudo_code'
+              ? 'name_pack'
+              : 'alternate_identity',
             confidenceScore: null,
             confirmedAt: new Date(),
             confirmedBy: userId,

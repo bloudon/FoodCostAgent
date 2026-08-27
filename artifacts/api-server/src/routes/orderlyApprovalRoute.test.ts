@@ -778,7 +778,7 @@ describe.skipIf(SKIP)('Orderly review decision drafts', () => {
 
   it('uses a saved compatible link when approval receives an empty request body', async () => {
     authState.userId = IDs.admin;
-    const sourceItemCode = `DRAFT-${IDs.RUN}`.toUpperCase();
+    const sourceItemCode = `DRAFT-${Date.now()}`;
     const candidateName = `Saved Draft Candidate ${IDs.RUN}`;
     const [candidate] = await db
       .insert(inventoryItems)
