@@ -1,0 +1,87 @@
+# Single-Row Decisions On Unknown-Geometry Rows Are Rejected With 409
+
+**Priority:** Blocker — June cannot be approved
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `8f0e7827-1252-4914-b5fa-60e5a3db2f5c` (June_2026, 5,409 rows, pending review)
+**Blocking row:** #3442 — Mushrooms - Blends/Mix, code `26045`, Mr. Green's Produce, Produce Walk-in
+
+> **Numbering note:** two shipped tickets are both recorded as #1256 (descriptive-code identity, and the revived #1255 parser scope). Please assign this a fresh number and resolve that collision.
+
+## Summary
+
+A row with unresolvable pack geometry cannot receive a review decision. `PUT .../review-decisions` returns **409 every time**, no decision is written, and the batch can never reach zero outstanding decisions — so **Approve stays permanently disabled**.
+
+June is otherwise complete: 165 of 166 decisions saved. This one row blocks the batch.
+
+## Reproduction (100%)
+
+1. Open June batch → Preview → filter STATUS = **Pack check**
+2. Expand row **3442**, Mushrooms - Blends/Mix (`26045`)
+3. Panel shows *Pack Evidence Incomplete*; the only offered action is **Create as separate variant**
+4. Click it
+5. `PUT /api/inventory-import/orderly/batches/{batchId}/review-decisions` → **409**
+6. Row displays *"Save failed — choose a decision again to retry."* Retrying always fails.
+
+## Evidence that this is not a stale-revision conflict
+
+* Persists after a **full page reload** (fresh revisions loaded)
+* `GET review-decisions` confirms **no saved decision exists for row 3442** — this is a *first* write, so there is no prior revision to conflict with
+* Saved decision count stays at 165; nothing is written
+* The same session successfully wrote 165 other decisions through the same endpoint
+
+## Isolation — the shared contract is fine
+
+Both bulk paths write cleanly through the same endpoint in the same session:
+
+| Path | Rows | Result |
+|---|---|---|
+| Category 1 bulk link ("Link 32 compatible codes") | 88 rows / 32 groups | `PUT` **200** |
+| Category 2 bulk variants ("Create 30 new variants in bulk") | 78 rows / 30 groups | `PUT` **200** |
+| **Row 3442 single-row, unknown geometry** | 1 row | **409, always** |
+
+All 165 saved decisions are at `revision: 1`. So the failure is specific to **a single-row decision on a row whose pack geometry is unresolvable**.
+
+## Likely cause
+
+The identity-boundary guard added during the Category 1 bulk-link work rejects a shared code-group decision when the authoritative preview says rows cross description/pack identity boundaries.
+
+Row 3442 has *unknown* geometry, not *incompatible* geometry. It has no boundary to compare against, and the guard appears to be treating "unknown" the same as "crosses a boundary." Since single-row decisions now apply group-wide, the guard fires and rejects the write.
+
+If that is correct, **every unknown-geometry row that lands in a decision bucket is undecidable**, not just this one. June carries 249 unknown-geometry rows; only this one currently requires a decision, which is why it surfaced.
+
+## Done looks like
+
+* A single-row decision on a row with unresolvable pack geometry saves successfully.
+* The identity-boundary guard continues to reject genuinely incompatible cross-boundary decisions — unknown geometry must not be conflated with incompatible geometry.
+* A rejected decision returns an error the operator can act on, distinguishing "stale revision, retry" from "not permitted, here is why". The current *"choose a decision again to retry"* invites an infinite retry loop on an action that can never succeed.
+* Regression: an unknown-geometry row can be decided; an incompatible cross-boundary group decision is still refused.
+
+## Out of scope
+
+* Changing pack parsing, normalization, or the identity key.
+* Making unknown geometry compare as compatible with anything.
+* Approving June.
+
+## Also worth fixing while in this code — misattributed reason text
+
+The same panel reports:
+
+> Why: **the existing source mapping** lacks complete pack evidence
+
+This is backwards. The panel itself shows the existing side fully resolved and the incoming side unresolved:
+
+```
+INCOMING ORDERLY ROW     1 count (unit detail unavailable)   Normalized total: Not confirmed
+EXISTING CATALOG EVIDENCE  1 × 5 × 1 LB                      Normalized total: 80 OZ
+```
+
+The message sends the operator to audit the FnB catalog when the unresolved value is in the incoming source row. On a batch with 249 unknown-geometry rows that is an expensive misdirection.
+
+## Context for the decision on row 3442
+
+Not required to fix the bug, but useful for the regression fixture. The correct resolution is *create a separate variant*:
+
+* May's catalog holds this item as `1 × 5 × 1 LB` = 80 OZ (FnB #34257) — a 5 lb case
+* June's source row states `1/1 Case` — Orderly's item definition changed between months
+* Neighbouring Mr. Green's mushroom items (#34256 Oyster 3 lb, #34258 Button 10 lb, #34259 Crimini 5 lb) confirm 5 lb is the correct case for Blends/Mix
+* Linking is nonetheless wrong: `unit=case` and `unit=lb` are different identity keys, and nulls must not alias complete geometry
