@@ -503,6 +503,124 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     });
   });
 
+  it('rehydrates measurable Case-count evidence before approval and reconciles an equivalent later pack', async () => {
+    const sourceCode = `CASE-120-${RUN}`.slice(0, 20);
+    const mayBatch = await stageBatch([{
+      code: sourceCode,
+      description: 'Captain Morgan Mini',
+      location: 'Liquor Cage',
+      packSizeRaw: '12/10 Case',
+      caseQuantity: null,
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      packagePrice: 117.6,
+    }], '2026-05-31');
+    await db
+      .update(inventoryImportRows)
+      .set({ packParseStatus: 'unparseable' })
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+
+    const mayPreview = await runResolutionPreview(mayBatch, ID.company);
+    expect(mayPreview.rows[0]).toMatchObject({
+      packSizeRaw: '12/10 Case',
+      caseQuantity: 12,
+      innerPackQuantity: 10,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+    });
+
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({
+        inventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        packParseStatus: inventoryImportRows.packParseStatus,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    expect(mayRow).toMatchObject({
+      caseQuantity: 12,
+      innerPackQuantity: 10,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+    });
+    const [mayItem] = await db
+      .select({
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        casePkgCount: inventoryItems.casePkgCount,
+      })
+      .from(inventoryItems)
+      .where(eq(inventoryItems.id, mayRow.inventoryItemId!));
+    expect(mayItem).toEqual({
+      caseSize: 120,
+      containerSize: 1,
+      casePkgCount: 120,
+    });
+
+    const [mayMapping] = await db
+      .select({
+        packSizeRaw: inventoryItemExternalMappings.packSizeRaw,
+        caseQuantity: inventoryItemExternalMappings.caseQuantity,
+        innerPackQuantity: inventoryItemExternalMappings.innerPackQuantity,
+        baseUnitQuantity: inventoryItemExternalMappings.baseUnitQuantity,
+        baseUnit: inventoryItemExternalMappings.baseUnit,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourceExternalId, sourceCode),
+      ));
+    expect(mayMapping).toEqual({
+      packSizeRaw: '12/10 Case',
+      caseQuantity: 12,
+      innerPackQuantity: 10,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    });
+
+    const juneBatch = await stageBatch([{
+      code: sourceCode,
+      description: 'Captain Morgan Mini',
+      location: 'Banquet Bar',
+      packSizeRaw: '1/120 EA',
+      caseQuantity: null,
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      packagePrice: 117.6,
+    }], '2026-06-30');
+    await db
+      .update(inventoryImportRows)
+      .set({ packParseStatus: 'unparseable' })
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+
+    const junePreview = await runResolutionPreview(juneBatch, ID.company);
+    expect(junePreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      matchedId: mayRow.inventoryItemId,
+      requiresReview: false,
+    });
+    expect(junePreview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      normalizedUnit: 'EA',
+      totalBaseUnits: 120,
+    });
+
+    const juneResult = await applyBatchApproval(juneBatch, approvalAuth);
+    expect(juneResult.itemsCreated).toBe(0);
+    const [juneRow] = await db
+      .select({ inventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+    expect(juneRow.inventoryItemId).toBe(mayRow.inventoryItemId);
+  });
+
   it.each([
     [
       'incomplete geometry',

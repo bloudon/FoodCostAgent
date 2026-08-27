@@ -48,3 +48,4 @@
 - [Vendor identity and immutable evidence](vendor-identity-immutable-evidence.md) — consolidate operational identity through auditable canonical mapping; retained invoices and deposit events keep original vendor provenance.
 - [Signed decision manifests](orderly-decision-manifests.md) — downloads are review artifacts, not authority: sign canonical scope/evidence and revalidate under lock before any draft write.
 - [Cross-vendor pack identity](cross-vendor-pack-identity.md) — different vendors may supply different packs of one item; preserve each vendor pack instead of forking the catalog item.
+- [Approval-time parser rehydration](approval-parser-rehydration.md) — persist recovered derived fields atomically when approval reparses immutable raw evidence.

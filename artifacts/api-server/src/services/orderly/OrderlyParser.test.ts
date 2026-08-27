@@ -182,6 +182,76 @@ describe('detectNonAuthoritativeCodes', () => {
 });
 
 describe('Orderly pack-size parsing', () => {
+  it.each([
+    ['1/170 GR', { caseQuantity: 1, innerPackQuantity: 170, baseUnitQuantity: 1, baseUnit: 'GR' }],
+    ['1/12 PT', { caseQuantity: 1, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'PT' }],
+    ['1/3 Cup', { caseQuantity: 1, innerPackQuantity: 3, baseUnitQuantity: 1, baseUnit: 'CUP' }],
+  ])('preserves measurable two-tier Orderly geometry for %s', (rawPack, expected) => {
+    expect(parseOrderlyPackSize(rawPack)).toMatchObject({
+      ...expected,
+      packParseStatus: 'ok',
+    });
+  });
+
+  it('projects the self-describing 5.16 gallon keg into canonical source geometry', () => {
+    expect(parseOrderlyPackSize('1/1 KEG 5.16G')).toEqual({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 5.16,
+      caseUnit: 'Case',
+      innerUnit: 'Keg',
+      baseUnit: 'GAL',
+      packParseStatus: 'ok',
+    });
+  });
+
+  it.each([
+    ['1/1 #10', 1],
+    ['6/1 #10', 6],
+  ])('keeps the #10 designation in raw evidence while recovering %s as count geometry', (rawPack, total) => {
+    const parsed = parseOrderlyPackSize(rawPack);
+    expect(parsed).toMatchObject({
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+    });
+    expect(parsed.caseQuantity! * parsed.innerPackQuantity!).toBe(total);
+  });
+
+  it.each([
+    ['12/10 Case', 120],
+    ['12/5 Case', 60],
+    ['5/12 Case', 60],
+    ['1/24 Case', 24],
+  ])('recovers both explicit Case multipliers from %s', (rawPack, total) => {
+    const parsed = parseOrderlyPackSize(rawPack);
+    expect(parsed).toMatchObject({
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+    });
+    expect(parsed.caseQuantity! * parsed.innerPackQuantity!).toBe(total);
+  });
+
+  it('keeps 1/1 Case opaque and non-convertible', () => {
+    expect(parseOrderlyPackSize('1/1 Case')).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnit: 'CASE',
+      packParseStatus: 'unparseable',
+    });
+  });
+
+  it.each([
+    '1/1 KEG',
+    '1/1 KEG 5.16',
+    '1/1 KEG 5.16G extra',
+    '1/#10',
+    'Case 12/10',
+  ])('fails closed for ambiguous measurable notation: %s', rawPack => {
+    expect(parseOrderlyPackSize(rawPack).packParseStatus).not.toBe('ok');
+  });
+
   it('accepts grouped thousands in a complete EA pack', () => {
     expect(parseOrderlyPackSize('1/2,000 EA')).toEqual({
       caseQuantity: 1,

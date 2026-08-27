@@ -7,6 +7,42 @@ import {
 } from './packGeometry';
 
 describe('Orderly source pack compatibility', () => {
+  it.each([
+    ['grams', { caseQuantity: 1, innerPackQuantity: 170, baseUnitQuantity: 1, baseUnit: 'GR' }, 'OZ', 5.997],
+    ['pints', { caseQuantity: 1, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'PT' }, 'ML', 5678.112],
+    ['cups', { caseQuantity: 1, innerPackQuantity: 3, baseUnitQuantity: 1, baseUnit: 'Cup' }, 'ML', 709.764],
+    ['5.16-gallon keg', { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 5.16, baseUnit: 'GAL' }, 'ML', 19532.7156],
+  ])('normalizes PM %s evidence into a supported canonical dimension', (_label, source, unit, total) => {
+    expect(normalizePackGeometry(source)).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: unit,
+    });
+    expect(normalizePackGeometry(source).totalBaseUnits).toBeCloseTo(total, 3);
+    expect(toCatalogPackGeometry(source)).not.toBeNull();
+  });
+
+  it('treats recovered Case multipliers and #10 cans as count geometry', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 12, innerPackQuantity: 10, baseUnitQuantity: 1, baseUnit: 'EA' },
+      { caseQuantity: 1, innerPackQuantity: 120, baseUnitQuantity: 1, baseUnit: 'each' },
+    )).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: 'EA',
+      totalBaseUnits: 120,
+    });
+    expect(toCatalogPackGeometry({
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    })).toEqual({
+      canonicalUnit: 'EA',
+      containerSize: 1,
+      casePkgCount: 6,
+      caseSize: 6,
+    });
+  });
+
   it('keeps Casamigos 6 × 1 L and 5 × 50 ml as incompatible pack variants', () => {
     const result = comparePackGeometry(
       { caseQuantity: 6, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'LT' },

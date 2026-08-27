@@ -48,6 +48,12 @@ export function normalizePackUnit(value: string | null | undefined): NormalizedU
   if (['qt', 'quart', 'quarts'].includes(unit)) {
     return { dimension: 'volume', multiplier: amount * 946.353, label: 'ML' };
   }
+  if (['pt', 'pint', 'pints'].includes(unit)) {
+    return { dimension: 'volume', multiplier: amount * 473.176, label: 'ML' };
+  }
+  if (['cup', 'cups'].includes(unit)) {
+    return { dimension: 'volume', multiplier: amount * 236.588, label: 'ML' };
+  }
   if (['ea', 'each', 'unit', 'units', 'ct', 'count'].includes(unit)) {
     return { dimension: 'each', multiplier: amount, label: 'EA' };
   }
@@ -62,6 +68,9 @@ export function normalizePackUnit(value: string | null | undefined): NormalizedU
   }
   if (['kg', 'kilogram', 'kilograms'].includes(unit)) {
     return { dimension: 'weight', multiplier: amount * 35.27396195, label: 'OZ' };
+  }
+  if (['g', 'gr', 'gram', 'grams'].includes(unit)) {
+    return { dimension: 'weight', multiplier: amount * 0.03527396195, label: 'OZ' };
   }
   return null;
 }

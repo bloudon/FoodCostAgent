@@ -3571,12 +3571,21 @@ export async function applyBatchApproval(
           );
       }
 
-      // ── Persist resolved item ID back to the import row ──────────────
-      // This is read by the count-session conversion step to know which
-      // inventory item each row maps to without re-running matching.
+      // ── Persist approval-time resolution and parser rehydration ──────
+      // Legacy staged rows may have been reparsed from immutable rawData by
+      // runResolutionPreview. Store that recovered geometry in the same
+      // approval transaction so count-session quantity and unit-cost math uses
+      // the exact evidence that created the catalog item and mappings.
       await tx
         .update(inventoryImportRows)
-        .set({ resolvedInventoryItemId: resolvedItemId })
+        .set({
+          resolvedInventoryItemId: resolvedItemId,
+          caseQuantity: rowPreview.caseQuantity,
+          innerPackQuantity: rowPreview.innerPackQuantity,
+          baseUnitQuantity: rowPreview.baseUnitQuantity,
+          baseUnit: rowPreview.baseUnit,
+          packParseStatus: rowPreview.packParseStatus,
+        })
         // @ts-ignore
         .where(eq(inventoryImportRows.id, rowPreview.rowId));
 

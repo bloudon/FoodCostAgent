@@ -24,7 +24,7 @@ import { isSupportedPackUnit } from './packGeometry';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const ORDERLY_PARSER_VERSION = '1.0';
+export const ORDERLY_PARSER_VERSION = '1.1';
 
 /** 0-based column indices for the Orderly Inventory Detail sheet */
 const COL = {
@@ -183,6 +183,90 @@ export function parseOrderlyPackSize(packSizeStr: string): Pick<
     const parsed = Number(token.replace(/,/g, ''));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
+
+  // Orderly's keg token is self-describing but does not fit its ordinary
+  // "N/M UOM" shape. Preserve the source text in rawData while projecting the
+  // explicit gallon quantity into the existing three-tier geometry.
+  const keg = packSizeStr.trim().match(
+    new RegExp(
+      String.raw`^(${numberPattern})\s*\/\s*(${numberPattern})\s+KEG\s+(${numberPattern})\s*G$`,
+      'i',
+    ),
+  );
+  if (keg) {
+    const caseQuantity = parsePositiveNumber(keg[1]);
+    const innerPackQuantity = parsePositiveNumber(keg[2]);
+    const gallonQuantity = parsePositiveNumber(keg[3]);
+    if (
+      caseQuantity !== null &&
+      innerPackQuantity !== null &&
+      gallonQuantity !== null
+    ) {
+      return {
+        caseQuantity,
+        innerPackQuantity,
+        baseUnitQuantity: gallonQuantity,
+        caseUnit: 'Case',
+        innerUnit: 'Keg',
+        baseUnit: 'GAL',
+        packParseStatus: 'ok',
+      };
+    }
+  }
+
+  // A #10 can is a countable, standardized container. The shared vendor-pack
+  // contract treats one #10 can as one each; rawData remains the authority for
+  // the container designation.
+  const numberTenCan = packSizeStr.trim().match(
+    new RegExp(
+      String.raw`^(${numberPattern})\s*\/\s*(${numberPattern})\s+#10(?:\s*CAN)?$`,
+      'i',
+    ),
+  );
+  if (numberTenCan) {
+    const caseQuantity = parsePositiveNumber(numberTenCan[1]);
+    const innerPackQuantity = parsePositiveNumber(numberTenCan[2]);
+    if (caseQuantity !== null && innerPackQuantity !== null) {
+      return {
+        caseQuantity,
+        innerPackQuantity,
+        baseUnitQuantity: 1,
+        caseUnit: 'Case',
+        innerUnit: 'Can',
+        baseUnit: 'EA',
+        packParseStatus: 'ok',
+      };
+    }
+  }
+
+  // "N/M Case" carries two explicit count multipliers in Orderly. Recover
+  // those multipliers as N × M each, but keep the content-free "1/1 Case"
+  // notation opaque so it cannot be mistaken for measured geometry.
+  const countedCase = packSizeStr.trim().match(
+    new RegExp(
+      String.raw`^(${numberPattern})\s*\/\s*(${numberPattern})\s+CASE$`,
+      'i',
+    ),
+  );
+  if (countedCase) {
+    const caseQuantity = parsePositiveNumber(countedCase[1]);
+    const innerPackQuantity = parsePositiveNumber(countedCase[2]);
+    if (
+      caseQuantity !== null &&
+      innerPackQuantity !== null &&
+      (caseQuantity !== 1 || innerPackQuantity !== 1)
+    ) {
+      return {
+        caseQuantity,
+        innerPackQuantity,
+        baseUnitQuantity: 1,
+        caseUnit: 'Case',
+        innerUnit: 'Pack',
+        baseUnit: 'EA',
+        packParseStatus: 'ok',
+      };
+    }
+  }
 
   // Orderly commonly exports a three-tier physical pack as
   // "case/inner base-unit", e.g. "1/1 750ML" or "12/1 750ML".
