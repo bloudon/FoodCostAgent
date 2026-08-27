@@ -483,7 +483,7 @@ function CandidatePicker({
               {recodeEvidenceClass === "new_pack_size"
                 ? "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
                 : isUnknown
-                  ? "The physical pack cannot be verified. Linking is blocked; correct the source evidence or create a separate variant after verification."
+                  ? "The incoming physical pack is incomplete, so compatibility cannot be confirmed. Linking stays blocked; create a separate variant to preserve this row without claiming the packs match."
                   : "This row has a new item code, but its name and physical pack match an existing catalog item."}
             </p>
           </div>
@@ -556,7 +556,9 @@ function CandidatePicker({
                   Create as separate variant
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Establish a new item record. Do this if the pack size or product fundamentally changed.
+                  {isUnknown
+                    ? "Create a separate item while keeping its source pack geometry unconfirmed."
+                    : "Establish a new item record. Do this if the pack size or product fundamentally changed."}
                 </p>
               </div>
             </button>

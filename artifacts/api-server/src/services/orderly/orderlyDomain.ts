@@ -218,15 +218,20 @@ function assertReviewDecisionMatchesPreview(
     return;
   }
   if (decision.action === 'create_variant') {
+    const isVerifiedIncompatibleVariant =
+      row.itemMatch.recodeEvidenceClass === 'new_pack_size' &&
+      row.itemMatch.packCompatibility === 'incompatible';
+    const isUnknownPackVariant =
+      row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+      row.itemMatch.packCompatibility === 'unknown';
     if (
       !row.itemMatch.possibleRecode ||
       decision.comparableInventoryItemId !== row.itemMatch.possibleRecodeMatchedId ||
-      row.itemMatch.recodeEvidenceClass !== 'new_pack_size' ||
-      row.itemMatch.packCompatibility !== 'incompatible'
+      (!isVerifiedIncompatibleVariant && !isUnknownPackVariant)
     ) {
       throw new ImportApprovalError(
         'CONFLICT',
-        `The saved variant for row ${row.rowIndex} no longer has verified incompatible pack evidence.`,
+        `The saved variant for row ${row.rowIndex} no longer matches an incompatible or incomplete-pack review candidate.`,
       );
     }
     return;
@@ -311,11 +316,34 @@ export function assertReviewDecisionCodeGroupConsistency(
       (decision): decision is ReviewDecisionPayload => decision?.action !== undefined,
     );
     if (actionDecisions.length === 0) continue;
+    const hasUnknownPackVariant = groupRows.some((row, index) =>
+      actionDecisions[index]?.action === 'create_variant' &&
+      row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+      row.itemMatch.packCompatibility === 'unknown'
+    );
+    if (hasUnknownPackVariant && groupRows.length !== 1) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `Reliable Orderly Item Code ${sourceCode} has incomplete pack evidence across multiple rows and cannot create a shared variant.`,
+      );
+    }
 
     const conflictingSummaryGroup = preview.identitySummary.conflictingReliableCodeGroups
       .find(group => group.sourceItemCode.trim() === sourceCode);
     const identityGroupKeys = new Set(groupRows.map(row => row.identityGroupKey).filter(Boolean));
-    if (conflictingSummaryGroup || identityGroupKeys.size !== 1 || groupRows.some(row => !row.identityGroupKey)) {
+    const isSingleUnknownPackVariant =
+      groupRows.length === 1 &&
+      actionDecisions.length === 1 &&
+      actionDecisions[0].action === 'create_variant' &&
+      groupRows[0].itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+      groupRows[0].itemMatch.packCompatibility === 'unknown';
+    if (
+      conflictingSummaryGroup ||
+      (!isSingleUnknownPackVariant && (
+        identityGroupKeys.size !== 1 ||
+        groupRows.some(row => !row.identityGroupKey)
+      ))
+    ) {
       throw new ImportApprovalError(
         'CONFLICT',
         `Reliable Orderly Item Code ${sourceCode} spans conflicting description or pack identities and cannot receive a shared review decision.`,
@@ -2887,14 +2915,19 @@ export async function applyBatchApproval(
         );
       }
     } else if (decision.action === 'create_variant') {
+      const isVerifiedIncompatibleVariant =
+        row.itemMatch.recodeEvidenceClass === 'new_pack_size' &&
+        row.itemMatch.packCompatibility === 'incompatible';
+      const isUnknownPackVariant =
+        row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+        row.itemMatch.packCompatibility === 'unknown';
       if (
         decision.comparableInventoryItemId !== expectedCandidateId ||
-        row.itemMatch.recodeEvidenceClass !== 'new_pack_size' ||
-        row.itemMatch.packCompatibility !== 'incompatible'
+        (!isVerifiedIncompatibleVariant && !isUnknownPackVariant)
       ) {
         throw new ImportApprovalError(
           'CONFLICT',
-          `Orderly Item Code ${code} can only create a separate variant after verified incompatible pack evidence. Correct the source Pack Size before approval.`,
+          `Orderly Item Code ${code} can only create a separate variant for a verified incompatible or explicitly incomplete pack review candidate.`,
         );
       }
     } else {
@@ -2965,6 +2998,30 @@ export async function applyBatchApproval(
     // the batch is locked and before any mutation so a newly-arrived
     // contradictory packSize identity cannot race a variant into the catalog.
     const underLockPreview = await runResolutionPreview(batchId, companyId, tx);
+    const underLockRowsByIndex = new Map(
+      underLockPreview.rows.map(row => [row.rowIndex, row]),
+    );
+    const unknownVariantReviewChanges: ReviewDecisionChange[] = [];
+    for (const decision of decisionsToApply) {
+      const row = underLockRowsByIndex.get(decision.rowIndex);
+      if (
+        decision.action === 'create_variant' &&
+        row?.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+        row.itemMatch.packCompatibility === 'unknown'
+      ) {
+        unknownVariantReviewChanges.push({
+          rowIndex: decision.rowIndex,
+          expectedRevision: null,
+          decision: {
+            action: 'create_variant',
+            comparableInventoryItemId: decision.comparableInventoryItemId!,
+          },
+        });
+      }
+    }
+    if (unknownVariantReviewChanges.length > 0) {
+      assertReviewDecisionCodeGroupConsistency(underLockPreview, unknownVariantReviewChanges);
+    }
     let resolutionPreview = preview;
     if (persistedDecisionSignature !== null) {
       assertSavedReviewDecisionsRemainValid(underLockPreview, decisionsToApply);

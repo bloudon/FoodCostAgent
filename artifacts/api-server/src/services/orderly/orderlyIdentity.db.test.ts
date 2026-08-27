@@ -1463,7 +1463,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(after).toEqual(before);
   });
 
-  it('refuses a separate variant when the source pack evidence is incomplete', async () => {
+  it('saves and applies a separate variant when the source pack evidence is incomplete', async () => {
     const mayBatch = await stageBatch([
       {
         code: '7710021',
@@ -1500,11 +1500,108 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(preview.rows[0].itemMatch.recodeEvidenceClass).toBe('pack_evidence_missing');
     expect(preview.rows[0].itemMatch.packCompatibility).toBe('unknown');
 
-    await expect(applyBatchApproval(incompleteEvidenceBatch, approvalAuth, [{
+    await expect(saveOrderlyReviewDecisionChanges(incompleteEvidenceBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'link_existing',
+        inventoryItemId: mayRow.resolvedInventoryItemId,
+      },
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+
+    const saved = await saveOrderlyReviewDecisionChanges(incompleteEvidenceBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'create_variant',
+        comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+      },
+    }]);
+    expect(saved.decisions).toEqual([
+      expect.objectContaining({
+        rowIndex: 1,
+        revision: 1,
+        decision: {
+          action: 'create_variant',
+          comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+        },
+      }),
+    ]);
+
+    await applyBatchApproval(incompleteEvidenceBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+    const [approvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, incompleteEvidenceBatch));
+    expect(approvedRow.resolvedInventoryItemId).toBeTruthy();
+    expect(approvedRow.resolvedInventoryItemId).not.toBe(mayRow.resolvedInventoryItemId);
+  });
+
+  it('rejects direct approval of a multi-row unknown-pack reliable-code group', async () => {
+    const mayBatch = await stageBatch([{
+      code: '7710031',
+      description: 'Grouped Evidence Tequila',
+      location: 'Liquor Cage',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2026-12-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+
+    const unknownGroupBatch = await stageBatch([
+      {
+        code: '7710032',
+        description: 'Grouped Evidence Tequila',
+        location: 'Liquor Cage',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 0,
+        baseUnit: 'ML',
+      },
+      {
+        code: '7710032',
+        description: 'Grouped Evidence Tequila',
+        location: 'Banquet Bar',
+        caseQuantity: 5,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 0,
+        baseUnit: 'ML',
+      },
+    ], '2027-01-31');
+    await db
+      .update(inventoryImportRows)
+      .set({ baseUnitQuantity: null, baseUnit: null })
+      .where(eq(inventoryImportRows.batchId, unknownGroupBatch));
+    const preview = await runResolutionPreview(unknownGroupBatch, ID.company);
+    expect(preview.rows).toHaveLength(2);
+    expect(preview.rows.every(row =>
+      row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+      row.itemMatch.packCompatibility === 'unknown'
+    )).toBe(true);
+
+    const before = await approvalWriteSnapshot(unknownGroupBatch);
+    await expect(applyBatchApproval(unknownGroupBatch, approvalAuth, [{
       rowIndex: 1,
       action: 'create_variant',
       comparableInventoryItemId: mayRow.resolvedInventoryItemId,
     }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    expect(await approvalWriteSnapshot(unknownGroupBatch)).toEqual(before);
+
+    await expect(applyBatchApproval(unknownGroupBatch, approvalAuth, [1, 2].map(rowIndex => ({
+      rowIndex,
+      action: 'create_variant' as const,
+      comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+    })))).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    expect(await approvalWriteSnapshot(unknownGroupBatch)).toEqual(before);
   });
 
   it('accepts a true Red Breast 750 ml re-code only with an explicit compatible link', async () => {

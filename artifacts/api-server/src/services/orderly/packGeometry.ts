@@ -169,9 +169,14 @@ export function comparePackGeometry(
   const left = normalizePackGeometry(source);
   const right = normalizePackGeometry(candidate);
   if (left.status === 'unknown' || right.status === 'unknown' || left.totalBaseUnits == null || right.totalBaseUnits == null) {
+    const reason = left.status === 'unknown' && right.status === 'unknown'
+      ? 'both the incoming source row and existing source mapping lack complete pack evidence'
+      : left.status === 'unknown'
+        ? 'the incoming source row lacks complete pack evidence'
+        : 'the existing source mapping lacks complete pack evidence';
     return {
       status: 'unknown',
-      reason: 'the existing source mapping lacks complete pack evidence',
+      reason,
       normalizedUnit: left.normalizedUnit ?? right.normalizedUnit,
       totalBaseUnits: left.totalBaseUnits,
     };

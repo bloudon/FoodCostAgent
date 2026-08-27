@@ -274,8 +274,13 @@ function packComparisonPreview(
         possibleRecodeItem: { id: "catalog-item", name: "House Spirit", caseSize: 24 },
         packCompatibility,
         packCompatibilityReason: packCompatibility === "unknown"
-          ? "the existing source mapping lacks complete pack evidence"
+          ? "the incoming source row lacks complete pack evidence"
           : undefined,
+        recodeEvidenceClass: packCompatibility === "unknown"
+          ? "pack_evidence_missing"
+          : packCompatibility === "incompatible"
+            ? "new_pack_size"
+            : "compatible_alternate",
         sourcePackEvidence,
         candidatePackEvidence,
       },
@@ -606,6 +611,10 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(await screen.findByText("Normalized total: Not confirmed → 24 EA")).toBeInTheDocument();
     expect(screen.getByText("Pack unconfirmed")).toBeInTheDocument();
     expect(screen.getByText(/Not confirmed/)).toBeInTheDocument();
+    fireEvent.click((await screen.findByText("Item 1")).closest("tr")!);
+    expect(screen.getByText(/Linking stays blocked; create a separate variant/)).toBeInTheDocument();
+    expect(screen.getByText("Create a separate item while keeping its source pack geometry unconfirmed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create as separate variant/ })).toBeEnabled();
   });
 
   it("shows server-normalized incoming evidence on review rows without a catalog comparison", async () => {

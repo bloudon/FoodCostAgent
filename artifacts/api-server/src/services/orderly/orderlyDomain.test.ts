@@ -292,6 +292,52 @@ describe('assertReviewDecisionCodeGroupConsistency', () => {
     )).toThrow(/no longer matches its compatible review candidate/);
   });
 
+  it('accepts a single separate variant when incoming pack geometry is incomplete', () => {
+    const unknownRow = previewRow(1, {
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      identityGroupKey: null,
+      identityGroupRows: [],
+      identityGroupStatus: 'unavailable',
+      itemMatch: {
+        ...previewRow(1).itemMatch,
+        recodeEvidenceClass: 'pack_evidence_missing',
+        packCompatibility: 'unknown',
+      },
+    });
+    const variantDecision = {
+      action: 'create_variant' as const,
+      comparableInventoryItemId: 'existing-tequila',
+    };
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([unknownRow]),
+      [{ rowIndex: 1, expectedRevision: null, decision: variantDecision }],
+    )).not.toThrow();
+  });
+
+  it('still rejects linking a single row when incoming pack geometry is incomplete', () => {
+    const unknownRow = previewRow(1, {
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      identityGroupKey: null,
+      identityGroupRows: [],
+      identityGroupStatus: 'unavailable',
+      itemMatch: {
+        ...previewRow(1).itemMatch,
+        recodeEvidenceClass: 'pack_evidence_missing',
+        packCompatibility: 'unknown',
+      },
+    });
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([unknownRow]),
+      [change(1)],
+    )).toThrow(/conflicting description or pack identities/);
+  });
+
   it('rejects a forged complete-group save when the server preview reports divergent identities', () => {
     const divergentRows = [
       previewRow(1),
