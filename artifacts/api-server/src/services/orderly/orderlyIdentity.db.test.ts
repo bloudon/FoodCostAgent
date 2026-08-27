@@ -22,6 +22,7 @@ import {
   inventoryLocations,
   insertInventoryItemSchema,
   orderlyImportReviewDecisions,
+  orderlyImportApprovalJobs,
   storeInventoryItems,
   units,
   users,
@@ -37,6 +38,13 @@ import {
 } from './orderlyDomain';
 import { ensureInventoryItemNumberSchema } from '../../migrations/inventoryItemNumbers';
 import { ensureOrderlyPackIdentityEvidenceSchema } from '../../migrations/orderlyPackIdentityEvidence';
+import { ensureOrderlyApprovalJobsSchema } from '../../migrations/orderlyApprovalJobs';
+import {
+  claimApprovalJob,
+  getApprovalJob,
+  recoverExpiredApprovalJobs,
+  runApprovalJob,
+} from './orderlyApprovalJobs';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 const RUN = vi.hoisted(() => Date.now().toString(36).toUpperCase());
@@ -211,6 +219,7 @@ beforeAll(async () => {
   if (SKIP) return;
   await ensureInventoryItemNumberSchema(db);
   await ensureOrderlyPackIdentityEvidenceSchema(db);
+  await ensureOrderlyApprovalJobsSchema(db);
   await db.insert(companiesTable).values({ id: ID.company, name: `Orderly Identity ${RUN}` });
   await db.insert(companyStores).values({
     id: ID.store,
@@ -263,6 +272,7 @@ afterAll(async () => {
     .where(eq(inventoryImportBatches.companyId, ID.company));
   const batchIds = batches.map(batch => batch.id);
   if (batchIds.length) {
+    await db.delete(orderlyImportApprovalJobs).where(inArray(orderlyImportApprovalJobs.batchId, batchIds)).catch(() => {});
     await db.delete(inventoryImportRows).where(inArray(inventoryImportRows.batchId, batchIds)).catch(() => {});
   }
   const vendorRows = await db
@@ -289,6 +299,181 @@ afterAll(async () => {
 });
 
 describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
+  it('makes a lost-response retry converge on one result without duplicating any approval writes', async () => {
+    const batchId = await stageBatch([{
+      code: `SAFE-RETRY-${RUN}`,
+      description: `Safe Retry Item ${RUN}`,
+      location: `Safe Retry Storage ${RUN}`,
+      supplier: `Safe Retry Vendor ${RUN}`,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 12,
+      baseUnit: 'OZ',
+      packagePrice: 36,
+    }], '2028-01-31');
+
+    const first = await claimApprovalJob(batchId, ID.company, ID.admin);
+    expect(first.shouldRun).toBe(true);
+    await db
+      .update(orderlyImportApprovalJobs)
+      .set({ status: 'timed_out', phase: 'stalled' })
+      .where(eq(orderlyImportApprovalJobs.id, first.job.jobId));
+    const reclaimed = await claimApprovalJob(batchId, ID.company, ID.admin);
+    expect(reclaimed.shouldRun).toBe(true);
+    expect(reclaimed.job.attemptCount).toBe(2);
+
+    // The stale runner is fenced out before catalog mutation and cannot relabel
+    // the reclaimed attempt as failed.
+    await runApprovalJob(first.job.jobId, batchId, ID.company, ID.admin, 1, false);
+    const [afterStaleRunner] = await db
+      .select()
+      .from(orderlyImportApprovalJobs)
+      .where(eq(orderlyImportApprovalJobs.id, first.job.jobId));
+    expect(afterStaleRunner).toMatchObject({ status: 'running', attemptCount: 2 });
+
+    await runApprovalJob(
+      reclaimed.job.jobId,
+      batchId,
+      ID.company,
+      ID.admin,
+      reclaimed.job.attemptCount,
+      false,
+    );
+    const afterFirst = await approvalWriteSnapshot(batchId);
+
+    const retry = await claimApprovalJob(batchId, ID.company, ID.admin);
+    expect(retry.shouldRun).toBe(false);
+    expect(retry.job.jobId).toBe(first.job.jobId);
+    expect(retry.job.status).toBe('completed');
+    expect(retry.job.attemptCount).toBe(2);
+    expect(retry.job.result?.batchId).toBe(batchId);
+
+    const afterRetry = await approvalWriteSnapshot(batchId);
+    expect(afterRetry).toEqual(afterFirst);
+  });
+
+  it('serializes same-date approvals so only one unforced batch can commit', async () => {
+    const firstBatch = await stageBatch([{
+      code: `DATE-A-${RUN}`,
+      description: `Date Serialized A ${RUN}`,
+      location: 'Date Lock Storage',
+    }], '2028-02-29');
+    const secondBatch = await stageBatch([{
+      code: `DATE-B-${RUN}`,
+      description: `Date Serialized B ${RUN}`,
+      location: 'Date Lock Storage',
+    }], '2028-02-29');
+    const [first, second] = await Promise.all([
+      claimApprovalJob(firstBatch, ID.company, ID.admin),
+      claimApprovalJob(secondBatch, ID.company, ID.admin),
+    ]);
+
+    await Promise.all([
+      runApprovalJob(first.job.jobId, firstBatch, ID.company, ID.admin, first.job.attemptCount, false),
+      runApprovalJob(second.job.jobId, secondBatch, ID.company, ID.admin, second.job.attemptCount, false),
+    ]);
+
+    const jobs = await db
+      .select({ status: orderlyImportApprovalJobs.status })
+      .from(orderlyImportApprovalJobs)
+      .where(inArray(orderlyImportApprovalJobs.batchId, [firstBatch, secondBatch]));
+    expect(jobs.map(job => job.status).sort()).toEqual(['completed', 'failed']);
+    const approved = await db
+      .select({ id: inventoryImportBatches.id })
+      .from(inventoryImportBatches)
+      .where(and(
+        inArray(inventoryImportBatches.id, [firstBatch, secondBatch]),
+        eq(inventoryImportBatches.status, 'approved'),
+      ));
+    expect(approved).toHaveLength(1);
+  });
+
+  it('recovers an expired running job without any browser status poll', async () => {
+    const batchId = await stageBatch([{
+      code: `RECOVER-${RUN}`,
+      description: `Recovered Approval ${RUN}`,
+      location: 'Recovery Storage',
+    }], '2028-04-30');
+    const claimed = await claimApprovalJob(batchId, ID.company, ID.admin);
+    await db
+      .update(orderlyImportApprovalJobs)
+      .set({ timeoutAt: new Date(Date.now() - 1000) })
+      .where(eq(orderlyImportApprovalJobs.id, claimed.job.jobId));
+
+    expect(await recoverExpiredApprovalJobs()).toBe(1);
+    const deadline = Date.now() + 10_000;
+    let recoveredStatus = 'running';
+    while (Date.now() < deadline) {
+      const [job] = await db
+        .select({ status: orderlyImportApprovalJobs.status })
+        .from(orderlyImportApprovalJobs)
+        .where(eq(orderlyImportApprovalJobs.id, claimed.job.jobId));
+      recoveredStatus = job.status;
+      if (recoveredStatus !== 'running') break;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    expect(recoveredStatus).toBe('completed');
+  });
+
+  it('serializes concurrent first claims onto one shared job', async () => {
+    const batchId = await stageBatch([{
+      code: `FIRST-CLAIM-${RUN}`,
+      description: `Concurrent First Claim ${RUN}`,
+      location: 'Claim Storage',
+    }], '2028-05-31');
+
+    const claims = await Promise.all([
+      claimApprovalJob(batchId, ID.company, ID.admin),
+      claimApprovalJob(batchId, ID.company, ID.admin),
+    ]);
+    expect(new Set(claims.map(claim => claim.job.jobId)).size).toBe(1);
+    expect(claims.filter(claim => claim.shouldRun)).toHaveLength(1);
+
+    const runner = claims.find(claim => claim.shouldRun)!;
+    await runApprovalJob(
+      runner.job.jobId,
+      batchId,
+      ID.company,
+      ID.admin,
+      runner.job.attemptCount,
+      false,
+    );
+  });
+
+  it('does not let an expired poll time out a concurrently reclaimed lease', async () => {
+    const batchId = await stageBatch([{
+      code: `POLL-RECLAIM-${RUN}`,
+      description: `Poll Reclaim ${RUN}`,
+      location: 'Poll Storage',
+    }], '2028-06-30');
+    const first = await claimApprovalJob(batchId, ID.company, ID.admin);
+    await db
+      .update(orderlyImportApprovalJobs)
+      .set({ timeoutAt: new Date(Date.now() - 1000) })
+      .where(eq(orderlyImportApprovalJobs.id, first.job.jobId));
+
+    const [, reclaimed] = await Promise.all([
+      getApprovalJob(batchId, ID.company),
+      claimApprovalJob(batchId, ID.company, ID.admin),
+    ]);
+    expect(reclaimed.shouldRun).toBe(true);
+    const current = await getApprovalJob(batchId, ID.company);
+    expect(current).toMatchObject({
+      jobId: first.job.jobId,
+      status: 'running',
+      attemptCount: 2,
+    });
+
+    await runApprovalJob(
+      reclaimed.job.jobId,
+      batchId,
+      ID.company,
+      ID.admin,
+      reclaimed.job.attemptCount,
+      false,
+    );
+  });
+
   it('keeps generated FnB item numbers out of public catalog payloads', () => {
     expect(insertInventoryItemSchema.shape).not.toHaveProperty('internalItemNumber');
     expect(

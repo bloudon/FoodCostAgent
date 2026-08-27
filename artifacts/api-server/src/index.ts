@@ -12,7 +12,9 @@ import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniquen
 import { ensureInventoryItemNumberSchema } from "./migrations/inventoryItemNumbers";
 import { ensureOrderlyPackIdentityEvidenceSchema } from "./migrations/orderlyPackIdentityEvidence";
 import { ensureOrderlyReviewDecisionsSchema } from "./migrations/orderlyReviewDecisions";
+import { ensureOrderlyApprovalJobsSchema } from "./migrations/orderlyApprovalJobs";
 import { db } from "./db";
+import { startApprovalJobRecovery } from "./services/orderly/orderlyApprovalJobs";
 
 const rawPort = process.env["PORT"];
 
@@ -98,12 +100,21 @@ if (Number.isNaN(port) || port <= 0) {
   }
 
   try {
+    await ensureOrderlyApprovalJobsSchema(db);
+    logger.info("[Migration] Orderly approval jobs schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: Orderly approval jobs schema initialization failed — refusing to start");
+    process.exit(1);
+  }
+
+  try {
     await ensureAccountingClassificationSchema();
     // seedDatabase is optional; skip if it throws
     await seedDatabase().catch((e) => logger.warn({ err: e }, "seed skipped"));
   } catch (_) {}
 
   const server = await registerRoutes(app);
+  await startApprovalJobRecovery();
 
   // Initialize WebSocket for real-time POS streaming (/ws/pos)
   setupWebSocket(server);

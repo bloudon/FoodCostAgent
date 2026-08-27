@@ -369,7 +369,13 @@ beforeEach(() => {
   currentPreview = MOCK_PREVIEW;
   currentSavedReviewDecisions = { decisions: [] };
   setupQueryMocks();
-  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (String(url).endsWith("/approval-job") && (!init?.method || init.method === "GET")) {
+      return new Response(JSON.stringify({ error: "Approval job not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     const payload = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       decisions: (payload.changes ?? [])
@@ -429,6 +435,91 @@ function getAllChips() {
 // ---------------------------------------------------------------------------
 
 describe("ResolutionPreviewStep — confidence filter chips", () => {
+  it("shows a timed-out approval and lets a retry converge on the completed job", async () => {
+    const onApproved = vi.fn();
+    const completedResult = {
+      batchId: "batch-test-1",
+      approvedAt: "2026-08-27T12:00:00.000Z",
+      targetStoreId: "store-1",
+      itemsCreated: 1,
+      itemsLinked: 0,
+      categoriesCreated: 0,
+      vendorsCreated: 1,
+      vendorsLinked: 0,
+      locationsCreated: 1,
+      locationsLinked: 0,
+      vendorItemsCreated: 1,
+      rowsSkipped: 0,
+      rowsHeldForReview: 0,
+      rowsProcessed: 5,
+      storeItemsCreated: 1,
+      storeItemsReactivated: 0,
+      storeItemsAlreadyLinked: 0,
+      storeItemsSkipped: 0,
+    };
+    const baseJob = {
+      jobId: "approval-job-1",
+      batchId: "batch-test-1",
+      phase: "applying",
+      progressPercent: 35,
+      attemptCount: 1,
+      startedAt: "2026-08-27T11:57:00.000Z",
+      updatedAt: "2026-08-27T12:00:00.000Z",
+      timeoutAt: "2026-08-27T12:00:00.000Z",
+      completedAt: null,
+      timeoutBudgetMs: 180000,
+      result: null,
+      error: null,
+    };
+    let approvalPosts = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      const isStatus = String(url).endsWith("/approval-job");
+      if (isStatus && (!init?.method || init.method === "GET")) {
+        if (approvalPosts === 0) {
+          return new Response(JSON.stringify({ error: "Approval job not found" }), { status: 404 });
+        }
+        return new Response(JSON.stringify({
+          ...baseJob,
+          status: "timed_out",
+          phase: "stalled",
+          error: { code: "TIMEOUT_BUDGET_EXCEEDED", message: "Approval exceeded the budget." },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (String(url).endsWith("/approve") && init?.method === "POST") {
+        approvalPosts += 1;
+        const body = approvalPosts === 1
+          ? { ...baseJob, status: "running" }
+          : {
+              ...baseJob,
+              status: "completed",
+              phase: "completed",
+              progressPercent: 100,
+              attemptCount: 2,
+              completedAt: "2026-08-27T12:00:05.000Z",
+              result: completedResult,
+            };
+        return new Response(JSON.stringify(body), {
+          status: approvalPosts === 1 ? 202 : 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep(onApproved);
+    fireEvent.click(screen.getAllByRole("button", { name: "Approve Import" })[0]);
+
+    expect(await screen.findByText("Approval is taking longer than expected")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry approval safely" })[0]);
+
+    await waitFor(() => expect(onApproved).toHaveBeenCalledTimes(1));
+    expect(onApproved).toHaveBeenCalledWith(completedResult);
+    expect(approvalPosts).toBe(2);
+  });
+
   it("requires a confirmation with source evidence before queueing eligible pack-size variants in bulk", async () => {
     currentPreview = {
       ...MOCK_PREVIEW,
@@ -895,7 +986,9 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     renderStep();
 
     expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(global.fetch).mock.calls.filter(([url]) =>
+      !String(url).endsWith("/approval-job")
+    )).toHaveLength(0);
   });
 
   it("keeps a failed decision unsaved and shows a row-level retry message", async () => {

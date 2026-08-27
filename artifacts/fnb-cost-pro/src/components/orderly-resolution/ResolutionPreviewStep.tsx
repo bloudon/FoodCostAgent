@@ -89,6 +89,21 @@ type RecodeDecision = {
 type DecisionValue = string | null | RecodeDecision;
 type StoredDecisionPayload = RecodeDecision | { inventoryItemId: string | null };
 
+type ApprovalJob = {
+  jobId: string;
+  batchId: string;
+  status: "running" | "timed_out" | "failed" | "completed";
+  phase: string;
+  progressPercent: number;
+  attemptCount: number;
+  startedAt: string;
+  updatedAt: string;
+  timeoutAt: string;
+  completedAt: string | null;
+  timeoutBudgetMs: number;
+  result: ApprovalResult | null;
+  error: { code: string | null; message: string } | null;
+};
 type SavedReviewDecision = {
   rowIndex: number;
   decision: StoredDecisionPayload;
@@ -757,6 +772,10 @@ export function ResolutionPreviewStep({
   const { toast } = useToast();
   const qc = useQueryClient();
   const [approving, setApproving] = useState(false);
+  const [approvalJob, setApprovalJob] = useState<ApprovalJob | null>(null);
+  const [approvalStatusError, setApprovalStatusError] = useState<string | null>(null);
+  const [approvalPollKey, setApprovalPollKey] = useState(0);
+  const completedApprovalRef = useRef<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedConfidences, setSelectedConfidences] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
@@ -835,6 +854,53 @@ export function ResolutionPreviewStep({
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, []);
+
+  function completeApproval(job: ApprovalJob) {
+    if (!job.result || completedApprovalRef.current === job.jobId) return;
+    completedApprovalRef.current = job.jobId;
+    qc.invalidateQueries({ queryKey: ["/api/inventory-import/orderly/batches"] });
+    qc.invalidateQueries({ queryKey: ["/api/inventory-items"] });
+    qc.invalidateQueries({ queryKey: ["/api/vendors"] });
+    onApproved(job.result);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approval-job`, {
+          credentials: "include",
+        });
+        if (res.status === 404) return;
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? "Could not check approval status");
+        if (cancelled) return;
+        const job = body as ApprovalJob;
+        setApprovalStatusError(null);
+        setApprovalJob(job);
+        if (job.status === "completed") {
+          completeApproval(job);
+          return;
+        }
+        if (job.status === "running") {
+          timer = setTimeout(poll, 2000);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setApprovalStatusError(err.message ?? "Could not check approval status");
+          timer = setTimeout(poll, 2000);
+        }
+      }
+    }
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [batchId, approvalPollKey]);
 
   useEffect(() => {
     // Wouter navigation goes through history.pushState. Guard routes outside
@@ -1150,11 +1216,10 @@ export function ResolutionPreviewStep({
         throw new Error(body.error ?? "Approval failed");
       }
 
-      const result: ApprovalResult = body;
-      qc.invalidateQueries({ queryKey: ["/api/inventory-import/orderly/batches"] });
-      qc.invalidateQueries({ queryKey: ["/api/inventory-items"] });
-      qc.invalidateQueries({ queryKey: ["/api/vendors"] });
-      onApproved(result);
+      const job = body as ApprovalJob;
+      setApprovalJob(job);
+      if (job.status === "completed") completeApproval(job);
+      else setApprovalPollKey(key => key + 1);
     } catch (err: any) {
       toast({ title: "Approval failed", description: err.message, variant: "destructive" });
     } finally {
@@ -1256,7 +1321,13 @@ export function ResolutionPreviewStep({
   const recodeCodeCount = recodeSummary.compatibleAlternates + recodeSummary.newPackSizes + recodeSummary.packEvidenceMissing;
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
   const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0;
-  const approvalDisabled = approving || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const approvalIsRunning = approvalJob?.status === "running";
+  const approvalDisabled = approving || approvalIsRunning || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const approvalButtonLabel = approvalIsRunning
+    ? "Approval running..."
+    : approvalJob?.status === "timed_out" || approvalJob?.status === "failed"
+      ? "Retry approval safely"
+      : "Approve Import";
 
   return (
     <div className="space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
@@ -1482,10 +1553,59 @@ export function ResolutionPreviewStep({
           </Button>
           <Button onClick={() => submitApproval(false)} disabled={approvalDisabled} size="lg" className="shadow-sm">
             {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-            {approving ? "Approving Batch..." : "Approve Import"}
+            {approving ? "Starting approval..." : approvalButtonLabel}
           </Button>
         </div>
       </div>
+
+      {approvalJob && (
+        <Alert
+          data-testid="orderly-approval-status"
+          variant={approvalJob.status === "failed" || approvalJob.status === "timed_out" ? "destructive" : "default"}
+          className={approvalJob.status === "running" ? "border-blue-200 bg-blue-50 text-blue-950" : undefined}
+        >
+          {approvalJob.status === "running"
+            ? <RefreshCw className="h-4 w-4 animate-spin" />
+            : approvalJob.status === "completed"
+              ? <CheckCircle2 className="h-4 w-4" />
+              : <AlertTriangle className="h-4 w-4" />}
+          <AlertTitle>
+            {approvalJob.status === "running"
+              ? "Approval is running"
+              : approvalJob.status === "timed_out"
+                ? "Approval is taking longer than expected"
+                : approvalJob.status === "failed"
+                  ? "Approval failed"
+                  : "Approval completed"}
+          </AlertTitle>
+          <AlertDescription className="mt-2 space-y-2">
+            {approvalJob.status === "running" && (
+              <>
+                <p>
+                  Catalog changes are being applied in one protected transaction. The processing budget is{" "}
+                  {Math.round(approvalJob.timeoutBudgetMs / 60000)} minutes.
+                </p>
+                <Progress value={approvalJob.progressPercent} className="h-2" />
+                <p className="text-xs">Phase: {approvalJob.phase.replaceAll("_", " ")} · attempt {approvalJob.attemptCount}</p>
+                {approvalStatusError && (
+                  <p className="text-xs text-amber-800">
+                    Status check delayed: {approvalStatusError}. Retrying automatically.
+                  </p>
+                )}
+              </>
+            )}
+            {approvalJob.status === "timed_out" && (
+              <p>
+                The three-minute budget was exceeded. The original attempt may still finish; retrying checks and
+                reuses this batch’s approval job, so it cannot apply the catalog changes twice.
+              </p>
+            )}
+            {approvalJob.status === "failed" && (
+              <p>{approvalJob.error?.message ?? "No catalog changes were committed. You can retry safely."}</p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {manifestImportResult && (
         <div data-testid="orderly-decision-manifest-result">
@@ -2410,7 +2530,13 @@ export function ResolutionPreviewStep({
             className="w-full md:w-auto shadow-md"
           >
             {approving ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-            {approving ? "Approving Batch..." : `Approve ${s.totalRows.toLocaleString()} Rows`}
+            {approving
+              ? "Starting approval..."
+              : approvalIsRunning
+                ? "Approval running..."
+                : approvalJob?.status === "timed_out" || approvalJob?.status === "failed"
+                  ? "Retry approval safely"
+                  : `Approve ${s.totalRows.toLocaleString()} Rows`}
           </Button>
         </div>
       </div>

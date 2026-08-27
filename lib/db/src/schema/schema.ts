@@ -2545,6 +2545,37 @@ export type InsertInventoryImportBatch = z.infer<typeof insertInventoryImportBat
 export type InventoryImportBatch = typeof inventoryImportBatches.$inferSelect;
 
 /**
+ * orderly_import_approval_jobs
+ * Durable status for the one irreversible approval associated with a batch.
+ *
+ * A timed-out job may be reclaimed, but the batch row lock and the unique
+ * batch_id keep every attempt convergent on one approved result.
+ */
+export const orderlyImportApprovalJobs = pgTable("orderly_import_approval_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  status: text("status").notNull().default("running"),
+  phase: text("phase").notNull().default("queued"),
+  progressPercent: integer("progress_percent").notNull().default(5),
+  attemptCount: integer("attempt_count").notNull().default(1),
+  forceDuplicateDate: integer("force_duplicate_date").notNull().default(0),
+  startedBy: varchar("started_by"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  timeoutAt: timestamp("timeout_at").notNull(),
+  completedAt: timestamp("completed_at"),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+}, (t) => ({
+  uniqueBatch: unique("orderly_import_approval_jobs_batch_unique").on(t.batchId),
+  batchCompanyIdx: index("orderly_import_approval_jobs_batch_company_idx").on(t.batchId, t.companyId),
+}));
+
+export type OrderlyImportApprovalJob = typeof orderlyImportApprovalJobs.$inferSelect;
+
+/**
  * inventory_import_rows
  * One record per source row in the uploaded file.
  * rawData is immutable JSONB storing all original cell values so the parser

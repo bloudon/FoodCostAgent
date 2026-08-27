@@ -17,7 +17,7 @@
  */
 
 import { db } from '../../db';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, ne, sql } from 'drizzle-orm';
 import {
   inventoryItems,
   vendors,
@@ -28,6 +28,7 @@ import {
   inventoryItemExternalMappings,
   inventoryItemRelationships,
   inventoryImportBatches,
+  orderlyImportApprovalJobs,
   inventoryImportRows,
   orderlyImportReviewDecisions,
   importSourcePropertyBindings,
@@ -2118,7 +2119,7 @@ export interface ApprovalAuthorizationContext {
 async function resolveApprovalContract(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
-  options: { requireApprovalRole?: boolean } = {},
+  options: { requireApprovalRole?: boolean; allowApproved?: boolean } = {},
 ): Promise<{
   batch: {
     id: string;
@@ -2223,13 +2224,13 @@ async function resolveApprovalContract(
   if (batch.sourceSystem !== 'ORDERLY') {
     throw new ImportApprovalError('NOT_FOUND', 'Orderly batch not found');
   }
-  if (batch.status === 'approved') {
+  if (batch.status === 'approved' && !options.allowApproved) {
     throw new ImportApprovalError(
       'CONFLICT',
       'Batch has already been approved — use the history view to see results.',
     );
   }
-  if (batch.status !== 'pending_review') {
+  if (batch.status !== 'pending_review' && !(options.allowApproved && batch.status === 'approved')) {
     throw new ImportApprovalError(
       'CONFLICT',
       'Only a pending-review Orderly batch can be approved or reviewed.',
@@ -2398,6 +2399,17 @@ async function resolveApprovalContract(
   };
 }
 
+/** Authorizes access to approval job state without creating or changing a job. */
+export async function authorizeOrderlyApprovalJobAccess(
+  batchId: string,
+  auth: ApprovalAuthorizationContext,
+  options: { allowApproved?: boolean } = {},
+): Promise<void> {
+  await resolveApprovalContract(batchId, auth, {
+    requireApprovalRole: true,
+    allowApproved: options.allowApproved,
+  });
+}
 export async function getOrderlyReviewDecisions(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
@@ -2817,6 +2829,11 @@ export async function applyBatchApproval(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
   rowDecisions: RowDecision[] | null = [],
+  execution?: {
+    approvalJobId?: string;
+    approvalAttemptCount?: number;
+    forceDuplicateDate?: boolean;
+  },
 ): Promise<ApprovalResult> {
   // ── Authorization + destination contract (zero writes on any failure) ────
   const contract = await resolveApprovalContract(batchId, auth, { requireApprovalRole: true });
@@ -3058,6 +3075,57 @@ export async function applyBatchApproval(
         'CONFLICT',
         'This import is no longer pending review and cannot be approved.',
       );
+    }
+    if (execution?.approvalJobId) {
+      const [leasedJob] = await tx
+        .select({
+          attemptCount: orderlyImportApprovalJobs.attemptCount,
+          status: orderlyImportApprovalJobs.status,
+        })
+        .from(orderlyImportApprovalJobs)
+        .where(and(
+          eq(orderlyImportApprovalJobs.id, execution.approvalJobId),
+          eq(orderlyImportApprovalJobs.batchId, batchId),
+          eq(orderlyImportApprovalJobs.companyId, companyId),
+        ))
+        .for('update');
+      if (
+        !leasedJob ||
+        leasedJob.status !== 'running' ||
+        leasedJob.attemptCount !== execution.approvalAttemptCount
+      ) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          'This approval attempt was superseded by a safe retry.',
+        );
+      }
+    }
+
+    // Serialize the duplicate-date invariant across distinct batches. The
+    // route-level check gives immediate UI feedback; this authoritative check
+    // closes the race where two same-date jobs start together.
+    if (execution?.approvalJobId && batch.inventoryDate && !execution.forceDuplicateDate) {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(
+          hashtext(${`orderly-approval-date:${companyId}:${batch.inventoryDate}`})
+        )
+      `);
+      const [priorApproved] = await tx
+        .select({ id: inventoryImportBatches.id })
+        .from(inventoryImportBatches)
+        .where(and(
+          eq(inventoryImportBatches.companyId, companyId),
+          eq(inventoryImportBatches.inventoryDate, batch.inventoryDate),
+          eq(inventoryImportBatches.status, 'approved'),
+          ne(inventoryImportBatches.id, batchId),
+        ))
+        .limit(1);
+      if (priorApproved) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          'Another Orderly import for this inventory date has already been approved.',
+        );
+      }
     }
     if (persistedDecisionSignature !== null) {
       const underLockSavedDecisions = await loadStoredReviewDecisionRecords(batchId, companyId, tx);
@@ -4001,21 +4069,10 @@ export async function applyBatchApproval(
       storeItemsSkipped += resolvedItemIds.size;
     }
 
-    // ── Mark batch approved ──────────────────────────────────────────────
-    await tx
-      .update(inventoryImportBatches)
-      .set({
-        status: 'approved',
-        approvedAt: new Date(),
-        approvedBy: userId,
-        targetStoreId: resolvedTargetStoreId ?? null,
-      })
-      // @ts-ignore
-      .where(eq(inventoryImportBatches.id, batchId));
-
-    return {
+    const approvedAt = new Date();
+    const approvalResult: ApprovalResult = {
       batchId,
-      approvedAt: new Date().toISOString(),
+      approvedAt: approvedAt.toISOString(),
       targetStoreId: resolvedTargetStoreId,
       itemsCreated,
       itemsLinked,
@@ -4033,6 +4090,49 @@ export async function applyBatchApproval(
       storeItemsAlreadyLinked,
       storeItemsSkipped,
     };
+
+    // ── Mark batch and its durable job completed atomically ──────────────
+    await tx
+      .update(inventoryImportBatches)
+      .set({
+        status: 'approved',
+        approvedAt,
+        approvedBy: userId,
+        targetStoreId: resolvedTargetStoreId ?? null,
+      })
+      // @ts-ignore
+      .where(eq(inventoryImportBatches.id, batchId));
+
+    if (execution?.approvalJobId) {
+      const completedJobs = await tx
+        .update(orderlyImportApprovalJobs)
+        .set({
+          status: 'completed',
+          phase: 'completed',
+          progressPercent: 100,
+          updatedAt: approvedAt,
+          completedAt: approvedAt,
+          result: approvalResult,
+          errorCode: null,
+          errorMessage: null,
+        })
+        .where(and(
+          eq(orderlyImportApprovalJobs.id, execution.approvalJobId),
+          eq(orderlyImportApprovalJobs.batchId, batchId),
+          eq(orderlyImportApprovalJobs.companyId, companyId),
+          eq(orderlyImportApprovalJobs.status, 'running'),
+          eq(orderlyImportApprovalJobs.attemptCount, execution.approvalAttemptCount ?? -1),
+        ))
+        .returning({ id: orderlyImportApprovalJobs.id });
+      if (completedJobs.length !== 1) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          'This approval attempt lost its lease before completion.',
+        );
+      }
+    }
+
+    return approvalResult;
   });
 
   return result;

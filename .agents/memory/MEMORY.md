@@ -49,3 +49,4 @@
 - [Signed decision manifests](orderly-decision-manifests.md) — downloads are review artifacts, not authority: sign canonical scope/evidence and revalidate under lock before any draft write.
 - [Cross-vendor pack identity](cross-vendor-pack-identity.md) — different vendors may supply different packs of one item; preserve each vendor pack instead of forking the catalog item.
 - [Approval-time parser rehydration](approval-parser-rehydration.md) — persist recovered derived fields atomically when approval reparses immutable raw evidence.
+- [Durable approval retries](durable-approval-retries.md) — fence async attempts, recover expired leases without browser polling, and commit result status with the mutation.

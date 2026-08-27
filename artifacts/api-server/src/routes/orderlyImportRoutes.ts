@@ -53,17 +53,22 @@ import {
 } from '../services/orderly/OrderlyParser';
 import {
   runResolutionPreview,
-  applyBatchApproval,
   getOrderlyReviewDecisions,
   exportOrderlyReviewDecisionManifest,
   importOrderlyReviewDecisionManifest,
   saveOrderlyReviewDecisionChanges,
   ImportApprovalError,
+  authorizeOrderlyApprovalJobAccess,
 } from '../services/orderly/orderlyDomain';
 import {
   getReconciliationReport,
   reportToCsvRows,
 } from '../services/orderly/orderlyReport';
+import {
+  claimApprovalJob,
+  getApprovalJob,
+  runApprovalJob,
+} from '../services/orderly/orderlyApprovalJobs';
 
 // ─── Multer upload — memory storage, xlsx only, max 50 MB ────────────────────
 
@@ -827,8 +832,13 @@ export function registerOrderlyImportRoutes(app: Express): void {
   /**
    * POST /api/inventory-import/orderly/batches/:batchId/approve
    *
-   * Commits the import — creates/links items, vendors, vendor-items, locations,
-   * and external mappings inside a single transaction.
+   * Starts or resumes the one durable approval job for this batch.
+   *
+   * The endpoint returns 202 while work is running and 200 once completed.
+   * Clients poll GET .../approval-job. The documented processing budget is
+   * returned as timeoutBudgetMs (currently three minutes). Retrying the POST
+   * reuses the same batch-scoped job and the apply path remains protected by
+   * the batch row lock, so a lost/stalled response cannot double-apply writes.
    *
    * Body (optional):
    *   rowDecisions: RowDecision[]  — per-row overrides for ambiguous matches
@@ -846,6 +856,14 @@ export function registerOrderlyImportRoutes(app: Express): void {
         const companyId = (req as any).companyId as string;
         const userId = (req as any).user?.id as string | null ?? null;
         const { batchId } = req.params;
+        // Authorize before even reading batch/date metadata. This prevents a
+        // manager scoped to another store from probing batch existence or
+        // receiving duplicate-date details for an inaccessible destination.
+        await authorizeOrderlyApprovalJobAccess(
+          String(batchId),
+          { actingUserId: userId as string, companyId },
+          { allowApproved: true },
+        );
         // Review choices are written through the draft endpoint before this
         // irreversible operation. Refusing a client-supplied override means a
         // reload, stale tab, or forged request cannot swap the peer-reviewed
@@ -920,17 +938,49 @@ export function registerOrderlyImportRoutes(app: Express): void {
           }
         }
 
-        // The service establishes acting-user identity, company authorization,
-        // batch ownership, source property, and destination store for itself.
-        // @ts-ignore
-        const result = await applyBatchApproval(
-          String(batchId),
-          { actingUserId: userId as string, companyId },
-          null,
-        );
-        res.json(result);
+        const claimed = await claimApprovalJob(String(batchId), companyId, userId as string, {
+          forceDuplicateDate: force,
+        });
+        if (claimed.shouldRun) {
+          setImmediate(() => {
+            void runApprovalJob(
+              claimed.job.jobId,
+              String(batchId),
+              companyId,
+              userId as string,
+              claimed.job.attemptCount,
+              force,
+            );
+          });
+        }
+        res.status(claimed.job.status === 'completed' ? 200 : 202).json(claimed.job);
       } catch (err: any) {
         console.error('[OrderlyImport] approve error:', err);
+        res.status(approvalErrorStatus(err)).json({ error: err.message });
+      }
+    },
+  );
+
+  app.get(
+    '/api/inventory-import/orderly/batches/:batchId/approval-job',
+    requireAuth,
+    // @ts-ignore
+    requireTier('basic'),
+    requireOrderlyApprovalRole,
+    // @ts-ignore
+    async (req, res) => {
+      try {
+        const companyId = (req as any).companyId as string;
+        const userId = (req as any).user?.id as string;
+        await authorizeOrderlyApprovalJobAccess(
+          String(req.params.batchId),
+          { actingUserId: userId, companyId },
+          { allowApproved: true },
+        );
+        const job = await getApprovalJob(String(req.params.batchId), companyId);
+        if (!job) return res.status(404).json({ error: 'Approval job not found' });
+        res.json(job);
+      } catch (err: any) {
         res.status(approvalErrorStatus(err)).json({ error: err.message });
       }
     },

@@ -34,7 +34,9 @@ import {
 } from '@workspace/db';
 import { ensureOrderlyReviewDecisionsSchema } from '../migrations/orderlyReviewDecisions';
 import { ensureOrderlyPackIdentityEvidenceSchema } from '../migrations/orderlyPackIdentityEvidence';
+import { ensureOrderlyApprovalJobsSchema } from '../migrations/orderlyApprovalJobs';
 import { applyBatchApproval } from '../services/orderly/orderlyDomain';
+import { ORDERLY_APPROVAL_TIMEOUT_MS } from '../services/orderly/orderlyApprovalJobs';
 
 const SKIP = !process.env.DATABASE_URL && !process.env.NEON_DATABASE_URL;
 
@@ -47,6 +49,7 @@ const IDs = vi.hoisted(() => {
     otherStore: `oar-other-${RUN}`,
     admin: `oar-admin-${RUN}`,
     manager: `oar-manager-${RUN}`,
+    otherManager: `oar-other-manager-${RUN}`,
     scoped: `oar-scoped-${RUN}`,
     staff: `oar-staff-${RUN}`,
     binding: `oar-bind-${RUN}`,
@@ -62,7 +65,7 @@ const authState = vi.hoisted(() => ({ userId: '' as string }));
 // `req.userId`, matching production behavior, so the route must read `user.id`.
 vi.mock('../auth', () => ({
   requireAuth: vi.fn((req: any, _res: any, next: any) => {
-    const role = authState.userId === IDs.manager
+    const role = authState.userId === IDs.manager || authState.userId === IDs.otherManager
       ? 'store_manager'
       : authState.userId === IDs.scoped || authState.userId === IDs.staff
         ? 'store_user'
@@ -98,6 +101,7 @@ async function stageBatch(opts: {
   withBinding?: boolean;
   sourceSystem?: string;
   status?: string;
+  inventoryDate?: string | null;
   row?: {
     sourceItemCode: string;
     description: string;
@@ -118,7 +122,7 @@ async function stageBatch(opts: {
     originalFilename: `${id}.xlsx`,
     sheetName: 'Inventory Detail',
     parserVersion: '1.0',
-    inventoryDate: null,
+    inventoryDate: opts.inventoryDate ?? null,
     inventoryDateConfirmed: 0,
     status: opts.status ?? 'pending_review',
     sourceRowCount: 1,
@@ -168,6 +172,20 @@ function buildApp() {
   return app;
 }
 
+async function waitForApproval(batchId: string) {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    const response = await supertest(buildApp())
+      .get(`/api/inventory-import/orderly/batches/${batchId}/approval-job`);
+    if (response.status === 200 && response.body.status === 'completed') return response.body;
+    if (response.status === 200 && response.body.status === 'failed') {
+      throw new Error(`Approval failed in test: ${response.body.error?.message ?? 'unknown error'}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error(`Approval job ${batchId} did not complete before the test deadline`);
+}
+
 function canonicalManifestJson(value: unknown): string {
   if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -195,6 +213,7 @@ beforeAll(async () => {
   if (SKIP) return;
 
   await ensureOrderlyReviewDecisionsSchema(db);
+  await ensureOrderlyApprovalJobsSchema(db);
   await ensureOrderlyPackIdentityEvidenceSchema(db);
   ({ registerOrderlyImportRoutes } = await import('./orderlyImportRoutes'));
 
@@ -206,6 +225,7 @@ beforeAll(async () => {
   await db.insert(users).values([
     { id: IDs.admin, email: `oar-admin-${IDs.RUN}@test.local`, role: 'company_admin', companyId: IDs.company, active: 1 },
     { id: IDs.manager, email: `oar-manager-${IDs.RUN}@test.local`, role: 'store_manager', companyId: IDs.company, active: 1 },
+    { id: IDs.otherManager, email: `oar-other-manager-${IDs.RUN}@test.local`, role: 'store_manager', companyId: IDs.company, active: 1 },
     { id: IDs.scoped, email: `oar-scoped-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
     { id: IDs.staff, email: `oar-staff-${IDs.RUN}@test.local`, role: 'store_user', companyId: IDs.company, active: 1 },
   ]);
@@ -214,6 +234,7 @@ beforeAll(async () => {
   // authorization are tested independently.
   await db.insert(userStores).values([
     { userId: IDs.manager, storeId: IDs.store },
+    { userId: IDs.otherManager, storeId: IDs.otherStore },
     { userId: IDs.scoped, storeId: IDs.otherStore },
     { userId: IDs.staff, storeId: IDs.store },
   ]);
@@ -242,8 +263,8 @@ afterAll(async () => {
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, IDs.company)).catch(() => {});
   await db.delete(inventoryLocations).where(eq(inventoryLocations.companyId, IDs.company)).catch(() => {});
   await db.delete(vendors).where(eq(vendors.companyId, IDs.company)).catch(() => {});
-  await db.delete(userStores).where(inArray(userStores.userId, [IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
-  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.manager, IDs.scoped, IDs.staff])).catch(() => {});
+  await db.delete(userStores).where(inArray(userStores.userId, [IDs.manager, IDs.otherManager, IDs.scoped, IDs.staff])).catch(() => {});
+  await db.delete(users).where(inArray(users.id, [IDs.admin, IDs.manager, IDs.otherManager, IDs.scoped, IDs.staff])).catch(() => {});
   await db.delete(companyStores).where(eq(companyStores.companyId, IDs.company)).catch(() => {});
   await db.delete(companiesTable).where(eq(companiesTable.id, IDs.company)).catch(() => {});
 });
@@ -258,8 +279,13 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     const res = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
 
     // The original bug returned 401 here because the route read req.userId.
-    expect(res.status).toBe(200);
-    expect(res.body.targetStoreId).toBe(IDs.store);
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('running');
+    expect(res.body.timeoutBudgetMs).toBe(ORDERLY_APPROVAL_TIMEOUT_MS);
+    expect(new Date(res.body.timeoutAt).getTime() - new Date(res.body.startedAt).getTime())
+      .toBe(ORDERLY_APPROVAL_TIMEOUT_MS);
+    const completed = await waitForApproval(batchId);
+    expect(completed.result.targetStoreId).toBe(IDs.store);
 
     const after = await batchState(batchId);
     expect(after?.status).toBe('approved');
@@ -285,8 +311,9 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
     });
 
     const response = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
-    expect(response.status).toBe(200);
-    expect(response.body.itemsCreated).toBe(1);
+    expect(response.status).toBe(202);
+    const completed = await waitForApproval(batchId);
+    expect(completed.result.itemsCreated).toBe(1);
 
     const [approvedRow] = await db
       .select({ inventoryItemId: inventoryImportRows.resolvedInventoryItemId })
@@ -323,9 +350,32 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
 
     const res = await supertest(buildApp()).post(url(batchId)).send({});
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    await waitForApproval(batchId);
     expect((await batchState(batchId))?.status).toBe('approved');
     expect((await batchState(batchId))?.approvedBy).toBe(IDs.manager);
+  });
+
+  it('rejects a manager outside the destination store before creating or reading a job', async () => {
+    authState.userId = IDs.otherManager;
+    await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      status: 'approved',
+      inventoryDate: '2028-03-31',
+    });
+    const batchId = await stageBatch({
+      targetStoreId: IDs.store,
+      withBinding: true,
+      inventoryDate: '2028-03-31',
+    });
+
+    const started = await supertest(buildApp()).post(url(batchId)).send({});
+    expect(started.status).toBe(403);
+    expect(started.body).not.toHaveProperty('duplicateDateWarning');
+    const status = await supertest(buildApp())
+      .get(`/api/inventory-import/orderly/batches/${batchId}/approval-job`);
+    expect(status.status).toBe(403);
   });
 
   it('rejects an unsaved client override instead of silently changing the persisted review draft', async () => {
@@ -381,19 +431,25 @@ describe.skipIf(SKIP)('POST /api/inventory-import/orderly/batches/:batchId/appro
       .post(url(batchId))
       .send({ rowDecisions: [], storeId: IDs.otherStore }); // attempted redirect
 
-    expect(res.status).toBe(200);
-    expect(res.body.targetStoreId).toBe(IDs.store);
+    expect(res.status).toBe(202);
+    const completed = await waitForApproval(batchId);
+    expect(completed.result.targetStoreId).toBe(IDs.store);
     expect((await batchState(batchId))?.targetStoreId).toBe(IDs.store);
   });
 
-  it('returns 409 when the batch was already approved', async () => {
+  it('returns the same completed job when approval is retried after a lost response', async () => {
     authState.userId = IDs.admin;
     const batchId = await stageBatch({ targetStoreId: IDs.store, withBinding: true });
 
-    await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
+    const first = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
+    const completed = await waitForApproval(batchId);
     const res = await supertest(buildApp()).post(url(batchId)).send({ rowDecisions: [] });
 
-    expect(res.status).toBe(409);
+    expect(first.status).toBe(202);
+    expect(res.status).toBe(200);
+    expect(res.body.jobId).toBe(first.body.jobId);
+    expect(res.body.result).toEqual(completed.result);
+    expect(res.body.attemptCount).toBe(1);
   });
 
   it('returns 404 for a batch that does not exist', async () => {
@@ -835,8 +891,9 @@ describe.skipIf(SKIP)('Orderly review decision drafts', () => {
     expect(saved.status).toBe(200);
 
     const approval = await supertest(buildApp()).post(approvalUrl(batchId)).send({});
-    expect(approval.status).toBe(200);
-    expect(approval.body.itemsCreated).toBe(0);
+    expect(approval.status).toBe(202);
+    const completed = await waitForApproval(batchId);
+    expect(completed.result.itemsCreated).toBe(0);
 
     const [approvedRow] = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
