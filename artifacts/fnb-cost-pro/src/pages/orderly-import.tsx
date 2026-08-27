@@ -136,6 +136,9 @@ export interface MatchResult {
   packCompatibilityReason?: string | null;
   sourcePackEvidence?: PackEvidence | null;
   candidatePackEvidence?: PackEvidence | null;
+  crossVendorPackEligible?: boolean;
+  existingVendorNames?: string[];
+  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
   recodeEvidenceClass?:
     | 'compatible_alternate'
     | 'new_pack_size'

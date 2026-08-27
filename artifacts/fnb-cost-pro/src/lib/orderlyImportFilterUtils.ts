@@ -35,6 +35,9 @@ export interface RowPreviewLike {
     possibleRecodeItem?: { id: string; name: string; pluSku?: string | null; caseSize?: number | null; knownLocations?: string[] } | null;
     sourcePackEvidence?: PackEvidenceLike | null;
     candidatePackEvidence?: PackEvidenceLike | null;
+    crossVendorPackEligible?: boolean;
+    existingVendorNames?: string[];
+    recommendedAction?: "link_existing" | "link_vendor_pack" | "create_variant";
   };
 }
 
@@ -147,6 +150,7 @@ export interface BulkNewPackSizeCandidate {
   vendorName: string;
   packDescriptor: string;
   sampleDescription: string;
+  duplicateSupplierWarning: string | null;
 }
 
 export interface BulkNewPackSizeGroup {
@@ -229,6 +233,12 @@ export function getBulkNewPackSizeReview(rows: RowPreviewLike[]): BulkNewPackSiz
       vendorName: firstRow.supplierRaw?.trim() || "Vendor not provided",
       packDescriptor: sourcePackDescriptor(firstRow),
       sampleDescription: firstRow.cleanedDescription?.trim() || sourceItemCode,
+      duplicateSupplierWarning:
+        firstRow.itemMatch.crossVendorPackEligible &&
+        firstRow.itemMatch.existingVendorNames &&
+        firstRow.itemMatch.existingVendorNames.length > 0
+          ? `An item with this name is already supplied by ${firstRow.itemMatch.existingVendorNames.join(", ")}.`
+          : null,
     });
   }
 

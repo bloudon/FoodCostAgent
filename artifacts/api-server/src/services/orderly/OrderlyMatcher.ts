@@ -109,6 +109,12 @@ export interface MatchResult {
    * comparison that also gates a link_existing decision.
    */
   candidatePackEvidence?: PackEvidence | null;
+  /** Complete incompatible geometry may share an item when the source vendor differs. */
+  crossVendorPackEligible?: boolean;
+  /** Existing suppliers for the exact-name candidate, used for review warnings. */
+  existingVendorNames?: string[];
+  /** Server recommendation; approval still requires an explicit saved decision. */
+  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
   /** The incoming row's parsed pack evidence, including server normalization. */
   sourcePackEvidence?: PackEvidence | null;
   /** Evidence class for a possible re-code candidate. */

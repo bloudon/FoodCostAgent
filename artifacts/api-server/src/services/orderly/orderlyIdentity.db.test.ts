@@ -1480,6 +1480,210 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ]));
   });
 
+  it('keeps one inventory item and persists a different vendor pack with its own geometry and price', async () => {
+    const mayBatch = await stageBatch([{
+      code: 'CROSS-VENDOR-BASE-24',
+      description: 'Cross Vendor Tomatoes',
+      location: 'Dry Storage',
+      supplier: 'Vendor Alpha',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 48,
+    }], '2027-04-30');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected the base item to resolve');
+
+    const juneBatch = await stageBatch([{
+      code: 'CROSS-VENDOR-ALT-12',
+      description: 'Cross Vendor Tomatoes',
+      location: 'Dry Storage',
+      supplier: 'Vendor Beta',
+      caseQuantity: 12,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 30,
+    }], '2027-05-31');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      packCompatibility: 'incompatible',
+      crossVendorPackEligible: true,
+      recommendedAction: 'link_vendor_pack',
+      possibleRecodeMatchedId: mayRow.resolvedInventoryItemId,
+    });
+
+    await applyBatchApproval(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_vendor_pack',
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+
+    const [juneRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+    expect(juneRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
+
+    const packs = await db
+      .select({
+        vendorName: vendors.name,
+        vendorSku: vendorItems.vendorSku,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        lastCasePrice: vendorItems.lastCasePrice,
+        normalizedPricePerCanonicalUnit: vendorItems.normalizedPricePerCanonicalUnit,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId))
+      .orderBy(vendors.name);
+    expect(packs).toEqual([
+      {
+        vendorName: 'Vendor Alpha',
+        vendorSku: null,
+        canonicalQtyPerPurchaseUnit: 24,
+        lastCasePrice: 48,
+        normalizedPricePerCanonicalUnit: 2,
+      },
+      {
+        vendorName: 'Vendor Beta',
+        vendorSku: null,
+        canonicalQtyPerPurchaseUnit: 12,
+        lastCasePrice: 30,
+        normalizedPricePerCanonicalUnit: 2.5,
+      },
+    ]);
+  });
+
+  it('keeps a same-vendor incompatible pack on the separate-variant path', async () => {
+    const baseBatch = await stageBatch([{
+      code: 'SAME-VENDOR-BASE-1GAL',
+      description: 'Same Vendor Sauce',
+      location: 'Dry Storage',
+      supplier: 'Vendor Gamma',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'GAL',
+      packagePrice: 20,
+    }], '2027-06-30');
+    await applyBatchApproval(baseBatch, approvalAuth);
+
+    const variantBatch = await stageBatch([{
+      code: 'SAME-VENDOR-MINIS-24',
+      description: 'Same Vendor Sauce',
+      location: 'Dry Storage',
+      supplier: 'Vendor Gamma',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 2,
+      baseUnit: 'FL OZ',
+      packagePrice: 24,
+    }], '2027-07-31');
+    const preview = await runResolutionPreview(variantBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      packCompatibility: 'incompatible',
+      crossVendorPackEligible: false,
+      recommendedAction: 'create_variant',
+    });
+    await expect(applyBatchApproval(variantBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_vendor_pack',
+      inventoryItemId: preview.rows[0].itemMatch.possibleRecodeMatchedId!,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+
+    const baseItemId = preview.rows[0].itemMatch.possibleRecodeMatchedId!;
+    await applyBatchApproval(variantBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: baseItemId,
+    }]);
+    const [variantRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, variantBatch));
+    expect(variantRow.resolvedInventoryItemId).toBeTruthy();
+    expect(variantRow.resolvedInventoryItemId).not.toBe(baseItemId);
+    const [variantVendorPack] = await db
+      .select({
+        inventoryItemId: vendorItems.inventoryItemId,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        lastCasePrice: vendorItems.lastCasePrice,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(and(
+        eq(vendors.name, 'Vendor Gamma'),
+        eq(vendorItems.inventoryItemId, variantRow.resolvedInventoryItemId!),
+      ));
+    expect(variantVendorPack).toMatchObject({
+      inventoryItemId: variantRow.resolvedInventoryItemId,
+      canonicalQtyPerPurchaseUnit: expect.any(Number),
+      lastCasePrice: 24,
+    });
+    const relationships = await db
+      .select({
+        inventoryItemId: inventoryItemRelationships.inventoryItemId,
+        relatedInventoryItemId: inventoryItemRelationships.relatedInventoryItemId,
+      })
+      .from(inventoryItemRelationships)
+      .where(eq(inventoryItemRelationships.companyId, ID.company));
+    expect(relationships).toEqual(expect.arrayContaining([
+      { inventoryItemId: baseItemId, relatedInventoryItemId: variantRow.resolvedInventoryItemId },
+      { inventoryItemId: variantRow.resolvedInventoryItemId, relatedInventoryItemId: baseItemId },
+    ]));
+  });
+
+  it('does not recommend or write a cross-vendor pack when its price is not positive', async () => {
+    const baseBatch = await stageBatch([{
+      code: 'NO-PRICE-BASE-24',
+      description: 'No Price Cross Vendor Item',
+      location: 'Dry Storage',
+      supplier: 'Vendor Delta',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 48,
+    }], '2027-08-31');
+    await applyBatchApproval(baseBatch, approvalAuth);
+    const [baseRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, baseBatch));
+    if (!baseRow?.resolvedInventoryItemId) throw new Error('Expected the base item to resolve');
+
+    const noPriceBatch = await stageBatch([{
+      code: 'NO-PRICE-ALT-12',
+      description: 'No Price Cross Vendor Item',
+      location: 'Dry Storage',
+      supplier: 'Vendor Epsilon',
+      caseQuantity: 12,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 0,
+    }], '2027-09-30');
+    const preview = await runResolutionPreview(noPriceBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      packCompatibility: 'incompatible',
+      crossVendorPackEligible: false,
+      recommendedAction: 'create_variant',
+    });
+    const before = await approvalWriteSnapshot(noPriceBatch);
+    await expect(applyBatchApproval(noPriceBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_vendor_pack',
+      inventoryItemId: baseRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    expect(await approvalWriteSnapshot(noPriceBatch)).toEqual(before);
+  });
+
   it('blocks a Milk-like catalog packSize conflict before a requested variant can write', async () => {
     const baseBatch = await stageBatch([
       {

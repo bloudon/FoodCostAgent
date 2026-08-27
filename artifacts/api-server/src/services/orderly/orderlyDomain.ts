@@ -96,7 +96,7 @@ export interface RowDecision {
    * link reuses one inventory identity; a separate variant creates a new item
    * and records a comparable pack relationship instead.
    */
-  action?: 'link_existing' | 'create_variant';
+  action?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
   /** Existing field retained for legacy/manual match overrides and link_existing. */
   inventoryItemId?: string | null;
   /** The existing comparable item for create_variant. Never becomes this code's mapping. */
@@ -151,6 +151,7 @@ function normalizeReviewDecision(
   if (
     action !== undefined &&
     action !== 'link_existing' &&
+    action !== 'link_vendor_pack' &&
     action !== 'create_variant'
   ) {
     throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} has an unsupported action.`);
@@ -171,9 +172,9 @@ function normalizeReviewDecision(
   if (!action && !hasInventoryItemId) {
     throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} does not select an outcome.`);
   }
-  if (action === 'link_existing') {
+  if (action === 'link_existing' || action === 'link_vendor_pack') {
     if (typeof inventoryItemId !== 'string' || !inventoryItemId.trim() || comparableInventoryItemId !== undefined) {
-      throw new ImportApprovalError('INVALID_REQUEST', `Review link decision for row ${rowIndex} needs one existing item.`);
+      throw new ImportApprovalError('INVALID_REQUEST', `Review ${action} decision for row ${rowIndex} needs one existing item.`);
     }
     return { action, inventoryItemId: inventoryItemId.trim() };
   }
@@ -213,6 +214,20 @@ function assertReviewDecisionMatchesPreview(
       throw new ImportApprovalError(
         'CONFLICT',
         `The saved link for row ${row.rowIndex} no longer matches its compatible review candidate.`,
+      );
+    }
+    return;
+  }
+  if (decision.action === 'link_vendor_pack') {
+    if (
+      !row.itemMatch.possibleRecode ||
+      decision.inventoryItemId !== row.itemMatch.possibleRecodeMatchedId ||
+      row.itemMatch.packCompatibility !== 'incompatible' ||
+      row.itemMatch.crossVendorPackEligible !== true
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `The saved vendor-pack link for row ${row.rowIndex} no longer matches a verified different-vendor pack candidate.`,
       );
     }
     return;
@@ -828,6 +843,12 @@ interface CatalogPackSizeEvidence extends SourcePackGeometry {
   packSizeId: string;
 }
 
+interface ExistingVendorSupply {
+  vendorId: string;
+  vendorName: string;
+  inventoryItemId: string;
+}
+
 function normalizedStableSourceCode(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed.toUpperCase() : null;
@@ -1338,7 +1359,7 @@ export async function runResolutionPreview(
   const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
-  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings] =
+  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings, existingVendorSupplies] =
     await Promise.all([
       runner
         .select()
@@ -1436,6 +1457,18 @@ export async function runResolutionPreview(
           eq(vendorItemExternalMappings.sourceSystem, 'ORDERLY'),
           eq(vendorItemExternalMappings.sourcePropertyId, sourcePropertyScope),
         )),
+      runner
+        .select({
+          vendorId: vendorItems.vendorId,
+          vendorName: vendors.name,
+          inventoryItemId: vendorItems.inventoryItemId,
+        })
+        .from(vendorItems)
+        .innerJoin(vendors, and(
+          eq(vendors.id, vendorItems.vendorId),
+          eq(vendors.companyId, companyId),
+        ))
+        .where(eq(vendorItems.active, 1)),
     ]);
 
   // Earlier parser versions did not understand Orderly's complete three-tier
@@ -1500,6 +1533,12 @@ export async function runResolutionPreview(
       sourceItemCode,
     });
     catalogPackEvidenceByIdentity.set(key, evidence);
+  }
+  const vendorSuppliesByItemId = new Map<string, ExistingVendorSupply[]>();
+  for (const supply of existingVendorSupplies as ExistingVendorSupply[]) {
+    const supplies = vendorSuppliesByItemId.get(supply.inventoryItemId) ?? [];
+    supplies.push(supply);
+    vendorSuppliesByItemId.set(supply.inventoryItemId, supplies);
   }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
@@ -1637,6 +1676,27 @@ export async function runResolutionPreview(
               // A prose-like value in Item Code may guide a reviewer, but it
               // cannot prove identity or create a permanent source mapping.
               requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
+          };
+          const candidateSuppliers = vendorSuppliesByItemId.get(nameExactMatch.id) ?? [];
+          const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
+          const candidateHasSameVendor = sourceVendorKey != null && candidateSuppliers.some(supply =>
+            sourceVendorKey === `vendor:${supply.vendorId}` ||
+            sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
+          );
+          const crossVendorPackEligible =
+            sourceCodeReliability === 'stable' &&
+            packAssessment.status === 'incompatible' &&
+            typeof row.packagePrice === 'number' &&
+            Number.isFinite(row.packagePrice) &&
+            row.packagePrice > 0 &&
+            sourceVendorKey != null &&
+            candidateSuppliers.length > 0 &&
+            !candidateHasSameVendor;
+          itemMatch = {
+            ...itemMatch,
+            crossVendorPackEligible,
+            existingVendorNames: candidateSuppliers.map(supply => supply.vendorName),
+            recommendedAction: crossVendorPackEligible ? 'link_vendor_pack' : 'create_variant',
           };
           const catalogConflict = findCatalogPackSizeConflict(
             row,
@@ -2791,12 +2851,16 @@ export async function applyBatchApproval(
     if (
       decision.action !== undefined &&
       decision.action !== 'link_existing' &&
+      decision.action !== 'link_vendor_pack' &&
       decision.action !== 'create_variant'
     ) {
       throw new ImportApprovalError('INVALID_REQUEST', `Unsupported row decision action on row ${decision.rowIndex}.`);
     }
     if (decision.action === 'link_existing' && !decision.inventoryItemId) {
       throw new ImportApprovalError('INVALID_REQUEST', `A compatible link decision on row ${decision.rowIndex} needs an inventory item.`);
+    }
+    if (decision.action === 'link_vendor_pack' && !decision.inventoryItemId) {
+      throw new ImportApprovalError('INVALID_REQUEST', `A vendor-pack link decision on row ${decision.rowIndex} needs an inventory item.`);
     }
     if (decision.action === 'create_variant' && !decision.comparableInventoryItemId) {
       throw new ImportApprovalError('INVALID_REQUEST', `A separate-variant decision on row ${decision.rowIndex} needs a comparable item.`);
@@ -2897,7 +2961,7 @@ export async function applyBatchApproval(
     if (!decision) {
       throw new ImportApprovalError(
         'CONFLICT',
-        `Orderly Item Code ${code} has an exact-name re-code candidate and requires an explicit link or separate-variant decision before approval.`,
+        `Orderly Item Code ${code} has an exact-name re-code candidate and requires an explicit link, vendor-pack link, or separate-variant decision before approval.`,
       );
     }
     const expectedCandidateId = row.itemMatch.possibleRecodeMatchedId;
@@ -2912,6 +2976,17 @@ export async function applyBatchApproval(
         throw new ImportApprovalError(
           'CONFLICT',
           `Orderly Item Code ${code} cannot link to the existing inventory item because its pack is ${row.itemMatch.packCompatibility ?? 'unknown'}: ${row.itemMatch.packCompatibilityReason ?? 'no compatible pack evidence'}.`,
+        );
+      }
+    } else if (decision.action === 'link_vendor_pack') {
+      if (
+        decision.inventoryItemId !== expectedCandidateId ||
+        row.itemMatch.packCompatibility !== 'incompatible' ||
+        row.itemMatch.crossVendorPackEligible !== true
+      ) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Orderly Item Code ${code} can only attach this pack to its reviewed different-vendor inventory item.`,
         );
       }
     } else if (decision.action === 'create_variant') {
@@ -3382,7 +3457,8 @@ export async function applyBatchApproval(
         }
         if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
           const cachedItemId = reliableCodeItemIds.get(reliableCode) ?? null;
-          const requestedExistingItemId = identityDecision?.action === 'link_existing'
+          const requestedExistingItemId =
+            identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack'
             ? identityDecision.inventoryItemId
             : identityDecision?.action === undefined
               ? identityDecision?.inventoryItemId
@@ -3402,7 +3478,8 @@ export async function applyBatchApproval(
           return { itemId: identityGroupExistingItemId, created: false };
         }
         if (groupedExistingItemId) {
-          const requestedExistingItemId = identityDecision?.action === 'link_existing'
+          const requestedExistingItemId =
+            identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack'
             ? identityDecision.inventoryItemId
             : identityDecision?.action === undefined
               ? identityDecision?.inventoryItemId
@@ -3421,7 +3498,7 @@ export async function applyBatchApproval(
         if (identityDecision?.action === 'create_variant') {
           return { itemId: await insertNewItem(), created: true };
         }
-        if (identityDecision?.action === 'link_existing') {
+        if (identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack') {
           return { itemId: identityDecision.inventoryItemId!, created: false };
         }
         if (identityDecision?.inventoryItemId !== undefined) {
@@ -3722,14 +3799,86 @@ export async function applyBatchApproval(
         }
       }
 
-      // ── Vendor-item link ─────────────────────────────────────────────
-      // An Orderly inventory export identifies its supplier but does not carry
-      // a vendor-stable product SKU. Its Item Code is property-scoped source
-      // evidence, so turning it into a vendor_items record would either claim
-      // a false vendor identity or collapse distinct packs onto one record.
-      // Source-to-catalog identity is persisted exclusively in
-      // inventory_item_external_mappings; invoice/order-guide evidence may
-      // establish real vendor-item products later.
+      // ── Vendor-item pack/price record ─────────────────────────────────
+      // Orderly Item Code remains property-scoped source identity and is never
+      // copied into vendor_items.vendorSku. Populate vendor_items only when the
+      // vendor, item, complete geometry, and positive package price are known.
+      if (resolvedVendorId && resolvedItemId) {
+        const normalizedGeometry = normalizePackGeometry(sourcePackGeometry(rowPreview));
+        const catalogGeometry = toCatalogPackGeometry(sourcePackGeometry(rowPreview));
+        const packagePrice = rowPreview.packagePrice;
+        const mayPersistVendorPack =
+          normalizedGeometry.status === 'compatible' &&
+          normalizedGeometry.totalBaseUnits != null &&
+          catalogGeometry != null &&
+          typeof packagePrice === 'number' &&
+          Number.isFinite(packagePrice) &&
+          packagePrice > 0;
+        if (mayPersistVendorPack) {
+          const totalBaseUnits = normalizedGeometry.totalBaseUnits!;
+          const canonicalUnitId = catalogUnitByKey.get(normalizeForMatch(catalogGeometry.canonicalUnit));
+          if (!canonicalUnitId) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Orderly row ${rowPreview.rowIndex} uses pack unit ${catalogGeometry.canonicalUnit}, which is not configured in FnB.`,
+            );
+          }
+          const normalizedUnitPrice = packagePrice / totalBaseUnits;
+          const [existingVendorPack] = await tx
+            .select({
+              id: vendorItems.id,
+              canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+            })
+            .from(vendorItems)
+            .where(and(
+              eq(vendorItems.vendorId, resolvedVendorId),
+              eq(vendorItems.inventoryItemId, resolvedItemId),
+            ))
+            .limit(1);
+          if (
+            existingVendorPack?.canonicalQtyPerPurchaseUnit != null &&
+            Math.abs(existingVendorPack.canonicalQtyPerPurchaseUnit - totalBaseUnits) > 0.000001
+          ) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Orderly row ${rowPreview.rowIndex} conflicts with the existing pack for this vendor and inventory item.`,
+            );
+          }
+          const values = {
+            vendorId: resolvedVendorId,
+            inventoryItemId: resolvedItemId,
+            vendorSku: null,
+            purchaseUnitId: canonicalUnitId,
+            caseSize: catalogGeometry.casePkgCount,
+            innerPackSize: catalogGeometry.containerSize,
+            packUom: catalogGeometry.canonicalUnit,
+            lastPrice: normalizedUnitPrice,
+            lastCasePrice: packagePrice,
+            active: 1,
+            priceSource: 'orderly_inventory_import',
+            pricedAt: resolutionPreview.inventoryDate ? new Date(resolutionPreview.inventoryDate) : null,
+            priceSourceReferenceId: batchId,
+            canonicalQtyPerPurchaseUnit: totalBaseUnits,
+            normalizedPricePerCanonicalUnit: normalizedUnitPrice,
+            packGeometryStatus: 'verified',
+            packGeometrySource: 'orderly_inventory_import',
+            packGeometryUpdatedAt: new Date(),
+            pricingBasis: 'canonical_unit',
+            isVariableWeight: 0,
+          };
+          if (existingVendorPack) {
+            await tx.update(vendorItems).set(values).where(eq(vendorItems.id, existingVendorPack.id));
+          } else {
+            await tx.insert(vendorItems).values(values);
+            vendorItemsCreated++;
+          }
+        } else if (identityDecision?.action === 'link_vendor_pack') {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `Orderly row ${rowPreview.rowIndex} cannot attach a vendor pack without complete geometry and a positive package price.`,
+          );
+        }
+      }
 
       // ── Location resolution ──────────────────────────────────────────
       if (rowPreview.locationMatch.normalizedName) {

@@ -165,6 +165,30 @@ describe("getBulkNewPackSizeReview", () => {
     ]);
   });
 
+  it("warns when a bulk variant would duplicate a different vendor's existing item", () => {
+    const review = getBulkNewPackSizeReview([
+      newPackRow({
+        rowIndex: 41,
+        sourceItemCode: "CROSS-VENDOR-12",
+        supplierRaw: "Vendor Beta",
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "high",
+          possibleRecode: true,
+          recodeEvidenceClass: "new_pack_size",
+          packCompatibility: "incompatible",
+          possibleRecodeMatchedId: "existing-tomatoes",
+          crossVendorPackEligible: true,
+          existingVendorNames: ["Vendor Alpha"],
+        },
+      }),
+    ]);
+
+    expect(review.candidates[0]?.duplicateSupplierWarning).toBe(
+      "An item with this name is already supplied by Vendor Alpha.",
+    );
+  });
+
   it("never includes another class or a partial source-code group in a bulk variant action", () => {
     const review = getBulkNewPackSizeReview([
       newPackRow({ rowIndex: 1 }),

@@ -80,6 +80,9 @@ type RecodeDecision = {
   action: "link_existing";
   inventoryItemId: string;
 } | {
+  action: "link_vendor_pack";
+  inventoryItemId: string;
+} | {
   action: "create_variant";
   comparableInventoryItemId: string;
 };
@@ -455,6 +458,7 @@ function CandidatePicker({
   if (possibleRecode && possibleRecodeItem) {
     const recodeDecision = isRecodeDecision(decision) ? decision : undefined;
     const isLink = recodeDecision?.action === "link_existing";
+    const isVendorPackLink = recodeDecision?.action === "link_vendor_pack";
     const isCreateNew = recodeDecision?.action === "create_variant";
     const isHeld = row.heldForReview;
     const isLeftUnlinked = isHeld && decision === null;
@@ -516,6 +520,33 @@ function CandidatePicker({
               isUnknown ? <Badge className="bg-slate-200 text-slate-800 border-slate-300">Unknown</Badge> : null
             }
           />
+          {match.crossVendorPackEligible && !isHeld && (
+            <button
+              onClick={() => onDecision(
+                row.rowIndex,
+                isVendorPackLink ? undefined : { action: "link_vendor_pack", inventoryItemId: targetId },
+              )}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isVendorPackLink
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isVendorPackLink ? "border-primary bg-primary" : "border-emerald-500"}`}>
+                {isVendorPackLink && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+              </div>
+              <div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <Truck className="h-4 w-4 text-emerald-700" />
+                  Keep one item, add this vendor pack
+                  <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800">Recommended</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Link this vendor's verified pack and price to the existing item for cross-vendor comparison.
+                </p>
+              </div>
+            </button>
+          )}
           {isHeld ? (
             <button
               onClick={() => onDecision(row.rowIndex, null)}
@@ -1376,6 +1407,15 @@ export function ResolutionPreviewStep({
                           </li>
                         ))}
                       </ul>
+                      {group.samples.some(sample => {
+                        const candidate = bulkNewPackSizeReview.candidates.find(item => item.sourceItemCode === sample.sourceItemCode);
+                        return Boolean(candidate?.duplicateSupplierWarning);
+                      }) && (
+                        <p className="mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          Creating this variant may duplicate an item already supplied by another vendor.
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2228,7 +2268,11 @@ export function ResolutionPreviewStep({
                                     <div className="flex items-center gap-1.5">
                                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-background text-foreground shadow-sm">
                                          {isRecodeDecision(decision)
-                                           ? decision.action === "create_variant" ? "→ Separate Variant" : "→ Link Existing"
+                                           ? decision.action === "create_variant"
+                                             ? "→ Separate Variant"
+                                             : decision.action === "link_vendor_pack"
+                                               ? "→ Add Vendor Pack"
+                                               : "→ Link Existing"
                                             : decision === null
                                               ? row.heldForReview ? "→ Leave Unlinked" : "→ Create FnB item"
                                               : "→ Link Existing"}
