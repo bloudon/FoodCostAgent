@@ -1,0 +1,67 @@
+# Add Bulk Link For "Same Physical Pack", And Apply Row Decisions To The Identity Group
+
+**Priority:** Blocks the June/July seed
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Evidence batch:** `c1f454ff-0c38-4e87-8000-ac34a82cb7a8` (June_2026.xlsx, 5,409 rows, pending review)
+
+> **Numbering note:** two tickets are currently both called #1256 — descriptive-code identity (shipped) and the revived #1255 parser scope (shipped). Please assign this a fresh number and resolve that collision.
+
+## What & Why
+
+Resolving a real batch surfaced two related gaps in the Category 1 ("Same physical pack") path. Together they make the safest review category the most laborious and the least legible.
+
+### 1. Category 2 has a bulk action; Category 1 does not
+
+`Create N new variants in bulk` works well: a confirmation dialog lists every variant with vendor, pack descriptor, and source-row count, then writes all rows in a single atomic `PUT`. On the June batch it resolved 30 decisions across 78 rows in one action, verified against the saved decision set.
+
+Category 1 has no equivalent. Its 32 decisions must be resolved by expanding each row and clicking a candidate card individually.
+
+This is backwards from a risk standpoint. Category 2 **creates new inventory records**. Category 1 **links to existing ones** and creates nothing. The destructive-adjacent operation is bulk-enabled; the conservative one is manual.
+
+### 2. A single-row decision does not resolve its identity group
+
+The bulk path writes a decision for every row in each group. An individual candidate click writes a decision for **only the clicked row**, even though the row displays `Identity group: N location rows` and the outstanding counter tracks product *decisions*, not rows.
+
+Observed on the June batch: 10 saved `link_existing` decisions moved the counter by far fewer than 10, because groups spanning up to 10 location rows only complete when their last row is decided. From the operator's side the counter appears stuck while work is visibly being done. There is no in-UI signal explaining the difference.
+
+### Why this blocks the seed
+
+The goal is a documented process an operator can repeat on the production VPS. As it stands, Category 1 requires roughly 90 expand-and-click cycles per batch with no progress feedback that matches the work being done. That is not reproducible at production scale, and it is exactly the kind of step where a silent mis-click goes unnoticed.
+
+## Done looks like
+
+* A bulk action for Category 1 mirroring the Category 2 pattern: a confirmation dialog listing each item with its existing catalog target, normalized pack totals for both sides, and source-row count, followed by a single atomic save.
+* The bulk action only includes decisions whose normalized pack totals match on both sides. Anything unverified — unknown geometry, conflicting source packs, missing pack evidence — is excluded and stated in the dialog.
+* A single-row decision either applies to every row in its identity group, or the UI states plainly that it does not and shows how many rows in the group remain.
+* The outstanding-decision counter is legible: an operator can tell what a click accomplished without querying the API.
+* Partial failure is surfaced rather than silent, consistent with the existing atomic bulk-save behaviour.
+
+## Out of scope
+
+* Changing pack classification, normalization, or the identity key.
+* Changing which decisions are eligible to link — only the mechanism for applying them.
+* Auto-linking anything the classifier has not already verified as the same physical pack.
+* Approving any batch.
+
+## Steps
+
+1. Add a Category 1 bulk endpoint/action reusing the existing atomic bulk-save path used by Category 2.
+2. Build the confirmation dialog from the same evidence already rendered per row: item name, source code, existing FnB target, normalized totals for incoming and catalog, and source-row count.
+3. Make single-row decisions apply group-wide, or display remaining-rows-in-group on the row.
+4. Add regressions: a bulk link writes decisions for every row in every included group; unverified rows are excluded; the counter reflects completed decisions accurately; a single-row decision behaves consistently with the documented group semantics.
+
+## Verification
+
+On the June batch:
+
+* Category 1 reports 32 decisions across 88 alternate-code rows. All 32 have matching normalized totals — verified arithmetically (e.g. Stella Artois `2/12 EA` → 24 EA vs 24 EA; Coke - Ind. `1/24 EA` → 24 EA vs 24 EA; Ginger Beer `24/1 EA` → 24 EA vs 24 EA; Red Breast `1/1 750ML` → 750 ML vs 750 ML).
+* One row must be excluded: **row 3442, Mushrooms - Blends/Mix (26045)**, `1/1 Case`, normalized total "Not confirmed". Unknown geometry — not eligible for bulk link.
+* After the bulk action, the outstanding counter should fall to the held row plus any genuinely undecidable rows.
+
+## Current state of the June batch
+
+Left mid-review, all draft state, nothing approved:
+
+* 88 decisions saved (78 `create_variant`, 10 `link_existing`), all at `revision: 1`
+* Outstanding: 29 re-code decisions + 1 held row
+* Milk-Whole `4676306` correctly classified as a separate variant (`1/1 GAL` = 3,785.41 ML vs May's `4/1 GAL` = 15,141.64 ML) — this conflict was invisible before the GAL alias landed
