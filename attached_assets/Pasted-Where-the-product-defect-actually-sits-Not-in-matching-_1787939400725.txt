@@ -1,0 +1,21 @@
+Where the product defect actually sits
+
+Not in matching — in what got offered. A row whose vendor, stable item code, and parsed geometry are byte-identical to an approved prior month has nothing to decide. It should match by code mapping and never enter Category 2 at all.
+
+The question worth putting to Replit is narrower than "why was it accepted": why is a row with an unchanged stable code, unchanged vendor and unchanged pack presented as a new-pack-size decision? Ten of them carried the June item as comparableInventoryItemId, so the correct target was known at classification time.
+
+The Crab Claw and Heitz cases sharpen it — both June and July independently forked against the same older base item. Two consecutive months producing new variants from unchanged evidence isn't a review slip, it's the classifier repeatedly offering a choice that shouldn't exist.
+
+What I'd change in the procedure regardless
+
+The runbook says verify the flagged rows. That's insufficient, twice over — it missed 5 cross-vendor cases that weren't flagged, and 12 identical rows that couldn't be flagged. The corrected rule:
+
+Before confirming any Category 2 bulk, check every listed item against the prior month. Anything with an unchanged vendor + code + pack does not belong in the set. Anything with a changed vendor should be a link_vendor_pack, whether or not the dialog flags it.
+
+For 30–100 items that's a workbook query, not manual inspection — I can generate the exclusion list mechanically before touching the bulk.
+
+On sequencing
+
+With #1273 cancelled and the reseed not yet ticketed, I'd fold both findings into the reseed rather than spawn separate remediation. A clean May→June→July run with the corrected procedure should produce zero identical-row forks and zero cross-vendor misses — which is a better validation than patching 17 items in a catalog that's about to be rebuilt.
+
+Want me to update the runbook and register with the corrected bulk procedure now, so it's in place before the reseed starts?
