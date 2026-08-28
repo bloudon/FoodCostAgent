@@ -1,0 +1,31 @@
+Full classification of all 58. Three distinct populations, and only two need action.
+
+12 IDENTICAL — the defect
+
+Same vendor, same item code, same pack as June, yet July created a second item:
+
+apples - red delicious · arugula · beef - skirt steak · cheese - american yellow sliced · cheese - cheddar mild shredded · cheese - swiss · crab - claw meat · heitz cab sauv marthas 18 wd · marjoram - dried · milk - whole · onions - green · raw clams
+
+Nothing changed about these rows. They should have matched June's item by code without any decision. That they forked is a matching defect, and it's the priority finding for #1273 — the largest actionable group and the one with no legitimate explanation.
+
+Notably several are ones I linked in June (milk - whole, cheese - swiss, arugula, onions - green, raw clams). So June consolidated them, and July forked them again despite identical source data.
+
+5 CROSS-VENDOR — genuine misses
+Item	June → July
+cabbage - slaw mix	Mr. Green's → Sysco
+mizuna	Harvill's → Mr. Green's
+mushrooms - blends/mix	Mr. Green's → Fungi Jon
+popcorn kit	(blank) → Sysco
+potato skins	GFs Store → Cheney Brothers
+
+These should have been link_vendor_pack and I recorded variants. My error, and the cause is procedural — I only checked rows the bulk dialog flagged, and these weren't flagged. That's a real gap in the method, not just this run: "verify the flagged ones" isn't sufficient.
+
+41 SAME-VENDOR PACK CHANGES — correct
+
+Casamigos 5/50 ML → 6/1 LT, Makers Mark, Tito's 60/50 ML → 12/1 LT, Crown Royal, and the produce pack changes. These are legitimate forks and should be excluded from the fork metric entirely, which is what #1273's last criterion asks for.
+
+For #1273
+
+The split is 12 defects / 5 corrections / 41 legitimate. The ticket currently treats the five cross-vendor cases as the main event; the twelve identical-row forks are the bigger issue and weren't in its list.
+
+Worth checking on those twelve whether the July rows were even offered a link, or whether they arrived in the New-pack-size bucket already classified as different — because if the classifier called identical rows "different pack," that's the same class of bug as #1268.
