@@ -1,0 +1,17 @@
+Well-scoped, and the last Done item is the one I'd protect hardest:
+
+> *"prevents the importer, historical evidence, and current inventory classification from being conflated"*
+
+That's the actual risk. Three distinct things — what Orderly said (immutable), what FnB currently classifies an item as (mutable), and what the importer writes — and they're easy to blur once someone starts mapping GL codes to accounts. Getting that boundary written down before any code is the real deliverable.
+
+Three additions I'd suggest.
+
+**Name the asymmetry in the benchmarking decision.** The ticket asks whether it's a requirement, but the cost isn't symmetric: platform-defined umbrellas are a small fixed enum now and expensive to retrofit, because retrofitting means re-mapping every tenant's chart after each has invented their own. "Not on the roadmap" and "cheap to preserve the option" can both be true. Worth stating so the decision is made on cost rather than on roadmap confidence.
+
+**Add the revenue-side asymmetry as a constraint.** Revenue splits Bar into three accounts — Beer, Wine, Liquor Sales — while COGS splits it into seven categories. So cost-to-revenue joins can only happen at the umbrella level. That's not a preference, it's a structural requirement any taxonomy has to satisfy, and it should be in Step 2's evaluation criteria.
+
+**Step 3 needs an evidence source that exists.** It says resolve DOC "against the actual invoice and purchase consumers" — but invoices haven't been imported. `historicalInvoiceLines` is empty. So either the step waits on invoice import, or it's decided on the chart's own structure. The chart is actually reasonable evidence on its own: `502800 TOGO Supplies` is the only DOC account classified as COGS, which is Bay Hill's accountant already having drawn the direct/indirect line. Worth saying that explicitly so the step isn't blocked on data that doesn't exist yet.
+
+On Step 4 — my read is that **seeding and backfill do not need to precede June.** GL capture is already complete on all 5,358 May rows, accounts are additive, and backfilling 26 categories is safer than re-seeding. So the seed and the accounting work can run in parallel, which keeps #1275 off the critical path.
+
+That leaves June as the next thing. Upload it whenever you're ready and I'll run the review with the corrected pre-bulk gate — it's also the first real test of #1274 on a clean catalog.
