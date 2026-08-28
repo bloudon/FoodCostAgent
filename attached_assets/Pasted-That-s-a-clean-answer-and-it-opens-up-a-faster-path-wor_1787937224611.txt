@@ -1,0 +1,36 @@
+That's a clean answer, and it opens up a faster path worth considering.
+
+**If the existing July batch is still staged with its 225 decisions, we can prove #1271 in about two minutes** — retry the approval and see whether the four collision codes import as distinct items. No reseed required for that specific verification.
+
+Two reasons that's worth doing before the full reseed:
+
+**It de-risks the reseed.** If July still fails, we find out now rather than after re-doing June's 187 decisions and July's 225. That's hours saved on a bad outcome.
+
+**It gives Replit a real-world confirmation** to sit alongside the 39 DB tests and 30 boundary tests — an actual 5,518-row batch approving against a live catalog, which is the one thing the test suite can't cover.
+
+Let me check whether that state still exists.Everything's still intact — July `ef6a504e` pending, May and June approved, catalog at 3,093 / 2,412. Let me confirm the 225 decisions survived and then retry.All 225 decisions survived, but **Approve is now disabled** with decisions outstanding — it was enabled before. #1271 reclassified some rows and invalidated their decisions, exactly as #1268 did. Let me see what's newly outstanding.Exactly two — and New pack size went 70 → 72. That's #1271 splitting the collision pairs apart, since they now derive **code-qualified** identities instead of sharing one. Let me confirm.Not the collision pairs — these are Heitz and Crab Claw, two rows I'd resolved earlier whose decisions #1271 invalidated as stale. Both are same-vendor pack differences, so separate variant is correct. Resolving them.I'm on page 2 from the earlier scan. Going back to page 1.Banner clear at **227 decisions**, but the button hasn't re-enabled yet. Reloading to confirm.Approve enabled, 227 decisions. This is the real test of #1271.Still running at 60s, no error — past the point where the collision aborted last time. Waiting.**All three months approved.** July committed in 121 seconds, catalog 3,093 → 3,175. Running full verification.## All three months seeded and reconciling
+
+| Month | Rows | Excluded | Snapshot | Imported | Delta |
+|---|---|---|---|---|---|
+| May | 5,358 / 5,358 | 0 | $254,286.67 | $254,286.67 | ~7e-10 |
+| June | 5,409 / 5,409 | 0 | $261,007.67 | $261,007.67 | **0** |
+| July | 5,518 / 5,518 | 0 | $254,299.75 | $254,299.75 | ~-3e-11 |
+
+Every month matches its workbook Detail sum exactly, zero exclusions.
+
+**#1271 verified against real data:** `HUNDRED ACRE CAB SAUV MORG` → **2 items**, `MONTES PURPLE ANGEL` → **2 items**. The punctuation-differing codes now import as distinct records instead of aborting the batch. That's the pass condition, met on a live 5,518-row approval.
+
+**Cross-vendor consolidation is working at scale:** 97 items now carry packs from multiple vendors, 2,538 vendor_items, 3,175 catalog items.
+
+## One thing to look at
+
+**58 forks in the June→July comparison**, up from 23 in May→June. Some are clearly correct — Casamigos, Heitz, Crab Claw, Crown Royal, Cumin are same-vendor pack changes I deliberately kept separate. But others look like the cross-vendor cases I *did* link: `avocado`, `arugula`, `chives`, `cheese - swiss`, `beef - skirt steak`, `cabbage - slaw mix`.
+
+Two possible explanations, and I can't tell them apart without checking:
+
+1. **Expected** — `link_vendor_pack` adds a vendor pack to the existing item but the *source row* still registers as a new period entry, so `periodComparison` reports a fork that isn't a duplicate item.
+2. **A gap** — some links didn't consolidate.
+
+The catalog count argues for (1): July added only 82 items against 111 "new" in the preview, and multi-vendor items rose 54 → 97, which is roughly the 60 links I applied.
+
+Worth confirming before declaring the seed clean — if `periodComparison` counts vendor-pack links as forks, that metric needs adjusting rather than the data. Want me to check whether the forked names correspond to one catalog item or two?
