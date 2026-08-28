@@ -1,0 +1,77 @@
+# Questions for Replit — Chart of Accounts, F&B Umbrellas, Multi-Tenant Structure
+
+**Context:** Bay Hill's Orderly export contains a `GL Code` column that maps 1:1 to Category, and we have a 34-account chart of accounts exported from Orderly. Neither is currently captured by the FnB import. Before designing the adoption path, we need to understand what already exists in FnB's architecture.
+
+**What we know from the data:**
+
+* 25 of 26 GL codes used by inventory match the chart of accounts exactly (name and number). The exception is `999900 / No Account`, Orderly's unassigned placeholder.
+* The chart carries two independent axes: `Financial Category` (Sales / COGS / Other Expense) and `Operational Type` (Food / Bar / Direct Operating Cost / Other).
+* These do not nest. `502800 TOGO Supplies` is COGS financially but Direct Operating Cost operationally — the only DOC account classified as COGS.
+* Revenue splits Bar into three accounts (Beer / Wine / Liquor Sales) while COGS splits it into seven categories, so revenue-to-cost joins have to happen at the umbrella level, not category level.
+* Per Orderly's own export note: GL account is assigned per ingredient via a category dropdown; the ingredient has no separate GL field. Category → account is authoritative and uniform.
+
+---
+
+## A. What exists today
+
+1. Is there any **accounts / chart-of-accounts table** in the schema, or any accounting integration that already models GL accounts? We found `categories.accountingAccountId` (varchar, unpopulated) and a `sourceGlCode` field around `schema.ts:2613` — what are each of those for, and is either already wired to anything?
+
+2. `categories.accountingAccountId` has no foreign key. **Is it intended to reference an internal account record, or to hold an external system's identifier?** Its name suggests the former; its type suggests the latter.
+
+3. Is there **any existing concept of a Food / Beverage / Other grouping** above category — in reporting, recipe costing, menu engineering, or the P&L — or would this be net new?
+
+4. How do current reports that need a Food-vs-Bar split derive it today? By category name matching, a hardcoded list, or not at all?
+
+---
+
+## B. Multi-tenant boundaries
+
+5. `categories` is `unique(companyId, name)`, so categories are tenant-scoped. **Should accounts be fully tenant-owned as well**, or is there an existing pattern for platform-provided reference data that tenants adopt or override?
+
+6. Our working assumption: the **accounts** belong to the tenant (Bay Hill's `510800 = Wine` is Bay Hill's), while the **reporting structure** — Operational Type and Financial Category — is platform-defined so reports and any future benchmarking work across tenants. Does that match how FnB handles similar tenant-vs-platform splits elsewhere?
+
+7. Is **cross-tenant benchmarking** on the roadmap — e.g. comparing a club's bar COGS % against peers? This materially changes the design. Platform-defined umbrellas make it possible; tenant-defined free text does not, and retrofitting later means re-mapping every tenant's chart.
+
+8. If Operational Type is platform-defined, what is the right mechanism for a tenant who disagrees — say, wanting Bar Prep counted under Food? A per-tenant override on a fixed enum, or something already established?
+
+9. The schema has very few database-enforced foreign keys. Given tenant separation is otherwise strict, **how should we guarantee a category's account resolves within the same `companyId`** — an FK, an application check, or an existing pattern?
+
+---
+
+## C. Onboarding and the second tenant
+
+10. Bay Hill's chart came from an Orderly export. **The next tenant will not have one.** Is there an existing onboarding path for accounting configuration, or would a CoA import be net new?
+
+11. Should there be a **default chart** for tenants without one? Bay Hill's 34 accounts look like a reasonable club template, but as a seed that is copied and edited per tenant — never shared rows.
+
+12. Do you have visibility into **what a second tenant's chart looks like**? Bay Hill alone cannot tell us which parts of this structure generalise.
+
+---
+
+## D. Reporting model
+
+13. **Does Direct Operating Cost sit below the line, or get allocated across F&B?** This decides whether prime cost is Food + Bar COGS only, or includes direct supplies. Everything else in the profitability model follows from it.
+
+14. We think the direct-vs-indirect supply split is already latent in the data and needs no third axis:
+    * `DOC + COGS` → direct, product-tied (TOGO Supplies, packaging that leaves with the product)
+    * `DOC + Other Expense` → indirect, semi-fixed (Soaps & Chemicals, Linen, Restaurant Supplies)
+
+    Does that read correctly against how FnB models cost, or is there an existing direct/indirect concept we should use instead?
+
+15. Where should **`999900 / No Account`** map? It appears in inventory but not the chart of accounts. It needs a destination so those items do not silently drop out of rollups.
+
+16. **Caution for validation:** Direct Operating Cost is **0.03% of counted inventory value** — $85.93, identical in all three months, a single Paper Products line. TOGO Supplies, Soaps and Restaurant Supplies all count zero. These are purchase-driven, not inventory-driven. Any DOC model should be validated against **invoice data**, not the inventory seed, or it will look like noise.
+
+---
+
+## E. Sequencing against the current seed
+
+17. Two small items would ideally land before June is imported:
+    * **Capture `GL Code` at import.** It is in every source row and is the evidence linking an item to its account. Without it the mapping is inferred from category names rather than stated by the source.
+    * **Seed Bay Hill's chart of accounts** so account numbers attach as categories are created, rather than being backfilled.
+
+    Are either of these small enough to do now, or should both wait for the full design?
+
+18. May is already approved with 55 categories created without account numbers. Backfilling is a ~26-row update rather than a re-seed — **is that acceptable, or would you rather the CoA work land before the seed continues?**
+
+19. Is there anything in the umbrella or accounts design that would **change what the importer writes**? If so it should land before the reseed; if it is purely additive reporting structure, it can follow the three months safely.
