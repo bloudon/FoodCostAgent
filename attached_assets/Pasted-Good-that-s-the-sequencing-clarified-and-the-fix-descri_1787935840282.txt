@@ -1,0 +1,19 @@
+Good — that's the sequencing clarified, and the fix description is exactly right. Code-qualified derived identities for stable codes is the correct shape: it keeps 638335 and 638336 distinct without touching the normalizer, so Casamigos-style matching survives.
+
+The two details I'd have worried about are both explicitly covered — "prevents stable rows from consuming generic name+pack identity caches" and "keeps mixed pseudo-code/stable-code groups from becoming order-dependent." That second one is the subtle bug I wouldn't have thought to specify: if the outcome depended on row processing order, it would pass tests and fail unpredictably on a different batch.
+
+So the path is clear. Two things before the reseed starts:
+
+Confirm whether #1271 changes staged parse or classification output. If it does, all three months need re-uploading rather than the current batches being reused. Given the fix touches identity derivation — which is computed at preview, not frozen at upload — my expectation is that a reseed picks it up cleanly either way. Worth a yes/no from Replit rather than an assumption, since we've been caught by this twice.
+
+The reseed needs a live ticket. #1272 is cancelled and the amendments document has no home. Whoever revives it should take those four corrections as the Done criteria — decisions re-created rather than carried forward, the 31-candidate metric dropped, the two collision pairs as explicit pass conditions, and reconciliation against Orderly's Detail sums.
+
+Once that exists and dev is cleared, the run is:
+
+May — upload, verify the parse targets, approve. No decisions.
+June — ~187 decisions. Cross-vendor links first, then both bulk actions.
+July — ~225 decisions. Same order. This is where #1271 gets proven.
+
+I'll log each decision into the register as I go, so the artifact grows from the actual run rather than being reconstructed after.
+
+Ready when dev is cleared and May is uploaded. If you can also grab a few items off the hit list while the reseed ticket is being sorted — the three Busy Bean products and three Font Group bars are $8.4k of the $16.3k — those would fold straight into the register.
