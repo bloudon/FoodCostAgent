@@ -1,0 +1,93 @@
+# Amendments to #1272 — Rebuild Bay Hill Imports
+
+**Purpose:** Four corrections to #1272 as written. The intent is right; these adjust criteria that cannot be met as stated, and add pass conditions that can be checked objectively.
+
+**Dependency:** #1272 must not start until the derived-identity collision fix has shipped. Without it, July fails at approval with no operator workaround, exactly as it does today.
+
+---
+
+## 1. Review decisions will NOT survive the reseed
+
+**As written:** *"Every review decision is revalidated against the fresh preview before approval."*
+
+This implies existing decisions carry forward. They cannot. Review decisions are **batch-scoped** — a wipe deletes them along with the batches. Replit's own earlier reset confirmed this, removing 168 saved decisions with the two batches it cleared. Fresh uploads produce new batch IDs and zero decisions.
+
+**Amend to:** *"Review decisions are re-created for each batch and revalidated against the fresh preview before approval."*
+
+### Implication that should be stated in the ticket
+
+June and July each require a **manual review pass**. Recent counts:
+
+| Batch | Decisions | Composition |
+|---|---|---|
+| June | ~187 | 88 `link_existing`, 57 `create_variant`, 41 `link_vendor_pack`, 1 held |
+| July | ~225 | 60 `link_existing`, 102 `create_variant`, 60 `link_vendor_pack`, 3 held |
+
+That work is not absorbed by the reseed ticket. It involves verifying flagged duplicate candidates against the source workbooks, applying cross-vendor links **before** the Category 2 bulk action, and resolving multi-location identity groups individually. Claude is doing this leg; it should be named as a distinct step with an owner rather than implied.
+
+---
+
+## 2. Drop the 31-candidate duplicate diagnostic from Done
+
+**As written:** *"…and the full 31-candidate duplicate diagnostic reconcile to the approved evidence."*
+
+The 31-candidate population came from a specific run **before** the cross-vendor identity work landed. After #1269 the June fork count dropped to **23**, all same-vendor pack changes. Holding a fresh run to 31 measures against a stale baseline and would either fail spuriously or invite tuning the metric to match.
+
+**Replace with a behavioural condition:**
+
+> No name-paired added/removed fork where the prior-month vendor and current-month vendor differ.
+
+That is the actual defect class. Same-vendor pack changes — Casamigos minis vs bottles, Heitz 750 ML vs 4,500 ML, Milk-Whole gallon tiers — are **correct forks** and must be excluded from any duplicate metric.
+
+---
+
+## 3. Add a concrete pass condition for the collision fix
+
+**As written:** *"July approves without derived-identity collisions."*
+
+Correct but unfalsifiable — an absence of errors could mean the fix works or that the rows took a different path. Make it a positive assertion:
+
+* `638335` and `638336` (HUNDRED ACRE CAB SAUV MORG W) both import, as **two distinct inventory items**
+* `313642` and `389849` (MONTES PURPLE ANGEL RED BLND) both import, as **two distinct inventory items**
+* Casamigos-style normalisation is unchanged — punctuation and case differences still match where codes agree
+
+---
+
+## 4. Reconcile against Orderly's published totals, not just internal consistency
+
+**As written:** *"Period totals … reconcile to the approved evidence."*
+
+Internal reconciliation (`importedTotal` == `snapshotTotal`) has passed on every run to date and is no longer informative. The meaningful check is against the source of truth.
+
+| Month | Orderly displayed total | FnB expected (Detail sum) |
+|---|---|---|
+| May | $254,285.74 | $254,286.67 |
+| June | $261,006.73 | $261,007.67 |
+| July | $254,298.83 | $254,299.75 |
+
+**The ~$0.93 difference each month is expected and explained.** Orderly's Summary sheet carries full float precision (`254285.737889`) which its UI rounds for display, while every Detail row is cent-rounded. Summing ~5,400 cent-rounded rows yields ~$0.93 of upward bias. FnB matches the auditable Detail rows. Both are internally consistent; they are different summations of the same data.
+
+**Add to Done:** each month's `excludedRowCount` is **0** and `importedTotal` equals the workbook Detail sum exactly.
+
+---
+
+## Additional pass conditions worth adding
+
+Cheap to check, and each corresponds to a defect fixed during this cycle:
+
+* **Cross-vendor consolidation** — items carrying packs from more than one vendor should be well above zero. After June it was 54; after the previous full run, 1.
+* **`vendor_items` populated** — was 0 before #1263, then 2,319 after May and 2,412 after June. A count of 0 means the vendor-pack write regressed.
+* **Unit recovery** — unknown-geometry rows should be ~152 for May, not 246. The five mini SKUs should resolve to 120 / 120 / 120 / 60 / 60 units at $1.02 / $0.98 / $1.67 / $1.96 / $4.18 per unit.
+* **`1/1 Case` rows remain unknown** — these carry no multipliers and must stay fail-closed.
+
+---
+
+## Operational notes for whoever runs it
+
+Discovered during the last three passes; each cost time to find:
+
+1. **Parse results freeze at upload.** Any parser change requires re-uploading the affected batch, not just re-reviewing it.
+2. **Order matters within a batch.** Apply cross-vendor links **before** the Category 2 bulk action. The bulk dialog flags likely duplicates but still includes them, and confirming would overwrite saved `link_vendor_pack` decisions.
+3. **The review list paginates at 100 with no search.** July's New-pack-size bucket held 160 rows; five flagged items sat on page 2, invisible to a page-1 scan.
+4. **One product can appear as several identity groups by location** — Shrimp 16-20 across 4 groups, Lobster Claw 2, Demi-Glace 3. Each needs resolving, all targeting the same item.
+5. **Approval takes 60–130 seconds with no reliable progress signal.** Do not retry — idempotency is unverified (#1265), and approved batches cannot be discarded. July's first attempt took the dev server down at 108 seconds on 5,518 rows.

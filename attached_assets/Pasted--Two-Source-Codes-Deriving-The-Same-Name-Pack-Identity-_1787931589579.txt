@@ -1,0 +1,114 @@
+# Two Source Codes Deriving The Same Name+Pack Identity Abort Approval
+
+**Priority:** Blocker — July cannot be approved, and there is no review-side workaround
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `ef6a504e-ddfb-453f-a6b9-f0a9c42182dc` (July_2026, 5,518 rows, 225 decisions saved, all resolved)
+
+## Summary
+
+Approval aborts with:
+
+> **Approval failed** — The derived Orderly identity is already confirmed for a different inventory item.
+
+Two distinct, stable source Item Codes normalize to the **same name and pack**, so both derive the same `ALT|<normalized name>|<pack key>` identity. The first confirms it; the second aborts the entire batch.
+
+**The affected rows carry no review decision and cannot be given one.** They are classified *"Matched — Prior mapping"* — auto-resolved from May/June code mappings. No filter surfaces them as actionable, so an operator has no way to intervene. July is unapprovable until this is fixed in code.
+
+## Reproduction
+
+Two independent cases in July:
+
+### Case 1 — HUNDRED ACRE CAB SAUV MORG W
+
+| Row | Item Code | Description | Pack |
+|---|---|---|---|
+| 579 / 1365 | `638336` | `HUNDRED ACRE CAB SAUV MORG W` | `3/1 750ML` |
+| 581 / 1367 | `638335` | `HUNDRED ACRE CAB SAUV MORG W**.**` | `3/1 750ML` |
+
+Catalog holds **one** matching item: `HUNDRED ACRE CAB SAUV MORG W`, FnB #44964, `caseSize 2250`, `containerSize 750`.
+
+### Case 2 — MONTES PURPLE ANGEL
+
+| Row | Item Code | Description | Pack |
+|---|---|---|---|
+| 797 | `389849` | `MONTES PURPLE ANGEL RED BLND 6PK **+** 14` | `6/1 750ML` |
+| 798 | `313642` | `MONTES PURPLE ANGEL RED BLND 6PK**+**14` | `6/1 750ML` |
+
+Catalog holds `MONTES PURPLE ANGEL RED BLND 6PK + 14`, FnB #45112.
+
+### The distinguishing characters are erased by normalization
+
+The codes differ **only** by punctuation in the description:
+
+* a trailing period — `MORG W.` vs `MORG W`
+* spaces around a plus — `6PK+14` vs `6PK + 14`
+
+`normalizeForMatch` converts non-alphanumerics to spaces and collapses whitespace. That is correct and desirable in general — it is what lets `Casamigo's - Blanco` match `CASAMIGOS BLANCO`. Here it removes the only thing distinguishing two genuinely different SKUs, most likely separate vintages or allocations that Orderly tracks under separate codes.
+
+Both pairs also exist in the May and June workbooks (4 and 2 rows respectively). They did not collide previously because those rows resolved through the descriptive-code path. Widening derived-identity eligibility surfaced the conflict.
+
+Only one row carries stock: `638336` at 3 units / $1,638.00. The rest are zero-value.
+
+## Why this cannot be resolved in review
+
+* Both rows are **"Matched — Prior mapping"**, not pending decisions.
+* `GET review-decisions` confirms **no saved decision** exists for rows 579, 581, 797, 798, 1365, 1367 — and none can be created.
+* They appear under no actionable status filter: not *New pack size*, not *Pack check*, not *Alternate code*, not *Name + pack identity*, not *Held for review*.
+* All 225 decisions are saved and the outstanding-decision banner is clear. The batch looks fully resolved and Approve is enabled.
+
+An operator reaching this state has a green light, an enabled button, and a failure they cannot act on.
+
+## Requested
+
+1. **Two distinct stable source codes must be able to coexist as separate inventory items** even when their normalized name and pack collide. Both rows here have stable codes with existing code mappings; the code-based mapping should take precedence over the derived name+pack identity rather than aborting.
+2. **A derived-identity collision must not abort the batch.** At minimum it should be surfaced during preview as a reviewable decision, not discovered at the irreversible step.
+3. **Name the conflicting parties in the error.** The current message identifies neither item, code, nor row. Diagnosing this required exporting the workbook and grouping by normalized name and pack key — not available to a production operator.
+
+## Done looks like
+
+* July batch `ef6a504e` approves with the existing 225 decisions.
+* `638335` and `638336` resolve to distinct inventory items; likewise `313642` and `389849`.
+* Casamigos-style normalization behaviour is unchanged — punctuation and case differences still match where codes agree.
+* Any remaining derived-identity conflict is reported in the preview with item description, Item Code, and row, and is resolvable before approval.
+* Regression: two stable codes whose descriptions differ only by punctuation, with identical pack, both import successfully as separate items.
+
+## Out of scope
+
+* Loosening or tightening `normalizeForMatch` generally.
+* Changing `link_vendor_pack`, unknown-geometry, or descriptive-code behaviour.
+* Editing the source workbooks.
+
+## What is working — please preserve
+
+Three consecutive July approval failures, all rolled back cleanly:
+
+* Catalog steady at **3,093 items / 2,412 vendor_items** after every attempt
+* All **225 decisions preserved**, no stale invalidations
+* "Retry approval safely" offered each time
+
+One failure was a dev-server crash mid-approval (5,518 rows), and even that left no partial write.
+
+## Related observations from this run
+
+1. **Approval load.** The first July attempt took the dev server down at ~108 seconds. May took 129s, June 104–119s. July is the largest month at 5,518 rows. Relevant to #1265.
+2. **Review list paginates at 100 with no search.** July's New-pack-size bucket had 160 rows; five flagged items sat on page 2 and were invisible to a page-1 scan. An operator scanning one page would miss them silently.
+3. **One product can appear as several identity groups by location** — Shrimp 16-20 across 4 groups, Lobster Claw 2, Demi-Glace 3. Each needs resolving separately, and all must target the same item.
+
+## Current July decision set — ready to retry once fixed
+
+| Action | Rows |
+|---|---|
+| `create_variant` | 102 |
+| `link_vendor_pack` | 60 |
+| `link_existing` | 60 |
+| held-row links | 3 |
+| **Total** | **225** |
+
+Please confirm whether the fix alters staged parse or classification output. **The plan is to re-seed May → June → July from scratch after this lands**, so a full re-upload is expected either way.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — derived-identity confirmation during approval
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.ts` — `deriveOrderlyAlternateSourceId`
+* `artifacts/api-server/src/services/orderly/OrderlyMatcher.ts` — `normalizeForMatch`
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts`
