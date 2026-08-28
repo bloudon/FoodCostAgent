@@ -1,0 +1,113 @@
+# Preview And Approval Disagree On Pack Compatibility — June Approval Fails
+
+**Priority:** Blocker — June cannot be approved
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `4abf8f33-1472-49f3-96eb-ba16827e1c86` (June_2026, 5,409 rows, pending review, 168 decisions saved)
+**Failing row:** Orderly row 538 — `HEITZ CAB SAUV MARTHAS 18 WD`, Item Code `623764`, Southern Glazer's, Liquor Cage
+
+> **Numbering:** two shipped tickets are both recorded as #1256 (descriptive-code identity, and the revived #1255 parser scope). Please resolve that collision.
+
+---
+
+## Summary
+
+A fully-resolved June batch fails at approval with:
+
+> **Approval failed** — Orderly row 538 conflicts with the existing pack for this vendor and inventory item.
+
+The preview classifier put this row in the **"Same physical pack"** bucket, so it was included in the 32-code Category 1 bulk link. The approval-time revalidation then rejected it as a pack conflict. Both ran against the same data.
+
+**A batch can therefore pass every review gate and still fail at the irreversible step, with no way for an operator to identify or fix the offending row.**
+
+## The disagreement
+
+| | Pack Size | Normalized |
+|---|---|---|
+| May catalog (approved) | `6/1 750ML` | 4,500 ML |
+| June source row 538 | `1/1 750ML` | 750 ML |
+
+Same vendor (Southern Glazer's), same item code (`623764`), same location (Liquor Cage). A 6× pack difference was classified as the *same physical pack*.
+
+This is not a cross-vendor case, so `link_vendor_pack` does not apply. It should have been classified as **New pack size** and routed to a separate-variant decision, exactly like the other same-vendor pack differences in this batch (Casamigos `5/50 ML` vs `6/1 LT`, Ketel One `10/50 ML`).
+
+The row carries `Total Units = 0` and `Total Cost = $0.00` in both months — a listed wine that was not on hand — so no inventory value is at stake in the outcome.
+
+## What worked correctly — please preserve
+
+The failure handling was exemplary and should not regress:
+
+* The transaction **rolled back atomically**. Catalog remained at 3,052 items and 2,319 vendor_items, unchanged from the post-May state. No partial write.
+* All **168 saved decisions were preserved**.
+* The UI offered **"Retry approval safely"** rather than leaving the operator guessing.
+
+This was the first observed approval failure, and the atomicity guarantee held.
+
+## Requested
+
+### 1. Fix the classifier disagreement (primary)
+
+Preview classification and approval-time revalidation must reach the same verdict on the same data. Row `623764` should be classified as a new pack size in the preview, not as a compatible link.
+
+Please determine which side is wrong. The approval-time check appears correct — 750 ML and 4,500 ML are genuinely different packs — which suggests the preview's same-pack classification is the defect.
+
+### 2. Make the error actionable
+
+The message names **"Orderly row 538"**, an internal index that is never displayed in the UI. Confirmed unreachable by an operator:
+
+* There is **no search box** in the Resolution Preview — only category and status filters.
+* The row does not appear under any status filter: `Alternate code`, `Matched`, `Likely`, `New`, `Pack check`, `New pack size`, `Name + pack identity`, or `Held for review`.
+* Filtering by category `Wine` returns 1,315 rows across 14 pages with no way to jump to it.
+
+I could only identify the row by opening the source workbook and indexing to line 538 — not a path available to a production operator.
+
+The error should name the item and code (e.g. *"HEITZ CAB SAUV MARTHAS 18 WD (623764)"*), state both packs, and ideally deep-link or filter to the row.
+
+### 3. Consider surfacing all conflicts at once
+
+Approval currently fails on the first conflicting row. If several rows conflict, an operator faces a sequence of ~75-second failed approvals, discovering one row at a time. Validating the full decision set and reporting every conflict in one pass would make this recoverable in a single cycle.
+
+## Done looks like
+
+* Row `623764` is classified as a new pack size in the preview and offered a separate-variant decision.
+* A batch that shows zero outstanding decisions and an enabled Approve button does not fail approval on a pack-compatibility conflict.
+* Approval errors identify the row by item description and Item Code, not by internal index.
+* Any remaining approval-time conflict is reachable in the UI.
+* Atomic rollback, decision preservation, and "Retry approval safely" behaviour are unchanged.
+* Regression: a same-vendor row whose pack differs from the catalog is never placed in the Category 1 compatible-link bucket.
+
+## Out of scope
+
+* Changing `link_vendor_pack` / cross-vendor behaviour, which is working correctly (27 rows across 13 genuine supplier changes saved successfully in this batch).
+* Changing unknown-geometry handling.
+* Approving June.
+
+## Two smaller issues found in the same session
+
+Both relate to the Category 2 bulk action and are lower priority.
+
+**a. The bulk dialog ignores already-saved decisions.** After saving all 13 cross-vendor items as `link_vendor_pack`, the button still read "Create 30 new variants in bulk" and the dialog still listed 30 entries with 13 duplicate warnings. It should have dropped to 17. Confirming would have overwritten the 13 saved links with `create_variant` — recreating the duplicates the feature exists to prevent.
+
+**b. Panel copy contradicts its own recommendation.** On cross-vendor rows the header still reads *"It must be kept as a separate variant"* and *"Different physical pack — linking is blocked. Create a separate variant instead"*, directly above a **Recommended** "Keep one item, add this vendor pack" action. An operator following the prose produces duplicates.
+
+Worth noting the per-item warning — *"Creating this variant may duplicate an item already supplied by another vendor"* — is genuinely useful and is what allowed the 13 cross-vendor rows to be identified precisely.
+
+## Current batch state
+
+Nothing lost. June is fully resolved and ready to retry once the classifier is corrected:
+
+| Action | Rows |
+|---|---|
+| `link_existing` | 88 |
+| `create_variant` | 52 |
+| `link_vendor_pack` | 27 |
+| held-row link | 1 |
+| **Total** | **168** (all `revision: 1`) |
+
+**Please confirm whether the fix changes staged parse or classification output.** If it does, June must be re-uploaded rather than retried, since parse results are frozen at upload time.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — preview classification and under-lock revalidation
+* `artifacts/api-server/src/services/orderly/packGeometry.ts`
+* `artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx`
+* `artifacts/api-server/src/routes/orderlyImportRoutes.ts`
