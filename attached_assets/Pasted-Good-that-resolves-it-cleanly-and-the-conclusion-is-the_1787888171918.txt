@@ -1,0 +1,34 @@
+Good — that resolves it cleanly, and the conclusion is the important part: **a vendor change with no offered link is an identity-path defect, not a reporting exclusion.**
+
+I can produce most of that diagnostic right now from the workbooks, which will tell #1269 what it's actually up against rather than waiting for instrumentation.Here's the full diagnostic across all 31 — and it reframes the problem substantially.
+
+## Only 7 of 31 are cross-vendor
+
+| Item | May vendor | June vendor | Code |
+|---|---|---|---|
+| Cabbage - Red | Mr. Green's | Harvill's | stable |
+| Cheese - Cheddar Mild Shredded | GFs Store | Sysco | stable |
+| Mushrooms - Blends/Mix | Fungi Jon | Mr. Green's | stable |
+| Olive Oil - Extra Virgin | Ambrosia Market | Pensato USA | **pseudo** |
+| Onions - Yellow | Mr. Green's | Harvill's | **pseudo** |
+| Shallots - Peeled | Harvill's | Mr. Green's | stable |
+| Squash - Zucchini | Mr. Green's | Harvill's | **pseudo** |
+
+**Only 3 have descriptive codes.** So #1269's premise — that the pseudo-code gate blocked cross-vendor linking — accounts for *three* items, not six. The ticket names Avocado, Cabbage-Red, Olive Oil, Onions-Yellow, Squash-Zucchini and Tuna; of those, Cabbage-Red, Shallots and Cheese-Cheddar are **stable-code cross-vendor rows that should already have been eligible and weren't offered a link.** That's a separate defect from the one #1269 describes.
+
+**Avocado is not cross-vendor at all.** Both months list Mr. Green's *and* Harvill's — the vendor sets overlap, so it forked for some other reason. My earlier framing of it as the headline cross-vendor case was wrong; it was based on a partial read of the source. Same for Tuna: Sysco in May, Samuels in June, but with `nan` suppliers in the mix.
+
+## The other 24 are same-vendor pack changes
+
+Sysco Buttermilk `1/1 EA` → `9/0.5 GAL`. Cheney Ground Chuck `1/1 LB` → `1/120 EA`. Harvill's Chives `1/1 LB` → `1/0.25 LB`. Same supplier, genuinely different pack month to month — these are **correct forks**, and no cross-vendor path applies.
+
+So the population breaks down roughly as: **~24 correct**, **3 pseudo-code blocked** (#1269's actual scope), **4 stable-code cross-vendor that should have worked**.
+
+## What I'd feed back
+
+1. **#1269's scope is 3 items, not 6.** Still worth building — it's the right fix for that class.
+2. **The 4 stable-code cross-vendor forks are a distinct defect.** Cabbage-Red, Shallots-Peeled, Cheese-Cheddar had stable codes and differing vendors, and `link_vendor_pack` wasn't offered. That's the eligibility path failing for reasons unrelated to descriptive codes.
+3. **Avocado should come off the list** — its vendor sets overlap across months, so it needs its own explanation.
+4. **The bulk of 31 is expected behavior**, which supports the reporting side of the cancelled #1270 without needing an assumed count.
+
+The useful headline: the duplicate population is mostly legitimate, and the real defect surface is about 7 items — which is a much smaller thing to chase than 31.
