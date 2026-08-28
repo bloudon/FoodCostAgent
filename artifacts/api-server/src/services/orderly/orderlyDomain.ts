@@ -283,6 +283,19 @@ function assertReviewDecisionMatchesPreview(
   }
 }
 
+function previewRowConflictLabel(row: ResolutionPreviewResult['rows'][number]): string {
+  const description = row.cleanedDescription?.trim() || 'Description unavailable';
+  const code = row.sourceItemCode?.trim() || 'Item Code unavailable';
+  const incomingPack = row.packSizeRaw?.trim() || 'incoming pack unavailable';
+  const candidate = row.itemMatch.candidatePackEvidence;
+  const existingPack = candidate
+    ? [candidate.caseQuantity, candidate.innerPackQuantity, candidate.baseUnitQuantity, candidate.baseUnit]
+        .filter(value => value != null && value !== '')
+        .join(' × ')
+    : 'existing pack unavailable';
+  return `${description} (Item Code ${code}; incoming ${incomingPack}; existing ${existingPack})`;
+}
+
 function reviewDecisionActionSignature(decision: ReviewDecisionPayload): string {
   return JSON.stringify({
     action: decision.action,
@@ -400,21 +413,23 @@ function assertSavedReviewDecisionsRemainValid(
     );
   }
   const recodeDecisionByCode = new Map<string, RowDecision>();
+  const staleDecisionDetails: string[] = [];
   for (const decision of decisions) {
     const row = rowsByIndex.get(decision.rowIndex);
     if (!row) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Saved review decision references row ${decision.rowIndex}, which is no longer part of this batch.`,
-      );
+      staleDecisionDetails.push(`row ${decision.rowIndex} is no longer part of this batch`);
+      continue;
     }
-    assertReviewDecisionMatchesPreview(row, decision);
+    try {
+      assertReviewDecisionMatchesPreview(row, decision);
+    } catch (err: any) {
+      staleDecisionDetails.push(`${previewRowConflictLabel(row)}: ${err?.message ?? 'saved decision is no longer valid'}`);
+      continue;
+    }
     if (decision.action === undefined) continue;
     if (!isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Saved re-code decision for row ${decision.rowIndex} is no longer eligible.`,
-      );
+      staleDecisionDetails.push(`${previewRowConflictLabel(row)}: saved re-code decision is no longer eligible`);
+      continue;
     }
     const sourceCode = row.sourceItemCode!.trim();
     const prior = recodeDecisionByCode.get(sourceCode);
@@ -432,6 +447,12 @@ function assertSavedReviewDecisionsRemainValid(
       );
     }
     recodeDecisionByCode.set(sourceCode, decision);
+  }
+  if (staleDecisionDetails.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Saved review decisions became stale after pack evidence changed. Review these items again: ${staleDecisionDetails.join(' | ')}`,
+    );
   }
 
   for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
@@ -778,6 +799,7 @@ function toPreviewPackEvidence(geometry: SourcePackGeometry): PackEvidence {
 function assessCandidatePackCompatibility(
   source: SourcePackGeometry,
   evidences: SourcePackGeometry[],
+  preferIncompatible = false,
 ): {
   status: 'compatible' | 'incompatible' | 'unknown';
   reason: string;
@@ -791,6 +813,14 @@ function assessCandidatePackCompatibility(
     };
   }
   const results = evidences.map(evidence => ({ evidence, comparison: comparePackGeometry(source, evidence) }));
+  const incompatible = results.find(result => result.comparison.status === 'incompatible');
+  if (preferIncompatible && incompatible) {
+    return {
+      status: incompatible.comparison.status,
+      reason: incompatible.comparison.reason,
+      candidatePackEvidence: toPreviewPackEvidence(incompatible.evidence),
+    };
+  }
   const compatible = results.find(result => result.comparison.status === 'compatible');
   if (compatible) {
     return {
@@ -799,7 +829,6 @@ function assessCandidatePackCompatibility(
       candidatePackEvidence: toPreviewPackEvidence(compatible.evidence),
     };
   }
-  const incompatible = results.find(result => result.comparison.status === 'incompatible');
   if (incompatible) {
     return {
       status: incompatible.comparison.status,
@@ -1512,6 +1541,7 @@ export async function runResolutionPreview(
     packEvidenceByItemId.set(mapping.inventoryItemId, evidences);
   }
   const catalogPackEvidenceByIdentity = new Map<string, CatalogPackSizeEvidence[]>();
+  const catalogPackEvidenceByVendorItem = new Map<string, SourcePackGeometry[]>();
   for (const mapping of catalogPackSizeMappings as Array<{
     vendorId: string;
     inventoryItemId: string;
@@ -1524,15 +1554,17 @@ export async function runResolutionPreview(
     baseUnit: string | null;
   }>) {
     const sourceItemCode = normalizedStableSourceCode(mapping.sourceItemCode ?? mapping.vendorSku);
+    const vendorItemKey = `${mapping.vendorId}\u0000${mapping.inventoryItemId}`;
+    const vendorItemEvidence = catalogPackEvidenceByVendorItem.get(vendorItemKey) ?? [];
+    vendorItemEvidence.push(mapping);
+    catalogPackEvidenceByVendorItem.set(vendorItemKey, vendorItemEvidence);
     // Fallback mappings deliberately lack a stable Orderly packSize.id and
     // cannot establish this source-identity conflict.
     if (!sourceItemCode || mapping.packSizeId.startsWith('fallback|')) continue;
+    const catalogEvidence = { ...mapping, sourceItemCode };
     const key = catalogPackEvidenceKey(mapping.vendorId, mapping.inventoryItemId, sourceItemCode);
     const evidence = catalogPackEvidenceByIdentity.get(key) ?? [];
-    evidence.push({
-      ...mapping,
-      sourceItemCode,
-    });
+    evidence.push(catalogEvidence);
     catalogPackEvidenceByIdentity.set(key, evidence);
   }
   const vendorSuppliesByItemId = new Map<string, ExistingVendorSupply[]>();
@@ -1659,9 +1691,22 @@ export async function runResolutionPreview(
           it => normalizeForMatch(it.name) === normalizedDesc,
         );
         if (nameExactMatch) {
+          const candidateSuppliers = vendorSuppliesByItemId.get(nameExactMatch.id) ?? [];
+          const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
+          const candidateHasSameVendor = sourceVendorKey != null && candidateSuppliers.some(supply =>
+            sourceVendorKey === `vendor:${supply.vendorId}` ||
+            sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
+          );
+          const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
+            ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${nameExactMatch.id}`) ?? []
+            : [];
+          const candidatePackEvidence = sameVendorCatalogEvidence.length > 0
+            ? sameVendorCatalogEvidence
+            : packEvidenceByItemId.get(nameExactMatch.id) ?? [];
           const packAssessment = assessCandidatePackCompatibility(
             sourcePackGeometry(row as any),
-            packEvidenceByItemId.get(nameExactMatch.id) ?? [],
+            candidatePackEvidence,
+            candidateHasSameVendor,
           );
           itemMatch = {
             ...itemMatch,
@@ -1678,12 +1723,6 @@ export async function runResolutionPreview(
               // cannot prove identity or create a permanent source mapping.
               requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
           };
-          const candidateSuppliers = vendorSuppliesByItemId.get(nameExactMatch.id) ?? [];
-          const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
-          const candidateHasSameVendor = sourceVendorKey != null && candidateSuppliers.some(supply =>
-            sourceVendorKey === `vendor:${supply.vendorId}` ||
-            sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
-          );
           const crossVendorPackEligible =
             sourceCodeReliability === 'stable' &&
             packAssessment.status === 'incompatible' &&
@@ -2413,11 +2452,42 @@ export async function authorizeOrderlyApprovalJobAccess(
 export async function getOrderlyReviewDecisions(
   batchId: string,
   auth: ApprovalAuthorizationContext | null | undefined,
-): Promise<{ decisions: SavedReviewDecision[] }> {
+): Promise<{
+  decisions: SavedReviewDecision[];
+  stale: Array<{ rowIndex: number; reason: string; sourceItemCode: string | null; description: string | null }>;
+}> {
   const contract = await resolveApprovalContract(batchId, auth);
-  return {
-    decisions: await loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId),
-  };
+  const [preview, decisions] = await Promise.all([
+    runResolutionPreview(contract.batch.id, contract.companyId),
+    loadStoredReviewDecisionRecords(contract.batch.id, contract.companyId),
+  ]);
+  const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  const valid: SavedReviewDecision[] = [];
+  const stale: Array<{ rowIndex: number; reason: string; sourceItemCode: string | null; description: string | null }> = [];
+  for (const saved of decisions) {
+    const row = rowsByIndex.get(saved.rowIndex);
+    if (!row) {
+      stale.push({
+        rowIndex: saved.rowIndex,
+        reason: 'This row is no longer part of the staged import.',
+        sourceItemCode: null,
+        description: null,
+      });
+      continue;
+    }
+    try {
+      assertReviewDecisionMatchesPreview(row, saved.decision);
+      valid.push(saved);
+    } catch (err: any) {
+      stale.push({
+        rowIndex: saved.rowIndex,
+        reason: err?.message ?? 'This saved decision no longer matches the current pack evidence.',
+        sourceItemCode: row.sourceItemCode,
+        description: row.cleanedDescription,
+      });
+    }
+  }
+  return { decisions: valid, stale };
 }
 
 function manifestBatchForContract(
@@ -2978,7 +3048,7 @@ export async function applyBatchApproval(
     if (!decision) {
       throw new ImportApprovalError(
         'CONFLICT',
-        `Orderly Item Code ${code} has an exact-name re-code candidate and requires an explicit link, vendor-pack link, or separate-variant decision before approval.`,
+        `${previewRowConflictLabel(row)} requires an explicit link, vendor-pack link, or separate-variant decision before approval.`,
       );
     }
     const expectedCandidateId = row.itemMatch.possibleRecodeMatchedId;

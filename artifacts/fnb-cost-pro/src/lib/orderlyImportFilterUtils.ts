@@ -203,7 +203,10 @@ function isBulkNewPackSizeRow(row: RowPreviewLike): boolean {
  * verified incompatible-pack candidate. This deliberately leaves conflicts,
  * missing evidence, unstable codes, and exceptions in the individual review.
  */
-export function getBulkNewPackSizeReview(rows: RowPreviewLike[]): BulkNewPackSizeReview {
+export function getBulkNewPackSizeReview(
+  rows: RowPreviewLike[],
+  hasSavedDecision: (row: RowPreviewLike) => boolean = () => false,
+): BulkNewPackSizeReview {
   const rowsByCode = new Map<string, RowPreviewLike[]>();
   for (const row of rows) {
     const code = row.sourceItemCode?.trim();
@@ -215,6 +218,7 @@ export function getBulkNewPackSizeReview(rows: RowPreviewLike[]): BulkNewPackSiz
 
   const candidates: BulkNewPackSizeCandidate[] = [];
   for (const [sourceItemCode, codeRows] of rowsByCode) {
+    if (codeRows.some(hasSavedDecision)) continue;
     if (!codeRows.every(isBulkNewPackSizeRow)) continue;
 
     const comparableIds = new Set(
@@ -374,7 +378,10 @@ function compatiblePackExclusion(
  * target, vendor, identity group, and pack evidence. This is a selector for
  * the existing review-decision contract, not an authorization boundary.
  */
-export function getBulkCompatiblePackReview(rows: RowPreviewLike[]): BulkCompatiblePackReview {
+export function getBulkCompatiblePackReview(
+  rows: RowPreviewLike[],
+  hasSavedDecision: (row: RowPreviewLike) => boolean = () => false,
+): BulkCompatiblePackReview {
   const rowsByCode = new Map<string, RowPreviewLike[]>();
   for (const row of rows) {
     const code = row.sourceItemCode?.trim();
@@ -387,6 +394,7 @@ export function getBulkCompatiblePackReview(rows: RowPreviewLike[]): BulkCompati
   const candidates: BulkCompatiblePackCandidate[] = [];
   const excludedGroups: BulkCompatiblePackExclusion[] = [];
   for (const [sourceItemCode, codeRows] of rowsByCode) {
+    if (codeRows.some(hasSavedDecision)) continue;
     const eligible =
       codeRows.every(row =>
         row.rowIndex != null &&

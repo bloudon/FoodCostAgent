@@ -250,6 +250,22 @@ describe("getBulkNewPackSizeReview", () => {
 
     expect(review.candidates).toEqual([]);
   });
+
+  it("derives bulk variants only from unresolved groups and preserves 13 saved vendor-pack choices", () => {
+    const rows = Array.from({ length: 30 }, (_, index) => newPackRow({
+      rowIndex: index + 1,
+      sourceItemCode: `PACK-${String(index + 1).padStart(2, "0")}`,
+    }));
+    const savedRows = new Set(rows.slice(0, 13).map(row => row.rowIndex));
+
+    const review = getBulkNewPackSizeReview(
+      rows,
+      row => row.rowIndex != null && savedRows.has(row.rowIndex),
+    );
+
+    expect(review.candidates).toHaveLength(17);
+    expect(review.candidates.every(candidate => candidate.rowIndexes.every(rowIndex => !savedRows.has(rowIndex)))).toBe(true);
+  });
 });
 
 describe("getBulkCompatiblePackReview", () => {

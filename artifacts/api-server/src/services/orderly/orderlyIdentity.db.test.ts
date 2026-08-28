@@ -32,6 +32,7 @@ import {
 } from '@workspace/db';
 import {
   applyBatchApproval,
+  getOrderlyReviewDecisions,
   ImportApprovalError,
   runResolutionPreview,
   saveOrderlyReviewDecisionChanges,
@@ -1743,6 +1744,66 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         normalizedPricePerCanonicalUnit: 2.5,
       },
     ]);
+  });
+
+  it('classifies same-vendor 1/1 750ML against 6/1 750ML as a new pack and invalidates the old compatible link', async () => {
+    const baseBatch = await stageBatch([{
+      code: 'HEITZ-BASE-6X750',
+      description: 'HEITZ CAB SAUV MARTHAS 18 WD',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '6/1 750ML',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 600,
+    }], '2027-05-31');
+    await applyBatchApproval(baseBatch, approvalAuth);
+
+    const juneBatch = await stageBatch([{
+      code: '623764',
+      description: 'HEITZ CAB SAUV MARTHAS 18 WD',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 750ML',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 110,
+    }], '2027-06-30');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      packCompatibility: 'incompatible',
+      recodeEvidenceClass: 'new_pack_size',
+      crossVendorPackEligible: false,
+      recommendedAction: 'create_variant',
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence?.totalBaseUnits).toBe(750);
+    expect(preview.rows[0].itemMatch.candidatePackEvidence?.totalBaseUnits).toBe(4500);
+
+    const candidateId = preview.rows[0].itemMatch.possibleRecodeMatchedId!;
+    await db.insert(orderlyImportReviewDecisions).values({
+      batchId: juneBatch,
+      companyId: ID.company,
+      rowIndex: 1,
+      decision: { action: 'link_existing', inventoryItemId: candidateId },
+      revision: 1,
+      createdBy: ID.admin,
+      updatedBy: ID.admin,
+    });
+
+    const draft = await getOrderlyReviewDecisions(juneBatch, approvalAuth);
+    expect(draft.decisions).toEqual([]);
+    expect(draft.stale).toEqual([
+      expect.objectContaining({
+        rowIndex: 1,
+        sourceItemCode: '623764',
+        description: 'HEITZ CAB SAUV MARTHAS 18 WD',
+      }),
+    ]);
+    await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toThrow(/623764.*incoming 1\/1 750ML.*existing 6 × 1 × 750 × ML/);
   });
 
   it('keeps a same-vendor incompatible pack on the separate-variant path', async () => {

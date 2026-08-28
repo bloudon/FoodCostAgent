@@ -112,8 +112,16 @@ type SavedReviewDecision = {
   updatedAt: string | null;
 };
 
+type StaleReviewDecision = {
+  rowIndex: number;
+  reason: string;
+  sourceItemCode: string | null;
+  description: string | null;
+};
+
 type ReviewDecisionResponse = {
   decisions: SavedReviewDecision[];
+  stale?: StaleReviewDecision[];
 };
 
 type ReviewDecisionChange = {
@@ -1082,7 +1090,7 @@ export function ResolutionPreviewStep({
         action: decision.action,
         comparableInventoryItemId: decision.comparableInventoryItemId,
       },
-    })));
+    })), { preserveExistingActions: true });
     if (!saved) return;
     setBulkVariantConfirmationOpen(false);
     toast({
@@ -1281,9 +1289,13 @@ export function ResolutionPreviewStep({
     packEvidenceMissing: 0,
   };
   const unknownPackRows = preview.rows.filter(row => row.packParseStatus === "unparseable").length;
-  const bulkCompatiblePackReview = getBulkCompatiblePackReview(preview.rows);
-  const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
-  const queuedCompatibleLinkCount = bulkCompatiblePackReview.candidates.filter(candidate =>
+  const hasSavedDecision = (row: RowPreview) =>
+    row.rowIndex != null && rowDecisions.has(row.rowIndex);
+  const allBulkCompatiblePackReview = getBulkCompatiblePackReview(preview.rows);
+  const allBulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows);
+  const bulkCompatiblePackReview = getBulkCompatiblePackReview(preview.rows, hasSavedDecision);
+  const bulkNewPackSizeReview = getBulkNewPackSizeReview(preview.rows, hasSavedDecision);
+  const queuedCompatibleLinkCount = allBulkCompatiblePackReview.candidates.filter(candidate =>
     candidate.rowIndexes.every(rowIndex => {
       const decision = rowDecisions.get(rowIndex);
       return isRecodeDecision(decision) &&
@@ -1291,7 +1303,7 @@ export function ResolutionPreviewStep({
         decision.inventoryItemId === candidate.targetInventoryItemId;
     }),
   ).length;
-  const queuedBulkVariantCount = bulkNewPackSizeReview.candidates.filter(candidate =>
+  const queuedBulkVariantCount = allBulkNewPackSizeReview.candidates.filter(candidate =>
     candidate.rowIndexes.every(rowIndex => {
       const decision = rowDecisions.get(rowIndex);
       return isRecodeDecision(decision) &&
@@ -1491,8 +1503,8 @@ export function ResolutionPreviewStep({
                   ))}
                 </div>
                 <p className="text-xs">
-                  This only queues verified <strong>New pack size</strong> rows. Source conflicts, missing pack evidence,
-                  and other review blockers remain unresolved and can still block approval.
+                  This only queues unresolved, verified <strong>New pack size</strong> rows. Existing saved decisions are
+                  preserved, and source conflicts, missing pack evidence, and other blockers remain in individual review.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -1636,6 +1648,47 @@ export function ResolutionPreviewStep({
             </AlertDescription>
           </Alert>
         </div>
+      )}
+
+      {savedReviewDecisions?.stale && savedReviewDecisions.stale.length > 0 && (
+        <Alert variant="destructive" data-testid="stale-orderly-review-decisions">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Pack evidence changed — review these decisions again</AlertTitle>
+          <AlertDescription className="mt-2 space-y-2">
+            {savedReviewDecisions.stale.map(entry => (
+              <div
+                key={entry.rowIndex}
+                className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-background/70 p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="text-sm">
+                  <strong>{entry.description || `Row ${entry.rowIndex}`}</strong>
+                  {entry.sourceItemCode ? <> · Item Code <span className="font-mono">{entry.sourceItemCode}</span></> : null}
+                  <span className="block text-xs text-muted-foreground">{entry.reason}</span>
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const statuses = ["new-pack-size", "pack-check", "alternate-code"];
+                    setSelectedCategories(new Set());
+                    setSelectedConfidences(new Set(statuses));
+                    const targetRow = preview.rows.find(row =>
+                      row.sourceItemCode?.trim() === entry.sourceItemCode?.trim()
+                    ) ?? preview.rows.find(row => row.rowIndex === entry.rowIndex);
+                    const filteredIndex = preview.rows
+                      .filter(row => statuses.includes(rowConfidenceKey(row)))
+                      .findIndex(row => row.rowIndex === targetRow?.rowIndex);
+                    setCurrentPage(filteredIndex < 0 ? 0 : Math.floor(filteredIndex / PAGE_SIZE));
+                    setExpandedRows(prev => new Set(prev).add(targetRow?.rowIndex ?? entry.rowIndex));
+                  }}
+                >
+                  Find row
+                </Button>
+              </div>
+            ))}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Summary cards */}
