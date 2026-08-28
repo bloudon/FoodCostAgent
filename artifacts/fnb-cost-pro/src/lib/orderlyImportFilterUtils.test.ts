@@ -414,6 +414,39 @@ describe("getPendingRecodeCodes", () => {
     expect(getPendingRecodeCodes(rows, row => row.rowIndex === 1)).toEqual(["GROUP-A"]);
     expect(getPendingRecodeCodes(rows, () => true)).toEqual([]);
   });
+
+  it("keeps eligible descriptive-code vendor-pack reviews row-scoped", () => {
+    const rows = [
+      {
+        rowIndex: 41,
+        sourceCategory: "Produce",
+        sourceItemCode: "Avocado 54 Count",
+        sourceCodeReliability: "pseudo_code" as const,
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "medium",
+          possibleRecode: true,
+          recodeEvidenceClass: "new_pack_size" as const,
+          crossVendorPackEligible: true,
+        },
+      },
+      {
+        rowIndex: 42,
+        sourceCategory: "Produce",
+        sourceItemCode: "Avocado 54 Count",
+        sourceCodeReliability: "pseudo_code" as const,
+        itemMatch: {
+          strategy: "name_pack",
+          confidence: "medium",
+          possibleRecode: true,
+          recodeEvidenceClass: "new_pack_size" as const,
+          crossVendorPackEligible: true,
+        },
+      },
+    ];
+
+    expect(getPendingRecodeCodes(rows, row => row.rowIndex === 41)).toEqual(["row:42"]);
+  });
 });
 
 // ─── uniqueCategories ─────────────────────────────────────────────────────────

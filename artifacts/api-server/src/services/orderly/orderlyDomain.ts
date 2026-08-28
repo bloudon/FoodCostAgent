@@ -199,7 +199,10 @@ function assertReviewDecisionMatchesPreview(
       `Row ${row.rowIndex} has contradictory source pack evidence and cannot receive a review decision.`,
     );
   }
-  if (row.itemMatch.recodeEvidenceClass === 'unreliable_code') {
+  if (
+    row.itemMatch.recodeEvidenceClass === 'unreliable_code' &&
+    row.itemMatch.crossVendorPackEligible !== true
+  ) {
     throw new ImportApprovalError(
       'CONFLICT',
       `Row ${row.rowIndex} has an unreliable Orderly Item Code and cannot receive a review decision.`,
@@ -427,6 +430,7 @@ function assertSavedReviewDecisionsRemainValid(
       continue;
     }
     if (decision.action === undefined) continue;
+    if (isPseudoCodeVendorPackReview(row)) continue;
     if (!isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
       staleDecisionDetails.push(`${previewRowConflictLabel(row)}: saved re-code decision is no longer eligible`);
       continue;
@@ -471,6 +475,23 @@ function assertSavedReviewDecisionsRemainValid(
           `${previewRowConflictLabel(codeRow)}: ${err?.message ?? 'saved decision is no longer valid'}`,
         );
       }
+    }
+  }
+  const decisionsByRowIndex = new Map(decisions.map(decision => [decision.rowIndex, decision]));
+  for (const row of preview.rows.filter(isPseudoCodeVendorPackReview)) {
+    const decision = decisionsByRowIndex.get(row.rowIndex);
+    if (!decision?.action) {
+      staleDecisionDetails.push(
+        `${previewRowConflictLabel(row)}: now requires an explicit vendor-pack link decision`,
+      );
+      continue;
+    }
+    try {
+      assertReviewDecisionMatchesPreview(row, decision);
+    } catch (err: any) {
+      staleDecisionDetails.push(
+        `${previewRowConflictLabel(row)}: ${err?.message ?? 'saved decision is no longer valid'}`,
+      );
     }
   }
 
@@ -1027,6 +1048,17 @@ function isReliableItemCode(row: {
   return row.sourceCodeReliability
     ? row.sourceCodeReliability === 'stable'
     : isStableSourceItemCode(row.sourceItemCode, row.itemCodeStatus);
+}
+
+function isPseudoCodeVendorPackReview(row: {
+  sourceCodeReliability?: SourceCodeReliability;
+  itemMatch: Pick<MatchResult, 'possibleRecode' | 'crossVendorPackEligible'>;
+}): boolean {
+  return (
+    row.sourceCodeReliability === 'pseudo_code' &&
+    row.itemMatch.possibleRecode === true &&
+    row.itemMatch.crossVendorPackEligible === true
+  );
 }
 
 /**
@@ -1750,9 +1782,12 @@ export async function runResolutionPreview(
     if ((isUnmappedStableCode && !codeWasMatched) || isPseudoCodeCandidate) {
       const normalizedDesc = normalizeForMatch(row.cleanedDescription ?? '');
       if (normalizedDesc) {
-        const nameExactMatch = matchableItems.find(
+        const exactNameMatches = matchableItems.filter(
           it => normalizeForMatch(it.name) === normalizedDesc,
         );
+        const nameExactMatch = isPseudoCodeCandidate
+          ? exactNameMatches.length === 1 ? exactNameMatches[0] : undefined
+          : exactNameMatches[0];
         if (nameExactMatch) {
           const candidateSuppliers = vendorSuppliesByItemId.get(nameExactMatch.id) ?? [];
           const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
@@ -1771,23 +1806,7 @@ export async function runResolutionPreview(
             candidatePackEvidence,
             candidateHasSameVendor,
           );
-          itemMatch = {
-            ...itemMatch,
-            possibleRecode: true,
-            possibleRecodeMatchedId: nameExactMatch.id,
-            packCompatibility: packAssessment.status,
-            packCompatibilityReason: packAssessment.reason,
-            sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
-            candidatePackEvidence: packAssessment.candidatePackEvidence,
-              recodeEvidenceClass: isPseudoCodeCandidate
-                ? 'unreliable_code'
-                : recodeEvidenceClassForPack(packAssessment.status),
-              // A prose-like value in Item Code may guide a reviewer, but it
-              // cannot prove identity or create a permanent source mapping.
-              requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
-          };
           const crossVendorPackEligible =
-            sourceCodeReliability === 'stable' &&
             packAssessment.status === 'incompatible' &&
             typeof row.packagePrice === 'number' &&
             Number.isFinite(row.packagePrice) &&
@@ -1797,6 +1816,19 @@ export async function runResolutionPreview(
             !candidateHasSameVendor;
           itemMatch = {
             ...itemMatch,
+            possibleRecode: true,
+            possibleRecodeMatchedId: nameExactMatch.id,
+            packCompatibility: packAssessment.status,
+            packCompatibilityReason: packAssessment.reason,
+            sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
+            candidatePackEvidence: packAssessment.candidatePackEvidence,
+            recodeEvidenceClass: isPseudoCodeCandidate && !crossVendorPackEligible
+              ? 'unreliable_code'
+              : recodeEvidenceClassForPack(packAssessment.status),
+            // Descriptive text may surface one exact-name, verified
+            // different-vendor pack for explicit review, but it never proves
+            // durable code identity.
+            requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
             crossVendorPackEligible,
             existingVendorNames: candidateSuppliers.map(supply => supply.vendorName),
             recommendedAction: crossVendorPackEligible ? 'link_vendor_pack' : 'create_variant',
@@ -1831,7 +1863,10 @@ export async function runResolutionPreview(
     // evidence. It may resolve only through the exact derived identity
     // (normalized name + canonical pack) or an exact name-and-pack catalog
     // match. Fuzzy and location-history candidates are not identity authority.
-    if (sourceCodeReliability === 'pseudo_code') {
+    if (
+      sourceCodeReliability === 'pseudo_code' &&
+      itemMatch.crossVendorPackEligible !== true
+    ) {
       const derivedIdentityMatch = itemMatch.strategy === 'alternate_identity'
         ? itemMatch.matchedId
         : null;
@@ -3081,12 +3116,17 @@ export async function applyBatchApproval(
   const recodeDecisionByReliableCode = new Map<string, RowDecision>();
   for (const decision of decisionsToApply.filter(decision => decision.action !== undefined)) {
     const row = previewRowsByIndex.get(decision.rowIndex);
-    if (!row || !isReliableItemCode(row) || !row.itemMatch.possibleRecode) {
+    if (
+      !row ||
+      !row.itemMatch.possibleRecode ||
+      (!isReliableItemCode(row) && !isPseudoCodeVendorPackReview(row))
+    ) {
       throw new ImportApprovalError(
         'INVALID_REQUEST',
-        `A re-code action may only be recorded for a staged row with a new reliable Orderly Item Code (row ${decision.rowIndex}).`,
+        `A review action may only be recorded for an eligible staged identity candidate (row ${decision.rowIndex}).`,
       );
     }
+    if (isPseudoCodeVendorPackReview(row)) continue;
     const code = row.sourceItemCode!.trim();
     const existing = recodeDecisionByReliableCode.get(code);
     if (
@@ -3131,6 +3171,22 @@ export async function applyBatchApproval(
           `${previewRowConflictLabel(codeRow)}: ${err?.message ?? 'saved decision is no longer valid'}`,
         );
       }
+    }
+  }
+  for (const row of preview.rows.filter(isPseudoCodeVendorPackReview)) {
+    const decision = decisionMap.get(row.rowIndex);
+    if (!decision?.action) {
+      recodeValidationConflicts.push(
+        `${previewRowConflictLabel(row)}: requires an explicit vendor-pack link decision`,
+      );
+      continue;
+    }
+    try {
+      assertReviewDecisionMatchesPreview(row, decision);
+    } catch (err: any) {
+      recodeValidationConflicts.push(
+        `${previewRowConflictLabel(row)}: ${err?.message ?? 'saved decision is no longer valid'}`,
+      );
     }
   }
   if (recodeValidationConflicts.length > 0) {
@@ -3275,30 +3331,19 @@ export async function applyBatchApproval(
     if (unknownVariantReviewChanges.length > 0) {
       assertReviewDecisionCodeGroupConsistency(underLockPreview, unknownVariantReviewChanges);
     }
-    let resolutionPreview = preview;
-    if (persistedDecisionSignature !== null) {
-      assertSavedReviewDecisionsRemainValid(underLockPreview, decisionsToApply);
-      ({
-        reliableCodeExistingItemIds,
-        identityGroupExistingItemIds,
-        blankGroupMayFollowCodedSibling,
-        blankGroupMayCreateInternalItem,
-      } = deriveApprovalIdentityCaches(underLockPreview));
-      resolutionPreview = underLockPreview;
-    } else {
-      const underLockConflicts = underLockPreview.rows.filter(
-        row => row.itemMatch.sourceDataConflict,
-      );
-      if (underLockConflicts.length > 0) {
-        const details = underLockConflicts
-          .map(row => `row ${row.rowIndex}: ${row.itemMatch.sourceDataConflict!.reason}`)
-          .join(' | ');
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly source data changed to contradictory pack evidence before approval: ${details}`,
-        );
-      }
-    }
+    // Every caller, including direct service callers that pass an explicit
+    // decision array, must revalidate against the under-lock catalog state.
+    // Durable drafts additionally use the signature check above, but neither
+    // path may apply a candidate, vendor, pack, or price decision from the
+    // unlocked preview.
+    assertSavedReviewDecisionsRemainValid(underLockPreview, decisionsToApply);
+    ({
+      reliableCodeExistingItemIds,
+      identityGroupExistingItemIds,
+      blankGroupMayFollowCodedSibling,
+      blankGroupMayCreateInternalItem,
+    } = deriveApprovalIdentityCaches(underLockPreview));
+    const resolutionPreview = underLockPreview;
 
     let itemsCreated = 0, itemsLinked = 0;
     let vendorsCreated = 0, vendorsLinked = 0;

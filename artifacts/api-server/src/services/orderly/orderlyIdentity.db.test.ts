@@ -1746,6 +1746,100 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ]);
   });
 
+  it('offers and applies a cross-vendor Avocado pack link when the new Item Code is descriptive', async () => {
+    const mayBatch = await stageBatch([{
+      code: 'AVOCADO-BASE-24',
+      description: 'Avocado',
+      location: 'Walk-in',
+      supplier: 'Vendor Alpha',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 48,
+    }], '2027-06-30');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected Avocado to resolve');
+
+    const juneBatch = await stageBatch([{
+      code: 'Avocado 54 Count',
+      description: 'Avocado',
+      location: 'Walk-in',
+      supplier: 'Vendor Beta',
+      caseQuantity: 54,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 81,
+    }], '2027-07-31');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0]).toMatchObject({
+      sourceCodeReliability: 'pseudo_code',
+      itemMatch: {
+        possibleRecode: true,
+        possibleRecodeMatchedId: mayRow.resolvedInventoryItemId,
+        packCompatibility: 'incompatible',
+        recodeEvidenceClass: 'new_pack_size',
+        crossVendorPackEligible: true,
+        recommendedAction: 'link_vendor_pack',
+      },
+    });
+
+    await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({
+      code: 'CONFLICT',
+    });
+    await applyBatchApproval(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_vendor_pack',
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+
+    const mappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        sourcePropertyId: inventoryItemExternalMappings.sourcePropertyId,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(eq(inventoryItemExternalMappings.inventoryItemId, mayRow.resolvedInventoryItemId));
+    expect(mappings.some(mapping => mapping.sourceExternalId === 'Avocado 54 Count')).toBe(false);
+    expect(mappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceExternalId: expect.stringMatching(/^ALT\|avocado\|/),
+        sourcePropertyId: ID.property,
+      }),
+    ]));
+
+    const packs = await db
+      .select({
+        vendorName: vendors.name,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        lastCasePrice: vendorItems.lastCasePrice,
+        vendorSku: vendorItems.vendorSku,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId))
+      .orderBy(vendors.name);
+    expect(packs).toEqual(expect.arrayContaining([
+      {
+        vendorName: 'Vendor Alpha',
+        canonicalQtyPerPurchaseUnit: 24,
+        lastCasePrice: 48,
+        vendorSku: null,
+      },
+      {
+        vendorName: 'Vendor Beta',
+        canonicalQtyPerPurchaseUnit: 54,
+        lastCasePrice: 81,
+        vendorSku: null,
+      },
+    ]));
+  });
+
   it('classifies same-vendor 1/1 750ML against 6/1 750ML as a new pack and invalidates the old compatible link', async () => {
     const baseBatch = await stageBatch([{
       code: '623764',

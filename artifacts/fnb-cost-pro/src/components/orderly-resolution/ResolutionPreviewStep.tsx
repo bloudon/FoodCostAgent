@@ -508,7 +508,9 @@ function CandidatePicker({
             </h4>
             <p className="text-xs text-muted-foreground mt-1">
               {recodeEvidenceClass === "new_pack_size"
-                ? "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
+                ? match.crossVendorPackEligible
+                  ? "The exact product name matches, but this different vendor supplies another verified pack. Review whether to keep one item and add the vendor pack."
+                  : "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
                 : isUnknown
                   ? "The incoming physical pack is incomplete, so compatibility cannot be confirmed. Linking stays blocked; create a separate variant to preserve this row without claiming the packs match."
                   : "This row has a new item code, but its name and physical pack match an existing catalog item."}
@@ -1332,7 +1334,13 @@ export function ResolutionPreviewStep({
   ).length;
   const actionableRecodeRows = preview.rows.filter(row =>
     row.itemMatch.possibleRecode &&
-    row.sourceCodeReliability === "stable" &&
+    (
+      row.sourceCodeReliability === "stable" ||
+      (
+        row.sourceCodeReliability === "pseudo_code" &&
+        row.itemMatch.crossVendorPackEligible === true
+      )
+    ) &&
     row.itemMatch.recodeEvidenceClass !== "source_data_conflict",
   );
   const actionableRecodeRowsByCode = new Map<string, RowPreview[]>();
@@ -2110,7 +2118,7 @@ export function ResolutionPreviewStep({
               )}
               {hasPendingRecodeDecisions && (
                 <p>
-                  <strong>{pendingRecodeCodes.length} item-code {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
+                  <strong>{pendingRecodeCodes.length} identity {pendingRecodeCodes.length === 1 ? "decision" : "decisions"}</strong> still needs a choice.
                 </p>
               )}
               {recodeSummary.sourceDataConflicts > 0 && (

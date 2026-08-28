@@ -115,7 +115,7 @@ export function toggleSetValue<T>(prev: ReadonlySet<T>, value: T): Set<T> {
   return next;
 }
 
-/** Returns source-code decisions that are not saved on every actionable row. */
+/** Returns stable-code groups or row-scoped pseudo-code reviews still needing a saved action. */
 export function getPendingRecodeCodes<T extends RowPreviewLike>(
   rows: T[],
   hasSavedAction: (row: T) => boolean,
@@ -123,17 +123,21 @@ export function getPendingRecodeCodes<T extends RowPreviewLike>(
   const rowsByCode = new Map<string, T[]>();
   for (const row of rows) {
     const code = row.sourceItemCode?.trim();
+    const isRowScopedPseudoCodeReview =
+      row.sourceCodeReliability === "pseudo_code" &&
+      row.itemMatch.crossVendorPackEligible === true;
     if (
       !code ||
-      row.sourceCodeReliability !== "stable" ||
+      (row.sourceCodeReliability !== "stable" && !isRowScopedPseudoCodeReview) ||
       !row.itemMatch.possibleRecode ||
       row.itemMatch.recodeEvidenceClass === "source_data_conflict"
     ) {
       continue;
     }
-    const group = rowsByCode.get(code) ?? [];
+    const decisionKey = isRowScopedPseudoCodeReview ? `row:${row.rowIndex ?? "unknown"}` : code;
+    const group = rowsByCode.get(decisionKey) ?? [];
     group.push(row);
-    rowsByCode.set(code, group);
+    rowsByCode.set(decisionKey, group);
   }
   return Array.from(rowsByCode.entries())
     .filter(([, group]) => !group.every(hasSavedAction))
