@@ -1,0 +1,47 @@
+That status is out of date on two points.
+
+May is approved, not pending. I approved it earlier in this session — 118 seconds, 5,358/5,358 rows, 0 excluded, $254,286.67 exactly.
+
+The catalog is not clean. It holds 3,055 items, 2,321 vendor_items, 26 categories — all created by that approval.
+
+Everything else in the summary is right, and the substantive conclusions hold. But this is worth correcting before it propagates, because two things downstream depend on it:
+
+Category backfill has real targets now. The 26 categories exist with accountingAccountId null. That's the backfill set — it isn't waiting on a May approval that already happened.
+
+No further wipe is warranted. GL capture is confirmed complete on all 5,358 rows, accounts are additive, and backfilling 26 categories beats re-seeding. Wiping now would discard a verified-good May and gain nothing.
+
+Where things actually stand:
+
+	
+May	approved, reconciling at $254,286.67, 0 excluded
+June	not staged
+July	not staged
+Catalog	3,055 items / 2,321 vendor_items / 26 categories
+Accounts	0 seeded, 0 category assignments
+
+So the position is better than that summary suggests — one of three months is done and verified, and the accounting work can proceed against real categories in parallel.
+
+June is the next step, and it needs uploading. I can't stage files since the browser upload tool changed. Once it's up I'll run the review with the corrected pre-bulk gate — which is also the first clean-catalog test of #1274.
+
+have we reviewed the proposed 1275 task?
+
+Yes — I reviewed it two messages ago, and Replit confirmed all four points were incorporated:
+
+Separation of source evidence / current classification / importer behavior
+The benchmarking asymmetry — cheap now, expensive to retrofit
+The revenue/COGS join constraint at umbrella level
+Using Bay Hill's chart as DOC evidence rather than waiting on invoices that don't exist
+
+Plus the sequencing decision that CoA work runs parallel to June rather than blocking it.
+
+So #1275 as amended is fine. It's a decision task, not a build task — Step 5 explicitly stops before coding, which is right given nobody can answer the benchmarking question from Bay Hill alone.
+
+Two things I'd still flag, though neither blocks it:
+
+It's waiting on a product owner, not on engineering. The core questions — is benchmarking a requirement, does DOC sit in prime cost, how do tenant overrides work — are yours or the club's to answer. If that decision-maker isn't identified, #1275 sits in draft indefinitely while the seed moves on without it. Worth naming who signs it off.
+
+A second tenant's chart would change the answer materially. Replit said this twice, and it's the honest constraint: Bay Hill's 34 accounts can't tell you which structure generalises. If a second club is anywhere near onboarding, waiting for their chart makes #1275 substantially better. If not, it gets decided on one example and revisited later.
+
+Nothing there stops it proceeding. My read is that #1275 is correctly scoped and correctly parked.
+
+The live path is June. It needs uploading — I can't stage files since the upload tool changed. Once it's up I'll run the pre-bulk gate procedure and it doubles as the first clean-catalog test of #1274.
