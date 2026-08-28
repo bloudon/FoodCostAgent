@@ -1,0 +1,22 @@
+June still reads **`pending review`**, and the report shows only May. Catalog unchanged at 3,052 items / 2,319 vendor_items.
+
+So June hasn't been approved — the hold you're no longer seeing is the *decision* banner clearing, not the approval completing. Let me open it and check what state it's actually in.Here's the concern: **all 168 decisions are intact — including the `link_existing` on row 623764** — no error is shown, and Approve is enabled again.
+
+That's the same state that failed 75 seconds into approval last time. If #1268 hasn't deployed yet, retrying reproduces the identical failure. Let me check whether the classifier verdict actually changed.The classifier is unchanged: still **32 same-pack / 30 new pack size**. If #1268 had landed, `623764` would have moved into the New-pack-size bucket, making it 31/31.
+
+So I'd **not approve yet**. Here's my read:
+
+**What you're seeing is correct but misleading.** The decisions banner is gone because all 168 decisions are saved — that part genuinely completed. But "no hold" means *review* is done, not that the batch is approvable. The failure state from the last attempt has been cleared from the UI, so there's nothing on screen indicating a problem.
+
+**The failing condition is still present.** Row `623764` still carries a `link_existing` decision, and the preview still classifies it as a compatible link while approval-time revalidation rejects it. Same data, same 168 decisions, same disagreement. A retry should fail at the same point, roughly 75 seconds in.
+
+Worth noting the UI now gives *less* warning than before — no error banner, no "Retry approval safely" label, just a normal enabled Approve button. An operator returning to this batch would have no idea it had failed.
+
+**One caveat on my confidence:** I'm inferring from the 32/30 split rather than from a direct test. If Replit shipped a fix that changes only approval-time behavior and not preview classification, the counts would look unchanged and a retry might succeed. But #1268 Step 1 explicitly makes normalized totals the shared authority, which should move `623764` to New pack size — and it hasn't.
+
+Two ways to settle it:
+
+1. **Confirm with Replit whether #1268 is deployed.** If not, wait — a retry costs 75 seconds and reproduces the failure.
+2. **Approve anyway as a test.** The rollback was clean last time and nothing was lost, so the downside is bounded. It would definitively confirm the classifier is unchanged.
+
+Given the rollback proved safe, option 2 is defensible if you want certainty now. Your call — say the word and I'll run it.

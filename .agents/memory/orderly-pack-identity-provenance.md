@@ -26,3 +26,9 @@ Pack comparison normalization and persistent pack identity are separate contract
 **Why:** Reusing comparison aliases in the identity key would silently re-key existing alternate identities when a new alias is introduced, potentially forking cross-month continuity during a seed.
 
 **How to apply:** Keep unit-alias conversion out of identity-key construction. New aliases may improve compatibility checks and catalog geometry only. Unsupported units and non-finite derived totals must remain unknown rather than producing a custom canonical unit or a compatible result.
+
+A stable Orderly Item Code mapping is not proof that a later row has the same physical pack. When complete incoming geometry conflicts with the mapped item for the same vendor, keep the older code mapping as historical identity evidence and require a separate pack variant; use the pack-specific derived identity for future continuity.
+
+**Why:** Orderly can reuse one Item Code after changing the physical pack. Treating the existing code mapping as an unconditional match makes preview claim compatibility while approval correctly rejects the vendor-pack conflict.
+
+**How to apply:** Compare complete pack geometry even on the external-mapping path. A same-vendor mismatch becomes an explicit variant review. Approval must not rewrite the older code mapping; the new variant gets a pack-specific derived identity, which takes precedence when that exact pack appears again.

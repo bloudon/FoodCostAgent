@@ -119,6 +119,13 @@ export interface MatchResult {
   sourcePackEvidence?: PackEvidence | null;
   /** Evidence class for a possible re-code candidate. */
   recodeEvidenceClass?: RecodeEvidenceClass;
+  /**
+   * The durable Item Code mapping points to an older physical pack, while this
+   * row carries complete incompatible pack geometry for the same vendor.
+   * Approval may create a pack-specific variant without rewriting the older
+   * code mapping or its historical evidence.
+   */
+  mappedCodePackDrift?: boolean;
   /** Source rows for which the same code/vendor carries contradictory pack evidence. */
   sourceDataConflict?: {
     rowIndexes: number[];

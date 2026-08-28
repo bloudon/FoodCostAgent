@@ -1748,7 +1748,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
 
   it('classifies same-vendor 1/1 750ML against 6/1 750ML as a new pack and invalidates the old compatible link', async () => {
     const baseBatch = await stageBatch([{
-      code: 'HEITZ-BASE-6X750',
+      code: '623764',
       description: 'HEITZ CAB SAUV MARTHAS 18 WD',
       location: 'Wine Cellar',
       supplier: 'Vendor Gamma',
@@ -1775,6 +1775,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     }], '2027-06-30');
     const preview = await runResolutionPreview(juneBatch, ID.company);
     expect(preview.rows[0].itemMatch).toMatchObject({
+      mappedCodePackDrift: true,
       packCompatibility: 'incompatible',
       recodeEvidenceClass: 'new_pack_size',
       crossVendorPackEligible: false,
@@ -1803,7 +1804,40 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         description: 'HEITZ CAB SAUV MARTHAS 18 WD',
       }),
     ]);
-    await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toThrow(/623764.*incoming 1\/1 750ML.*existing 6 × 1 × 750 × ML/);
+    await expect(applyBatchApproval(juneBatch, approvalAuth, null)).rejects.toThrow(/623764.*incompatible.*750 ML versus 4500 ML/);
+
+    await saveOrderlyReviewDecisionChanges(juneBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: 1,
+      decision: {
+        action: 'create_variant',
+        comparableInventoryItemId: candidateId,
+      },
+    }]);
+    const approved = await applyBatchApproval(juneBatch, approvalAuth, null);
+    expect(approved.itemsCreated).toBe(1);
+
+    const [approvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch));
+    expect(approvedRow.resolvedInventoryItemId).not.toBe(candidateId);
+
+    const [codeMapping] = await db
+      .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.sourceExternalId, '623764'),
+      ));
+    expect(codeMapping.inventoryItemId).toBe(candidateId);
+
+    const rerunPreview = await runResolutionPreview(juneBatch, ID.company);
+    expect(rerunPreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'alternate_identity',
+      matchedId: approvedRow.resolvedInventoryItemId,
+    });
   });
 
   it('keeps a same-vendor incompatible pack on the separate-variant path', async () => {

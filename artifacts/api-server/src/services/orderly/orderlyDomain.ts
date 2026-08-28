@@ -1611,7 +1611,15 @@ export async function runResolutionPreview(
     const alternateId = alternateSourceId
       ? alternateMappingLookup.get(alternateSourceId)
       : undefined;
-    if (extId) {
+    if (extId && alternateId && alternateId !== extId) {
+      itemMatch = {
+        strategy: 'alternate_identity',
+        confidence: 'high',
+        matchedId: alternateId,
+        candidateIds: [],
+        requiresReview: false,
+      };
+    } else if (extId) {
       itemMatch = {
         strategy: 'external_mapping',
         confidence: 'high',
@@ -1649,6 +1657,47 @@ export async function runResolutionPreview(
     // ── Vendor resolution ──
     const vendorMatch = matchVendor(row.supplierRaw, row.supplierStatus, matchableVendors);
     if (vendorMatch.isNew && row.supplierRaw) newVendorNames.add(row.supplierRaw.trim());
+
+    // A stable Item Code can outlive a physical pack change. The code mapping
+    // remains historical identity evidence, but it must not make 1×750 mL look
+    // compatible with the same vendor's mapped 6×750 mL item. Surface this as
+    // the same explicit variant review used for an unmapped same-name re-code.
+    if (extId && itemMatch.strategy === 'external_mapping') {
+      const candidateSuppliers = vendorSuppliesByItemId.get(extId) ?? [];
+      const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
+      const candidateHasSameVendor = sourceVendorKey != null && candidateSuppliers.some(supply =>
+        sourceVendorKey === `vendor:${supply.vendorId}` ||
+        sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
+      );
+      const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
+        ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${extId}`) ?? []
+        : [];
+      const candidatePackEvidence = sameVendorCatalogEvidence.length > 0
+        ? sameVendorCatalogEvidence
+        : packEvidenceByItemId.get(extId) ?? [];
+      const packAssessment = assessCandidatePackCompatibility(
+        sourcePackGeometry(row as any),
+        candidatePackEvidence,
+        candidateHasSameVendor,
+      );
+      if (candidateHasSameVendor && packAssessment.status === 'incompatible') {
+        itemMatch = {
+          ...itemMatch,
+          matchedId: null,
+          possibleRecode: true,
+          possibleRecodeMatchedId: extId,
+          packCompatibility: 'incompatible',
+          packCompatibilityReason: packAssessment.reason,
+          sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
+          candidatePackEvidence: packAssessment.candidatePackEvidence,
+          recodeEvidenceClass: 'new_pack_size',
+          mappedCodePackDrift: true,
+          crossVendorPackEligible: false,
+          existingVendorNames: candidateSuppliers.map(supply => supply.vendorName),
+          recommendedAction: 'create_variant',
+        };
+      }
+    }
 
     // ── Location resolution ──
     const locationMatch = matchLocation(row.storageLocation, matchableLocations);
@@ -3668,7 +3717,26 @@ export async function applyBatchApproval(
         return { itemId: await insertNewItem(), created: true };
       };
 
-      if (reliableCode) {
+      if (
+        reliableCode &&
+        rowPreview.itemMatch.mappedCodePackDrift === true &&
+        identityDecision?.action === 'create_variant'
+      ) {
+        const candidate = await resolveRowCandidate();
+        if (!candidate.itemId) {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `Orderly Item Code ${reliableCode} could not create its reviewed pack variant.`,
+          );
+        }
+        resolvedItemId = candidate.itemId;
+        if (candidate.created) {
+          itemsCreated++;
+          isNewItem = true;
+        } else {
+          itemsLinked++;
+        }
+      } else if (reliableCode) {
         // Every reliable-code resolution — existing match, manual override, or
         // new item — is settled through the committed mapping, which is the
         // single identity authority for this code within this source property.
