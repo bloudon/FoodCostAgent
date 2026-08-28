@@ -3,6 +3,7 @@ import {
   buildOrderlyIdentityGroup,
   canonicalOrderlyPackKey,
   deriveOrderlyAlternateSourceId,
+  deriveOrderlyStableCodePackSourceId,
   normalizeOrderlyProductName,
 } from './orderlyIdentity';
 
@@ -47,5 +48,25 @@ describe('Orderly derived product identities', () => {
 
     expect(sourceId).toBe('ALT|red breast irish whiskey 12yr|case=1|inner=1|base=750|unit=ml');
     expect(group?.alternateSourceId).toBe(sourceId);
+  });
+
+  it('keeps punctuation-colliding stable codes in separate pack namespaces', () => {
+    const geometry = {
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    };
+
+    expect(
+      deriveOrderlyStableCodePackSourceId('638335', 'HUNDRED ACRE CAB SAUV MORG. W', geometry),
+    ).not.toBe(
+      deriveOrderlyStableCodePackSourceId('638336', 'HUNDRED ACRE CAB SAUV MORG W', geometry),
+    );
+    expect(
+      deriveOrderlyStableCodePackSourceId('313642', 'MONTES PURPLE ANGEL', geometry),
+    ).not.toBe(
+      deriveOrderlyStableCodePackSourceId('389849', 'MONTES PURPLE ANGEL.', geometry),
+    );
   });
 });

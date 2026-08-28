@@ -253,13 +253,14 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
   });
 
   it('imports unsupported pack evidence using an opaque package count without claiming normalized geometry', async () => {
+    const stableCaseCode = `CASE-123-${RUN.toUpperCase()}`;
     const batchId = await stageBatch({
       companyId: ID.companyA,
       targetStoreId: ID.storeBayHill,
       sourcePropertyBindingId: ID.bindingBayHill,
       sourcePropertyId: BAY_HILL_SOURCE_PROPERTY,
       rows: [{
-        sourceItemCode: `CASE-${RUN.toUpperCase()}`,
+        sourceItemCode: stableCaseCode,
         itemCodeStatus: 'valid',
         rawDescription: `Unsupported Case ${RUN}`,
         cleanedDescription: `Unsupported Case ${RUN}`,
@@ -281,11 +282,19 @@ describe.skipIf(SKIP)('applyBatchApproval — authorized approval', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, batchId));
     const after = await countDomainRecords(ID.companyA);
+    const createdMappings = await db
+      .select({ sourceExternalId: inventoryItemExternalMappings.sourceExternalId })
+      .from(inventoryItemExternalMappings)
+      .where(eq(inventoryItemExternalMappings.inventoryItemId, sourceRow.resolvedInventoryItemId!));
 
     expect(result.itemsCreated).toBe(1);
     expect(result.rowsHeldForReview).toBe(0);
     expect(sourceRow.resolvedInventoryItemId).not.toBeNull();
     expect(after.items).toBe(before.items + 1);
+    expect(createdMappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceExternalId: stableCaseCode }),
+      expect.objectContaining({ sourceExternalId: expect.stringContaining(`ALT|CODE=${stableCaseCode}|`) }),
+    ]));
     expect(after.mappings).toBe(before.mappings + 2);
     expect((await snapshotBatch(batchId))?.status).toBe('approved');
 

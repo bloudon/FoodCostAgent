@@ -51,6 +51,22 @@ export function deriveOrderlyAlternateSourceId(
   return `${ORDERLY_ALTERNATE_ID_PREFIX}${normalizedName}|${canonicalOrderlyPackKey(geometry)}`;
 }
 
+/**
+ * A stable Orderly Item Code owns its own pack-specific identity namespace.
+ * Two real source codes may legitimately normalize to the same display name
+ * and geometry, so the unqualified name+pack identity must never merge them.
+ */
+export function deriveOrderlyStableCodePackSourceId(
+  sourceItemCode: string | null | undefined,
+  cleanedDescription: string | null | undefined,
+  geometry: SourcePackGeometry,
+): string | null {
+  const normalizedCode = sourceItemCode?.trim();
+  const normalizedName = normalizeOrderlyProductName(cleanedDescription);
+  if (!normalizedCode || !normalizedName) return null;
+  return `${ORDERLY_ALTERNATE_ID_PREFIX}CODE=${normalizedCode}|${normalizedName}|${canonicalOrderlyPackKey(geometry)}`;
+}
+
 export function buildOrderlyIdentityGroup(
   row: Pick<{ rowIndex: number; cleanedDescription: string | null; caseQuantity: number | null; innerPackQuantity: number | null; baseUnitQuantity: number | null; baseUnit: string | null }, 'rowIndex' | 'cleanedDescription' | 'caseQuantity' | 'innerPackQuantity' | 'baseUnitQuantity' | 'baseUnit'>,
 ): OrderlyIdentityGroup | null {

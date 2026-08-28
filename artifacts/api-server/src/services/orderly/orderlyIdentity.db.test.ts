@@ -2486,4 +2486,213 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .orderBy(orderlyImportReviewDecisions.rowIndex);
     expect(afterConflict).toEqual(beforeConflict);
   });
+
+  it('keeps punctuation-colliding stable codes on separate items through preview and approval', async () => {
+    const products = [
+      { code: '638335', seedDescription: 'HUNDRED ACRE CAB SAUV MORG W CODE 638335', julyDescription: 'HUNDRED ACRE CAB SAUV MORG. W' },
+      { code: '638336', seedDescription: 'HUNDRED ACRE CAB SAUV MORG W CODE 638336', julyDescription: 'HUNDRED ACRE CAB SAUV MORG W' },
+      { code: '313642', seedDescription: 'MONTES PURPLE ANGEL CODE 313642', julyDescription: 'MONTES PURPLE ANGEL' },
+      { code: '389849', seedDescription: 'MONTES PURPLE ANGEL CODE 389849', julyDescription: 'MONTES PURPLE ANGEL.' },
+    ];
+    const baseBatch = await stageBatch(products.map(product => ({
+      code: product.code,
+      description: product.seedDescription,
+      location: 'Wine Cellar',
+      supplier: 'Collision Vendor',
+      packSizeRaw: '1/1 750ML',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 100,
+    })), '2027-06-30');
+    await applyBatchApproval(baseBatch, approvalAuth);
+
+    const baseRows = await db
+      .select({
+        sourceItemCode: inventoryImportRows.sourceItemCode,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, baseBatch));
+    const seededItemByCode = new Map(baseRows.map(row => [row.sourceItemCode, row.resolvedInventoryItemId]));
+    expect(new Set(seededItemByCode.values()).size).toBe(4);
+
+    const julyBatch = await stageBatch(products.flatMap(product =>
+      ['Wine Cellar', 'Main Bar'].map(location => ({
+        code: product.code,
+        description: product.julyDescription,
+        location,
+        supplier: 'Collision Vendor',
+        packSizeRaw: '1/1 750ML',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+        packagePrice: 105,
+      }))
+    ), '2027-07-31');
+
+    const preview = await runResolutionPreview(julyBatch, ID.company);
+    expect(preview.identitySummary.conflictingReliableCodeGroups).toEqual([]);
+    expect(preview.identitySummary.identityGroupsRequiringReview).toBe(0);
+    expect(preview.rows.every(row => (
+      row.itemMatch.strategy === 'external_mapping' &&
+      row.itemMatch.requiresReview === false &&
+      row.itemMatch.matchedId === seededItemByCode.get(row.sourceItemCode)
+    ))).toBe(true);
+    expect(new Set(preview.rows.map(row => row.identityGroupStatus))).toEqual(new Set(['existing_item']));
+
+    await applyBatchApproval(julyBatch, approvalAuth);
+    const approvedRows = await db
+      .select({
+        sourceItemCode: inventoryImportRows.sourceItemCode,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, julyBatch));
+    expect(approvedRows.every(row =>
+      row.resolvedInventoryItemId === seededItemByCode.get(row.sourceItemCode)
+    )).toBe(true);
+
+    const scopedPackMappings = await db
+      .select({
+        sourceExternalId: inventoryItemExternalMappings.sourceExternalId,
+        inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
+      })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        sql`${inventoryItemExternalMappings.sourceExternalId} LIKE 'ALT|CODE=%'`,
+      ));
+    for (const product of products) {
+      expect(scopedPackMappings).toContainEqual(expect.objectContaining({
+        sourceExternalId: expect.stringContaining(`ALT|CODE=${product.code}|`),
+        inventoryItemId: seededItemByCode.get(product.code),
+      }));
+    }
+  });
+
+  it('never lets a pseudo-code group cache capture a stable code in either row order', async () => {
+    for (const pseudoFirst of [true, false]) {
+      const description = pseudoFirst
+        ? `Alpha Cabernet Collision ${RUN}`
+        : `Zulu Tequila Separation ${RUN}`;
+      const stableCode = `MIXED-${RUN}-${pseudoFirst ? '1' : '2'}`;
+      const pseudoRow: SourceRow = {
+        code: 'HOUSE WINE',
+        description,
+        location: 'Wine Cellar',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      };
+      const stableRow: SourceRow = {
+        code: stableCode,
+        description,
+        location: 'Main Bar',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      };
+      const batchId = await stageBatch(
+        pseudoFirst ? [pseudoRow, stableRow] : [stableRow, pseudoRow],
+        pseudoFirst ? '2027-08-31' : '2027-09-30',
+      );
+
+      const preview = await runResolutionPreview(batchId, ID.company);
+      expect(preview.rows.find(row => row.sourceItemCode === stableCode)?.sourceCodeReliability).toBe('stable');
+      expect(preview.rows.find(row => row.sourceItemCode === 'HOUSE WINE')?.sourceCodeReliability).toBe('pseudo_code');
+      expect(preview.rows.every(row => row.identityGroupStatus === 'new_candidate')).toBe(true);
+
+      await applyBatchApproval(batchId, approvalAuth);
+      const rows = await db
+        .select({
+          sourceItemCode: inventoryImportRows.sourceItemCode,
+          resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        })
+        .from(inventoryImportRows)
+        .where(eq(inventoryImportRows.batchId, batchId));
+      const stable = rows.find(row => row.sourceItemCode === stableCode);
+      const pseudo = rows.find(row => row.sourceItemCode === 'HOUSE WINE');
+      expect(stable?.resolvedInventoryItemId).toBeTruthy();
+      expect(pseudo?.resolvedInventoryItemId).toBeTruthy();
+      expect(stable?.resolvedInventoryItemId).not.toBe(pseudo?.resolvedInventoryItemId);
+
+      const [stableMapping] = await db
+        .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+        .from(inventoryItemExternalMappings)
+        .where(and(
+          eq(inventoryItemExternalMappings.companyId, ID.company),
+          eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+          eq(inventoryItemExternalMappings.sourceExternalId, stableCode),
+        ));
+      expect(stableMapping.inventoryItemId).toBe(stable?.resolvedInventoryItemId);
+    }
+  });
+
+  it('does not silently map a new stable code through an existing code sibling group', async () => {
+    const existingCode = `638335-${RUN}`;
+    const newCode = `638336-${RUN}`;
+    const existingBatch = await stageBatch([{
+      code: existingCode,
+      description: 'HUNDRED ACRE CAB SAUV MORG. W',
+      location: 'Wine Cellar',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2027-10-31');
+    await applyBatchApproval(existingBatch, approvalAuth);
+
+    const collisionBatch = await stageBatch([
+      {
+        code: existingCode,
+        description: 'HUNDRED ACRE CAB SAUV MORG. W',
+        location: 'Wine Cellar',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+      {
+        code: newCode,
+        description: 'HUNDRED ACRE CAB SAUV MORG W',
+        location: 'Main Bar',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 750,
+        baseUnit: 'ML',
+      },
+    ], '2027-11-30');
+    const preview = await runResolutionPreview(collisionBatch, ID.company);
+    const existingRow = preview.rows.find(row => row.sourceItemCode === existingCode)!;
+    const newCodeRow = preview.rows.find(row => row.sourceItemCode === newCode)!;
+    expect(existingRow.itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      requiresReview: false,
+      matchedId: expect.any(String),
+    });
+    expect(newCodeRow.itemMatch).toMatchObject({
+      possibleRecode: true,
+      requiresReview: true,
+      possibleRecodeMatchedId: existingRow.itemMatch.matchedId,
+    });
+
+    await expect(applyBatchApproval(collisionBatch, approvalAuth)).rejects.toThrow(
+      new RegExp(`Item Code ${newCode}.*explicit .*decision`, 'i'),
+    );
+    const newCodeMappings = await db
+      .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.sourceExternalId, newCode),
+      ));
+    expect(newCodeMappings).toEqual([]);
+  });
 });

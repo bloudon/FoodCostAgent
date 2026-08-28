@@ -38,3 +38,9 @@ A reviewed `create_variant` decision must override every cache of pre-existing m
 **Why:** A row may high-confidence name-match an existing item while deeper vendor-pack evidence proves a different dimension. Caching that match before decision application silently turns `create_variant` into a link and sends the incoming pack to the comparison item.
 
 **How to apply:** Exclude all possible re-code rows from existing-item approval caches. Apply the explicit variant decision before any confident-match fallback, and regression-test cases where superficial outer counts match but canonical dimensions differ.
+
+Stable Item Codes own separate pack-specific derived-identity namespaces. An unqualified normalized name+pack key may reconcile descriptive or blank-code rows, but it must never merge two distinct stable codes or become a mutation cache for a stable row.
+
+**Why:** Distinct products can differ only by punctuation that normalization intentionally removes. Reusing one unqualified derived key for their stable codes makes approval order-dependent and can redirect a real source code to another item's pack identity.
+
+**How to apply:** Qualify stable-code pack identities by the exact source code within the existing company/source-property scope. Stable rows may read only their real code or code-qualified pack identity; group caches are allowed only for a proven singleton stable sibling, blank-only group, or pseudo-only new group.

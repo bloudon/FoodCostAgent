@@ -73,6 +73,7 @@ import {
 import {
   buildOrderlyIdentityGroup,
   deriveOrderlyAlternateSourceId,
+  deriveOrderlyStableCodePackSourceId,
 } from './orderlyIdentity';
 import { parseOrderlyPackSize } from './OrderlyParser';
 import {
@@ -546,21 +547,6 @@ function deriveApprovalIdentityCaches(preview: ResolutionPreviewResult): {
       }
       reliableCodeExistingItemIds.set(code, row.itemMatch.matchedId);
     }
-    if (
-      row.identityGroupKey &&
-      !row.itemMatch.requiresReview &&
-      row.itemMatch.matchedId != null &&
-      !row.itemMatch.possibleRecode
-    ) {
-      const existing = identityGroupExistingItemIds.get(row.identityGroupKey);
-      if (existing && existing !== row.itemMatch.matchedId) {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly identity group ${row.identityGroupKey} resolves to multiple inventory items and requires review.`,
-        );
-      }
-      identityGroupExistingItemIds.set(row.identityGroupKey, row.itemMatch.matchedId);
-    }
     if (row.identityGroupKey) {
       const group = identityGroups.get(row.identityGroupKey) ?? [];
       group.push(row);
@@ -571,6 +557,19 @@ function deriveApprovalIdentityCaches(preview: ResolutionPreviewResult): {
   const blankGroupMayFollowCodedSibling = new Map<string, boolean>();
   const blankGroupMayCreateInternalItem = new Map<string, boolean>();
   for (const [groupKey, group] of identityGroups) {
+    const safeItemIds = new Set(group
+      .filter(row =>
+        !row.itemMatch.requiresReview &&
+        row.itemMatch.matchedId != null &&
+        !row.itemMatch.possibleRecode
+      )
+      .map(row => row.itemMatch.matchedId!));
+    // An unqualified name+pack group is reusable only when it identifies one
+    // item. Multiple stable codes may safely occupy the group, but the group
+    // itself must not become an approval-time mutation target.
+    if (safeItemIds.size === 1) {
+      identityGroupExistingItemIds.set(groupKey, [...safeItemIds][0]);
+    }
     const blankRow = group.find(row => row.itemCodeStatus === 'blank');
     if (!blankRow) continue;
     blankGroupMayFollowCodedSibling.set(groupKey, hasSafeCodedSibling(blankRow, group));
@@ -1071,6 +1070,16 @@ function hasSafeCodedSibling(
   row: Pick<IdentityPreviewRow, 'rowIndex'>,
   group: IdentityPreviewRow[],
 ): boolean {
+  // A descriptive/pseudo code in the same name+pack group is independent
+  // review evidence. Do not let a blank row silently follow the stable sibling
+  // while that other row may be resolved to a different inventory item.
+  if (group.some(sibling =>
+    sibling.rowIndex !== row.rowIndex &&
+    sibling.itemCodeStatus !== 'blank' &&
+    !isReliableItemCode(sibling)
+  )) {
+    return false;
+  }
   const safeCodes = new Set(
     group
       .filter(sibling => (
@@ -1650,10 +1659,16 @@ export async function runResolutionPreview(
     const extId = sourceCodeReliability === 'stable' && row.sourceItemCode
       ? extMappingLookup.get(row.sourceItemCode.trim())
       : undefined;
-    const alternateSourceId = deriveOrderlyAlternateSourceId(
-      row.cleanedDescription,
-      sourcePackGeometry(row as any),
-    );
+    const alternateSourceId = sourceCodeReliability === 'stable'
+      ? deriveOrderlyStableCodePackSourceId(
+          row.sourceItemCode,
+          row.cleanedDescription,
+          sourcePackGeometry(row as any),
+        )
+      : deriveOrderlyAlternateSourceId(
+          row.cleanedDescription,
+          sourcePackGeometry(row as any),
+        );
     const alternateId = alternateSourceId
       ? alternateMappingLookup.get(alternateSourceId)
       : undefined;
@@ -1990,6 +2005,10 @@ export async function runResolutionPreview(
     if (safeItemIds.size === 1 && safeCodedSiblingCodes.size === 1) {
       const [matchedId] = [...safeItemIds];
       for (const resolution of groupResolutions) {
+        // An unqualified name+pack group can help blank/descriptive location
+        // rows, but it must never replace a stable code's own match/review
+        // outcome. Stable codes use their direct or code-qualified identity.
+        if (isReliableItemCode(resolution)) continue;
         if (
           resolution.itemMatch.matchedId == null ||
           resolution.itemMatch.requiresReview
@@ -2005,7 +2024,20 @@ export async function runResolutionPreview(
       }
       identityGroupStatus.set(groupKey, 'existing_item');
     } else if (safeItemIds.size > 1) {
+      let requiresGroupReview = false;
       for (const resolution of groupResolutions) {
+        const hasAuthoritativeStableCodeResolution =
+          isReliableItemCode(resolution) &&
+          resolution.itemMatch.matchedId != null &&
+          !resolution.itemMatch.requiresReview &&
+          !resolution.itemMatch.possibleRecode;
+        if (hasAuthoritativeStableCodeResolution) {
+          // Distinct stable Item Codes are allowed to share one normalized
+          // name+pack key. Preserve each code's authoritative item instead of
+          // replacing both with an artificial derived-identity ambiguity.
+          continue;
+        }
+        requiresGroupReview = true;
         resolution.itemMatch = {
           strategy: 'name_pack',
           confidence: 'ambiguous',
@@ -2014,7 +2046,7 @@ export async function runResolutionPreview(
           requiresReview: true,
         };
       }
-      identityGroupStatus.set(groupKey, 'review_required');
+      identityGroupStatus.set(groupKey, requiresGroupReview ? 'review_required' : 'existing_item');
     } else if (safeItemIds.size === 1) {
       // A blank-only direct match or several coded identities that happen to
       // point at one item is not the one-sibling evidence required to lift
@@ -3379,6 +3411,24 @@ export async function applyBatchApproval(
     // pricing, quantities, and source-period fields.
     const reliableCodeItemIds = new Map<string, string | null>();
     const identityGroupItemIds = new Map<string, string | null>();
+    const identityRowsByGroup = new Map<string, ResolutionPreviewResult['rows']>();
+    for (const row of resolutionPreview.rows) {
+      if (!row.identityGroupKey) continue;
+      const group = identityRowsByGroup.get(row.identityGroupKey) ?? [];
+      group.push(row);
+      identityRowsByGroup.set(row.identityGroupKey, group);
+    }
+    const pseudoOnlyNewIdentityGroups = new Set(
+      [...identityRowsByGroup.entries()]
+        .filter(([, group]) => (
+          group.length > 0 &&
+          group.every(row =>
+            row.sourceCodeReliability === 'pseudo_code' &&
+            row.identityGroupStatus === 'new_candidate'
+          )
+        ))
+        .map(([groupKey]) => groupKey),
+    );
 
     // ── Transaction-time identity re-read ────────────────────────────────
     // The preview ran outside this transaction, so a concurrent approval of
@@ -3675,7 +3725,12 @@ export async function applyBatchApproval(
         ) {
           return { itemId: null, created: false };
         }
-        if (identityGroupKey && blankRowMayUseGroupEvidence && identityGroupItemIds.has(identityGroupKey)) {
+        if (
+          !reliableCode &&
+          identityGroupKey &&
+          blankRowMayUseGroupEvidence &&
+          identityGroupItemIds.has(identityGroupKey)
+        ) {
           return { itemId: identityGroupItemIds.get(identityGroupKey) ?? null, created: false };
         }
         if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
@@ -3697,7 +3752,7 @@ export async function applyBatchApproval(
           }
           return { itemId: cachedItemId, created: false };
         }
-        if (identityGroupExistingItemId && blankRowMayUseGroupEvidence) {
+        if (!reliableCode && identityGroupExistingItemId && blankRowMayUseGroupEvidence) {
           return { itemId: identityGroupExistingItemId, created: false };
         }
         if (groupedExistingItemId) {
@@ -3819,7 +3874,21 @@ export async function applyBatchApproval(
         }
       }
       if (reliableCode && resolvedItemId) reliableCodeItemIds.set(reliableCode, resolvedItemId);
-      if (identityGroupKey && blankRowMayUseGroupEvidence && resolvedItemId) {
+      const maySeedIdentityGroupCache = identityGroupKey != null && resolvedItemId != null && (
+        (
+          reliableCode != null &&
+          blankGroupMayFollowCodedSibling.get(identityGroupKey) === true
+        ) ||
+        (
+          rowPreview.itemCodeStatus === 'blank' &&
+          blankGroupMayCreateInternalItem.get(identityGroupKey) === true
+        ) ||
+        (
+          rowPreview.sourceCodeReliability === 'pseudo_code' &&
+          pseudoOnlyNewIdentityGroups.has(identityGroupKey)
+        )
+      );
+      if (maySeedIdentityGroupCache) {
         identityGroupItemIds.set(identityGroupKey, resolvedItemId);
       }
       if (rowPreview.heldForReview && !resolvedItemId) rowsHeldForReview++;
@@ -3940,10 +4009,16 @@ export async function applyBatchApproval(
       // actually resolved. The existing mapping table remains the only source
       // identity authority; a collision with another canonical item fails
       // closed rather than silently changing a known source mapping.
-      const alternateSourceId = deriveOrderlyAlternateSourceId(
-        rowPreview.cleanedDescription,
-        sourcePackGeometry(rowPreview),
-      );
+      const alternateSourceId = rowPreview.sourceCodeReliability === 'stable'
+        ? deriveOrderlyStableCodePackSourceId(
+            rowPreview.sourceItemCode,
+            rowPreview.cleanedDescription,
+            sourcePackGeometry(rowPreview),
+          )
+        : deriveOrderlyAlternateSourceId(
+            rowPreview.cleanedDescription,
+            sourcePackGeometry(rowPreview),
+          );
       if (resolvedItemId && alternateSourceId) {
         const inserted = await tx
           .insert(inventoryItemExternalMappings)
@@ -3986,7 +4061,7 @@ export async function applyBatchApproval(
           if (existingAlternate && existingAlternate.inventoryItemId !== resolvedItemId) {
             throw new ImportApprovalError(
               'CONFLICT',
-              'The derived Orderly identity is already confirmed for a different inventory item.',
+              `Orderly row ${rowPreview.rowIndex} (Item Code ${rowPreview.sourceItemCode?.trim() || 'unavailable'}; ${rowPreview.cleanedDescription?.trim() || 'description unavailable'}) has derived identity ${alternateSourceId} confirmed for inventory item ${existingAlternate.inventoryItemId}, not resolved item ${resolvedItemId}.`,
             );
           }
         }
