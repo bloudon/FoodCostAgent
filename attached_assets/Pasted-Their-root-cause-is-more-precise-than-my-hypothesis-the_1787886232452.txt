@@ -1,0 +1,27 @@
+Their root cause is more precise than my hypothesis — the comparison item was being cached from the name/outer-count match *before* the `create_variant` decision was applied, so the variant resolved back to it. Same symptom, better diagnosis.
+
+Let me verify state and retry.State matches their report exactly — 175 decisions, revision 1, 32/34 split, no banner. Approving.Still running at 60s with no error — further than the last two attempts, which had failed by now. Waiting.**June approved.** 112 seconds, catalog 3,052 → 3,101. Now the test that this whole re-seed was for.## Both months reconcile — but the duplicates aren't gone
+
+**Reconciliation is perfect:**
+
+| Month | Rows | Excluded | Snapshot | Imported | Delta |
+|---|---|---|---|---|---|
+| May | 5,358 / 5,358 | 0 | $254,286.67 | $254,286.67 | ~7e-10 |
+| **June** | **5,409 / 5,409** | **0** | **$261,007.67** | **$261,007.67** | **0** |
+
+June's delta is exactly zero.
+
+**But `periodComparison` shows 31 name-paired duplicates** — down from 39, not eliminated. And `avocado` is still on the list, which was my headline example of a product that should have consolidated.
+
+The improvement roughly matches what I did by hand: 13 cross-vendor items linked, and the duplicate count fell by 8. So `link_vendor_pack` worked for the ones I applied it to, but 31 products still forked.
+
+The names tell the story — `avocado`, `beef - ground chuck`, `buttermilk`, `cabbage - red`, `cheese - cheddar mild shredded`, `chives`. These are the Category 2 rows I resolved as `create_variant` because the panel offered **no cross-vendor option**, and `casamigo's - blanco` is in there too, which we established *should* be a separate item.
+
+So there are two different things mixed in that list, and they need separating before anyone changes more code:
+
+- **Genuinely different products** — Casamigos minis vs bottles. Correctly forked; these should be excluded from the duplicate metric.
+- **Same product, different vendor** — avocado, ground chuck. Should have offered the cross-vendor option and didn't.
+
+Worth checking whether the ones that forked wrongly are cases where the vendor genuinely differs but `crossVendorPackEligible` didn't fire — for instance if the item matched by name to a *different* catalog item than the one holding the other vendor's pack.
+
+Before drawing conclusions I'd want the vendor for each of the 31, the same check I ran on the 13. Want me to pull that? It'll say precisely how many are real duplicates versus correct forks, and that number is what should drive the next ticket rather than the raw 31.
