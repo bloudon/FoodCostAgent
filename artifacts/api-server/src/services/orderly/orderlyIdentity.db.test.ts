@@ -1936,6 +1936,119 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     });
   });
 
+  it('reuses the latest approved same-vendor stable-code pack when legacy history lacks its pack mapping', async () => {
+    const stableCode = `REPEAT-${RUN.toUpperCase()}`;
+    const baseBatch = await stageBatch([{
+      code: stableCode,
+      description: 'Repeated Pack Identity',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '6/1 750ML',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 600,
+    }], '2027-05-31');
+    await applyBatchApproval(baseBatch, approvalAuth);
+
+    const changedPackBatch = await stageBatch([{
+      code: stableCode,
+      description: 'Repeated Pack Identity',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 750ML',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 110,
+    }], '2027-06-30');
+    const changedPreview = await runResolutionPreview(changedPackBatch, ID.company);
+    expect(changedPreview.rows[0].itemMatch).toMatchObject({
+      recommendedAction: 'create_variant',
+    });
+    expect(changedPreview.rows[0].itemMatch.possibleRecodeMatchedId).toBeTruthy();
+    await applyBatchApproval(changedPackBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: changedPreview.rows[0].itemMatch.possibleRecodeMatchedId!,
+    }]);
+    const [changedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, changedPackBatch));
+    expect(changedRow.resolvedInventoryItemId).toBeTruthy();
+    const changedVendorPacks = await db
+      .select({
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+      })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, changedRow.resolvedInventoryItemId!));
+    expect(changedVendorPacks).toEqual([
+      expect.objectContaining({ canonicalQtyPerPurchaseUnit: 750 }),
+    ]);
+
+    // Simulate an approved pre-pack-identity month. The exact historical row
+    // remains available, but its newer ALT|CODE mapping does not.
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.inventoryItemId, changedRow.resolvedInventoryItemId!),
+        sql`${inventoryItemExternalMappings.sourceExternalId} LIKE 'ALT|CODE=%'`,
+      ));
+
+    const interveningBatch = await stageBatch([{
+      code: `UNRELATED-${RUN.toUpperCase()}`,
+      description: 'Unrelated Partial Inventory Item',
+      location: 'Dry Storage',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 EA',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 10,
+    }], '2027-07-15');
+    await applyBatchApproval(interveningBatch, approvalAuth);
+
+    const repeatedBatch = await stageBatch([{
+      code: stableCode,
+      description: 'Repeated Pack Identity',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 750ML',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 115,
+    }], '2027-07-31');
+    const repeatedPreview = await runResolutionPreview(repeatedBatch, ID.company);
+    expect(repeatedPreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'alternate_identity',
+      matchedId: changedRow.resolvedInventoryItemId,
+      requiresReview: false,
+    });
+    expect(repeatedPreview.rows[0].itemMatch.possibleRecode).not.toBe(true);
+    expect(repeatedPreview.rows[0].itemMatch.recodeEvidenceClass).not.toBe('new_pack_size');
+
+    await expect(applyBatchApproval(repeatedBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'create_variant',
+      comparableInventoryItemId: changedRow.resolvedInventoryItemId!,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'INVALID_REQUEST' });
+
+    const approved = await applyBatchApproval(repeatedBatch, approvalAuth);
+    expect(approved.itemsCreated).toBe(0);
+    const [repeatedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, repeatedBatch));
+    expect(repeatedRow.resolvedInventoryItemId).toBe(changedRow.resolvedInventoryItemId);
+  });
+
   it('writes a same-name same-vendor create_variant pack against the new item, not the comparison item', async () => {
     const baseBatch = await stageBatch([{
       code: 'CREAMER-BASE-384EA',

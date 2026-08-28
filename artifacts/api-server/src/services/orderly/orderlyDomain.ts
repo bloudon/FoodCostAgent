@@ -17,7 +17,7 @@
  */
 
 import { db } from '../../db';
-import { eq, and, inArray, ne, sql } from 'drizzle-orm';
+import { eq, and, inArray, ne, sql, lt, isNotNull, desc } from 'drizzle-orm';
 import {
   inventoryItems,
   vendors,
@@ -1425,7 +1425,10 @@ export async function runResolutionPreview(
   // Two Orderly clubs can legitimately reuse the same Item Code, so a mapping
   // from another property must never resolve this batch's rows.
   const [scopeRow] = await runner
-    .select({ sourcePropertyId: inventoryImportBatches.sourcePropertyId })
+    .select({
+      sourcePropertyId: inventoryImportBatches.sourcePropertyId,
+      inventoryDate: inventoryImportBatches.inventoryDate,
+    })
     .from(inventoryImportBatches)
     .where(
       and(
@@ -1444,7 +1447,38 @@ export async function runResolutionPreview(
   const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
-  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings, existingVendorSupplies] =
+  const priorApprovedRowsQuery = scopeRow.inventoryDate
+    ? runner
+      .select({
+        inventoryDate: inventoryImportBatches.inventoryDate,
+        rowIndex: inventoryImportRows.rowIndex,
+        sourceItemCode: inventoryImportRows.sourceItemCode,
+        supplierRaw: inventoryImportRows.supplierRaw,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+      })
+      .from(inventoryImportRows)
+      .innerJoin(inventoryImportBatches, eq(inventoryImportBatches.id, inventoryImportRows.batchId))
+      .where(and(
+        eq(inventoryImportBatches.companyId, companyId),
+        eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
+        eq(inventoryImportBatches.sourcePropertyId, sourcePropertyScope),
+        eq(inventoryImportBatches.status, 'approved'),
+        lt(inventoryImportBatches.inventoryDate, scopeRow.inventoryDate),
+        isNotNull(inventoryImportRows.resolvedInventoryItemId),
+        sql`${inventoryImportRows.sourceItemCode} IN (
+          SELECT current_row.source_item_code
+          FROM inventory_import_rows current_row
+          WHERE current_row.batch_id = ${batchId}
+            AND current_row.source_item_code IS NOT NULL
+        )`,
+      ))
+      .orderBy(desc(inventoryImportBatches.inventoryDate), inventoryImportRows.rowIndex)
+    : Promise.resolve([]);
+  const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings, existingVendorSupplies, priorApprovedRows] =
     await Promise.all([
       runner
         .select()
@@ -1554,6 +1588,7 @@ export async function runResolutionPreview(
           eq(vendors.companyId, companyId),
         ))
         .where(eq(vendorItems.active, 1)),
+      priorApprovedRowsQuery,
     ]);
 
   // Earlier parser versions did not understand Orderly's complete three-tier
@@ -1628,6 +1663,47 @@ export async function runResolutionPreview(
     supplies.push(supply);
     vendorSuppliesByItemId.set(supply.inventoryItemId, supplies);
   }
+  type PriorApprovedResolutionRow = {
+    inventoryDate: string | null;
+    rowIndex: number;
+    sourceItemCode: string | null;
+    supplierRaw: string | null;
+    caseQuantity: number | null;
+    innerPackQuantity: number | null;
+    baseUnitQuantity: number | null;
+    baseUnit: string | null;
+    resolvedInventoryItemId: string | null;
+  };
+  const typedPriorApprovedRows = priorApprovedRows as PriorApprovedResolutionRow[];
+  const latestPriorRowsByStableCode = new Map<string, PriorApprovedResolutionRow[]>();
+  for (const priorRow of typedPriorApprovedRows) {
+    const code = normalizedStableSourceCode(priorRow.sourceItemCode);
+    if (!code) continue;
+    const rows = latestPriorRowsByStableCode.get(code) ?? [];
+    rows.push(priorRow);
+    latestPriorRowsByStableCode.set(code, rows);
+  }
+
+  function priorApprovedPackItemId(row: InventoryImportRow): string | undefined {
+    const code = normalizedStableSourceCode(row.sourceItemCode);
+    const sourceVendor = normalizeForMatch(row.supplierRaw ?? '');
+    if (!code || !sourceVendor) return undefined;
+    const incomingGeometry = sourcePackGeometry(row);
+    if (normalizePackGeometry(incomingGeometry).status !== 'compatible') return undefined;
+
+    const matchingRows = (latestPriorRowsByStableCode.get(code) ?? []).filter(priorRow =>
+      normalizeForMatch(priorRow.supplierRaw ?? '') === sourceVendor &&
+      comparePackGeometry(incomingGeometry, priorRow).status === 'compatible'
+    );
+    const latestMatchingDate = matchingRows[0]?.inventoryDate ?? null;
+    const resolvedIds = new Set<string>(
+      matchingRows
+        .filter(priorRow => priorRow.inventoryDate === latestMatchingDate)
+        .map(priorRow => priorRow.resolvedInventoryItemId)
+        .filter((itemId): itemId is string => typeof itemId === 'string'),
+    );
+    return resolvedIds.size === 1 ? [...resolvedIds][0] : undefined;
+  }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
   // @ts-ignore
@@ -1671,6 +1747,9 @@ export async function runResolutionPreview(
         );
     const alternateId = alternateSourceId
       ? alternateMappingLookup.get(alternateSourceId)
+      : undefined;
+    const priorPackId = sourceCodeReliability === 'stable' && !alternateId
+      ? priorApprovedPackItemId(row)
       : undefined;
     if (extId && alternateId && alternateId !== extId) {
       itemMatch = {
@@ -1741,7 +1820,20 @@ export async function runResolutionPreview(
         candidatePackEvidence,
         candidateHasSameVendor,
       );
-      if (candidateHasSameVendor && packAssessment.status === 'incompatible') {
+      if (
+        candidateHasSameVendor &&
+        packAssessment.status === 'incompatible' &&
+        priorPackId &&
+        priorPackId !== extId
+      ) {
+        itemMatch = {
+          strategy: 'alternate_identity',
+          confidence: 'high',
+          matchedId: priorPackId,
+          candidateIds: [],
+          requiresReview: false,
+        };
+      } else if (candidateHasSameVendor && packAssessment.status === 'incompatible') {
         itemMatch = {
           ...itemMatch,
           matchedId: null,
@@ -3809,6 +3901,23 @@ export async function applyBatchApproval(
       };
 
       if (
+        reliableCode &&
+        rowPreview.itemMatch.strategy === 'alternate_identity'
+      ) {
+        // Legacy approved batches may predate pack-qualified ALT mappings.
+        // Their exact latest-month code + vendor + normalized-pack resolution
+        // is authoritative for this physical pack, while the durable bare code
+        // mapping continues to preserve the older base-pack identity.
+        const candidate = await resolveRowCandidate();
+        if (!candidate.itemId) {
+          throw new ImportApprovalError(
+            'CONFLICT',
+            `Orderly Item Code ${reliableCode} could not reuse its approved prior-month pack identity.`,
+          );
+        }
+        resolvedItemId = candidate.itemId;
+        itemsLinked++;
+      } else if (
         reliableCode &&
         rowPreview.itemMatch.mappedCodePackDrift === true &&
         identityDecision?.action === 'create_variant'
