@@ -846,6 +846,12 @@ export function ResolutionPreviewStep({
 
   useEffect(() => {
     if (!savedReviewDecisions) return;
+    // A failed approval job is durable and may contain the pre-fix error.
+    // Once the fresh decision read identifies stale rows, that old banner is
+    // no longer the actionable state; the stale-decision panel below is.
+    if (savedReviewDecisions.stale && savedReviewDecisions.stale.length > 0) {
+      setApprovalJob(null);
+    }
     setRowDecisions(new Map(savedReviewDecisions.decisions.map(decision => [
       decision.rowIndex,
       fromStoredDecisionPayload(decision.decision),
@@ -1013,6 +1019,7 @@ export function ResolutionPreviewStep({
         for (const change of changes) next.delete(change.rowIndex);
         return next;
       });
+      await refetchReviewDecisions();
       return true;
     } catch (err: any) {
       const message = err.message ?? "Review the row and try again.";

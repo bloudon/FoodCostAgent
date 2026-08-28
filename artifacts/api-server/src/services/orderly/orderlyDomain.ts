@@ -2481,7 +2481,7 @@ export async function getOrderlyReviewDecisions(
     } catch (err: any) {
       stale.push({
         rowIndex: saved.rowIndex,
-        reason: err?.message ?? 'This saved decision no longer matches the current pack evidence.',
+        reason: `${previewRowConflictLabel(row)}: ${err?.message ?? 'This saved decision no longer matches the current pack evidence.'}`,
         sourceItemCode: row.sourceItemCode,
         description: row.cleanedDescription,
       });
