@@ -1804,7 +1804,9 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         description: 'HEITZ CAB SAUV MARTHAS 18 WD',
       }),
     ]);
-    await expect(applyBatchApproval(juneBatch, approvalAuth, null)).rejects.toThrow(/623764.*incompatible.*750 ML versus 4500 ML/);
+    await expect(applyBatchApproval(juneBatch, approvalAuth, null)).rejects.toThrow(
+      /Approval preflight found 1 review conflict.*623764.*incoming 1\/1 750ML.*existing 6 × 1 × 750 × ML/,
+    );
 
     await saveOrderlyReviewDecisionChanges(juneBatch, approvalAuth, [{
       rowIndex: 1,
@@ -1840,33 +1842,37 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     });
   });
 
-  it('keeps a same-vendor incompatible pack on the separate-variant path', async () => {
+  it('writes a same-name same-vendor create_variant pack against the new item, not the comparison item', async () => {
     const baseBatch = await stageBatch([{
-      code: 'SAME-VENDOR-BASE-1GAL',
-      description: 'Same Vendor Sauce',
+      code: 'CREAMER-BASE-384EA',
+      description: 'Creamers Half and Half ind.',
       location: 'Dry Storage',
       supplier: 'Vendor Gamma',
-      caseQuantity: 1,
+      caseQuantity: 384,
       innerPackQuantity: 1,
       baseUnitQuantity: 1,
-      baseUnit: 'GAL',
+      baseUnit: 'EA',
       packagePrice: 20,
     }], '2027-06-30');
     await applyBatchApproval(baseBatch, approvalAuth);
 
     const variantBatch = await stageBatch([{
-      code: 'SAME-VENDOR-MINIS-24',
-      description: 'Same Vendor Sauce',
+      code: '7166386',
+      description: 'Creamers Half and Half ind.',
       location: 'Dry Storage',
       supplier: 'Vendor Gamma',
-      caseQuantity: 24,
-      innerPackQuantity: 1,
-      baseUnitQuantity: 2,
-      baseUnit: 'FL OZ',
-      packagePrice: 24,
+      packSizeRaw: '384/9 ML',
+      caseQuantity: 384,
+      innerPackQuantity: 9,
+      baseUnitQuantity: 1,
+      baseUnit: 'ML',
+      packagePrice: 20.15,
     }], '2027-07-31');
     const preview = await runResolutionPreview(variantBatch, ID.company);
     expect(preview.rows[0].itemMatch).toMatchObject({
+      strategy: 'name_pack',
+      confidence: 'high',
+      matchedId: expect.any(String),
       packCompatibility: 'incompatible',
       crossVendorPackEligible: false,
       recommendedAction: 'create_variant',
@@ -1904,7 +1910,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(variantVendorPack).toMatchObject({
       inventoryItemId: variantRow.resolvedInventoryItemId,
       canonicalQtyPerPurchaseUnit: expect.any(Number),
-      lastCasePrice: 24,
+      lastCasePrice: 20.15,
     });
     const relationships = await db
       .select({

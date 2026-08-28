@@ -441,37 +441,50 @@ function assertSavedReviewDecisionsRemainValid(
         prior.comparableInventoryItemId !== decision.comparableInventoryItemId
       )
     ) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Saved decisions for Orderly Item Code ${sourceCode} no longer agree.`,
-      );
+      staleDecisionDetails.push(`Item Code ${sourceCode}: saved decisions no longer agree`);
+      continue;
     }
     recodeDecisionByCode.set(sourceCode, decision);
+  }
+  const checkedCodes = new Set<string>();
+  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
+    const sourceCode = row.sourceItemCode!.trim();
+    if (checkedCodes.has(sourceCode)) continue;
+    checkedCodes.add(sourceCode);
+    const codeRows = preview.rows.filter(candidate =>
+      isReliableItemCode(candidate) &&
+      candidate.itemMatch.possibleRecode &&
+      candidate.sourceItemCode!.trim() === sourceCode
+    );
+    const decision = recodeDecisionByCode.get(sourceCode);
+    if (!decision) {
+      staleDecisionDetails.push(`${previewRowConflictLabel(row)}: now requires an explicit review decision`);
+      continue;
+    }
+    for (const codeRow of codeRows) {
+      try {
+        // One reviewed code may appear on multiple staged rows. Validate the
+        // same saved action against every current candidate and pack evidence.
+        assertReviewDecisionMatchesPreview(codeRow, decision);
+      } catch (err: any) {
+        staleDecisionDetails.push(
+          `${previewRowConflictLabel(codeRow)}: ${err?.message ?? 'saved decision is no longer valid'}`,
+        );
+      }
+    }
+  }
+
+  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
+    staleDecisionDetails.push(
+      ...preview.identitySummary.conflictingReliableCodeGroups.map(group =>
+        `Item Code ${group.sourceItemCode}: ${group.reasons.join('; ')}`
+      ),
+    );
   }
   if (staleDecisionDetails.length > 0) {
     throw new ImportApprovalError(
       'CONFLICT',
-      `Saved review decisions became stale after pack evidence changed. Review these items again: ${staleDecisionDetails.join(' | ')}`,
-    );
-  }
-
-  for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
-    const decision = recodeDecisionByCode.get(row.sourceItemCode!.trim());
-    if (!decision) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Orderly Item Code ${row.sourceItemCode} now requires an explicit review decision.`,
-      );
-    }
-    // One reviewed code may appear on multiple staged rows. Validate the same
-    // saved action against every row's current candidate and pack evidence.
-    assertReviewDecisionMatchesPreview(row, decision);
-  }
-
-  if (preview.identitySummary.conflictingReliableCodeGroups.length > 0) {
-    throw new ImportApprovalError(
-      'CONFLICT',
-      'Reliable Orderly Item Code identity evidence changed and now contains a conflicting group. Refresh the review before approval.',
+      `Approval preflight found ${staleDecisionDetails.length} review conflict${staleDecisionDetails.length === 1 ? '' : 's'}. Review all listed items before retrying: ${staleDecisionDetails.join(' | ')}`,
     );
   }
 }
@@ -499,7 +512,8 @@ function deriveApprovalIdentityCaches(preview: ResolutionPreviewResult): {
     if (
       isReliableItemCode(row) &&
       !row.itemMatch.requiresReview &&
-      row.itemMatch.matchedId != null
+      row.itemMatch.matchedId != null &&
+      !row.itemMatch.possibleRecode
     ) {
       const code = row.sourceItemCode!.trim();
       const existing = reliableCodeExistingItemIds.get(code);
@@ -3091,62 +3105,39 @@ export async function applyBatchApproval(
     recodeDecisionByReliableCode.set(code, decision);
   }
 
+  const recodeValidationConflicts: string[] = [];
+  const validatedRecodeCodes = new Set<string>();
   for (const row of preview.rows.filter(row => row.itemMatch.possibleRecode && isReliableItemCode(row))) {
     const code = row.sourceItemCode!.trim();
+    if (validatedRecodeCodes.has(code)) continue;
+    validatedRecodeCodes.add(code);
     const decision = recodeDecisionByReliableCode.get(code);
     if (!decision) {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `${previewRowConflictLabel(row)} requires an explicit link, vendor-pack link, or separate-variant decision before approval.`,
+      recodeValidationConflicts.push(
+        `${previewRowConflictLabel(row)}: requires an explicit link, vendor-pack link, or separate-variant decision`,
       );
+      continue;
     }
-    const expectedCandidateId = row.itemMatch.possibleRecodeMatchedId;
-    if (decision.action === 'link_existing') {
-      if (decision.inventoryItemId !== expectedCandidateId) {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly Item Code ${code} can only link to its reviewed re-code candidate.`,
+    const codeRows = preview.rows.filter(candidate =>
+      isReliableItemCode(candidate) &&
+      candidate.itemMatch.possibleRecode &&
+      candidate.sourceItemCode!.trim() === code
+    );
+    for (const codeRow of codeRows) {
+      try {
+        assertReviewDecisionMatchesPreview(codeRow, decision);
+      } catch (err: any) {
+        recodeValidationConflicts.push(
+          `${previewRowConflictLabel(codeRow)}: ${err?.message ?? 'saved decision is no longer valid'}`,
         );
       }
-      if (row.itemMatch.packCompatibility !== 'compatible') {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly Item Code ${code} cannot link to the existing inventory item because its pack is ${row.itemMatch.packCompatibility ?? 'unknown'}: ${row.itemMatch.packCompatibilityReason ?? 'no compatible pack evidence'}.`,
-        );
-      }
-    } else if (decision.action === 'link_vendor_pack') {
-      if (
-        decision.inventoryItemId !== expectedCandidateId ||
-        row.itemMatch.packCompatibility !== 'incompatible' ||
-        row.itemMatch.crossVendorPackEligible !== true
-      ) {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly Item Code ${code} can only attach this pack to its reviewed different-vendor inventory item.`,
-        );
-      }
-    } else if (decision.action === 'create_variant') {
-      const isVerifiedIncompatibleVariant =
-        row.itemMatch.recodeEvidenceClass === 'new_pack_size' &&
-        row.itemMatch.packCompatibility === 'incompatible';
-      const isUnknownPackVariant =
-        row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
-        row.itemMatch.packCompatibility === 'unknown';
-      if (
-        decision.comparableInventoryItemId !== expectedCandidateId ||
-        (!isVerifiedIncompatibleVariant && !isUnknownPackVariant)
-      ) {
-        throw new ImportApprovalError(
-          'CONFLICT',
-          `Orderly Item Code ${code} can only create a separate variant for a verified incompatible or explicitly incomplete pack review candidate.`,
-        );
-      }
-    } else {
-      throw new ImportApprovalError(
-        'CONFLICT',
-        `Orderly Item Code ${code} must create a separate variant of its reviewed candidate when it is not safely re-coded.`,
-      );
     }
+  }
+  if (recodeValidationConflicts.length > 0) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Approval preflight found ${recodeValidationConflicts.length} review conflict${recodeValidationConflicts.length === 1 ? '' : 's'}. Review all listed items before retrying: ${recodeValidationConflicts.join(' | ')}`,
+    );
   }
 
   // A group may include an earlier row that is unmatched and a later row with

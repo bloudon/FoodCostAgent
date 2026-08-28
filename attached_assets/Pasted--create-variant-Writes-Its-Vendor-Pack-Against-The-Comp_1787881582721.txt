@@ -1,0 +1,98 @@
+# `create_variant` Writes Its Vendor Pack Against The Comparison Item, Not The New Item
+
+**Priority:** Blocker — June approval fails
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `4abf8f33-1472-49f3-96eb-ba16827e1c86` (June_2026, 175 decisions saved, all `revision: 1`)
+**Failing row:** Orderly row 1827 — `Creamers Half and Half ind.`, Item Code `7166386`, Sysco
+
+> **Numbering:** two shipped tickets are both recorded as #1256. Please resolve that collision.
+
+---
+
+## Summary
+
+A row with a saved `create_variant` decision fails approval with:
+
+> **Approval failed** — Orderly row 1827 conflicts with the existing pack for this vendor and inventory item.
+
+`create_variant` creates a **new** inventory item. A new item has no existing vendor pack, so there is nothing for the vendor pack write to collide with. The collision therefore indicates the vendor-pack write is targeting the **wrong item**.
+
+## Likely cause
+
+The saved decision carries the comparison target:
+
+```json
+{ "rowIndex": 1827,
+  "decision": { "action": "create_variant",
+                "comparableInventoryItemId": "c118ae82-0ce7-42c5-8f96-d3633d92e064" },
+  "revision": 1 }
+```
+
+`comparableInventoryItemId` is the existing item the row was *compared against* — it is evidence, not a write target. If the mutation path uses it as the `inventoryItemId` for the vendor-pack upsert instead of the id of the newly created variant, the unique constraint on (vendor, inventory item) fires against the pre-existing pack and the transaction aborts.
+
+This would explain why `create_variant` — the outcome specifically intended to avoid collisions — is the one failing.
+
+## Reproduction
+
+| | |
+|---|---|
+| June row 1827 | `Creamers Half and Half ind.`, code `7166386`, Sysco, pack `384/9 ML` (3,456 ML) |
+| Existing catalog item | `Creamers Half and Half ind.` #41854, `caseSize 384`, `casePkgCount 384`, unit `ea` |
+| Saved decision | `create_variant` |
+| Result | Approval aborts on this row |
+
+Code `7166386` does not appear in the May workbook at all — it is new in June and matched the existing item by name only.
+
+**Expected:** a new inventory item is created, and Sysco's `384/9 ML` pack is written against that new item.
+
+## Explicitly not in scope
+
+Do **not** add dimension conversion, EA↔ML reconciliation, or any policy for "vendor changed the unit of measure." Individual creamers are never counted in practice — these are counted as a fraction of a case. No product-level semantics are required to fix this; the write target is the whole issue.
+
+## Second request — report all conflicts in one pass
+
+This is the second consecutive approval failure discovered one row at a time:
+
+1. Row 538 (`623764`, 750 ML vs 4,500 ML) — fixed by #1268
+2. Row 1827 (`7166386`) — this ticket
+
+Each cycle costs 60–75 seconds and surfaces exactly one row. #1268 already listed *"Approval reports all detected pack conflicts together when practical"* as a done criterion; it is not happening on this path. Validating the full saved decision set and returning every conflict at once would make this recoverable in a single cycle instead of N.
+
+Please also apply the same check in the **preview**, so a batch showing zero outstanding decisions cannot fail approval on a vendor-pack collision.
+
+## Done looks like
+
+* `create_variant` writes its vendor pack against the newly created inventory item; `comparableInventoryItemId` is never used as a write target.
+* June row 1827 approves without conflict.
+* Approval validation reports all vendor-pack and pack-compatibility conflicts together, naming item description and Item Code.
+* The preview surfaces any row that would fail this check, so zero outstanding decisions means approval will not fail on it.
+* Atomic rollback, decision preservation, and "Retry approval safely" remain unchanged.
+* Regression: a `create_variant` row whose name matches an existing item supplied by the same vendor, with a different pack dimension, creates a new item and a new vendor pack without collision.
+
+## What is working — please preserve
+
+Three consecutive approval failures have all rolled back cleanly:
+
+* Catalog steady at **3,052 items / 2,319 vendor_items** after every failure
+* All **175 decisions preserved**, all `revision: 1`
+* "Retry approval safely" offered each time
+
+The failure handling is behaving exactly as designed. Only the underlying conflicts need fixing.
+
+## Current June decision set
+
+| Action | Rows |
+|---|---|
+| `link_existing` | 88 |
+| `create_variant` | 59 |
+| `link_vendor_pack` | 27 |
+| held-row link | 1 |
+| **Total** | **175** |
+
+**Please confirm whether the fix changes staged parse or classification output.** If it does, June must be re-uploaded rather than retried, since parse results are frozen at upload.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — approval mutation path, vendor-pack upsert
+* `artifacts/api-server/src/routes/orderlyImportRoutes.ts`
+* `artifacts/api-server/src/services/orderly/orderlyApproval.boundary.test.ts`

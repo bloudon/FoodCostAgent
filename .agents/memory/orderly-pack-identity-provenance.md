@@ -32,3 +32,9 @@ A stable Orderly Item Code mapping is not proof that a later row has the same ph
 **Why:** Orderly can reuse one Item Code after changing the physical pack. Treating the existing code mapping as an unconditional match makes preview claim compatibility while approval correctly rejects the vendor-pack conflict.
 
 **How to apply:** Compare complete pack geometry even on the external-mapping path. A same-vendor mismatch becomes an explicit variant review. Approval must not rewrite the older code mapping; the new variant gets a pack-specific derived identity, which takes precedence when that exact pack appears again.
+
+A reviewed `create_variant` decision must override every cache of pre-existing matches, including a high-confidence name/outer-count match. The comparison candidate is evidence only and can never seed the new code's apply-time identity.
+
+**Why:** A row may high-confidence name-match an existing item while deeper vendor-pack evidence proves a different dimension. Caching that match before decision application silently turns `create_variant` into a link and sends the incoming pack to the comparison item.
+
+**How to apply:** Exclude all possible re-code rows from existing-item approval caches. Apply the explicit variant decision before any confident-match fallback, and regression-test cases where superficial outer counts match but canonical dimensions differ.
