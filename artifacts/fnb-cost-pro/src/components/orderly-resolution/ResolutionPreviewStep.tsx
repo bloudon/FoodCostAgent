@@ -802,6 +802,7 @@ export function ResolutionPreviewStep({
   const [isManifestImporting, setIsManifestImporting] = useState(false);
   const [manifestImportResult, setManifestImportResult] = useState<DecisionManifestImportResult | null>(null);
   const savingRowsRef = useRef<Set<number>>(new Set());
+  const observedActiveApprovalRef = useRef(false);
   const manifestFileInputRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 100;
@@ -893,6 +894,16 @@ export function ResolutionPreviewStep({
         if (cancelled) return;
         const job = body as ApprovalJob;
         setApprovalStatusError(null);
+        if (job.status === "running") {
+          observedActiveApprovalRef.current = true;
+        }
+        if (
+          (job.status === "failed" || job.status === "timed_out") &&
+          !observedActiveApprovalRef.current
+        ) {
+          setApprovalJob(null);
+          return;
+        }
         setApprovalJob(job);
         if (job.status === "completed") {
           completeApproval(job);
@@ -1201,6 +1212,7 @@ export function ResolutionPreviewStep({
       });
       return;
     }
+    observedActiveApprovalRef.current = true;
     setApproving(true);
     try {
       const res = await fetch(`/api/inventory-import/orderly/batches/${batchId}/approve`, {

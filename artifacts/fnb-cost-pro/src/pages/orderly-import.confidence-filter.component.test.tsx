@@ -520,6 +520,45 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(approvalPosts).toBe(2);
   });
 
+  it("does not restore an obsolete failed approval banner after a page reload", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).endsWith("/approval-job")) {
+        return new Response(JSON.stringify({
+          jobId: "approval-job-old",
+          batchId: "batch-test-1",
+          status: "failed",
+          phase: "failed",
+          progressPercent: 35,
+          attemptCount: 1,
+          startedAt: "2026-08-27T11:57:00.000Z",
+          updatedAt: "2026-08-27T12:00:00.000Z",
+          timeoutAt: "2026-08-27T12:00:00.000Z",
+          completedAt: null,
+          timeoutBudgetMs: 180000,
+          result: null,
+          error: {
+            code: "CONFLICT",
+            message: "Orderly row 538 conflicts with the existing pack for this vendor and inventory item.",
+          },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ decisions: [], clearedRowIndexes: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    renderStep();
+
+    await waitFor(() => expect(vi.mocked(global.fetch)).toHaveBeenCalledWith(
+      expect.stringMatching(/\/approval-job$/),
+      expect.objectContaining({ credentials: "include" }),
+    ));
+    expect(screen.queryByText("Approval failed")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Orderly row 538 conflicts/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Approve Import" }).length).toBeGreaterThan(0);
+  });
+
   it("requires a confirmation with source evidence before queueing eligible pack-size variants in bulk", async () => {
     currentPreview = {
       ...MOCK_PREVIEW,
