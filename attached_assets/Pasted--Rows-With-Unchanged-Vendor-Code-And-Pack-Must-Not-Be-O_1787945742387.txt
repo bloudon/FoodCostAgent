@@ -1,0 +1,90 @@
+# Rows With Unchanged Vendor, Code And Pack Must Not Be Offered As New Pack Sizes
+
+**Priority:** Fix before the May–July reseed
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Evidence:** approved July batch `ef6a504e-ddfb-453f-a6b9-f0a9c42182dc` against approved June `77bceea7`
+
+> **Numbering:** two shipped tickets are both recorded as #1256. #1273 was cancelled and not replaced; this covers the defect it was investigating.
+
+---
+
+## Summary
+
+Twelve July rows whose **vendor, stable Item Code and parsed pack geometry are byte-identical to the approved June month** were presented in the **New pack size** bucket and offered a `create_variant` decision. Accepting the Category 2 bulk created twelve duplicate catalog items.
+
+These rows have nothing to decide. Unchanged stable-code evidence should resolve through the existing code mapping and never enter a pack-size decision bucket.
+
+## The twelve
+
+| Item | Vendor (unchanged) |
+|---|---|
+| Apples - Red Delicious | Mr. Green's Produce |
+| Arugula | Harvill's Produce |
+| Beef - Skirt Steak | Sysco |
+| Cheese - American Yellow Sliced | Sysco |
+| Cheese - Cheddar Mild Shredded | Sysco |
+| Cheese - Swiss | Mr. Green's Produce |
+| Crab - Claw Meat | Sysco |
+| Heitz Cab Sauv Marthas 18 WD | Southern Glazer's |
+| Marjoram - Dried | Cheney Brothers |
+| Milk - Whole | Sysco |
+| Onions - Green | Harvill's Produce |
+| Raw Clams | Cheney Brothers |
+
+Verified from the source workbooks: for each, the June and July rows share the same `Supplier`, the same `Item Code`, and the same `Pack Size` string.
+
+## Why this is a classification defect, not reviewer error
+
+**The correct target was already known.** For **10 of the 12**, the saved decision carries the **June inventory item** as `comparableInventoryItemId`. The system identified the right existing item and still routed the row to a variant decision.
+
+**It recurs across months.** *Crab - Claw Meat* and *Heitz* forked in **both** June and July, each time creating a new variant against the same older base item. Two consecutive months producing new items from unchanged evidence is systematic, not a slip.
+
+**It is invisible to the existing safeguard.** The Category 2 bulk dialog warns *"may duplicate an item already supplied by another vendor."* That heuristic only fires on **cross-vendor** candidates. An unchanged row has the same vendor, so no warning appears, and the reviewer has no signal that the row does not belong in the set.
+
+Several of these were correctly consolidated in June — `Milk - Whole`, `Cheese - Swiss`, `Arugula`, `Onions - Green`, `Raw Clams` were all resolved as `link_vendor_pack` that month. July forked them again from identical source data.
+
+## Requested
+
+**A row whose vendor, stable Item Code and normalized pack are unchanged from an approved prior month must not be classified as a new pack size.** It should resolve through its existing code mapping with no decision required.
+
+If there is a reason such a row must still be surfaced, it should appear as a *matched* row, not as a variant candidate, and must be excluded from the Category 2 bulk set.
+
+## Done looks like
+
+* Re-running July against the June catalog produces **zero** New-pack-size decisions for rows with unchanged vendor + stable code + pack.
+* The twelve items above resolve to their existing June inventory items.
+* Cross-vendor behaviour is unchanged — a row whose vendor differs is still offered `link_vendor_pack`.
+* Genuine same-vendor pack changes are still offered `create_variant`. Reference set of 41 legitimate cases including Casamigos `5/50 ML` → `6/1 LT`, Tito's `60/50 ML` → `12/1 LT`, Chives `1/0.25 LB` → `1/1 LB`.
+* Regression: a row identical to an approved prior-month row across vendor, code and pack does not enter the variant bucket; changing only the pack does.
+
+## Out of scope
+
+* Cross-vendor `link_vendor_pack` behaviour — working correctly (60 links applied in July).
+* Unknown-geometry handling.
+* Derived-identity collision handling (#1271, verified working).
+* The fork metric itself — see below.
+
+## Related: the fork metric needs reclassifying
+
+The June→July `periodComparison` reports **58 name-paired forks**. Full classification against the source workbooks:
+
+| Population | Count | Status |
+|---|---|---|
+| **Unchanged rows forked** | **12** | **This ticket** |
+| **Cross-vendor misses** | **5** | Procedural; see below |
+| Legitimate same-vendor pack changes | 41 | Correct — should not count as defects |
+
+The 41 include Casamigos minis vs bottles, Makers Mark, Crown Royal, Tito's, and the produce pack changes. A metric intended to measure duplicate catalog identity should exclude them.
+
+The 5 cross-vendor misses — `Cabbage - Slaw Mix` (Mr. Green's → Sysco), `Mizuna`, `Mushrooms - Blends/Mix`, `Popcorn Kit`, `Potato Skins` — were reviewer misses, not classifier defects: they were offered correctly but not flagged by the duplicate heuristic, and the reviewer only checked flagged rows. The operator procedure has been corrected to compare **every** bulk-listed item against the prior month rather than only flagged ones.
+
+## Why fix before the reseed
+
+The operator procedure now catches this, but it is a human check compensating for a classifier that should not produce the condition. On production there is no reset if it is missed once. Fixing it first means the reseed both validates the fix and produces a clean catalog in a single pass.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — resolution preview classification
+* `artifacts/api-server/src/services/orderly/OrderlyMatcher.ts`
+* `artifacts/api-server/src/services/orderly/orderlyReport.ts` — fork metric
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts`
