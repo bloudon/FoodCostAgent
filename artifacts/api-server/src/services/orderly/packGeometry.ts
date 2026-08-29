@@ -118,6 +118,35 @@ function isPositiveFinite(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
+function normalizedOpaqueUnit(value: string | null | undefined): string | null {
+  const unit = value?.trim().toUpperCase();
+  return unit && normalizePackUnit(unit) == null ? unit : null;
+}
+
+function equalOptionalQuantity(
+  left: number | null | undefined,
+  right: number | null | undefined,
+): boolean {
+  if (left == null || right == null) return left == null && right == null;
+  if (!isPositiveFinite(left) || !isPositiveFinite(right)) return false;
+  const tolerance = Math.max(left, right) * 0.000001;
+  return Math.abs(left - right) <= tolerance;
+}
+
+/**
+ * Opaque source geometry preserves a real vendor package whose physical
+ * contents cannot be normalized (for example Orderly's 1/1 Case with no
+ * default pack size). It is valid provenance, but not conversion evidence.
+ */
+export function isOpaquePackGeometry(geometry: SourcePackGeometry): boolean {
+  return (
+    normalizedOpaqueUnit(geometry.baseUnit) != null &&
+    isPositiveFinite(geometry.caseQuantity) &&
+    isPositiveFinite(geometry.innerPackQuantity) &&
+    (geometry.baseUnitQuantity == null || isPositiveFinite(geometry.baseUnitQuantity))
+  );
+}
+
 /**
  * Reduce an XLSX three-tier pack to a comparable total in a normalized unit.
  * Every parsed tier must be explicit. Missing evidence is intentionally
@@ -213,6 +242,30 @@ export function comparePackGeometry(
   const left = normalizePackGeometry(source);
   const right = normalizePackGeometry(candidate);
   if (left.status === 'unknown' || right.status === 'unknown' || left.totalBaseUnits == null || right.totalBaseUnits == null) {
+    const sourceOpaqueUnit = normalizedOpaqueUnit(source.baseUnit);
+    const candidateOpaqueUnit = normalizedOpaqueUnit(candidate.baseUnit);
+    if (isOpaquePackGeometry(source) && isOpaquePackGeometry(candidate)) {
+      if (sourceOpaqueUnit !== candidateOpaqueUnit) {
+        return {
+          status: 'incompatible',
+          reason: `opaque pack units differ (${sourceOpaqueUnit} versus ${candidateOpaqueUnit})`,
+          normalizedUnit: null,
+          totalBaseUnits: null,
+        };
+      }
+      if (
+        equalOptionalQuantity(source.caseQuantity, candidate.caseQuantity) &&
+        equalOptionalQuantity(source.innerPackQuantity, candidate.innerPackQuantity) &&
+        equalOptionalQuantity(source.baseUnitQuantity, candidate.baseUnitQuantity)
+      ) {
+        return {
+          status: 'compatible',
+          reason: `both packs carry identical opaque ${sourceOpaqueUnit} geometry`,
+          normalizedUnit: null,
+          totalBaseUnits: null,
+        };
+      }
+    }
     const reason = left.status === 'unknown' && right.status === 'unknown'
       ? 'both the incoming source row and existing source mapping lack complete pack evidence'
       : left.status === 'unknown'

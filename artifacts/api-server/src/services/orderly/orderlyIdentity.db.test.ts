@@ -1799,6 +1799,114 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(julyRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
   });
 
+  it('keeps one item and two vendor products for identical opaque 1/1 Case geometry', async () => {
+    const mayBatch = await stageBatch([{
+      code: 'LETMIZ',
+      description: 'Mizuna',
+      location: 'Produce Walk-in',
+      supplier: "Harvill's Produce Co., Inc.",
+      packSizeRaw: '1/1 Case',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 0,
+      baseUnit: 'CASE',
+      packagePrice: 36.75,
+    }], '2032-01-31');
+    await db
+      .update(inventoryImportRows)
+      .set({ baseUnitQuantity: null })
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected Mizuna to resolve');
+
+    const julyBatch = await stageBatch([{
+      code: '21425',
+      description: 'Mizuna',
+      location: 'Produce Walk-in',
+      supplier: "Mr. Green's Produce",
+      packSizeRaw: '1/1 Case',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 0,
+      baseUnit: 'CASE',
+      packagePrice: 28.82,
+    }], '2032-02-29');
+    await db
+      .update(inventoryImportRows)
+      .set({ baseUnitQuantity: null })
+      .where(eq(inventoryImportRows.batchId, julyBatch));
+
+    const preview = await runResolutionPreview(julyBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: mayRow.resolvedInventoryItemId,
+      packCompatibility: 'compatible',
+      recodeEvidenceClass: 'compatible_alternate',
+      recommendedAction: 'create_variant',
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: 'CASE',
+      normalizedUnit: null,
+      totalBaseUnits: null,
+    });
+
+    await applyBatchApproval(julyBatch, approvalAuth, [{
+      rowIndex: 1,
+      action: 'link_existing',
+      inventoryItemId: mayRow.resolvedInventoryItemId,
+    }]);
+    const [julyRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, julyBatch));
+    expect(julyRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
+
+    const packs = await db
+      .select({
+        vendorName: vendors.name,
+        caseSize: vendorItems.caseSize,
+        innerPackSize: vendorItems.innerPackSize,
+        packUom: vendorItems.packUom,
+        lastCasePrice: vendorItems.lastCasePrice,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        normalizedPricePerCanonicalUnit: vendorItems.normalizedPricePerCanonicalUnit,
+        packGeometryStatus: vendorItems.packGeometryStatus,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId))
+      .orderBy(vendors.name);
+    expect(packs).toEqual([
+      {
+        vendorName: "Harvill's Produce Co., Inc.",
+        caseSize: 1,
+        innerPackSize: 1,
+        packUom: 'CASE',
+        lastCasePrice: 36.75,
+        canonicalQtyPerPurchaseUnit: null,
+        normalizedPricePerCanonicalUnit: null,
+        packGeometryStatus: 'incomplete',
+      },
+      {
+        vendorName: "Mr. Green's Produce",
+        caseSize: 1,
+        innerPackSize: 1,
+        packUom: 'CASE',
+        lastCasePrice: 28.82,
+        canonicalQtyPerPurchaseUnit: null,
+        normalizedPricePerCanonicalUnit: null,
+        packGeometryStatus: 'incomplete',
+      },
+    ]);
+  });
+
   it('fails closed when a safely superseded review target loses the authoritative mapping race', () => {
     expect(() => assertSupersededDecisionTarget(
       '4676306',

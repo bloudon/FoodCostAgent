@@ -1,0 +1,18 @@
+Approve the rule change — Step 1's three-way distinction is exactly right, and carrying it consistently through preview, saved decisions, bulk actions and approval revalidation is the part that matters. Every failure this project has hit came from those four disagreeing.
+
+Two things to fix in the scope, though.
+
+The CoA seeding has fallen out. Step 3 says "preserving tenant accounts," which implies accounts already exist — but development currently has 0 accounting accounts. The CoA directions I sent are referenced in Relevant Files but no step actually loads the 34 accounts. Without that, the reseed produces 26 categories with accountingAccountId null again, and we've spent the wipe without gaining the account linkage.
+
+Step 3 should read: perform the guarded reset, then seed the 34 Bay Hill accounts, then upload May. Order matters — accounts must exist before May's approval creates categories, so the link is built rather than backfilled. Step 5 already checks "category-account links," which can't pass as written.
+
+Steps 4 and 5 assign the review to Replit. That's ~187 decisions for June and ~225 for July, each requiring the pre-bulk gate against the prior month's workbook. I've done this three times and it's where the subtle errors live — my own misclassification of Apples came from comparing against May+June pooled instead of June alone.
+
+I'm set up for it: the workbooks are loaded, the comparison is scripted, and I log decisions into the register as I go. Suggest Steps 4–5 are assigned to me, with Replit owning Steps 1–3.
+
+Two small additions to Step 5:
+
+Mushrooms — check the Orderly ingredient record before the run. If Fungi Jon and Mr. Green's sit under one ingredient, it should consolidate too and becomes a second acceptance case. If not, its fork is correct. Currently assumed, not verified.
+Named totals — May $254,286.67, June $261,007.67, July $254,299.75, reconciled against the workbook Detail sums, not Orderly's displayed figures.
+
+Everything else reads well. Once Steps 1–3 are done and May is staged

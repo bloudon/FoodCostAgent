@@ -240,6 +240,35 @@ describe('Orderly source pack compatibility', () => {
     })).toBeNull();
   });
 
+  it('treats identical opaque geometry as continuity without inventing a normalized total', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Case' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'CASE' },
+    )).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: null,
+      totalBaseUnits: null,
+    });
+  });
+
+  it('rejects different opaque units and keeps differing opaque quantities unverified', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Case' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Box' },
+    ).status).toBe('incompatible');
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Case' },
+      { caseQuantity: 2, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Case' },
+    ).status).toBe('unknown');
+  });
+
+  it('does not equate opaque geometry with resolved geometry', () => {
+    expect(comparePackGeometry(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: null, baseUnit: 'Case' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'EA' },
+    ).status).toBe('unknown');
+  });
+
   it('fails closed when normalized pack multiplication overflows', () => {
     const overflow = {
       caseQuantity: Number.MAX_VALUE,

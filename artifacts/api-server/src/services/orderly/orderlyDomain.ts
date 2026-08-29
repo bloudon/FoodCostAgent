@@ -67,6 +67,7 @@ import {
 } from './OrderlyMatcher';
 import {
   comparePackGeometry,
+  isOpaquePackGeometry,
   normalizePackGeometry,
   toCatalogPackGeometry,
   type SourcePackGeometry,
@@ -411,12 +412,30 @@ export function assertReviewDecisionCodeGroupConsistency(
       (decision): decision is ReviewDecisionPayload => decision?.action !== undefined,
     );
     if (actionDecisions.length === 0) continue;
+    const firstGroupRow = groupRows[0];
+    const hasIdenticalOpaqueGroupIdentity =
+      groupRows.length > 1 &&
+      firstGroupRow != null &&
+      groupRows.every(row =>
+        normalizeForMatch(row.cleanedDescription ?? '') === normalizeForMatch(firstGroupRow.cleanedDescription ?? '') &&
+        comparePackGeometry(
+          sourcePackGeometry(row),
+          sourcePackGeometry(firstGroupRow),
+        ).status === 'compatible'
+      );
     const hasUnknownPackVariant = groupRows.some((row, index) =>
-      actionDecisions[index]?.action === 'create_variant' &&
+      effective[index]?.action === 'create_variant' &&
       row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
       row.itemMatch.packCompatibility === 'unknown'
     );
-    if (hasUnknownPackVariant && groupRows.length !== 1) {
+    const isIdenticalOpaquePackVariantGroup =
+      hasIdenticalOpaqueGroupIdentity &&
+      groupRows.every((row, index) =>
+        effective[index]?.action === 'create_variant' &&
+        row.itemMatch.recodeEvidenceClass === 'pack_evidence_missing' &&
+        row.itemMatch.packCompatibility === 'unknown'
+      );
+    if (hasUnknownPackVariant && groupRows.length !== 1 && !isIdenticalOpaquePackVariantGroup) {
       throw new ImportApprovalError(
         'CONFLICT',
         `Reliable Orderly Item Code ${sourceCode} has incomplete pack evidence across multiple rows and cannot create a shared variant.`,
@@ -434,7 +453,7 @@ export function assertReviewDecisionCodeGroupConsistency(
       groupRows[0].itemMatch.packCompatibility === 'unknown';
     if (
       conflictingSummaryGroup ||
-      (!isSingleUnknownPackVariant && (
+      (!isSingleUnknownPackVariant && !isIdenticalOpaquePackVariantGroup && (
         identityGroupKeys.size !== 1 ||
         groupRows.some(row => !row.identityGroupKey)
       ))
@@ -3033,15 +3052,10 @@ export async function saveOrderlyReviewDecisionChanges(
   );
 
   if (decisionChanges.length > 0) {
-    const preview = await runResolutionPreview(contract.batch.id, contract.companyId);
-    const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
-    for (const change of decisionChanges) {
-      const row = rowsByIndex.get(change.rowIndex);
-      if (!row) {
-        throw new ImportApprovalError('INVALID_REQUEST', `Row ${change.rowIndex} is not part of this import batch.`);
-      }
-      assertReviewDecisionMatchesPreview(row, change.decision);
-    }
+    // Item ownership does not depend on the preview and can be checked before
+    // taking the batch lock. Row eligibility is validated once against the
+    // authoritative under-lock preview below; rebuilding the same large
+    // preview here made every UI draft save cross the proxy timeout.
     await assertReviewDecisionItemsBelongToCompany(contract.companyId, decisionChanges);
   }
 
@@ -4379,11 +4393,13 @@ export async function applyBatchApproval(
 
       // ── Vendor-item pack/price record ─────────────────────────────────
       // Orderly Item Code remains property-scoped source identity and is never
-      // copied into vendor_items.vendorSku. Populate vendor_items only when the
-      // vendor, item, complete geometry, and positive package price are known.
+      // copied into vendor_items.vendorSku. Complete geometry persists a
+      // normalized vendor pack. Genuine opaque source packages persist the
+      // vendor relationship and case price without claiming conversion facts.
       if (resolvedVendorId && resolvedItemId) {
-        const normalizedGeometry = normalizePackGeometry(sourcePackGeometry(rowPreview));
-        const catalogGeometry = toCatalogPackGeometry(sourcePackGeometry(rowPreview));
+        const rowPackGeometry = sourcePackGeometry(rowPreview);
+        const normalizedGeometry = normalizePackGeometry(rowPackGeometry);
+        const catalogGeometry = toCatalogPackGeometry(rowPackGeometry);
         const packagePrice = rowPreview.packagePrice;
         const mayPersistVendorPack =
           normalizedGeometry.status === 'compatible' &&
@@ -4448,6 +4464,79 @@ export async function applyBatchApproval(
             await tx.update(vendorItems).set(values).where(eq(vendorItems.id, existingVendorPack.id));
           } else {
             await tx.insert(vendorItems).values(values);
+            vendorItemsCreated++;
+          }
+        } else if (
+          isOpaquePackGeometry(rowPackGeometry) &&
+          typeof packagePrice === 'number' &&
+          Number.isFinite(packagePrice) &&
+          packagePrice > 0
+        ) {
+          const opaquePurchaseUnitId = catalogUnitByKey.get('ea') ?? catalogUnitByKey.get('each');
+          if (!opaquePurchaseUnitId) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Orderly row ${rowPreview.rowIndex} cannot persist its opaque vendor package because the Each unit is not configured in FnB.`,
+            );
+          }
+          const [existingOpaqueVendorPack] = await tx
+            .select({
+              id: vendorItems.id,
+              packGeometryStatus: vendorItems.packGeometryStatus,
+              caseSize: vendorItems.caseSize,
+              innerPackSize: vendorItems.innerPackSize,
+              packUom: vendorItems.packUom,
+            })
+            .from(vendorItems)
+            .where(and(
+              eq(vendorItems.vendorId, resolvedVendorId),
+              eq(vendorItems.inventoryItemId, resolvedItemId),
+            ))
+            .limit(1);
+          const opaqueCaseSize = rowPackGeometry.caseQuantity!;
+          const opaqueInnerPackSize = rowPackGeometry.innerPackQuantity!;
+          const opaquePackUom = rowPackGeometry.baseUnit!.trim().toUpperCase();
+          if (
+            existingOpaqueVendorPack &&
+            (
+              existingOpaqueVendorPack.packGeometryStatus !== 'incomplete' ||
+              Math.abs(existingOpaqueVendorPack.caseSize - opaqueCaseSize) > 0.000001 ||
+              existingOpaqueVendorPack.innerPackSize == null ||
+              Math.abs(existingOpaqueVendorPack.innerPackSize - opaqueInnerPackSize) > 0.000001 ||
+              existingOpaqueVendorPack.packUom?.trim().toUpperCase() !== opaquePackUom
+            )
+          ) {
+            throw new ImportApprovalError(
+              'CONFLICT',
+              `Orderly row ${rowPreview.rowIndex} conflicts with the existing opaque pack for this vendor and inventory item.`,
+            );
+          }
+          const opaqueValues = {
+            vendorId: resolvedVendorId,
+            inventoryItemId: resolvedItemId,
+            vendorSku: null,
+            purchaseUnitId: opaquePurchaseUnitId,
+            caseSize: opaqueCaseSize,
+            innerPackSize: opaqueInnerPackSize,
+            packUom: opaquePackUom,
+            lastPrice: packagePrice,
+            lastCasePrice: packagePrice,
+            active: 1,
+            priceSource: 'orderly_inventory_import',
+            pricedAt: resolutionPreview.inventoryDate ? new Date(resolutionPreview.inventoryDate) : null,
+            priceSourceReferenceId: batchId,
+            canonicalQtyPerPurchaseUnit: null,
+            normalizedPricePerCanonicalUnit: null,
+            packGeometryStatus: 'incomplete',
+            packGeometrySource: 'orderly_inventory_import',
+            packGeometryUpdatedAt: new Date(),
+            pricingBasis: 'purchase_unit',
+            isVariableWeight: 0,
+          };
+          if (existingOpaqueVendorPack) {
+            await tx.update(vendorItems).set(opaqueValues).where(eq(vendorItems.id, existingOpaqueVendorPack.id));
+          } else {
+            await tx.insert(vendorItems).values(opaqueValues);
             vendorItemsCreated++;
           }
         } else if (identityDecision?.action === 'link_vendor_pack') {

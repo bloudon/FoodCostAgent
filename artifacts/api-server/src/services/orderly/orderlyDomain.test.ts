@@ -322,6 +322,65 @@ describe('assertReviewDecisionCodeGroupConsistency', () => {
     )).not.toThrow();
   });
 
+  it('does not assign a later row decision to an earlier incomplete row in the same code group', () => {
+    const unknownRow = previewRow(1, {
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      itemMatch: {
+        ...previewRow(1).itemMatch,
+        recodeEvidenceClass: 'pack_evidence_missing',
+        packCompatibility: 'unknown',
+      },
+    });
+    const incompatibleRow = previewRow(2, {
+      itemMatch: {
+        ...previewRow(2).itemMatch,
+        recodeEvidenceClass: 'new_pack_size',
+        packCompatibility: 'incompatible',
+      },
+    });
+    const variantDecision = {
+      action: 'create_variant' as const,
+      comparableInventoryItemId: 'existing-tequila',
+    };
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([unknownRow, incompatibleRow]),
+      [{ rowIndex: 2, expectedRevision: null, decision: variantDecision }],
+    )).not.toThrow(/incomplete pack evidence across multiple rows/);
+  });
+
+  it('allows one shared variant for a reliable-code group with identical opaque geometry', () => {
+    const opaqueRow = (rowIndex: number) => previewRow(rowIndex, {
+      packSizeRaw: '1/1 Case',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: 'CASE',
+      identityGroupKey: null,
+      identityGroupRows: [],
+      identityGroupStatus: 'unavailable',
+      itemMatch: {
+        ...previewRow(rowIndex).itemMatch,
+        recodeEvidenceClass: 'pack_evidence_missing',
+        packCompatibility: 'unknown',
+      },
+    });
+    const variantDecision = {
+      action: 'create_variant' as const,
+      comparableInventoryItemId: 'existing-tequila',
+    };
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([opaqueRow(1), opaqueRow(2)]),
+      [
+        { rowIndex: 1, expectedRevision: null, decision: variantDecision },
+        { rowIndex: 2, expectedRevision: null, decision: variantDecision },
+      ],
+    )).not.toThrow();
+  });
+
   it('still rejects linking a single row when incoming pack geometry is incomplete', () => {
     const unknownRow = previewRow(1, {
       innerPackQuantity: null,
