@@ -1,0 +1,174 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ git pull
+Updating e47797f..adeedaf
+Fast-forward
+ .agents/memory/MEMORY.md                           |   11 +
+ .agents/memory/approval-parser-rehydration.md      |   10 +
+ .agents/memory/bulk-pack-size-approval-boundary.md |   10 +
+ .agents/memory/controlled-ledger-resets.md         |   17 +
+ .agents/memory/cross-vendor-pack-identity.md       |   14 +
+ .agents/memory/durable-approval-retries.md         |   22 +
+ .agents/memory/github-connector-publishing.md      |    2 +-
+ .agents/memory/import-approval-boundary.md         |   17 +
+ .agents/memory/labeled-orderly-units.md            |   17 +
+ .agents/memory/orderly-acceptance-evidence.md      |   20 +
+ .agents/memory/orderly-decision-manifests.md       |   24 +
+ .agents/memory/orderly-pack-identity-provenance.md |   28 +
+ .agents/memory/orderly-review-draft-atomicity.md   |   20 +
+ .agents/memory/orderly-xlsx-item-identity.md       |   16 +
+ .../memory/vendor-identity-immutable-evidence.md   |   10 +
+ artifacts/api-server/package.json                  |    2 +
+ artifacts/api-server/src/index.ts                  |   38 +
+ .../src/integrations/csv/CsvOrderGuide.ts          |   29 +-
+ .../src/migrations/inventoryItemNumbers.ts         |   53 +
+ .../src/migrations/orderlyApprovalJobs.ts          |   45 +
+ .../src/migrations/orderlyPackIdentityEvidence.ts  |   37 +
+ .../src/migrations/orderlyReviewDecisions.ts       |   41 +
+ artifacts/api-server/src/permissions.ts            |   11 +
+ artifacts/api-server/src/routes.ts                 |    1 +
+ .../src/routes/orderlyApprovalRoute.test.ts        |  728 +++++-
+ .../api-server/src/routes/orderlyImportRoutes.ts   |  232 +-
+ .../src/services/orderly/OrderlyMatcher.test.ts    |   55 +
+ .../src/services/orderly/OrderlyMatcher.ts         |  107 +-
+ .../src/services/orderly/OrderlyParser.test.ts     |  163 ++
+ .../src/services/orderly/OrderlyParser.ts          |  215 +-
+ .../orderly/orderlyApproval.boundary.test.ts       |  384 ++-
+ .../src/services/orderly/orderlyApprovalJobs.ts    |  322 +++
+ .../orderly/orderlyBulkPackSize.fixture.ts         |   37 +
+ .../orderlyBulkPackSizeAcceptance.db.test.ts       |  154 ++
+ .../services/orderly/orderlyDecisionManifest.ts    |  312 +++
+ .../src/services/orderly/orderlyDomain.test.ts     |  190 +-
+ .../src/services/orderly/orderlyDomain.ts          | 2534 ++++++++++++++++++--
+ .../services/orderly/orderlyIdentity.db.test.ts    | 1595 +++++++++++-
+ .../src/services/orderly/orderlyIdentity.test.ts   |   51 +
+ .../src/services/orderly/orderlyIdentity.ts        |   73 +
+ .../orderly/orderlyVendorProductAdoptionApply.ts   |    5 +
+ .../src/services/orderly/packGeometry.test.ts      |  218 +-
+ .../src/services/orderly/packGeometry.ts           |  161 +-
+ .../orderly/vendorIdentityContinuity.db.test.ts    |  158 ++
+ .../orderly/vendorIdentityContinuity.test.ts       |  239 ++
+ .../services/orderly/vendorIdentityContinuity.ts   |  917 +++++++
+ .../orderly/vendorIdentityContinuityApplyCli.ts    |  100 +
+ .../orderly/vendorIdentityContinuityCli.ts         |   37 +
+ .../orderly-resolution/ResolutionPreviewStep.tsx   | 1756 ++++++++++++--
+ .../src/lib/orderlyImportFilterUtils.test.ts       |  341 +++
+ .../src/lib/orderlyImportFilterUtils.ts            |  376 ++-
+ .../src/pages/inventory-item-detail.tsx            |    5 +-
+ .../fnb-cost-pro/src/pages/inventory-items.tsx     |    8 +-
+ ...rly-import.confidence-filter.component.test.tsx |  788 +++++-
+ .../pages/orderly-import.pagination-reset.test.tsx |  103 +-
+ .../fnb-cost-pro/src/pages/orderly-import.tsx      |   84 +-
+ artifacts/fnb-cost-pro/src/shared/schema.ts        |   10 +-
+ attached_assets/June_2026_1787411225361.xlsx       |  Bin 0 -> 531587 bytes
+ .../June_Recode_Edge_Cases_1787506058826.xlsx      |  Bin 0 -> 13974 bytes
+ attached_assets/May_2026_1787410641820.xlsx        |  Bin 0 -> 528219 bytes
+ ...de-Rows-With-Name-and-Pack-Id_1787794098986.txt |   72 +
+ ...ysical-Pack-And-Apply-Row-Dec_1787842819655.txt |   67 +
+ ...Pack-Geometry-Instead-Of-Excl_1787799938946.txt |   94 +
+ ...ort-Reported-2026-08-23-Envir_1787542150058.txt |  121 +
+ ...cess-Record-Production-Seed-R_1787542180592.txt |  174 ++
+ ...cess-Record-Production-Seed-R_1787627810278.txt |  229 ++
+ ...plementation-in-Dev-The-revis_1787417777038.txt |  108 +
+ ...Identity-Logic-for-May-June-R_1787414029258.txt |  478 ++++
+ ...afted-2026-08-24-Context-Foll_1787544952745.txt |  115 +
+ ...afted-2026-08-24-Context-Foll_1787546645661.txt |  122 +
+ ...-Item-Identity-Status-May-and_1787865589160.txt |  139 ++
+ ...nits-As-Counts-And-Kegs-As-Vo_1787868795663.txt |  128 +
+ ...nknown-Geometry-Rows-Are-Reje_1787857336500.txt |   87 +
+ ...he-insight-banner-And-this-sa_1787506046989.txt |   36 +
+ ...ice-number-963139987-appears-_1787517372903.txt |   49 +
+ ...rd-first-because-it-may-be-wh_1787546739383.txt |   35 +
+ ...-the-June-acceptance-process-_1787529624630.txt |   19 +
+ ...scroll-through-the-full-list-_1787532503413.txt |   22 +
+ ...-both-Red-Breast-Every-other-_1787786943444.txt |   93 +
+ ...-the-batch-list-on-its-own-wh_1787542808797.txt |   40 +
+ ...ticket-let-me-verify-the-evid_1787517868382.txt |   17 +
+ ...256-is-the-descriptive-code-i_1787796160100.txt |   35 +
+ ...not-yet-a-full-seed-and-Appro_1787789745628.txt |   40 +
+ ...UOM-and-pack-sizes-Thought-fo_1787787835082.txt |   54 +
+ attached_assets/image_1787371226899.png            |  Bin 0 -> 20667 bytes
+ attached_assets/image_1787371523233.png            |  Bin 0 -> 81821 bytes
+ attached_assets/image_1787371685016.png            |  Bin 0 -> 56386 bytes
+ attached_assets/image_1787407549658.png            |  Bin 0 -> 82325 bytes
+ attached_assets/image_1787407855961.png            |  Bin 0 -> 7348 bytes
+ attached_assets/image_1787420053219.png            |  Bin 0 -> 68706 bytes
+ attached_assets/image_1787421085407.png            |  Bin 0 -> 16497 bytes
+ attached_assets/image_1787421393604.png            |  Bin 0 -> 2774 bytes
+ attached_assets/image_1787448916377.png            |  Bin 0 -> 103976 bytes
+ attached_assets/image_1787451047940.png            |  Bin 0 -> 130055 bytes
+ attached_assets/image_1787498851433.png            |  Bin 0 -> 113477 bytes
+ .../orderly_june_reconciliation_evidence.md        |   95 +
+ lib/db/src/schema/schema.ts                        |   84 +
+ scripts/vps/README.md                              |   61 +
+ scripts/vps/SHA256SUMS                             |    3 +-
+ scripts/vps/update-fnbcostpro-from-main.sh         |  158 ++
+ tests/orderly-bulk-pack-size-acceptance.spec.ts    |  192 ++
+ 101 files changed, 15294 insertions(+), 626 deletions(-)
+ create mode 100644 .agents/memory/approval-parser-rehydration.md
+ create mode 100644 .agents/memory/bulk-pack-size-approval-boundary.md
+ create mode 100644 .agents/memory/controlled-ledger-resets.md
+ create mode 100644 .agents/memory/cross-vendor-pack-identity.md
+ create mode 100644 .agents/memory/durable-approval-retries.md
+ create mode 100644 .agents/memory/labeled-orderly-units.md
+ create mode 100644 .agents/memory/orderly-acceptance-evidence.md
+ create mode 100644 .agents/memory/orderly-decision-manifests.md
+ create mode 100644 .agents/memory/orderly-pack-identity-provenance.md
+ create mode 100644 .agents/memory/orderly-review-draft-atomicity.md
+ create mode 100644 .agents/memory/vendor-identity-immutable-evidence.md
+ create mode 100644 artifacts/api-server/src/migrations/inventoryItemNumbers.ts
+ create mode 100644 artifacts/api-server/src/migrations/orderlyApprovalJobs.ts
+ create mode 100644 artifacts/api-server/src/migrations/orderlyPackIdentityEvidence.ts
+ create mode 100644 artifacts/api-server/src/migrations/orderlyReviewDecisions.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyApprovalJobs.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyBulkPackSize.fixture.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyBulkPackSizeAcceptance.db.test.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyDecisionManifest.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyIdentity.test.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/orderlyIdentity.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/vendorIdentityContinuity.db.test.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/vendorIdentityContinuity.test.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/vendorIdentityContinuity.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/vendorIdentityContinuityApplyCli.ts
+ create mode 100644 artifacts/api-server/src/services/orderly/vendorIdentityContinuityCli.ts
+ create mode 100644 attached_assets/June_2026_1787411225361.xlsx
+ create mode 100644 attached_assets/June_Recode_Edge_Cases_1787506058826.xlsx
+ create mode 100644 attached_assets/May_2026_1787410641820.xlsx
+ create mode 100644 attached_assets/Pasted--1256-Admit-Descriptive-Code-Rows-With-Name-and-Pack-Id_1787794098986.txt
+ create mode 100644 attached_assets/Pasted--Add-Bulk-Link-For-Same-Physical-Pack-And-Apply-Row-Dec_1787842819655.txt
+ create mode 100644 attached_assets/Pasted--Import-Rows-With-Unknown-Pack-Geometry-Instead-Of-Excl_1787799938946.txt
+ create mode 100644 attached_assets/Pasted--Orderly-Import-Defect-Report-Reported-2026-08-23-Envir_1787542150058.txt
+ create mode 100644 attached_assets/Pasted--Orderly-Import-Review-Process-Record-Production-Seed-R_1787542180592.txt
+ create mode 100644 attached_assets/Pasted--Orderly-Import-Review-Process-Record-Production-Seed-R_1787627810278.txt
+ create mode 100644 attached_assets/Pasted--PM-APPROVED-1236-GO-to-implementation-in-Dev-The-revis_1787417777038.txt
+ create mode 100644 attached_assets/Pasted--PM-Reset-Revised-Orderly-Identity-Logic-for-May-June-R_1787414029258.txt
+ create mode 100644 attached_assets/Pasted--Proposed-Tickets-Draft-Drafted-2026-08-24-Context-Foll_1787544952745.txt
+ create mode 100644 attached_assets/Pasted--Proposed-Tickets-Draft-Drafted-2026-08-24-Context-Foll_1787546645661.txt
+ create mode 100644 attached_assets/Pasted--Replit-Brief-Cross-Vendor-Item-Identity-Status-May-and_1787865589160.txt
+ create mode 100644 attached_assets/Pasted--Resolve-Container-Label-Units-As-Counts-And-Kegs-As-Vo_1787868795663.txt
+ create mode 100644 attached_assets/Pasted--Single-Row-Decisions-On-Unknown-Geometry-Rows-Are-Reje_1787857336500.txt
+ create mode 100644 attached_assets/Pasted-214-rows-exactly-matches-the-insight-banner-And-this-sa_1787506046989.txt
+ create mode 100644 attached_assets/Pasted-Found-the-smoking-gun-Invoice-number-963139987-appears-_1787517372903.txt
+ create mode 100644 attached_assets/Pasted-One-correction-to-the-record-first-because-it-may-be-wh_1787546739383.txt
+ create mode 100644 attached_assets/Pasted-Suggestions-on-simplifying-the-June-acceptance-process-_1787529624630.txt
+ create mode 100644 attached_assets/Pasted-The-dialog-is-open-Let-me-scroll-through-the-full-list-_1787532503413.txt
+ create mode 100644 attached_assets/Pasted-The-two-confirmed-rows-are-both-Red-Breast-Every-other-_1787786943444.txt
+ create mode 100644 attached_assets/Pasted-The-wizard-dropped-back-to-the-batch-list-on-its-own-wh_1787542808797.txt
+ create mode 100644 attached_assets/Pasted-This-is-a-strong-accurate-ticket-let-me-verify-the-evid_1787517868382.txt
+ create mode 100644 attached_assets/Pasted-This-is-labeled-1256-but-1256-is-the-descriptive-code-i_1787796160100.txt
+ create mode 100644 attached_assets/Pasted-Verdict-real-progress-but-not-yet-a-full-seed-and-Appro_1787789745628.txt
+ create mode 100644 attached_assets/Pasted-how-does-orderly-maintain-UOM-and-pack-sizes-Thought-fo_1787787835082.txt
+ create mode 100644 attached_assets/image_1787371226899.png
+ create mode 100644 attached_assets/image_1787371523233.png
+ create mode 100644 attached_assets/image_1787371685016.png
+ create mode 100644 attached_assets/image_1787407549658.png
+ create mode 100644 attached_assets/image_1787407855961.png
+ create mode 100644 attached_assets/image_1787420053219.png
+ create mode 100644 attached_assets/image_1787421085407.png
+ create mode 100644 attached_assets/image_1787421393604.png
+ create mode 100644 attached_assets/image_1787448916377.png
+ create mode 100644 attached_assets/image_1787451047940.png
+ create mode 100644 attached_assets/image_1787498851433.png
+ create mode 100644 attached_assets/orderly_june_reconciliation_evidence.md
+ create mode 100644 scripts/vps/README.md
+ create mode 100755 scripts/vps/update-fnbcostpro-from-main.sh
+ create mode 100644 tests/orderly-bulk-pack-size-acceptance.spec.ts
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$
