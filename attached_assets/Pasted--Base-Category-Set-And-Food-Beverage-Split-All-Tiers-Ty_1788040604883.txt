@@ -1,0 +1,146 @@
+# Base Category Set And Food/Beverage Split — All Tiers
+
+**Type:** Product foundation
+**Applies to:** Every tenant. The Food/Beverage split is the product, not an enterprise feature.
+**Related:** CoA import (enterprise only) · #1275 F&B reporting umbrellas
+
+---
+
+## What & Why
+
+FnB should show Food vs Beverage for every tenant, at every tier. It is the product's core distinction and its name.
+
+Today that split does not exist. Reporting stops at category level, and nothing groups Wine + Beer + Liquor into Beverage.
+
+The split must **not** depend on a chart of accounts. Enterprise tenants have one; a single-location restaurant does not, and should not have to load a chart before seeing their beverage spend.
+
+**Therefore the umbrella lives on the category, not the account.** Categories exist for every tenant. Accounts exist only for enterprise tenants, and can *populate* the umbrella rather than being required for it.
+
+---
+
+## The umbrella
+
+A fixed platform enum on every category:
+
+| Value | Meaning |
+|---|---|
+| `Food` | Food cost of sales |
+| `Beverage` | Beverage cost of sales |
+| `Other` | Supplies and non-COGS operating items |
+
+Fixed, not free text. Tenant-comparable classification is the point; free-form values make cross-tenant reporting impossible and are expensive to retrofit.
+
+Whether a fourth value (`Direct Operating Cost`) is separated from `Other` is deferred to **#1275**. `Other` is sufficient for the first release.
+
+---
+
+## Base category set — non-enterprise tenants
+
+Ten categories, seeded for new tenants who are not importing an existing structure. Each carries its umbrella by definition, so a small operator gets the Food/Beverage split with **zero configuration**.
+
+| # | Category | Umbrella |
+|---|---|---|
+| 1 | Produce | Food |
+| 2 | Meat & Poultry | Food |
+| 3 | Seafood | Food |
+| 4 | Dairy | Food |
+| 5 | Dry Goods | Food |
+| 6 | Beer | Beverage |
+| 7 | Wine | Beverage |
+| 8 | Liquor | Beverage |
+| 9 | Non-Alcoholic Beverages | Beverage |
+| 10 | Supplies | Other |
+
+### Design notes
+
+**Beer, Wine and Liquor stay separate** even at ten slots. That is where beverage margin lives, and it is the split that ties to revenue accounts later for enterprise tenants. Food detail was sacrificed instead — Bread and Pastry fold into Dry Goods.
+
+**`Non-Alcoholic Beverages` is the one genuinely contestable default.** It is $9,194 at Bay Hill and Orderly classifies it **Food** — sodas and juices bought on the food side — but much of it is poured at the bar as mixers. Defaulting it to `Beverage` matches user expectation; it must be overridable, and it is the category most likely to be moved.
+
+**Tenants may add categories beyond the ten.** Anything added needs an umbrella — see the default-by-name rule below.
+
+---
+
+## Default-by-name rule
+
+Category names are highly predictable. Any category not in the base set — created by a tenant, or arriving via an import — should be **pre-filled** with an umbrella and presented for confirmation, never presented blank.
+
+Suggested matching, case-insensitive, on substring:
+
+| Contains | Umbrella |
+|---|---|
+| wine, beer, liquor, spirit, alcohol, bar, cocktail, mixer | Beverage |
+| soda, juice, coffee, tea, non-alc | Beverage |
+| produce, meat, poultry, seafood, dairy, bread, pastry, dry, grocer, prep, food | Food |
+| paper, chemical, soap, supply, supplies, togo, to-go, linen, smallware | Other |
+| *no match* | Unassigned — requires confirmation |
+
+Validated against Bay Hill's 26 imported categories: 25 match unambiguously. The exception is `No Account`, the Orderly placeholder, which maps to Unassigned.
+
+**Present as review-and-confirm, not assign-from-blank.** The common case should be zero decisions.
+
+---
+
+## Tier boundaries
+
+| Capability | Non-enterprise | Enterprise |
+|---|---|---|
+| Food / Beverage / Other split | ✅ | ✅ |
+| Base 10 categories seeded | ✅ | superseded by import |
+| Custom categories with default-by-name | ✅ | ✅ |
+| Chart of accounts | ❌ | ✅ |
+| Category → GL account mapping | ❌ | ✅ |
+| Umbrella pre-filled from account `Operational Type` | n/a | ✅ |
+
+**A tenant must be able to run FnB with `accountingAccountId` null on every category.** That is already how the schema behaves and must not regress.
+
+For enterprise tenants, the chart of accounts becomes a *source* for the umbrella rather than a prerequisite: Bay Hill's accounts carry `Operational Type` (15 Food, 11 Bar, 7 Direct Operating Cost, 1 Other), which can pre-fill each linked category's umbrella. Note the mapping is Bar → `Beverage`.
+
+---
+
+## Done looks like
+
+* Every category has an umbrella value from the fixed enum, or is explicitly Unassigned.
+* New non-enterprise tenants are seeded with the ten base categories, each carrying its umbrella; no configuration required to see the split.
+* Categories created outside the base set are pre-filled by the name rule and presented for confirmation.
+* Bay Hill's 26 existing categories can be assigned umbrellas — 25 by name rule, `No Account` explicitly.
+* Inventory value and purchase spend can be reported grouped by Food / Beverage / Other.
+* The split works with no chart of accounts present.
+* For enterprise tenants, an account's `Operational Type` can pre-fill the umbrella on categories linked to it.
+* Changing a category's umbrella is audited.
+
+## Out of scope
+
+* Separating `Direct Operating Cost` from `Other` — #1275
+* Revenue attribution, menu items, or recipe-based cost allocation
+* Cross-tenant benchmarking
+* Chart of accounts import — enterprise, separate ticket
+* Unassigned-item worklist
+
+---
+
+## Important framing for the UI
+
+This split is **purchase-side**: what was bought and held, by category. It is *not* beverage cost of sales against beverage revenue.
+
+Bay Hill illustrates the gap. `Non-Alcoholic Beverages` at $9,194 is purchased as Food but substantially consumed at the bar as mixers, while `Bar Prep` is only $600. True Food vs Beverage margin requires POS revenue and recipe-level allocation, neither of which exists yet.
+
+**Label accordingly** — "Beverage spend" or "Beverage inventory value", not "Beverage cost of sales" — so nobody reads a margin off it that it cannot support.
+
+## Reference — Bay Hill's 26 categories folding into the base ten
+
+| Base category | Bay Hill categories |
+|---|---|
+| Produce | Produce |
+| Meat & Poultry | Meat, Poultry |
+| Seafood | Seafood |
+| Dairy | Dairy |
+| Dry Goods | Dry Goods, Bread, Pastry, Food Prep Item, Vendor Prepared Items, Food, Uncategorized Food |
+| Beer | Beer, Bottled Beer, Canned Beer, Draft Beer, Alcohol, Bar Prep |
+| Wine | Wine |
+| Liquor | Liquor |
+| Non-Alcoholic Beverages | Non-Alcoholic Beverages |
+| Supplies | Paper Products, Soaps & Chemicals, Restaurant Supplies, TOGO Supplies |
+| *(unassigned)* | No Account |
+
+Enterprise category sets are a superset of the base ten, which keeps the two tiers structurally compatible.

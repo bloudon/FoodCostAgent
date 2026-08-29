@@ -1,0 +1,191 @@
+# Chart of Accounts Import — First Release
+
+**Type:** Enterprise onboarding capability
+**Priority:** Gates the Bay Hill production seed — production accounts must be loaded through this feature, not a script
+**Supersedes:** the earlier CoA import proposal; narrowed to what the Bay Hill production seed requires
+
+---
+
+## What & Why
+
+Every tenant needs a chart of accounts mapped to inventory categories before FnB can report cost by GL account. There is no import path today — development's 34 Bay Hill accounts were loaded by direct database operation, which is unavailable on production and unrepeatable for any future tenant.
+
+**Decision: Bay Hill's production chart will be loaded through this feature rather than a one-off script.** Bay Hill is the only tenant where the correct result is already known — 25 of 26 GL codes match by name, and the dev import is verified — so it is the one chance to prove the onboarding path against a known-good answer. Every future enterprise onboarding starts here.
+
+### Why this is not covered by QuickBooks
+
+QuickBooks provides a chart of accounts. It does not provide **category-level GL mapping tied to inventory items, vendor packs and count sessions**. A club's F&B director needs food cost *by GL account*, reconciled to counted inventory. That bridge is the layer FnB owns, and it cannot exist until a tenant's chart is loaded and mapped.
+
+---
+
+## Scope — first release only
+
+**In scope (Replit plan phases 1, 2, 5):**
+
+* Import data model with audit trail
+* CSV/XLSX parser with preview-then-confirm
+* Admin UI under Settings
+
+**Deferred to follow-up tickets:**
+
+* Re-import safety and omitted-account dispositions
+* Company-scoped database foreign keys
+* Unassigned-account worklist
+* Category-name matching suggestions beyond exact match
+
+Rationale: loading a chart for the first time does not require re-import handling or a worklist. Those matter from the second import onward and should not delay the production seed.
+
+---
+
+## Tenant isolation
+
+Accounts are **tenant-owned**. `accounting_accounts` is already company-scoped with account codes unique within a company, and there is no shared platform chart. That model must hold:
+
+* Every imported account is written with the acting user's `companyId`. No cross-tenant writes.
+* Account codes are unique **within a company**, never globally — two clubs may both use `510800`.
+* Category-to-account links resolve **within the same company**.
+* Preview and results never surface another tenant's accounts, codes or names.
+* No tenant's chart becomes a shared or platform row.
+
+**Bay Hill's chart is a test case, not a template.** Its structure is likely general; its 34 specific accounts are not. The importer must accept a tenant's own chart rather than validating against Bay Hill's shape.
+
+---
+
+## Format handling
+
+**Do not assume the Orderly export shape.** Bay Hill's file has a title block requiring `header=3`; a naive read returns 42 rows of unnamed columns instead of 34 accounts. A club arriving from Toast, Compeat or a plain spreadsheet will differ again.
+
+* Accept CSV and XLSX
+* Let the user confirm the header row and map columns to fields
+* Preview the parsed result before any write
+
+### Fields
+
+**Required:** Account Number, Account Name
+
+**Optional but important:** Account Type (Revenue / Expense), Financial Category (Sales / COGS / Other Expense), **Operational Type (Food / Bar / Direct Operating Cost / Other)**
+
+`Operational Type` is the field that carries the Food/Beverage split. See below.
+
+---
+
+## The top-level tie-in — the thing this must prove
+
+Bay Hill already has category matches; what has no precedent is **`Operational Type` landing on accounts and flowing through to a Food/Beverage rollup.** That is the reason this ships before the seed.
+
+Bay Hill's chart populates both axes completely — all 34 accounts, no blanks:
+
+| Operational Type | Accounts | Financial Category split |
+|---|---|---|
+| Food | 15 | 14 COGS, 1 Sales |
+| Bar | 11 | 8 COGS, 3 Sales |
+| Direct Operating Cost | 7 | 1 COGS, 6 Other Expense |
+| Other | 1 | 1 Other Expense |
+
+The two axes are **independent and do not nest** — `502800 TOGO Supplies` is COGS financially but Direct Operating Cost operationally.
+
+**Important for future tenants:** `Operational Type` is an Orderly field, not a chart-of-accounts standard. A club arriving from QuickBooks will bring account numbers and names but almost certainly no Food/Bar classification. So the importer must:
+
+* populate `Operational Type` from the file when the source provides it (Bay Hill)
+* leave it assignable when the source does not (everyone else)
+* constrain it to a **fixed platform enum**, never free text — otherwise tenants become mutually incomparable
+
+Store both axes as account attributes. **Do not build umbrella reporting on them in this release** — that is a separate ticket, and the taxonomy decision (#1275) is still open.
+
+---
+
+## Unassigned accounts
+
+Source systems emit placeholder GL values that are not real accounts. Bay Hill's inventory contains `999900 / No Account`, absent from its chart, carrying **64 rows worth $5,328.97** across the three months — 84% of it wine and spirits, including AALTO at $1,386 and Nickel & Nickel at $1,134.
+
+For this release:
+
+* Create the `999900` sentinel as a tenant-owned **"Unassigned / review required"** account, idempotently
+* Keep it visible and included in grand totals
+* Exclude it from classified COGS / Revenue / Other Expense subtotals
+* Never silently map it to a real account
+
+The full worklist for assigning those items is a follow-up ticket. This release only needs the sentinel to exist so the rows have a destination.
+
+---
+
+## Done looks like
+
+* An authorised company admin uploads a CSV or XLSX and imports it into their own company.
+* Preview-then-confirm: parse, show created / updated / unchanged / duplicate / malformed rows, write nothing until confirmed.
+* Column mapping and header-row selection happen at import.
+* `Operational Type` and `Financial Category` are stored as account attributes when present in the source, and are assignable from a fixed enum when absent.
+* The `999900` sentinel is created idempotently.
+* Confirmation writes only to the acting user's company.
+* The import records source filename, SHA-256 hash, acting user, timestamp, column mappings, raw row evidence, and results.
+* Category-to-account mapping by exact name match is available as a second step; residual mappings require human confirmation.
+* Results report created, updated, unchanged and rejected rows with reasons.
+
+## Acceptance — Bay Hill dry run on development
+
+Before production, run the exact production file through the feature on development. This must reproduce the known-good state currently in dev:
+
+| Check | Expected |
+|---|---|
+| Header row detected / selectable | row 4 (`header=3`) |
+| Accounts created | **34** |
+| Sentinel created | **1** (`999900`) |
+| Total accounts | **35** |
+| Categories mappable by exact name | **25 of 26** |
+| Unmatched category | `No Account` → sentinel |
+| Rejected rows | 0 |
+| Cross-tenant writes | 0 |
+| `Operational Type` populated | 34 of 34 |
+| Food / Bar / DOC / Other counts | 15 / 11 / 7 / 1 |
+
+"Test on production" must mean the **first real use**, not the first execution. If the dev dry run matches the table above, production behaviour is known before it runs.
+
+Note sheet 2 of Bay Hill's workbook, "Key Accounts (Account Use)", is **empty by design** — all ten mappings read "not shown / not set" in Orderly. Nothing to import.
+
+## Regression coverage
+
+* Clean first import
+* XLSX with title block and non-first header row
+* CSV import
+* Optional columns omitted — `Operational Type` absent, left assignable
+* Duplicate account codes within one file
+* Malformed rows
+* Cross-tenant account ID or write attempt
+* Idempotent confirm retry
+* Sentinel created once, not duplicated on re-run
+* Audit record completeness
+
+---
+
+## Out of scope
+
+* Umbrella reporting, benchmarking, or tenant override mechanics — #1275
+* Re-import safety, omitted-account dispositions, database foreign keys
+* Unassigned-account worklist
+* General ledger posting, AP, journal entries, QuickBooks synchronisation
+* Any change to the Orderly importer, source GL evidence, or inventory identity behaviour
+
+---
+
+## Sequencing
+
+1. **This feature** — phases 1, 2, 5
+2. **Dev dry run** with the Bay Hill file, against the acceptance table above
+3. **Production: CoA import first**, then May → June → July per the runbook
+
+Step 3's order matters and is proven on development: accounts must exist **before May's approval**, so categories attach as they are created rather than requiring a backfill. Verified on the current dev catalog — 26 of 26 categories linked after a clean three-month seed.
+
+## Reference — Bay Hill chart
+
+* 34 accounts plus a `999900` sentinel
+* `Account Type`: 30 Expense, 4 Revenue
+* `Financial Category`: 23 COGS, 7 Other Expense, 4 Sales
+* `Operational Type`: 15 Food, 11 Bar, 7 Direct Operating Cost, 1 Other
+* Revenue splits Bar into three accounts (Beer / Wine / Liquor Sales) while COGS splits it into seven categories — cost-to-revenue joins must happen at the umbrella level
+* Source note: *"GL Account is assigned per ingredient via a single category dropdown; the ingredient itself has no separate numeric GL field. This table is the authoritative Category → numeric GL Account mapping."*
+
+## Relevant files
+
+* `lib/db/src/schema/schema.ts` — `accounting_accounts`, `categories.accountingAccountId`
+* `artifacts/api-server/src/services/accountingClassification.ts`
+* `artifacts/api-server/src/routes/` — existing account-management routes
