@@ -273,6 +273,8 @@ export const accountingAccounts = pgTable("accounting_accounts", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   accountType: text("account_type"),
+  financialCategory: text("financial_category"),
+  operationalType: text("operational_type"),
   isActive: integer("is_active").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -287,6 +289,8 @@ export const insertAccountingAccountSchema = createInsertSchema(accountingAccoun
     code: z.string().trim().min(1),
     name: z.string().trim().min(1),
     accountType: z.string().trim().min(1).nullable().optional(),
+    financialCategory: z.string().trim().min(1).nullable().optional(),
+    operationalType: z.string().trim().min(1).nullable().optional(),
     isActive: z.union([z.literal(0), z.literal(1)]).default(1),
   });
 export type InsertAccountingAccount = z.infer<typeof insertAccountingAccountSchema>;

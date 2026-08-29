@@ -68,6 +68,7 @@ describe('resolveOrCreateCategoryId', () => {
   it('returns the id of an existing active category', async () => {
     const tx = {
       select: vi.fn()
+        .mockReturnValueOnce(selectChain([])) // no matching accounting account
         .mockReturnValueOnce(selectChain([{ id: 'cat-active-1' }])), // active match found
       insert: vi.fn(),
       update: vi.fn(),
@@ -76,13 +77,14 @@ describe('resolveOrCreateCategoryId', () => {
     const result = await resolveOrCreateCategoryId(tx, 'company-1', 'Produce');
     expect(result).toEqual({ id: 'cat-active-1', created: false });
     // Should not query soft-deleted or insert
-    expect(tx.select).toHaveBeenCalledTimes(1);
+    expect(tx.select).toHaveBeenCalledTimes(2);
     expect(tx.insert).not.toHaveBeenCalled();
   });
 
   it('is case-insensitive when matching an existing active category', async () => {
     const tx = {
       select: vi.fn()
+        .mockReturnValueOnce(selectChain([])) // no matching accounting account
         .mockReturnValueOnce(selectChain([{ id: 'cat-2' }])), // found via lower()
       insert: vi.fn(),
       update: vi.fn(),
@@ -96,6 +98,7 @@ describe('resolveOrCreateCategoryId', () => {
   it('restores a soft-deleted category and returns its id', async () => {
     const tx = {
       select: vi.fn()
+        .mockReturnValueOnce(selectChain([]))              // no matching accounting account
         .mockReturnValueOnce(selectChain([]))              // active → not found
         .mockReturnValueOnce(selectChain([{ id: 'cat-soft' }])), // soft-deleted → found
       update: vi.fn().mockReturnValue(updateChain()),
@@ -111,6 +114,7 @@ describe('resolveOrCreateCategoryId', () => {
   it('creates a new category when none exists', async () => {
     const tx = {
       select: vi.fn()
+        .mockReturnValueOnce(selectChain([]))  // no matching accounting account
         .mockReturnValueOnce(selectChain([]))  // active → not found
         .mockReturnValueOnce(selectChain([])), // soft-deleted → not found
       update: vi.fn(),
@@ -128,6 +132,7 @@ describe('resolveOrCreateCategoryId', () => {
     });
     const tx = {
       select: vi.fn()
+        .mockReturnValueOnce(selectChain([]))
         .mockReturnValueOnce(selectChain([]))
         .mockReturnValueOnce(selectChain([])),
       update: vi.fn(),

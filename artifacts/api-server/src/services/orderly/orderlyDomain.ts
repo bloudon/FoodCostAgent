@@ -36,6 +36,7 @@ import {
   companyStores,
   units,
   categories,
+  accountingAccounts,
   type InventoryItem,
   type Vendor,
   type InventoryLocation,
@@ -1415,6 +1416,20 @@ export async function resolveOrCreateCategoryId(
   if (!trimmed) return null;
 
   const normName = trimmed.toLowerCase();
+  const [matchingAccount] = await tx
+    .select({ id: accountingAccounts.id })
+    .from(accountingAccounts)
+    .where(
+      and(
+        eq(accountingAccounts.companyId, companyId),
+        eq(accountingAccounts.isActive, 1),
+        normName === 'no account'
+          ? eq(accountingAccounts.code, '999900')
+          : sql`lower(${accountingAccounts.name}) = ${normName}`,
+      ),
+    )
+    .limit(1);
+  const accountingAccountId = matchingAccount?.id ?? null;
 
   // 1. Existing active category (case-insensitive exact match)
   const [existing] = await tx
@@ -1430,7 +1445,18 @@ export async function resolveOrCreateCategoryId(
       ),
     )
     .limit(1);
-  if (existing) return { id: existing.id, created: false };
+  if (existing) {
+    if (accountingAccountId) {
+      await tx
+        .update(categories)
+        .set({ accountingAccountId })
+        .where(and(
+          eq(categories.id, existing.id),
+          sql`${categories.accountingAccountId} IS NULL`,
+        ));
+    }
+    return { id: existing.id, created: false };
+  }
 
   // 2. Soft-deleted category — restore rather than duplicate
   const [softDeleted] = await tx
@@ -1449,7 +1475,10 @@ export async function resolveOrCreateCategoryId(
   if (softDeleted) {
     await tx
       .update(categories)
-      .set({ isActive: 1 })
+      .set({
+        isActive: 1,
+        ...(accountingAccountId ? { accountingAccountId } : {}),
+      })
       // @ts-ignore
       .where(eq(categories.id, softDeleted.id));
     return { id: softDeleted.id, created: false };
@@ -1465,6 +1494,7 @@ export async function resolveOrCreateCategoryId(
       showAsIngredient: 1,
       isCatchWeightCategory: 0,
       isActive: 1,
+      accountingAccountId,
     })
     .returning({ id: categories.id });
 

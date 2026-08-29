@@ -15,6 +15,8 @@ const accountInputSchema = z.object({
   code: z.string().trim().min(1),
   name: z.string().trim().min(1),
   accountType: z.string().trim().min(1).nullable().optional(),
+  financialCategory: z.string().trim().min(1).nullable().optional(),
+  operationalType: z.string().trim().min(1).nullable().optional(),
   isActive: z.union([z.literal(0), z.literal(1)]).optional(),
 });
 
@@ -103,6 +105,8 @@ export async function createAccountingAccount(
     code: data.code,
     name: data.name,
     accountType: data.accountType ?? null,
+    financialCategory: data.financialCategory ?? null,
+    operationalType: data.operationalType ?? null,
     isActive: data.isActive ?? 1,
   }).returning();
   return account;
@@ -132,6 +136,8 @@ export async function updateAccountingAccount(
     ...(data.code !== undefined ? { code: data.code } : {}),
     ...(data.name !== undefined ? { name: data.name } : {}),
     ...(data.accountType !== undefined ? { accountType: data.accountType } : {}),
+    ...(data.financialCategory !== undefined ? { financialCategory: data.financialCategory } : {}),
+    ...(data.operationalType !== undefined ? { operationalType: data.operationalType } : {}),
     ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
     updatedAt: new Date(),
   }).where(and(
@@ -189,6 +195,16 @@ export async function resolveCurrentAccountingClassification(companyId: string, 
   if (item.accountingAccountId) {
     const itemAccount = await getAccountForCompany(companyId, item.accountingAccountId, true);
     if (itemAccount) {
+      if (itemAccount.code === '999900') {
+        return {
+          inventoryItemId,
+          companyId,
+          source: 'unassigned' as const,
+          status: 'unresolved' as const,
+          label: UNASSIGNED_ACCOUNTING_LABEL,
+          account: itemAccount,
+        };
+      }
       return {
         inventoryItemId,
         companyId,
@@ -210,6 +226,16 @@ export async function resolveCurrentAccountingClassification(companyId: string, 
     if (category?.accountingAccountId) {
       const categoryAccount = await getAccountForCompany(companyId, category.accountingAccountId, true);
       if (categoryAccount) {
+        if (categoryAccount.code === '999900') {
+          return {
+            inventoryItemId,
+            companyId,
+            source: 'unassigned' as const,
+            status: 'unresolved' as const,
+            label: UNASSIGNED_ACCOUNTING_LABEL,
+            account: categoryAccount,
+          };
+        }
         return {
           inventoryItemId,
           companyId,

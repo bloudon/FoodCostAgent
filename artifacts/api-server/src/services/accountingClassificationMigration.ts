@@ -21,6 +21,10 @@ export async function ensureAccountingClassificationSchema() {
     );
     CREATE INDEX IF NOT EXISTS accounting_accounts_company_active_idx
       ON accounting_accounts(company_id, is_active);
+    ALTER TABLE accounting_accounts
+      ADD COLUMN IF NOT EXISTS financial_category TEXT;
+    ALTER TABLE accounting_accounts
+      ADD COLUMN IF NOT EXISTS operational_type TEXT;
     ALTER TABLE categories
       ADD COLUMN IF NOT EXISTS accounting_account_id VARCHAR;
     ALTER TABLE inventory_items
