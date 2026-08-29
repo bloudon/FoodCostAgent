@@ -32,6 +32,7 @@ import {
 } from '@workspace/db';
 import {
   applyBatchApproval,
+  assertSupersededDecisionTarget,
   getOrderlyReviewDecisions,
   ImportApprovalError,
   runResolutionPreview,
@@ -1772,13 +1773,45 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       },
     });
 
-    const julyResult = await applyBatchApproval(julyBatch, approvalAuth);
+    // A reviewer may have saved a separate-variant choice before the June
+    // approval supplied the authoritative vendor/code/pack continuation.
+    // Approval must converge only because the corrected preview now resolves
+    // to that same reviewed item; a different target would remain a conflict.
+    await db.insert(orderlyImportReviewDecisions).values({
+      batchId: julyBatch,
+      companyId: ID.company,
+      rowIndex: 1,
+      decision: {
+        action: 'create_variant',
+        comparableInventoryItemId: mayRow.resolvedInventoryItemId,
+      },
+      revision: 1,
+      createdBy: ID.admin,
+      updatedBy: ID.admin,
+    });
+
+    const julyResult = await applyBatchApproval(julyBatch, approvalAuth, null);
     expect(julyResult.itemsCreated).toBe(0);
     const [julyRow] = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, julyBatch));
     expect(julyRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
+  });
+
+  it('fails closed when a safely superseded review target loses the authoritative mapping race', () => {
+    expect(() => assertSupersededDecisionTarget(
+      '4676306',
+      'reviewed-june-item',
+      'concurrent-winner-item',
+    )).toThrowError(
+      /Item Code 4676306 changed its authoritative target while approval was running/,
+    );
+    expect(() => assertSupersededDecisionTarget(
+      '4676306',
+      'reviewed-june-item',
+      'reviewed-june-item',
+    )).not.toThrow();
   });
 
   it('offers and applies a cross-vendor Avocado pack link when the new Item Code is descriptive', async () => {

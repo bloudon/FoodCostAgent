@@ -287,6 +287,67 @@ function assertReviewDecisionMatchesPreview(
   }
 }
 
+/**
+ * A saved review action can become obsolete when newer approved source
+ * evidence turns the exact reviewed candidate into a safe automatic match.
+ * Ignore it only when both paths converge on the same item; target drift must
+ * continue to fail closed.
+ */
+function filterDecisionsSupersededBySafeMatches(
+  preview: ResolutionPreviewResult,
+  decisions: RowDecision[],
+): RowDecision[] {
+  const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
+  return decisions.filter(decision => {
+    if (decision.action === undefined) return true;
+    const row = rowsByIndex.get(decision.rowIndex);
+    if (
+      !row ||
+      row.heldForReview ||
+      row.itemMatch.requiresReview ||
+      row.itemMatch.possibleRecode ||
+      row.itemMatch.confidence !== 'high' ||
+      row.itemMatch.packCompatibility !== 'compatible' ||
+      !row.itemMatch.matchedId ||
+      !isReliableItemCode(row)
+    ) {
+      return true;
+    }
+    const reviewedItemId = decision.action === 'create_variant'
+      ? decision.comparableInventoryItemId
+      : decision.inventoryItemId;
+    return reviewedItemId !== row.itemMatch.matchedId;
+  });
+}
+
+function decisionRowIndexesRemovedBySafeMatch(
+  preview: ResolutionPreviewResult,
+  decisions: RowDecision[],
+): Set<number> {
+  const retained = new Set(
+    filterDecisionsSupersededBySafeMatches(preview, decisions)
+      .map(decision => decision.rowIndex),
+  );
+  return new Set(
+    decisions
+      .filter(decision => decision.action !== undefined && !retained.has(decision.rowIndex))
+      .map(decision => decision.rowIndex),
+  );
+}
+
+export function assertSupersededDecisionTarget(
+  sourceCode: string,
+  expectedItemId: string | undefined,
+  resolvedItemId: string,
+): void {
+  if (expectedItemId && expectedItemId !== resolvedItemId) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `Orderly Item Code ${sourceCode} changed its authoritative target while approval was running. Refresh the review before retrying.`,
+    );
+  }
+}
+
 function previewRowConflictLabel(row: ResolutionPreviewResult['rows'][number]): string {
   const description = row.cleanedDescription?.trim() || 'Description unavailable';
   const code = row.sourceItemCode?.trim() || 'Item Code unavailable';
@@ -3171,7 +3232,7 @@ export async function applyBatchApproval(
   }
 
   // ── Build decision override map ──────────────────────────────────────────
-  const decisionMap = new Map<number, RowDecision>(
+  let decisionMap = new Map<number, RowDecision>(
     decisionsToApply.map(d => [d.rowIndex, d]),
   );
   for (const decision of decisionsToApply) {
@@ -3244,6 +3305,14 @@ export async function applyBatchApproval(
 
   // ── Run matching (outside transaction) ──────────────────────────────────
   const preview = await runResolutionPreview(batchId, companyId);
+  const requestedDecisions = decisionsToApply;
+  const unlockedSupersededDecisionRows = persistedDecisionSignature === null
+    ? new Set<number>()
+    : decisionRowIndexesRemovedBySafeMatch(preview, requestedDecisions);
+  decisionsToApply = requestedDecisions.filter(
+    decision => !unlockedSupersededDecisionRows.has(decision.rowIndex),
+  );
+  decisionMap = new Map(decisionsToApply.map(decision => [decision.rowIndex, decision]));
   const previewRowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
   const sourceConflictRows = preview.rows.filter(row => row.itemMatch.sourceDataConflict);
   if (sourceConflictRows.length > 0) {
@@ -3449,9 +3518,39 @@ export async function applyBatchApproval(
     // the batch is locked and before any mutation so a newly-arrived
     // contradictory packSize identity cannot race a variant into the catalog.
     const underLockPreview = await runResolutionPreview(batchId, companyId, tx);
+    const underLockSupersededDecisionRows = persistedDecisionSignature === null
+      ? new Set<number>()
+      : decisionRowIndexesRemovedBySafeMatch(underLockPreview, requestedDecisions);
+    const safelySupersededDecisionRows = new Set(
+      [...unlockedSupersededDecisionRows]
+        .filter(rowIndex => underLockSupersededDecisionRows.has(rowIndex)),
+    );
+    decisionsToApply = requestedDecisions.filter(
+      decision => !safelySupersededDecisionRows.has(decision.rowIndex),
+    );
+    decisionMap = new Map(decisionsToApply.map(decision => [decision.rowIndex, decision]));
     const underLockRowsByIndex = new Map(
       underLockPreview.rows.map(row => [row.rowIndex, row]),
     );
+    const supersededDecisionTargetByReliableCode = new Map<string, string>();
+    for (const decision of requestedDecisions) {
+      if (!safelySupersededDecisionRows.has(decision.rowIndex)) continue;
+      const row = underLockRowsByIndex.get(decision.rowIndex);
+      if (!row || !isReliableItemCode(row)) continue;
+      const reviewedItemId = decision.action === 'create_variant'
+        ? decision.comparableInventoryItemId
+        : decision.inventoryItemId;
+      if (!reviewedItemId) continue;
+      const code = row.sourceItemCode!.trim();
+      const existing = supersededDecisionTargetByReliableCode.get(code);
+      if (existing && existing !== reviewedItemId) {
+        throw new ImportApprovalError(
+          'CONFLICT',
+          `Saved review decisions for Orderly Item Code ${code} no longer agree on one inventory item.`,
+        );
+      }
+      supersededDecisionTargetByReliableCode.set(code, reviewedItemId);
+    }
     const unknownVariantReviewChanges: ReviewDecisionChange[] = [];
     for (const decision of decisionsToApply) {
       const row = underLockRowsByIndex.get(decision.rowIndex);
@@ -3982,6 +4081,11 @@ export async function applyBatchApproval(
           reliableCode,
           claimCandidate,
           claimEvidence,
+        );
+        assertSupersededDecisionTarget(
+          reliableCode,
+          supersededDecisionTargetByReliableCode.get(reliableCode),
+          claim.itemId,
         );
         resolvedItemId = claim.itemId;
         if (claim.created) {

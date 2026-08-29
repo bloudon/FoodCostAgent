@@ -18,3 +18,16 @@ change make a formerly reviewed decision unsafe at apply time.
 preview's candidate, pack, code-group, or identity-group evidence as a conflict.
 For bulk draft saves, validate all requested changes before any write, under the
 batch lock. Never let the browser's in-memory map become approval authority.
+
+A durable action that becomes obsolete may be ignored only when both the
+unlocked and under-lock previews safely resolve a reliable code to the exact
+item referenced by that action. Preserve that item as an expected target and
+compare it with the authoritative mapping claim inside the transaction.
+
+**Why:** A corrected preview can make an old variant choice unnecessary, but
+discarding it without binding the target allows a concurrent mapping winner to
+silently redirect approval to another item.
+
+**How to apply:** Keep explicit service decisions fail-closed. For durable
+drafts, intersect the safely superseded rows from both previews, then throw and
+roll back if the final claimed code mapping differs from the reviewed item.
