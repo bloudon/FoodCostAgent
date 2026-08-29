@@ -1,0 +1,46 @@
+Good root cause — the same-vendor branch preferring any incompatible evidence over the immediately-prior-month match is exactly the shape I saw in the panel. Let me verify and finish July.
+
+Browser batch
+
+The fix reclassified more than the one row: create_variant dropped 96 → 73, total 225 → 202, and Approve is enabled with no outstanding decisions. So 23 rows that had been forced into variants now resolve automatically against their prior-month targets.
+
+Let me confirm row 2499 specifically before approving.
+
+Used Claude in Chrome integration, ran a command · 3 notes
+
+This is the same shape as row 2499 — Milk - Whole, and July is byte-identical to June.
+
+Month	Code	Vendor	Pack
+May	10174634	Cheney Brothers	4/1 GAL
+June	4676306	Sysco	1/1 GAL ← linked cross-vendor
+July	4676306	Sysco	1/1 GAL ← identical to June
+
+I linked this as link_vendor_pack in June, and July should auto-resolve against that target exactly as Apples now does. It isn't.
+
+The difference from Apples is worth flagging: Apples kept the same Item Code across the vendor switch; Milk-Whole changed code (10174634 → 4676306). So the fix appears to handle continuation when the code is stable, but not when the prior month's cross-vendor link involved a code change — the July row's code has only one prior month, and the name-level history points at a May item with different geometry.
+
+Let me confirm what the preview offers now.
+
+Used Claude in Chrome integration
+
+That's decisive, and it's the same trap as the earlier collision.
+
+Row 2599 shows "Matched — Prior mapping." It carries no decision, requires none, and appears under no actionable filter. The batch reports zero outstanding decisions, Approve is enabled, and it then fails on this row at the irreversible step.
+
+So it's unresolvable from the UI — exactly the class of failure we've hit twice before.
+
+The distinguishing detail versus row 2499, which the fix did handle:
+
+	Apples (fixed)	Milk-Whole (still failing)
+May → June	code unchanged (11017)	code changed (10174634 → 4676306)
+Vendor switch	Harvill's → Mr. Green's	Cheney → Sysco
+July vs June	identical	identical
+Result	auto-resolves ✅	identity error ⛔
+
+The precedence fix keys on "latest approved month for the stable Item Code." Milk-Whole's July code has only one prior month, so there's no earlier row for that code to prefer — but the name-level identity still resolves back toward May's Cheney item at 4/1 GAL (15,141 ML vs 3,785 ML).
+
+What Replit needs: the fix must follow the item, not just the code. When June's link_vendor_pack bound a new code to an existing item, July's row carrying that same new code should resolve to that item — even though the code has no history before June.
+
+Worth adding to the regression as a fourth case: three months where the vendor switch also changes the Item Code, then continues unchanged. That's the shape the current test misses.
+
+Everything else held — clean rollback, 202 decisions intact, catalog untouched at 3,096 / 2,414. May and June remain approved and reconciling.
