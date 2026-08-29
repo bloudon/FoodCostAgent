@@ -1,0 +1,158 @@
+# Bay Hill Orderly Seed — Handover & Production Readiness
+
+**Date:** 2026-08-29
+**Status:** Development seed complete and reconciled. **Not yet cleared for production** — see §3.
+**Companions:** Production Seed Runbook v1.0 · Anomaly Register v1.0 · Orderly Hit List
+
+---
+
+## 1. What was achieved
+
+Three months imported, reviewed and approved on development, reconciling exactly to the source workbooks.
+
+| Month | Rows | Excluded | Snapshot | Imported | Delta |
+|---|---|---|---|---|---|
+| May | 5,358 / 5,358 | 0 | $254,286.67 | $254,286.67 | ~7e-10 |
+| June | 5,409 / 5,409 | 0 | $261,007.67 | $261,007.67 | 0 |
+| July | 5,518 / 5,518 | 0 | $254,299.75 | $254,299.75 | ~-9e-11 |
+
+**16,285 rows, zero exclusions, every total exact.**
+
+Resulting catalog: **3,163 inventory items · 2,526 vendor items · 97 items carrying packs from more than one vendor** (up from 1 before this work).
+
+### Reconciling against Orderly's displayed totals
+
+Orderly's UI shows $254,285.74 / $261,006.73 / $254,298.83 — roughly $0.93 lower each month. This is explained and expected: Orderly's Summary row carries full floating-point precision (`254285.737889`) which its UI rounds, while Detail rows are cent-rounded. Summing ~5,400 cent-rounded rows produces ~$0.93 of upward bias.
+
+**FnB matches the Detail rows — the auditable source.** Always reconcile against the Detail sum, not the displayed total.
+
+### Defects found and fixed during the run
+
+Fifteen, verified behaviourally rather than from reports:
+
+| Area | Fix |
+|---|---|
+| Review decisions lost on reload | Durable batch-scoped decisions with per-row revisions |
+| Descriptive Item Codes aborted the batch | Advisory; name+pack identity |
+| Unknown geometry dropped rows, losing $9,330 | Import with opaque package count |
+| Unknown treated as incompatible → 409 | Unknown ≠ incompatible |
+| Same product from two vendors forked | `link_vendor_pack` third outcome |
+| Cross-vendor withheld from descriptive codes | Extended to pseudo-code rows |
+| Preview/approval pack disagreement | Shared normalised-total authority |
+| `create_variant` wrote vendor pack to wrong item | Writes against the new item |
+| Punctuation-only code collisions aborted approval | Code-qualified derived identities |
+| Unchanged rows offered as new pack sizes (12 forks) | Eligibility fix |
+| Stale comparison target after cross-vendor link | Latest approved month authoritative |
+| Obsolete saved decision blocked auto-resolution | Convergence rule |
+| Parser: commas, GAL/QT/KG/DZ/GR/PT/Cup | Added to normaliser |
+| `#10` cans, `KEG 5.16G` | Count and volume recovery |
+| No bulk action for Category 1 | "Link N compatible codes" |
+
+---
+
+## 2. Known state — items to review, not blockers
+
+### 2.1 Four suspect forks in the June→July comparison
+
+44 name-paired forks were reported. The large majority are **correct** — same-vendor pack changes deliberately kept separate (Casamigos minis vs bottles, Makers Mark, Crown Royal, Tito's, Creamers, Buttermilk, Egg Whites, Chives, Cumin).
+
+**Four need confirmation:**
+
+| Item | Prior vendor → July | Why it forked |
+|---|---|---|
+| Mizuna | Harvill's → Mr. Green's | unknown geometry, no link offered |
+| Mushrooms - Blends/Mix | Mr. Green's → Fungi Jon | `1/1 Case`, unverifiable pack |
+| Popcorn Kit | (blank) → Sysco | no prior vendor to compare |
+| Potato Skins | GFs Store → Cheney Brothers | unknown geometry |
+
+Each is a genuine cross-vendor switch where the vendor-pack link was unavailable. They may be true duplicates. Low value, but they should be classified before the register treats them as correct.
+
+### 2.2 Cumulative data-quality figures
+
+Across all three approved batches, not per month:
+
+* 3,140 rows without a valid source code
+* 3,140 rows without a vendor
+* 461 rows with partial or unparseable pack geometry
+* 2,637 rows with Orderly par targets
+
+The first two are the same population — cellar wine and similar entered in Orderly without a code or supplier. Invoice import is the remedy.
+
+### 2.3 Pack geometry gaps
+
+~133 items remain with genuinely opaque `1/1 Case` geometry, ~$16.3k of inventory value. Value is unaffected; costing and unit conversion are. The **Hit List** ranks the 22 highest-value cases — six items (three Busy Bean products, three Font Group bars) account for $8.4k of the $16.3k.
+
+---
+
+## 3. Production readiness — what is still required
+
+### 3.1 The operator path for July was never completed through the UI
+
+This is the most important gap and should be closed before production.
+
+July's approval **failed four times through the Approve button**. The successful commit came from Replit invoking the approval service directly in a diagnostic wrapper, after which the job record had to be repaired manually.
+
+The seeded data is correct and verified. But the **process** — the thing production will repeat — has not been demonstrated end-to-end for July with the final code in place.
+
+**Recommendation:** before production, wipe development and complete one clean May → June → July run entirely through the UI on the current build. That validates the final combination of fifteen fixes together, which has never been exercised as a whole. It also re-tests the four suspect forks under corrected classification.
+
+### 3.2 Approval idempotency is unverified
+
+Approvals run 60–130 seconds with limited progress feedback. On one occasion a 5,518-row approval took the development server down at 108 seconds.
+
+**Approved batches cannot be discarded** (`POST /discard` returns 409). Idempotency has never been tested.
+
+The operational rule is therefore: **never retry a slow approval.** That rule protects production, but confirming idempotency would be better than relying on discipline.
+
+### 3.3 Production has no reset
+
+Development was wiped six times during this work. Production has no in-app discard for approved batches and no equivalent reset path.
+
+**Requirements before the first production import:**
+
+* A verified database backup with a **tested restore** — the only recovery mechanism
+* Approval performed under a **named account**; attribution is the sole record of who committed an irreversible month
+* **Never send `force`** on approval — a `409 duplicate_date` is a stop sign, and forcing double-applies rather than replaces
+* The **same source workbooks**, archived and checksummed
+
+### 3.4 Known UI constraints the operator must work around
+
+* The review list paginates at 100 **with no search**. July's bucket held 160 rows; five items sat on page 2 and were invisible to a page-1 scan.
+* Cross-vendor links must be applied **before** the Category 2 bulk. Confirming the bulk first overwrites them.
+* The bulk dialog's duplicate warning fires only on **cross-vendor** candidates. Every listed item must be checked against the prior month, not only the flagged ones — this caught 7 items in July that were never flagged.
+* Compare against the **immediately prior approved month**, and by **product name and code together**. A cross-vendor switch brings a new Item Code, so code-only comparison hides it.
+* The Inventory Items page renders **0 items** while the API returns thousands. No GUI catalog cleanup is available.
+
+---
+
+## 4. Open work, in dependency order
+
+### Before production
+
+1. **Clean UI-driven run** of all three months on the current build (§3.1)
+2. **Confirm approval idempotency**, or accept the never-retry rule as policy (§3.2)
+3. **Classify the four suspect forks** (§2.1)
+4. **Backup and tested restore** for production (§3.3)
+
+### Parallel — blocks nothing
+
+5. **Seed the Chart of Accounts** — 34 accounts, tenant-owned. Note sheet 1 needs `header=3`; sheet 2 (Key Accounts) is empty by design. `999900 / No Account` needs an explicit "Unassigned / review required" destination.
+6. **Backfill category accounts** — 26 categories currently hold `accountingAccountId` null.
+7. **#1275 F&B umbrellas** — awaiting product-owner sign-off. Recommend adding: DOC-in-prime-cost is *provisional pending invoice validation* (Bay Hill's counted DOC is $85.93, 0.03% of inventory — too small to validate against); a hard review trigger at second-tenant onboarding; and a decision on the missing database FK between category/item account references and the accounts table.
+
+### After the seed
+
+8. **Import invoices** for all three months — supplies current pricing, activates cross-vendor comparison, recovers vendor SKUs for the 3,140 blank-code rows. Note the seed itself will not activate cross-shopping: 3,555 of May's rows carry prices older than 14 days, which the comparison rules classify as stale.
+9. **Classify vendors** — all 55 arrive as `receiveByUnit: 0`. Publix and similar misc grocers need flagging so purchasing uses unit maths.
+10. **Work the Hit List** — pack sizes for the 22 highest-value opaque items.
+11. **August counts run natively in FnB** — where pack definitions get fixed at source.
+
+---
+
+## 5. Recommendation
+
+The financial objective is met: three months reconcile exactly, and the import is repeatable.
+
+**The remaining risk is process, not data.** Fifteen fixes landed during this run, and the final combination has never been exercised end-to-end through the operator path. Production offers no second attempt.
+
+One clean UI-driven run on development — perhaps two hours of review work — converts the current position from "the data is right" to "the process is proven." That is the difference worth buying before touching live club data.

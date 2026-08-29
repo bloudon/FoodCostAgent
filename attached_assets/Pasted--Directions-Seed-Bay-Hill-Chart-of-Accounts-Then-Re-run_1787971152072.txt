@@ -1,0 +1,182 @@
+# Directions — Seed Bay Hill Chart of Accounts, Then Re-run May–July
+
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Source:** `Bay_Hill_Chart_of_Accounts.xlsx`, exported read-only from Orderly's Account Settings → Chart Of Accounts
+**Sequence:** seed accounts → wipe inventory data → re-run May → June → July through the UI
+
+---
+
+## Why in this order
+
+Categories are created during **May's approval**. If accounts exist first, `categories.accountingAccountId` is populated as each category is created, rather than backfilled afterward. That proves the linkage through a real import instead of patching it in.
+
+The wipe is being spent regardless — see §4 — so combining the two validates the account linkage and the fifteen accumulated import fixes in a single cycle.
+
+---
+
+## 1. Seed the accounts
+
+34 accounts, **tenant-owned**, into the existing company-scoped `accounting_accounts` table. Development currently has **0 accounting accounts** and **26 categories with `accountingAccountId` null**.
+
+### Reading the file
+
+* **Sheet 1 "Chart of Accounts"** — the account list. Requires `header=3`; rows 0–2 are a title and provenance note. A naive read yields `Unnamed:` columns and 42 rows instead of 34 accounts.
+* **Sheet 2 "Key Accounts (Account Use)"** — **empty by design.** All ten Account Use mappings read "not shown / not set" in Orderly. Nothing to import; noted so nobody hunts for values that do not exist.
+
+### The accounts
+
+| Account | Name | Type | Financial Category | Operational Type |
+|---|---|---|---|---|
+| `400000` | Food Sales | Revenue | Sales | Food |
+| `410000` | Beer Sales | Revenue | Sales | Bar |
+| `410600` | Wine Sales | Revenue | Sales | Bar |
+| `410800` | Liquor Sales | Revenue | Sales | Bar |
+| `500200` | Produce | Expense | COGS | Food |
+| `500400` | Dairy | Expense | COGS | Food |
+| `500600` | Meat | Expense | COGS | Food |
+| `500800` | Seafood | Expense | COGS | Food |
+| `501000` | Dry Goods | Expense | COGS | Food |
+| `501200` | Poultry | Expense | COGS | Food |
+| `501400` | Non-Alcoholic Beverages | Expense | COGS | Food |
+| `501600` | Bread | Expense | COGS | Food |
+| `501800` | Specialty Food | Expense | COGS | Food |
+| `502000` | Vendor Prepared Items | Expense | COGS | Food |
+| `502200` | Food Prep Item | Expense | COGS | Food |
+| `502800` | TOGO Supplies | Expense | COGS | Direct Operating Cost |
+| `503000` | Pastry | Expense | COGS | Food |
+| `503200` | Uncategorized Food | Expense | COGS | Food |
+| `503400` | Food | Expense | COGS | Food |
+| `503600` | Alcohol | Expense | COGS | Bar |
+| `510200` | Beer | Expense | COGS | Bar |
+| `510400` | Bottled Beer | Expense | COGS | Bar |
+| `510600` | Draft Beer | Expense | COGS | Bar |
+| `510800` | Wine | Expense | COGS | Bar |
+| `511200` | Liquor | Expense | COGS | Bar |
+| `511400` | Bar Prep | Expense | COGS | Bar |
+| `512200` | Canned Beer | Expense | COGS | Bar |
+| `600000` | Services | Expense | Other Expense | Direct Operating Cost |
+| `600200` | Linen & Drycleaning | Expense | Other Expense | Direct Operating Cost |
+| `600600` | Restaurant Supplies | Expense | Other Expense | Direct Operating Cost |
+| `601600` | Soaps & Chemicals | Expense | Other Expense | Direct Operating Cost |
+| `601800` | Paper Products | Expense | Other Expense | Direct Operating Cost |
+| `641400` | Utilities | Expense | Other Expense | Other |
+| `641800` | Paper/Chem/Smallwares | Expense | Other Expense | Direct Operating Cost |
+
+total accounts: 34
+
+### Fields to persist
+
+* **Account Number** → account code (unique within company)
+* **Account Name** → name
+* **Account Type** → Revenue / Expense
+* **Financial Category** → Sales / COGS / Other Expense
+* **Operational Type** → Food / Bar / Direct Operating Cost / Other
+
+The last two are the axes #1275 is deciding on. **Store them now as source attributes** even though no umbrella reporting consumes them yet — they come from the source and are cheap to keep. Do not build umbrella reporting on them until #1275 is signed off.
+
+### Do not
+
+* Create shared platform rows. These are Bay Hill's accounts, tenant-scoped.
+* Import Sheet 2 — it is empty.
+* Let the importer promote source GL values into current account assignments. Source GL Code and Source Category remain immutable evidence.
+
+---
+
+## 2. `999900 / No Account`
+
+Appears in all three months of inventory data but **is not in the chart of accounts** — it is Orderly's unassigned placeholder.
+
+Per the #1275 draft, it must:
+
+* Remain visible as source evidence, unchanged
+* Display as **"Unassigned / review required"**
+* Be included in grand totals where appropriate
+* Be **excluded** from classified COGS / Revenue / Other Expense subtotals
+* **Never** silently inherit an account
+
+If the CoA is loaded as-is, this code has no destination. It needs an explicit one before category mapping runs.
+
+---
+
+## 3. Category → account mapping
+
+The mapping is **1:1 with Category** and authoritative. Orderly's own export note states it:
+
+> GL Account is assigned per ingredient via a single category dropdown on the ingredient record; the ingredient itself has no separate numeric GL field. This table is the authoritative Category → numeric GL Account mapping and applies uniformly across all ingredients assigned to each category.
+
+Verified against the source: **25 of 26 GL codes used by inventory match the chart exactly** — same number, same name, across all three months. Zero name discrepancies. The single exception is `999900`.
+
+So category names map directly to account names. After the re-run, every created category should carry its account with no manual mapping step.
+
+**Verification after May's approval:** every category has a non-null `accountingAccountId`, and `510800` resolves to Wine, `511200` to Liquor, `501000` to Dry Goods.
+
+---
+
+## 4. Wipe scope
+
+Same scoped reset performed previously — it worked cleanly and the preflight checks were sound. Preserve:
+
+* Bay Hill company, store, user access
+* Active Orderly source-property binding (`24472`)
+* Menu-size defaults and legacy storage-location setup
+* **The newly seeded accounting accounts** — these must survive the wipe, since the point is to have them in place before May
+
+Delete: batches, import rows, inventory items, vendor items, external mappings, location assignments, item relationships, import-created vendors and locations, import-created categories, review decisions, approval jobs.
+
+**Note:** if import-created categories are deleted, they will be recreated during May's approval and must re-attach to the surviving accounts by name.
+
+Retain the preflight guard from last time — confirm zero dependent recipes, menu items, counts, purchases, invoices, transfers, waste and deposits before committing, and run it as one transaction.
+
+---
+
+## 5. Re-run
+
+May → June → July, chronologically, **entirely through the UI**. No service-level invocation.
+
+This matters: July's last approval failed four times through the Approve button and committed only via a diagnostic wrapper, after which the job record needed repair. Fifteen fixes have landed during this work and the combination has never been exercised end-to-end through the operator path. Production has no second attempt.
+
+### Acceptance criteria
+
+| Check | Target |
+|---|---|
+| May imported / excluded | 5,358 / **0** |
+| June imported / excluded | 5,409 / **0** |
+| July imported / excluded | 5,518 / **0** |
+| May total | **$254,286.67** |
+| June total | **$261,007.67** |
+| July total | **$254,299.75** |
+| Every month | `importedTotal` == `snapshotTotal` |
+| Categories with account | **26 of 26** |
+| Forks | no name-paired fork where the **vendor differs** |
+| Multi-vendor items | well above zero (97 last run) |
+| `vendor_items` | populated (2,526 last run) |
+| Unknown geometry, May | ~152 |
+
+Orderly's displayed totals are ~$0.93 lower each month by construction — its Summary row carries full float precision while Detail rows are cent-rounded. **Reconcile against the Detail sum.**
+
+### Also re-check
+
+Four items forked in the last run where a cross-vendor link was unavailable — **Mizuna, Mushrooms - Blends/Mix, Popcorn Kit, Potato Skins**. Under corrected classification they may now consolidate. If they still fork, classify them explicitly rather than leaving them ambiguous.
+
+---
+
+## 6. Operator procedure
+
+Follow the Production Seed Runbook v1.0 §3. The steps most easily got wrong, each of which caused a real defect in earlier runs:
+
+1. **Pre-bulk gate.** Open the Category 2 bulk, record every listed item, close **without confirming**. Check all of them — not only those flagged. The duplicate warning fires only on cross-vendor candidates, so unchanged rows and unflagged switches are invisible to it. This caught 7 items in July that were never flagged.
+2. **Compare against the immediately prior approved month**, not the union of all prior months, and by **product name and Item Code together**. A cross-vendor switch brings a new code, so code-only comparison hides it.
+3. **Cross-vendor links before the bulk.** Confirming the bulk first overwrites saved `link_vendor_pack` decisions.
+4. **Check every page.** The list caps at 100 with no search. July's bucket held 160 rows across two pages.
+5. **Verify server-side after each step** — `GET /api/inventory-import/orderly/batches/{id}/review-decisions`. The UI counter lags and rows keep their old status until re-render.
+6. **Never retry a slow approval.** 60–130 seconds is normal. Idempotency is unverified and approved batches cannot be discarded.
+
+---
+
+## 7. Out of scope for this cycle
+
+* Umbrella reporting, benchmarking, or tenant override mechanics — awaiting #1275 sign-off
+* Any importer change promoting source GL into current account assignments
+* Invoice import
+* Vendor classification (`receiveByUnit`)
+* Production data — untouched throughout
