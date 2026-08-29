@@ -1,0 +1,158 @@
+# Chart of Accounts Import — Tenant Onboarding Capability
+
+**Type:** Enterprise feature — required per tenant
+**Priority:** Not blocking the Bay Hill production seed; blocking the second tenant's onboarding
+**Status:** Proposed
+
+---
+
+## What & Why
+
+Every tenant requires a chart of accounts mapped to their inventory categories before FnB can report cost by GL account. There is currently **no import path**: development's 34 Bay Hill accounts were loaded by direct database operation, which is unavailable on production and unrepeatable for any future tenant.
+
+This is not incidental setup. It is a required step on the onboarding critical path, and it is part of the product's differentiation.
+
+### Why this is not covered by QuickBooks
+
+QuickBooks Online provides a chart of accounts. It does not provide **category-level GL mapping tied to inventory items, vendor packs and count sessions**. A club's F&B director needs food cost *by GL account*, reconciled to counted inventory — the bridge between the two systems, which is the layer FnB owns.
+
+That bridge cannot exist until a tenant's chart is loaded and mapped, so this capability is a prerequisite for the reporting the product is sold on.
+
+### Why manual entry is not sufficient
+
+Bay Hill's chart is 34 accounts plus 26 category mappings — roughly 60 hand-entered values per tenant, against accounts that feed cost reporting. The failure mode is not slow onboarding; it is a silently miscategorised account that surfaces as a wrong P&L months later, with no import record to audit against.
+
+Replit confirmed no manager-facing accounting UI exists today, so manual entry may not be possible at all without additional work.
+
+---
+
+## Tenant isolation requirements
+
+Accounts are **tenant-owned**. `accounting_accounts` is already company-scoped with account codes unique within a company, and there is no shared platform chart. That model must hold:
+
+* Every imported account is written with the acting user's `companyId`. No cross-tenant writes under any circumstance.
+* Account codes are unique **within a company**, never globally. Two clubs may legitimately both use `510800`.
+* Category-to-account links must resolve **within the same company**. This is currently enforced in the accounting service but **not by a database foreign key** — see Open Question 3.
+* Import preview and results must never surface another tenant's accounts, codes or names.
+* No tenant's chart becomes a shared or platform row. A default template, if offered, is **copied into** the tenant's own rows.
+
+Bay Hill's chart is a **test case, not a template.** Its structure is likely general; its 34 specific accounts are not. The importer must accept a tenant's own chart rather than validating against Bay Hill's shape.
+
+---
+
+## Done looks like
+
+* An authorised company admin can upload a chart of accounts file and import it into their own company.
+* Import is **preview-then-confirm**, mirroring the Orderly import: parse, show what will be created and changed, write nothing until confirmed.
+* Column mapping happens at import. The importer does not assume a fixed layout.
+* Re-importing an updated chart updates existing accounts by code and adds new ones, without duplicating or silently deleting.
+* Accounts already referenced by categories or items cannot be silently removed; removal requires explicit handling.
+* Category-to-account mapping can be applied during or after import, by matching category name to account name where they correspond.
+* All writes are company-scoped, audited with acting user and timestamp.
+* Import results report created, updated, unchanged, and rejected rows with reasons.
+* Regression coverage includes: a clean first import, a re-import with changes, a malformed file, a cross-tenant write attempt, and duplicate account codes within one file.
+
+---
+
+## Format handling
+
+**Do not assume the Orderly export shape.** Bay Hill's file arrived with a title block requiring `header=3`; a naive read returns 42 rows of unnamed columns instead of 34 accounts. A club arriving from Toast, Compeat, or a plain spreadsheet will differ again.
+
+Requirements:
+
+* Accept CSV and XLSX.
+* Let the user confirm which row is the header and map columns to fields.
+* Preview the parsed result before any write — the same discipline the Orderly import already uses.
+
+### Fields
+
+**Required:** Account Number, Account Name
+
+**Optional but valuable:** Account Type (Revenue / Expense), Financial Category (Sales / COGS / Other Expense), Operational Type (Food / Bar / Direct Operating Cost / Other)
+
+The last two are the axes under consideration in **#1275**. Capturing them at import means the umbrella taxonomy has real data from tenant one rather than being decided on Bay Hill alone. Store them as account attributes; do not build umbrella reporting on them until #1275 is signed off.
+
+---
+
+## Unassigned accounts — a recurring worklist, not a rounding artifact
+
+Source systems emit placeholder GL values that are not real accounts. Bay Hill's inventory contains `999900 / No Account`, which does not appear in its chart.
+
+**This is materially larger than a placeholder suggests.** Across the three approved months:
+
+| | |
+|---|---|
+| Rows | **64** |
+| Value | **$5,328.97** |
+| Share that is wine and spirits | **$4,458 (84%)** |
+
+The largest entries are real, valuable inventory:
+
+| Value | Item | Vendor |
+|---|---|---|
+| $1,385.91 | AALTO - 3266070 | Winebow |
+| $1,134.00 | NICKEL&NICKEL CAB SAUV CC RC | Southern Glazer's |
+| $584.55 | RAPAURA SPRINGS SAUV BL | Southern Glazer's |
+| $461.97 | AALTO | Winebow |
+| $414.20 | REDBREAST IRISH WHISKEY 18YR | Southern Glazer's |
+
+These are almost certainly newer additions that nobody assigned a GL category to in Orderly. Most would plainly belong to Wine (`510800`) or Liquor (`511200`).
+
+**Two consequences for this feature:**
+
+**1. Excluding them from classified subtotals is correct but not sufficient.** Per the #1275 draft, `999900` should display as "Unassigned / review required" — visible, in grand totals, excluded from classified COGS/Revenue/Other Expense, never silently inheriting an account. That remains right. But $5,329 of real inventory sitting outside every GL-classified total is a visible hole in a food-cost report, not a rounding artifact.
+
+**2. It recurs.** The condition appears in all three months with differing items — the natural state of a club that keeps adding wines. The sentinel is not a migration artifact to clean once; it is an ongoing category needing a review surface.
+
+**Requirement:** after import, the unassigned population must be **listable and actionable** — "these 64 rows / $5,329 have no GL account; assign them" — with the ability to assign an account per item or per source category. Every tenant arriving from any system will have some unassigned items, so this is a standard onboarding step rather than a Bay Hill quirk.
+
+Development currently carries a `999900` sentinel account alongside the 34 real ones, giving 35 total. Whether the importer creates that sentinel automatically or requires an explicit decision is worth settling here.
+
+---
+
+## Out of scope
+
+* Umbrella reporting, benchmarking, or tenant override mechanics — awaiting #1275.
+* General ledger posting, AP, journal entries, or QuickBooks synchronisation.
+* Changing the Orderly importer, source GL evidence, or inventory identity behaviour.
+* Migrating Bay Hill's production seed — see sequencing below.
+
+---
+
+## Sequencing against the Bay Hill production seed
+
+**This should not gate the production inventory seed.** Replit confirmed backfilling category-account links after approval is safe and does not require reseeding — it is a ~26-row update either way.
+
+Recommended:
+
+1. Bay Hill's production inventory seed proceeds when ready.
+2. Bay Hill's accounts are loaded afterward by a **documented, committed, version-controlled script** using the existing account-management routes, run by a named operator, with output verified against expected counts.
+3. This feature ships before the second tenant's onboarding, and Bay Hill's chart becomes its first real test case.
+
+Step 2 is deliberately a stopgap. It must be a committed artefact with verifiable output, not an ad hoc operation — the same standard the Orderly reset procedure is now held to.
+
+---
+
+## Open questions
+
+1. **Should a default chart be offered** to tenants without one? Bay Hill's 34 accounts are a reasonable club starting point, but only as a template copied into the tenant's own rows — never shared.
+2. **What happens on re-import when an account is missing** from the new file but still referenced by categories or items? Deactivate, prompt, or reject.
+3. **Should the category/item → account reference gain a database foreign key?** It is application-enforced today. Given tenant separation is otherwise strict and this is an accounting boundary, a cross-tenant reference here would be a misstatement in a customer's books rather than merely a bug. Either add the constraint or record an explicit decision that service enforcement suffices.
+4. **Does category-to-account mapping belong in this importer, or a separate mapping step?** Bay Hill's mapping is 1:1 by name and 25 of 26 GL codes matched exactly — but the 26th is `999900`, and it carries $5,329 of real inventory. So mapping is **not purely mechanical name-matching**: there is always a residual set requiring human assignment, and the importer must expect it rather than treating a clean match rate as success. Another tenant's may align far less cleanly.
+
+---
+
+## Reference: Bay Hill as first test case
+
+* 34 accounts, plus a `999900` unassigned sentinel
+* Two independent axes: Financial Category (Sales / COGS / Other Expense) and Operational Type (Food / Bar / Direct Operating Cost / Other)
+* These do not nest — `502800 TOGO Supplies` is COGS financially but Direct Operating Cost operationally
+* Revenue splits Bar into three accounts (Beer / Wine / Liquor Sales) while COGS splits it into seven categories
+* 25 of 26 GL codes used by inventory match the chart exactly across all three months; the exception is `999900 / No Account`, which is absent from the chart and carries 64 rows worth $5,328.97 — 84% of it wine and spirits
+* Source note: *"GL Account is assigned per ingredient via a single category dropdown; the ingredient itself has no separate numeric GL field. This table is the authoritative Category → numeric GL Account mapping."*
+
+## Relevant files
+
+* `lib/db/src/schema/schema.ts` — `accounting_accounts`, `categories.accountingAccountId`
+* `artifacts/api-server/src/services/accountingClassification.ts`
+* `artifacts/api-server/src/routes/` — existing account-management routes
