@@ -1,0 +1,120 @@
+# Same-Vendor Pack Degradation (Resolved → Opaque) Aborts Approval
+
+**Priority:** Blocker — June cannot be approved; a second instance will block July
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `495cc39b-1381-4b1d-9da3-7cb57dd87570` (June_2026, 5,409 rows, 187 decisions saved)
+**Failing row:** June row 3334 — `Bunny Luv BB Carrots`, Item Code `CARCB30HF`, Harvill's Produce
+**Introduced by:** #1277
+
+---
+
+## Summary
+
+Approval aborts with a **vendor-pack conflict** where the *same vendor's* pack geometry went from resolved to opaque between months.
+
+| Month | Item Code | Vendor | Pack Size | Normalized |
+|---|---|---|---|---|
+| May | `CARCB30HF` | Harvill's Produce | `1/15 LB` | **240 OZ** (resolved) |
+| June | `CARCB30HF` | Harvill's Produce | `1/1 Case` | **unconfirmed** |
+| July | `CARCB30HF` | Harvill's Produce | `1/15 LB` | **240 OZ** (resolved) |
+
+**The pack returns in July.** June is a one-month gap, not a lasting change.
+
+The row **never appears in review**. It auto-resolves as a prior-code match, so no decision is offered or saved. The batch shows zero outstanding decisions with Approve enabled, then fails at the irreversible step when the vendor-pack write finds existing 240 OZ against incoming unknown.
+
+## Root cause of the gap — confirmed in Orderly
+
+The Bunny Luv BB Carrots ingredient record shows:
+
+```
+Default Pack Size : N/A
+Default UOM       : Pound
+GL Account        : Produce
+```
+
+Audit trail:
+
+```
+06/23/26 07:15  Item Code CARCB30HF was added      System
+07/29/26 11:47  Item Code CARCB30HF was removed    cdoty@bayhill.com
+09/10/24 08:03  Item Code CARCB30HF was edited     cdoty@bayhill.com
+```
+
+The code was **re-added by the system on 23 June**, between the May and June counts, and that re-add reset the pack size to `N/A` at vendor-product level. Orderly keeps no pack history, so the prior `1/15 LB` was not superseded — it was simply gone from that month's export.
+
+Note `Default UOM` remains **Pound**. Orderly still considers this a weight item; only the case size went missing. This is **silence, not contradiction**.
+
+Vendor-product code churn is routine in Orderly — the Mizuna ingredient shows a code added and removed within four hours — so this condition will recur.
+
+## Why this is a #1277 regression
+
+#1277 correctly defined three outcomes for **cross-vendor** comparison: identical opaque → consolidate; different opaque units → blocked; opaque versus resolved → blocked.
+
+This row is **same-vendor**, so no cross-vendor decision path applies. The tightened comparison now treats the vendor's own pack going quiet as a conflict, and there is no review surface where an operator could resolve it.
+
+## Scope — two instances, one fix
+
+Scanning all three workbooks for `(Item Code, Supplier)` pairs whose pack goes resolved → opaque:
+
+| Transition | Item Code | Vendor | Pack change |
+|---|---|---|---|
+| May → June | `CARCB30HF` | Harvill's Produce | `1/15 LB` → `1/1 Case` |
+| June → July | `2703` | Terroir Selections | `6/1 750ML` → `1/1 Case` |
+
+The second will block July the same way once June is approved.
+
+## Requested behaviour
+
+**Retain the existing resolved geometry.**
+
+When the same vendor's incoming pack is opaque and a resolved vendor pack already exists for that vendor and item:
+
+* keep the existing resolved geometry on the vendor pack
+* import the row with its quantity and value, as unknown-geometry rows already do
+* do not treat this as a conflict and do not abort the batch
+
+Rationale: the source has not contradicted the earlier evidence, it has gone silent — and in the carrots case July confirms `1/15 LB` again. Discarding known geometry because one month's export omitted it loses information FnB can legitimately keep. Orderly cannot do this; it holds only current state.
+
+**What must stay blocked:** an incoming pack that is *resolved* but conflicts with existing resolved geometry. That is contradiction, and remains a genuine conflict.
+
+## Done looks like
+
+* June batch `495cc39b` approves with its existing 187 decisions.
+* Row 3334 imports; the Harvill's vendor pack for `CARCB30HF` retains `240 OZ`.
+* July's `2703` / Terroir Selections case behaves the same way.
+* A same-vendor incoming pack that **conflicts** with existing resolved geometry still fails closed.
+* #1277's cross-vendor rules are unchanged.
+* Regression: three months where a vendor's pack goes resolved → opaque → resolved, importing without conflict and retaining the resolved geometry throughout. `CARCB30HF` is the exact fixture.
+
+## Out of scope
+
+* Cross-vendor `link_vendor_pack` behaviour.
+* Unknown-geometry value handling.
+* Inferring a pack size for the opaque row.
+* Any wider change to how pack changes are classified.
+
+## What is working — please preserve
+
+* **Clean rollback.** Catalog held at 3,055 items / 2,429 vendor_items; all 187 decisions preserved.
+* **#1277's opaque-versus-resolved boundary behaves correctly where it applies.** Verified on `Mushrooms - Blends/Mix` (row 3442): incoming `1/1 Case` unconfirmed against May's resolved `1 × 5 × 1 LB` = 80 OZ, cross-vendor link correctly disabled, separate variant offered.
+* **May is approved and reconciling exactly** — 5,358 rows, 0 excluded, $254,286.67, and **26 of 26 categories linked to accounts**, confirming the CoA-first sequencing.
+
+## Current June decision set — ready to retry once fixed
+
+| Action | Rows |
+|---|---|
+| `link_existing` | 88 |
+| `create_variant` | 57 |
+| `link_vendor_pack` | 41 |
+| held-row link | 1 |
+| **Total** | **187** (all revision 1) |
+
+On approval: 5,409 rows, **0 excluded**, **$261,007.67**, no name-paired fork where the vendor differs.
+
+**Please confirm whether the fix changes staged parse or classification output**, and therefore whether June can be re-previewed and approved or must be re-uploaded.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — vendor-pack write and approval revalidation
+* `artifacts/api-server/src/services/orderly/OrderlyMatcher.ts`
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts`
