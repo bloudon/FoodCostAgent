@@ -52,5 +52,5 @@
 - [Durable approval retries](durable-approval-retries.md) — fence async attempts, recover expired leases without browser polling, and commit result status with the mutation.
 - [Labeled Orderly units](labeled-orderly-units.md) — container labels may supply count/measure context; preserve decimal punctuation and keep ambiguous labels fail-closed.
 - [Duplicate metric definitions](orderly-duplicate-metric-definition.md) — preserve the observed candidate population; vendor changes without an offered link are identity defects, not metric exclusions.
-- [Opaque pack continuity](orderly-opaque-pack-continuity.md) — identical opaque geometry is continuity; different opaque units conflict; opaque-vs-resolved stays blocked across every review phase.
+- [Opaque pack continuity](orderly-opaque-pack-continuity.md) — cross-vendor opaque-vs-resolved stays blocked; same-vendor source silence preserves stronger verified geometry.
 - [Accounting import decisions](accounting-import-decisions.md) — sentinel creation, value-prioritized unassigned work, split mapping/worklist scope, and FK timing are approved constraints.

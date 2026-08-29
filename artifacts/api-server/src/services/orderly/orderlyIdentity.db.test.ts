@@ -1907,6 +1907,215 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ]);
   });
 
+  it('retains a verified same-vendor pack across resolved, opaque, and resolved months', async () => {
+    const mayBatch = await stageBatch([{
+      code: 'CARCB30HF',
+      description: 'Bunny Luv BB Carrots',
+      location: 'Produce Walk-in',
+      supplier: "Harvill's Produce",
+      packSizeRaw: '1/15 LB',
+      caseQuantity: 1,
+      innerPackQuantity: 15,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 45,
+      totalCost: 90,
+    }], '2032-03-31');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected carrots to resolve');
+
+    const selectVendorPack = () => db
+      .select({
+        id: vendorItems.id,
+        caseSize: vendorItems.caseSize,
+        innerPackSize: vendorItems.innerPackSize,
+        packUom: vendorItems.packUom,
+        lastCasePrice: vendorItems.lastCasePrice,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        normalizedPricePerCanonicalUnit: vendorItems.normalizedPricePerCanonicalUnit,
+        packGeometryStatus: vendorItems.packGeometryStatus,
+        priceSourceReferenceId: vendorItems.priceSourceReferenceId,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(and(
+        eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId!),
+        eq(vendors.name, "Harvill's Produce"),
+      ))
+      .limit(1);
+
+    const [verifiedMayPack] = await selectVendorPack();
+    expect(verifiedMayPack).toMatchObject({
+      caseSize: 15,
+      innerPackSize: 16,
+      packUom: 'OZ',
+      lastCasePrice: 45,
+      canonicalQtyPerPurchaseUnit: 240,
+      normalizedPricePerCanonicalUnit: 0.1875,
+      packGeometryStatus: 'verified',
+      priceSourceReferenceId: mayBatch,
+    });
+
+    const juneBatch = await stageBatch([
+      {
+        code: 'CARCB30HF',
+        description: 'Bunny Luv BB Carrots',
+        location: 'Produce Walk-in',
+        supplier: "Harvill's Produce",
+        packSizeRaw: '1/1 Case',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: null,
+        baseUnit: 'CASE',
+        packagePrice: 47,
+        totalCost: 94,
+      },
+      {
+        code: 'OPAQUE-SIBLING-WRITES',
+        description: 'Sibling Approval Writes',
+        location: 'New June Storage',
+        supplier: 'New June Vendor',
+        packSizeRaw: '1/12 EA',
+        caseQuantity: 1,
+        innerPackQuantity: 12,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+        packagePrice: 24,
+        totalCost: 48,
+      },
+    ], '2032-04-30');
+    const junePreview = await runResolutionPreview(juneBatch, ID.company);
+    const carrotsPreview = junePreview.rows.find(row => row.sourceItemCode === 'CARCB30HF');
+    expect(carrotsPreview?.itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      matchedId: mayRow.resolvedInventoryItemId,
+      requiresReview: false,
+    });
+
+    await applyBatchApproval(juneBatch, approvalAuth);
+    const juneRows = await db
+      .select({
+        rowIndex: inventoryImportRows.rowIndex,
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        totalCost: inventoryImportRows.totalCost,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, juneBatch))
+      .orderBy(inventoryImportRows.rowIndex);
+    expect(juneRows[0]).toMatchObject({
+      resolvedInventoryItemId: mayRow.resolvedInventoryItemId,
+      totalCost: 94,
+    });
+    expect(juneRows[1].resolvedInventoryItemId).toBeTruthy();
+    expect(juneRows[1].resolvedInventoryItemId).not.toBe(mayRow.resolvedInventoryItemId);
+    expect((await selectVendorPack())[0]).toEqual(verifiedMayPack);
+    const [siblingMapping] = await db
+      .select({ inventoryItemId: inventoryItemExternalMappings.inventoryItemId })
+      .from(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, juneRows[1].resolvedInventoryItemId!),
+      ));
+    expect(siblingMapping.inventoryItemId).toBe(juneRows[1].resolvedInventoryItemId);
+    const [siblingVendorPack] = await db
+      .select({
+        vendorName: vendors.name,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+      })
+      .from(vendorItems)
+      .innerJoin(vendors, eq(vendors.id, vendorItems.vendorId))
+      .where(eq(vendorItems.inventoryItemId, juneRows[1].resolvedInventoryItemId!));
+    expect(siblingVendorPack).toMatchObject({
+      vendorName: 'New June Vendor',
+      canonicalQtyPerPurchaseUnit: 12,
+    });
+    const [siblingLocation] = await db
+      .select({ name: inventoryLocations.name })
+      .from(inventoryItemLocationAssignments)
+      .innerJoin(inventoryLocations, eq(inventoryLocations.id, inventoryItemLocationAssignments.locationId))
+      .where(eq(inventoryItemLocationAssignments.inventoryItemId, juneRows[1].resolvedInventoryItemId!));
+    expect(siblingLocation.name).toBe('New June Storage');
+
+    const julyBatch = await stageBatch([{
+      code: 'CARCB30HF',
+      description: 'Bunny Luv BB Carrots',
+      location: 'Produce Walk-in',
+      supplier: "Harvill's Produce",
+      packSizeRaw: '1/15 LB',
+      caseQuantity: 1,
+      innerPackQuantity: 15,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 48,
+      totalCost: 96,
+    }], '2032-05-31');
+    await applyBatchApproval(julyBatch, approvalAuth);
+    const [verifiedJulyPack] = await selectVendorPack();
+    expect(verifiedJulyPack).toMatchObject({
+      id: verifiedMayPack.id,
+      caseSize: 15,
+      innerPackSize: 16,
+      packUom: 'OZ',
+      lastCasePrice: 48,
+      canonicalQtyPerPurchaseUnit: 240,
+      normalizedPricePerCanonicalUnit: 0.2,
+      packGeometryStatus: 'verified',
+      priceSourceReferenceId: julyBatch,
+    });
+  });
+
+  it('still rejects a same-vendor resolved pack that contradicts persisted verified geometry', async () => {
+    const mayBatch = await stageBatch([{
+      code: 'SAME-VENDOR-RESOLVED-CONFLICT',
+      description: 'Same Vendor Conflict',
+      location: 'Produce Walk-in',
+      supplier: 'Vendor Conflict',
+      caseQuantity: 1,
+      innerPackQuantity: 15,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 45,
+    }], '2032-06-30');
+    await applyBatchApproval(mayBatch, approvalAuth);
+    const [mayRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected conflict fixture to resolve');
+
+    await db
+      .update(vendorItems)
+      .set({ canonicalQtyPerPurchaseUnit: 120 })
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId));
+
+    const juneBatch = await stageBatch([{
+      code: 'SAME-VENDOR-RESOLVED-CONFLICT',
+      description: 'Same Vendor Conflict',
+      location: 'Produce Walk-in',
+      supplier: 'Vendor Conflict',
+      caseQuantity: 1,
+      innerPackQuantity: 15,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 46,
+    }], '2032-07-31');
+    const preview = await runResolutionPreview(juneBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      matchedId: mayRow.resolvedInventoryItemId,
+      requiresReview: false,
+    });
+
+    const before = await approvalWriteSnapshot(juneBatch);
+    await expect(applyBatchApproval(juneBatch, approvalAuth))
+      .rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+    expect(await approvalWriteSnapshot(juneBatch)).toEqual(before);
+  });
+
   it('fails closed when a safely superseded review target loses the authoritative mapping race', () => {
     expect(() => assertSupersededDecisionTarget(
       '4676306',

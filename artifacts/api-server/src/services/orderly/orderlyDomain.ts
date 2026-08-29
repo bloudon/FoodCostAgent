@@ -4486,6 +4486,7 @@ export async function applyBatchApproval(
               caseSize: vendorItems.caseSize,
               innerPackSize: vendorItems.innerPackSize,
               packUom: vendorItems.packUom,
+              canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
             })
             .from(vendorItems)
             .where(and(
@@ -4496,8 +4497,14 @@ export async function applyBatchApproval(
           const opaqueCaseSize = rowPackGeometry.caseQuantity!;
           const opaqueInnerPackSize = rowPackGeometry.innerPackQuantity!;
           const opaquePackUom = rowPackGeometry.baseUnit!.trim().toUpperCase();
+          const retainsExistingVerifiedGeometry =
+            existingOpaqueVendorPack?.packGeometryStatus === 'verified' &&
+            existingOpaqueVendorPack.canonicalQtyPerPurchaseUnit != null &&
+            Number.isFinite(existingOpaqueVendorPack.canonicalQtyPerPurchaseUnit) &&
+            existingOpaqueVendorPack.canonicalQtyPerPurchaseUnit > 0;
           if (
             existingOpaqueVendorPack &&
+            !retainsExistingVerifiedGeometry &&
             (
               existingOpaqueVendorPack.packGeometryStatus !== 'incomplete' ||
               Math.abs(existingOpaqueVendorPack.caseSize - opaqueCaseSize) > 0.000001 ||
@@ -4511,33 +4518,39 @@ export async function applyBatchApproval(
               `Orderly row ${rowPreview.rowIndex} conflicts with the existing opaque pack for this vendor and inventory item.`,
             );
           }
-          const opaqueValues = {
-            vendorId: resolvedVendorId,
-            inventoryItemId: resolvedItemId,
-            vendorSku: null,
-            purchaseUnitId: opaquePurchaseUnitId,
-            caseSize: opaqueCaseSize,
-            innerPackSize: opaqueInnerPackSize,
-            packUom: opaquePackUom,
-            lastPrice: packagePrice,
-            lastCasePrice: packagePrice,
-            active: 1,
-            priceSource: 'orderly_inventory_import',
-            pricedAt: resolutionPreview.inventoryDate ? new Date(resolutionPreview.inventoryDate) : null,
-            priceSourceReferenceId: batchId,
-            canonicalQtyPerPurchaseUnit: null,
-            normalizedPricePerCanonicalUnit: null,
-            packGeometryStatus: 'incomplete',
-            packGeometrySource: 'orderly_inventory_import',
-            packGeometryUpdatedAt: new Date(),
-            pricingBasis: 'purchase_unit',
-            isVariableWeight: 0,
-          };
-          if (existingOpaqueVendorPack) {
-            await tx.update(vendorItems).set(opaqueValues).where(eq(vendorItems.id, existingOpaqueVendorPack.id));
-          } else {
-            await tx.insert(vendorItems).values(opaqueValues);
-            vendorItemsCreated++;
+          // A same-vendor opaque row is source silence, not evidence that a
+          // previously verified pack changed. Preserve the stronger geometry
+          // and its normalized pricing; the import row still retains this
+          // month's package price, quantity, and total value as source facts.
+          if (!retainsExistingVerifiedGeometry) {
+            const opaqueValues = {
+              vendorId: resolvedVendorId,
+              inventoryItemId: resolvedItemId,
+              vendorSku: null,
+              purchaseUnitId: opaquePurchaseUnitId,
+              caseSize: opaqueCaseSize,
+              innerPackSize: opaqueInnerPackSize,
+              packUom: opaquePackUom,
+              lastPrice: packagePrice,
+              lastCasePrice: packagePrice,
+              active: 1,
+              priceSource: 'orderly_inventory_import',
+              pricedAt: resolutionPreview.inventoryDate ? new Date(resolutionPreview.inventoryDate) : null,
+              priceSourceReferenceId: batchId,
+              canonicalQtyPerPurchaseUnit: null,
+              normalizedPricePerCanonicalUnit: null,
+              packGeometryStatus: 'incomplete',
+              packGeometrySource: 'orderly_inventory_import',
+              packGeometryUpdatedAt: new Date(),
+              pricingBasis: 'purchase_unit',
+              isVariableWeight: 0,
+            };
+            if (existingOpaqueVendorPack) {
+              await tx.update(vendorItems).set(opaqueValues).where(eq(vendorItems.id, existingOpaqueVendorPack.id));
+            } else {
+              await tx.insert(vendorItems).values(opaqueValues);
+              vendorItemsCreated++;
+            }
           }
         } else if (identityDecision?.action === 'link_vendor_pack') {
           throw new ImportApprovalError(
