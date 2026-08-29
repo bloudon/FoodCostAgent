@@ -78,13 +78,13 @@ describe.skipIf(SKIP)('accounting classification foundation', () => {
     const categoryAccount = await createAccountingAccount({
       code: `5000-${RUN}`,
       name: 'Food Cost',
-      accountType: 'cost_of_goods_sold',
+      accountType: 'Expense',
     }, AUTH_A);
     categoryAccountId = categoryAccount.id;
     const itemAccount = await createAccountingAccount({
       code: `5010-${RUN}`,
       name: 'Specialty Food Cost',
-      accountType: 'cost_of_goods_sold',
+      accountType: 'Expense',
     }, AUTH_A);
     itemAccountId = itemAccount.id;
     const inactiveAccount = await createAccountingAccount({

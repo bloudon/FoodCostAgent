@@ -109,9 +109,13 @@ if (Number.isNaN(port) || port <= 0) {
 
   try {
     await ensureAccountingClassificationSchema();
-    // seedDatabase is optional; skip if it throws
-    await seedDatabase().catch((e) => logger.warn({ err: e }, "seed skipped"));
-  } catch (_) {}
+    logger.info("[Migration] accounting classification and import schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: accounting schema initialization failed — refusing to start");
+    process.exit(1);
+  }
+  // seedDatabase is optional; skip if it throws
+  await seedDatabase().catch((e) => logger.warn({ err: e }, "seed skipped"));
 
   const server = await registerRoutes(app);
   await startApprovalJobRecovery();

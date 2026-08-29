@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   accountingAccounts,
@@ -14,9 +14,9 @@ export const UNASSIGNED_ACCOUNTING_LABEL = 'Unassigned / review required';
 const accountInputSchema = z.object({
   code: z.string().trim().min(1),
   name: z.string().trim().min(1),
-  accountType: z.string().trim().min(1).nullable().optional(),
-  financialCategory: z.string().trim().min(1).nullable().optional(),
-  operationalType: z.string().trim().min(1).nullable().optional(),
+  accountType: z.enum(['Revenue', 'Expense']).nullable().optional(),
+  financialCategory: z.enum(['Sales', 'COGS', 'Other Expense']).nullable().optional(),
+  operationalType: z.enum(['Food', 'Bar', 'Direct Operating Cost', 'Other']).nullable().optional(),
   isActive: z.union([z.literal(0), z.literal(1)]).optional(),
 });
 
@@ -93,23 +93,19 @@ export async function createAccountingAccount(
     throw new AccountingClassificationError('INVALID_REQUEST', parsed.error.issues[0]?.message ?? 'Invalid accounting account.');
   }
   const data = parsed.data;
-  const [existing] = await db.select({ id: accountingAccounts.id }).from(accountingAccounts).where(and(
-    eq(accountingAccounts.companyId, companyId),
-    eq(accountingAccounts.code, data.code),
-  )).limit(1);
-  if (existing) {
-    throw new AccountingClassificationError('CONFLICT', `Account code "${data.code}" already exists.`);
-  }
-  const [account] = await db.insert(accountingAccounts).values({
-    companyId,
-    code: data.code,
-    name: data.name,
-    accountType: data.accountType ?? null,
-    financialCategory: data.financialCategory ?? null,
-    operationalType: data.operationalType ?? null,
-    isActive: data.isActive ?? 1,
-  }).returning();
-  return account;
+  return db.transaction(async (tx: any) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`accounting-import:${companyId}`}, 0))`);
+    const [existing] = await tx.select({ id: accountingAccounts.id }).from(accountingAccounts).where(and(
+      eq(accountingAccounts.companyId, companyId), eq(accountingAccounts.code, data.code),
+    )).limit(1);
+    if (existing) throw new AccountingClassificationError('CONFLICT', `Account code "${data.code}" already exists.`);
+    const [account] = await tx.insert(accountingAccounts).values({
+      companyId, code: data.code, name: data.name,
+      accountType: data.accountType ?? null, financialCategory: data.financialCategory ?? null,
+      operationalType: data.operationalType ?? null, isActive: data.isActive ?? 1,
+    }).returning();
+    return account;
+  });
 }
 
 export async function updateAccountingAccount(
@@ -122,29 +118,30 @@ export async function updateAccountingAccount(
   if (!parsed.success) {
     throw new AccountingClassificationError('INVALID_REQUEST', parsed.error.issues[0]?.message ?? 'Invalid accounting account update.');
   }
-  const existing = await getAccountForCompany(companyId, accountId);
-  if (!existing) throw new AccountingClassificationError('NOT_FOUND', 'Accounting account not found.');
   const data = parsed.data;
-  if (data.code && data.code !== existing.code) {
-    const [duplicate] = await db.select({ id: accountingAccounts.id }).from(accountingAccounts).where(and(
-      eq(accountingAccounts.companyId, companyId),
-      eq(accountingAccounts.code, data.code),
+  return db.transaction(async (tx: any) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`accounting-import:${companyId}`}, 0))`);
+    const [existing] = await tx.select().from(accountingAccounts).where(and(
+      eq(accountingAccounts.id, accountId), eq(accountingAccounts.companyId, companyId),
     )).limit(1);
-    if (duplicate) throw new AccountingClassificationError('CONFLICT', `Account code "${data.code}" already exists.`);
-  }
-  const [account] = await db.update(accountingAccounts).set({
-    ...(data.code !== undefined ? { code: data.code } : {}),
-    ...(data.name !== undefined ? { name: data.name } : {}),
-    ...(data.accountType !== undefined ? { accountType: data.accountType } : {}),
-    ...(data.financialCategory !== undefined ? { financialCategory: data.financialCategory } : {}),
-    ...(data.operationalType !== undefined ? { operationalType: data.operationalType } : {}),
-    ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
-    updatedAt: new Date(),
-  }).where(and(
-    eq(accountingAccounts.id, accountId),
-    eq(accountingAccounts.companyId, companyId),
-  )).returning();
-  return account;
+    if (!existing) throw new AccountingClassificationError('NOT_FOUND', 'Accounting account not found.');
+    if (data.code && data.code !== existing.code) {
+      const [duplicate] = await tx.select({ id: accountingAccounts.id }).from(accountingAccounts).where(and(
+        eq(accountingAccounts.companyId, companyId), eq(accountingAccounts.code, data.code),
+      )).limit(1);
+      if (duplicate) throw new AccountingClassificationError('CONFLICT', `Account code "${data.code}" already exists.`);
+    }
+    const [account] = await tx.update(accountingAccounts).set({
+      ...(data.code !== undefined ? { code: data.code } : {}),
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.accountType !== undefined ? { accountType: data.accountType } : {}),
+      ...(data.financialCategory !== undefined ? { financialCategory: data.financialCategory } : {}),
+      ...(data.operationalType !== undefined ? { operationalType: data.operationalType } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      updatedAt: new Date(),
+    }).where(and(eq(accountingAccounts.id, accountId), eq(accountingAccounts.companyId, companyId))).returning();
+    return account;
+  });
 }
 
 export async function setCategoryAccountingDefault(

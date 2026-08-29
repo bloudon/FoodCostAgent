@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Layers,
   RefreshCw,
+  BookOpenCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -86,6 +87,7 @@ function SectionCard({
 
 export default function MoreLanding() {
   const { user } = useAuth();
+  const { meetsMinimum } = useTier();
   const role = user?.role ?? "store_user";
   const isManager = role === "store_manager" || role === "company_admin" || role === "global_admin";
   const isAdmin = role === "company_admin" || role === "global_admin";
@@ -186,6 +188,15 @@ export default function MoreLanding() {
           description: "Company details, preferences, billing, and profile",
           testId: "settings-nav-company",
         },
+        ...(meetsMinimum("enterprise")
+          ? [{
+              href: "/accounting/accounts",
+              icon: BookOpenCheck,
+              label: "Chart of Accounts",
+              description: "Import and review tenant-owned GL accounts",
+              testId: "settings-nav-chart-of-accounts",
+            } as NavItem]
+          : []),
       ]
     : [];
 

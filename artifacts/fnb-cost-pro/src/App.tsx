@@ -75,6 +75,7 @@ import OperatingUnits from "@/pages/operating-units";
 import Categories from "@/pages/categories";
 import ApiCredentials from "@/pages/api-credentials";
 import Settings from "@/pages/settings";
+import AccountingAccounts from "@/pages/accounting-accounts";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
 import Stores from "@/pages/stores";
@@ -646,6 +647,7 @@ function ProtectedLayoutContent() {
               <Route path="/unit-conversions" component={UnitConversions} />
               <Route path="/api-credentials" component={ApiCredentials} />
               <Route path="/settings" component={Settings} />
+              <Route path="/accounting/accounts" component={AccountingAccounts} />
               <Route path="/admin/backgrounds" component={AdminBackgrounds} />
               <Route path="/admin/users" component={AdminUsers} />
               <Route path="/admin/vendor-registry" component={AdminVendorRegistry} />

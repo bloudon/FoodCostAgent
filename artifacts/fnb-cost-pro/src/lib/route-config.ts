@@ -122,6 +122,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   { route: "/users", label: "Users", section: "settings", requiredRole: "company_admin" },
   { route: "/api-credentials", label: "API Credentials", section: "settings", requiredRole: "company_admin" },
   { route: "/settings", label: "Company Settings", section: "settings", requiredRole: "company_admin", keywords: "company configuration pos integrations" },
+  { route: "/accounting/accounts", label: "Chart of Accounts", section: "settings", requiredRole: "company_admin", requiredFeature: "enterprise_analytics", keywords: "accounting coa gl import operational type" },
 
   // ── Platform Admin ───────────────────────────────────────────────────────
   { route: "/companies", label: "Companies", section: "settings", requiredRole: "global_admin" },

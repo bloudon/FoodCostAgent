@@ -296,6 +296,68 @@ export const insertAccountingAccountSchema = createInsertSchema(accountingAccoun
 export type InsertAccountingAccount = z.infer<typeof insertAccountingAccountSchema>;
 export type AccountingAccount = typeof accountingAccounts.$inferSelect;
 
+// Durable chart-of-accounts import staging. Preview rows are retained as
+// tenant-scoped source evidence; confirmation revalidates them under lock.
+export const accountingImportSessions = pgTable("accounting_import_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  sourceFilename: text("source_filename").notNull(),
+  fileHash: text("file_hash").notNull(),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  headerRow: integer("header_row").notNull(),
+  sheetName: text("sheet_name"),
+  columnMapping: jsonb("column_mapping").notNull(),
+  previewSummary: jsonb("preview_summary").notNull(),
+  previewPlanHash: text("preview_plan_hash").notNull(),
+  status: text("status").notNull().default("previewed"),
+  confirmedBy: varchar("confirmed_by"),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  companyCreatedIdx: index("accounting_import_sessions_company_created_idx").on(table.companyId, table.createdAt),
+  companyFileIdx: index("accounting_import_sessions_company_file_idx").on(table.companyId, table.fileHash),
+}));
+
+export const accountingImportRows = pgTable("accounting_import_rows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  rowNumber: integer("row_number").notNull(),
+  rawData: jsonb("raw_data").notNull(),
+  accountNumber: text("account_number"),
+  accountName: text("account_name"),
+  accountType: text("account_type"),
+  financialCategory: text("financial_category"),
+  operationalType: text("operational_type"),
+  previewOutcome: text("preview_outcome").notNull(),
+  previewReason: text("preview_reason"),
+  resultOutcome: text("result_outcome"),
+  resultReason: text("result_reason"),
+}, (table) => ({
+  sessionRowUnique: unique().on(table.sessionId, table.rowNumber),
+  sessionIdx: index("accounting_import_rows_session_idx").on(table.sessionId),
+}));
+
+export const accountingImportAudits = pgTable("accounting_import_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  actingUserId: varchar("acting_user_id").notNull(),
+  action: text("action").notNull(),
+  sourceFilename: text("source_filename").notNull(),
+  fileHash: text("file_hash").notNull(),
+  headerRow: integer("header_row").notNull(),
+  columnMapping: jsonb("column_mapping").notNull(),
+  resultSummary: jsonb("result_summary").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  companyCreatedIdx: index("accounting_import_audits_company_created_idx").on(table.companyId, table.createdAt),
+  sessionIdx: index("accounting_import_audits_session_idx").on(table.sessionId),
+}));
+
+export type AccountingImportSession = typeof accountingImportSessions.$inferSelect;
+export type AccountingImportRow = typeof accountingImportRows.$inferSelect;
+export type AccountingImportAudit = typeof accountingImportAudits.$inferSelect;
+
 // Categories
 export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
