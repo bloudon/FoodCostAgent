@@ -1,0 +1,195 @@
+# Orderly Import — Production Seed Runbook
+
+**Version:** 1.0
+**Supersedes:** v0.4
+**Scope:** Seeding May, June and July 2026 into FnB for Bay Hill CC, then repeating on the production VPS.
+**Companion:** the Anomaly Register — how to decide any row shape encountered here.
+
+---
+
+## 1. Readiness
+
+### Blocking
+
+- [ ] **Derived-identity collision fix shipped and verified.** Without it July cannot be approved and there is no operator workaround. Pass condition: `638335`/`638336` and `313642`/`389849` each import as two distinct items.
+
+### Verified working
+
+| | Evidence |
+|---|---|
+| Durable review decisions | survive reload and navigation; per-row revisions |
+| Descriptive-code identity | ~400 rows/month counted via name+pack |
+| Unit recovery | unknown geometry 246 → 152 on May |
+| Cross-vendor linking | 41 links in June, 60 in July |
+| `vendor_items` written | 2,319 after May, 2,412 after June |
+| Atomic rollback | 4+ failed approvals, zero partial writes |
+
+### Known limits, not blocking
+
+- Approval runs 60–130s with no reliable progress signal. **Never retry blindly** — idempotency unverified, approved batches cannot be discarded.
+- Review list paginates at 100 with no search.
+- Inventory Items page renders 0 items; no GUI catalog cleanup available.
+- 1,039 items import without a vendor.
+
+---
+
+## 2. Rules that govern everything
+
+**Chronological order, one month at a time.** Approving a month changes the catalog the next month is classified against. Never load July before June is approved.
+
+**Parse results freeze at upload.** After any parser change, re-upload the affected batch — re-reviewing is not enough. A batch staged before a fix keeps the old behaviour and will look correct while being wrong.
+
+**Cross-vendor links before bulk actions.** The Category 2 bulk dialog flags likely duplicates but still includes them. Confirming overwrites saved `link_vendor_pack` decisions and recreates the duplicates.
+
+**Verify against the server, not the UI.** The outstanding-decision counter lags, and rows keep their old status until re-render. After each step check `GET /api/inventory-import/orderly/batches/{id}/review-decisions`.
+
+**Approve is irreversible.** Approved batches cannot be discarded. A database restore is the only recovery.
+
+**Wipe scope:** changes to decision handling or review UI → re-run months that have decisions. Changes to parsing, geometry, identity keys or the approval write path → **re-run from May**.
+
+---
+
+## 3. Per-batch procedure
+
+### 3.1 Enter
+
+1. `/orderly-import` → confirm the file shows `pending review` with the expected row count.
+2. **Review** → verify the detected date matches the count date. Never accept a blank or mismatched date.
+3. **Confirm Date & Preview Matches.**
+
+### 3.2 Baseline
+
+Record: total rows; Matched / New / Vendors / Locations; the four categories; outstanding decision count; unknown-geometry count.
+
+Expected shape:
+
+| | May | June | July |
+|---|---|---|---|
+| Rows | 5,358 | 5,409 | 5,518 |
+| Matched | 0 | ~3,008 | ~2,989 |
+| New items | ~3,052 | ~41 | ~111 |
+| Decisions | 0 | ~187 | ~225 |
+| Unknown geometry | ~152 | ~155 | ~154 |
+
+**May has no decisions** — an empty catalog means nothing to compare against. The review machinery only engages from June.
+
+### 3.3 Pre-bulk gate — MANDATORY, and the step most easily got wrong
+
+**Do not confirm any bulk action before completing this.** The Category 2 bulk dialog flags *some* problem rows but not all, and confirming it sweeps in rows that should never have been offered.
+
+Two classes are invisible to the dialog's warnings:
+
+* **Unchanged rows.** Same vendor, same stable Item Code, same parsed pack as the prior approved month. These have nothing to decide and must not become variants. The dialog cannot flag them because the vendor has not changed.
+* **Unflagged cross-vendor rows.** A genuine supplier change that the duplicate heuristic misses.
+
+In the July run these two classes produced **12 identical-row forks and 5 missed cross-vendor links** — 17 wrong catalog items — because only flagged rows were checked.
+
+**Procedure:**
+
+1. Open **Create N new variants in bulk**, record every listed item and code, then **Keep reviewing** to close without confirming.
+2. For every listed item, compare against the **immediately prior approved month** — not the union of all prior months:
+   * **vendor + code + pack all unchanged** → must NOT be a variant. Do not include it. Report it — a row with unchanged stable evidence should not be offered as a new pack size at all.
+   * **vendor differs from the prior month** → resolve as **"Keep one item, add this vendor pack"**, whether or not the dialog flagged it.
+   * **same vendor, pack genuinely differs** → separate variant is correct.
+
+   **Compare by product name and Item Code together, not code alone.** A cross-vendor switch brings a new Item Code, so a code-only comparison reports the row as a brand-new product and hides the switch.
+
+   **Use the immediately prior month, not the union.** In the July run, `Apples - Red Delicious` appeared under Harvill's in May and Mr. Green's in June and July. Comparing July against May+June pooled together answered "vendor already seen" and misclassified it as a same-vendor pack change; it was actually the continuation of June's cross-vendor switch. That misclassification produced an approval-blocking identity error.
+3. Resolve every cross-vendor row individually **before** returning to the bulk.
+4. Re-open the bulk. It should now contain only same-vendor pack changes, with zero duplicate warnings.
+
+This comparison is a workbook query, not manual inspection — group both months by Item Code and compare vendor and pack. For 30–100 items it takes seconds and is not judgment-dependent.
+
+**Counts seen:** June 13 cross-vendor items / 41 rows; July 21 items / 60 rows, plus 17 rows that should have been excluded and were not.
+
+**Check every page.** The list caps at 100 with no search. July's bucket held 160 rows across two pages; five flagged items sat on page 2.
+
+### 3.4 Category 2 bulk
+
+Re-open the bulk dialog. Duplicate warnings should now be **zero** (or only same-vendor cases you have verified). Confirm.
+
+Verified in June: 32 items with 13 warnings → 19 items with 0 warnings after linking.
+
+### 3.5 Category 1 bulk
+
+Click **Link N compatible codes** and confirm the dialog header says *"Confirm N compatible code links."*
+
+If it shows the *variants* dialog instead, a stale dialog is in the DOM — **reload the page** and retry. Decisions are already saved, so a reload is safe.
+
+### 3.6 Remaining decisions
+
+Work whatever is left individually. Expect:
+
+- **Multi-location identity groups.** One product may appear as several groups — Shrimp 16-20 across 4, Lobster Claw 2, Demi-Glace 3. Resolve each, all targeting the same item.
+- **Unknown-geometry rows** offer separate-variant only; linking is correctly blocked.
+- **Held rows** offer fuzzy candidates — select on name, pack and location agreement.
+
+### 3.7 Approve
+
+1. Confirm the decisions banner is gone and Approve is enabled.
+2. Confirm in writing that approval is intended for this batch.
+3. Click once. **Wait 60–130 seconds without retrying.**
+4. Record duration, resulting status, catalog counts.
+
+If it fails: rollback is atomic and decisions survive. Read the error, fix the named row, retry once.
+
+### 3.8 Verify
+
+| Check | Expected |
+|---|---|
+| `excludedRowCount` | **0** |
+| `importedTotal` == `snapshotTotal` | exact |
+| vs workbook Detail sum | exact |
+| vs Orderly displayed total | ~$0.93 higher — see Register §3.1 |
+| `periodComparison` forks | same-vendor pack changes only, no cross-vendor pairs |
+| Items with multiple vendors | well above zero |
+| `vendor_items` | populated |
+
+Reconciliation targets: **May $254,286.67 · June $261,007.67 · July $254,299.75** (Detail sums).
+
+---
+
+## 4. Production differences
+
+**No reset.** Dev has been wiped repeatedly via Replit. Production has no in-app discard for approved batches and no agent to run database resets. **The first run must be right.**
+
+**Backup with a tested restore, taken immediately before the seed.** It is the only recovery mechanism. An untested backup is not a safety net.
+
+**Never send `force` on approval.** A `409 duplicate_date` is a stop sign. Forcing double-applies a month rather than replacing it.
+
+**Approve under a named account.** That attribution is the only record of who committed an irreversible month.
+
+**Use the same source files.** Archive and checksum the workbooks that produced a clean dev run; production uploads those exact bytes.
+
+---
+
+## 5. Decision log template
+
+The manifest (#1247) does not carry decisions across environments, so this log is the transfer mechanism and the only audit trail.
+
+| Row | Item | Code | Bucket | Evidence | Decision | Rationale |
+|---|---|---|---|---|---|---|
+| 1022 | Stella Artois | 99753 | Alternate code | both normalise to 24 EA | Link existing | display showed 2→1; backend and Orderly both confirm 24 |
+| 4676306 | Milk - Whole | 4676306 | New pack size | 3,785 ML vs 15,141 ML | Link vendor pack | Cheney → Sysco, genuine supplier change |
+| 195 | Casamigo's - Blanco | 446117 | New pack size | 250 ML vs 6,000 ML | Separate variant | same vendor, minis vs bottles |
+| 3442 | Mushrooms - Blends/Mix | 26045 | Pack check | geometry unconfirmed | Separate variant | `1/1 Case`; linking would assert unverified pack |
+
+---
+
+## 6. After the seed
+
+1. **Load invoices** for all three months — supplies current pricing, activates cross-vendor comparison, and recovers vendor SKUs for blank-code items.
+2. **Classify vendors** — set `receiveByUnit` for Publix and other misc grocers so purchasing uses unit math.
+3. **Work the hit list** — pack sizes for the 22 highest-value opaque items.
+4. **August counts run natively in FnB**, which is where the pack definitions get fixed at source.
+
+---
+
+## 7. Change log
+
+| Version | Change |
+|---|---|
+| 1.0 | Rewritten after three complete dev cycles. Adds cross-vendor procedure, bulk ordering rule, pagination warning, multi-location groups, reconciliation targets, approval timing, production differences |
+| 0.4 | Readiness gate, three-months-three-states finding |
+| 0.3 | Persistence failure, month interdependence |
+| 0.1–0.2 | Initial capture |

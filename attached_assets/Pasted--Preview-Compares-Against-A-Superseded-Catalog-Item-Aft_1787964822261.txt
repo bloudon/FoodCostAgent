@@ -1,0 +1,112 @@
+# Preview Compares Against A Superseded Catalog Item After A Cross-Vendor Link
+
+**Priority:** Blocker — July cannot be approved, and no UI option resolves it
+**Environment:** FnB Dev, Bay Hill CC `61971215-e3ed-49f3-8afc-6dbe1eef1fcc`
+**Batch:** `34435870-8e99-4198-9ee7-b15637e2d673` (July_2026, 5,518 rows, 225 decisions saved)
+**Failing row:** July row 2499 — `Apples - Red Delicious`, Item Code `11017`, Mr. Green's Produce
+
+---
+
+## Summary
+
+Approval aborts with an identity error on row 2499. The row cannot be resolved from the UI, because **both available outcomes are wrong**:
+
+* **Create as separate variant** — the only enabled option. Approval rejects it, because June already confirmed this code's identity against a different item.
+* **Keep one item, add this vendor pack** — **disabled**, labelled *Incompatible*, because the preview is comparing against a stale catalog item.
+
+The batch reports zero outstanding decisions and an enabled Approve button, then fails at the irreversible step. Same shape as the earlier preview/approval disagreements, but with a new cause: the **comparison target itself is wrong**.
+
+## What happened across the three months
+
+| Month | Vendor | Pack | Decision |
+|---|---|---|---|
+| May | Harvill's Produce | `1/40 EA` = 40 EA | (created item) |
+| June | Mr. Green's Produce | `1/72 EA` = 72 EA | **`link_vendor_pack`** — cross-vendor switch |
+| July | Mr. Green's Produce | `1/72 EA` = 72 EA | continuation of June |
+
+June's decision bound code `11017` to a Mr. Green's identity at 72 EA. July's row is identical to June's — same vendor, same code, same pack.
+
+## The defect
+
+July's preview panel shows:
+
+```
+INCOMING ORDERLY ROW        1 × 72 × 1 EA    Normalized total: 72 EA
+EXISTING CATALOG EVIDENCE   1 × 40 × 1 EA    Normalized total: 40 EA
+Why: normalized pack totals differ (72 EA versus 40 EA)
+→ vendor-pack link DISABLED, "Incompatible", FnB #49916
+```
+
+**40 EA is May's Harvill's pack.** The preview is comparing against the item that June's `link_vendor_pack` decision superseded, rather than the item that decision bound the code to.
+
+Consequences:
+
+1. The pack comparison is against the wrong baseline, so it correctly reports a difference that does not exist between June and July.
+2. The cross-vendor link is disabled on the strength of that wrong comparison.
+3. `create_variant` is the only enabled action, and approval refuses it because the identity is already confirmed elsewhere.
+
+Compared against the correct target — June's Mr. Green's item at 72 EA — this row is an exact match and should require no decision at all.
+
+## Requested
+
+1. **The preview must compare against the item the most recent approved decision bound the code to**, not a superseded prior-month item. Where a `link_vendor_pack` decision exists for a code, that target is authoritative for subsequent months.
+2. **A row whose vendor, code and pack are unchanged from the immediately prior approved month should not require a decision.** July's row is identical to June's; it should match, as #1274 established for the same-vendor case.
+3. **Do not offer only an outcome that approval will reject.** If every available action fails validation, that is a preview defect and should be surfaced before the irreversible step.
+
+## Done looks like
+
+* July batch `34435870` approves with its existing decisions.
+* Code `11017` resolves to the Mr. Green's item established by June's `link_vendor_pack`, with no July decision required.
+* The preview's "existing catalog evidence" reflects the current authoritative target for a code, not a superseded one.
+* Cross-vendor links from a prior month remain honoured in subsequent months without re-deciding.
+* Regression: a three-month sequence where a code switches vendor in month 2 and continues unchanged in month 3 imports without a month-3 decision and without an identity conflict.
+
+## Out of scope
+
+* Changing `normalizeForMatch` or pack-geometry rules.
+* Changing unknown-geometry, descriptive-code, or derived-identity-collision behaviour.
+* Rewriting May or June's approved decisions.
+
+## What is working — please preserve
+
+* **Rollback is clean.** Catalog held at 3,096 items / 2,414 vendor_items through the failure; all 225 decisions preserved.
+* **Undo works correctly.** Undoing the variant decision released its 3 rows and returned the count 228 → 225 as expected.
+* **#1274 is verified.** Zero unchanged rows appeared in either June's or July's bulk set. Previously 12 such rows produced 12 duplicate items.
+* **#1271 held.** No punctuation-collision failures in this run.
+
+## Related finding — operator procedure, not a defect
+
+The condition was reached partly because the reviewer compared July against the **union of May and June**. `Apples - Red Delicious` appears under Harvill's in May and Mr. Green's in July, so "is July's vendor present in prior months?" answered yes and the row was classified as a same-vendor pack change. It is actually the continuation of June's cross-vendor switch.
+
+The runbook has been corrected to compare against the **immediately prior approved month**, not the union of all prior months.
+
+Note that correcting the procedure alone does not fix this row — the vendor-pack link is disabled, so the correct outcome is still unavailable in the UI.
+
+## Current state — ready to retry once fixed
+
+| Action | Rows |
+|---|---|
+| `create_variant` | 96 |
+| `link_vendor_pack` | 63 |
+| `link_existing` | 60 |
+| held-row links | 6 |
+| **Total** | **225** |
+
+May and June remain approved and reconciling exactly:
+
+| Month | Rows | Excluded | Imported total |
+|---|---|---|---|
+| May | 5,358 / 5,358 | 0 | $254,286.67 |
+| June | 5,409 / 5,409 | 0 | $261,007.67 |
+| July target | 5,518 | 0 expected | $254,299.75 |
+
+June→July fork check after approval should show **no name-paired fork where the vendor differs**.
+
+**Please confirm whether the fix changes staged parse or classification output**, and therefore whether July must be re-uploaded or can simply be re-previewed and approved.
+
+## Relevant files
+
+* `artifacts/api-server/src/services/orderly/orderlyDomain.ts` — preview comparison-target selection, approval identity validation
+* `artifacts/api-server/src/services/orderly/OrderlyMatcher.ts`
+* `artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx`
+* `artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts`
