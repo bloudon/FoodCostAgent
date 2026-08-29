@@ -1,0 +1,62 @@
+
+Commit:
+e47797f26eca0c4f09bc9f1dbcd2e685748f0ea7
+
+PM2 status:
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ docu-submit        │ fork     │ 20   │ online    │ 0%       │ 91.3mb   │
+│ 13 │ fnbcostpro         │ fork     │ 1594 │ online    │ 0%       │ 264.2mb  │
+│ 14 │ k5-api             │ fork     │ 9    │ online    │ 0%       │ 108.9mb  │
+│ 12 │ kaye-api           │ fork     │ 18   │ online    │ 0%       │ 96.1mb   │
+│ 1  │ permitflow         │ fork     │ 27   │ online    │ 0%       │ 190.9mb  │
+│ 3  │ tk5-api            │ fork     │ 20   │ online    │ 0%       │ 111.2mb  │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+
+Recent API log lines:
+[TAILING] Tailing last 20 lines for [13] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 20 lines:
+    validateStatus: [Function: validateStatus],
+    errorRedactor: [Function: defaultErrorRedactor]
+  },
+  response: undefined,
+  error: FetchError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+      at ClientRequest.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch/lib/index.js:1501:11)
+      at ClientRequest.emit (node:events:524:28)
+      at emitErrorEvent (node:_http_client:101:11)
+      at Socket.socketErrorListener (node:_http_client:504:5)
+      at Socket.emit (node:events:524:28)
+      at emitErrorNT (node:internal/streams/destroy:169:8)
+      at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+      at processTicksAndRejections (node:internal/process/task_queues:82:21) {
+    type: 'system',
+    errno: 'ECONNREFUSED',
+    code: 'ECONNREFUSED'
+  },
+  code: 'ECONNREFUSED',
+  [Symbol(gaxios-gaxios-error)]: '6.7.1'
+}
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 20 lines:
+{"level":30,"time":1787998810327,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/settings 404 in 3ms"}
+{"level":30,"time":1787998810716,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v1/config 404 in 3ms"}
+{"level":30,"time":1787998810776,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v2/config 404 in 3ms"}
+{"level":30,"time":1787998810868,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/v2/settings 404 in 4ms"}
+{"level":30,"time":1787999394895,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.git/config 404 in 4ms"}
+{"level":30,"time":1788004334918,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788004334921,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788004334945,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 33ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+{"level":30,"time":1788022517456,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 3ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788022517460,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788022517482,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 34ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+{"level":30,"time":1788022521027,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788022521040,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 401 in 2ms :: {\"error\":\"Not authenticated\"}"}
+{"level":30,"time":1788022521306,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/sso/provider 200 in 2ms :: {\"provider\":\"google\"}"}
+{"level":30,"time":1788022521311,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/background-images 200 in 10ms :: {\"images\":[{\"id\":\"9ef34d46-38c6-49d8-…"}
+{"level":30,"time":1788042258462,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env 404 in 5ms"}
+{"level":30,"time":1788042271212,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env/wso112233 404 in 3ms"}
+{"level":30,"time":1788042272257,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env/wp-content/Panels.txt 404 in 4ms"}
+{"level":30,"time":1788042275175,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env/wp-admin/Panels.txt 404 in 3ms"}
+{"level":30,"time":1788042276895,"pid":2860128,"hostname":"vps-BLOUD-Soft","msg":"GET /api/.env/Panels.txt 404 in 4ms"}
+
