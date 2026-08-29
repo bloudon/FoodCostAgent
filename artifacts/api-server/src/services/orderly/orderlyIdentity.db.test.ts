@@ -1677,7 +1677,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       baseUnitQuantity: 1,
       baseUnit: 'EA',
       packagePrice: 48,
-    }], '2027-04-30');
+    }], '2031-01-31');
     await applyBatchApproval(mayBatch, approvalAuth);
     const [mayRow] = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
@@ -1695,7 +1695,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       baseUnitQuantity: 1,
       baseUnit: 'EA',
       packagePrice: 30,
-    }], '2027-05-31');
+    }], '2031-02-28');
     const preview = await runResolutionPreview(juneBatch, ID.company);
     expect(preview.rows[0].itemMatch).toMatchObject({
       packCompatibility: 'incompatible',
@@ -1744,6 +1744,41 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         normalizedPricePerCanonicalUnit: 2.5,
       },
     ]);
+
+    const julyBatch = await stageBatch([{
+      code: 'CROSS-VENDOR-ALT-12',
+      description: 'Cross Vendor Tomatoes',
+      location: 'Dry Storage',
+      supplier: 'Vendor Beta',
+      caseQuantity: 12,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 33,
+    }], '2031-03-31');
+    const julyPreview = await runResolutionPreview(julyBatch, ID.company);
+    expect(julyPreview.rows[0].itemMatch).toMatchObject({
+      strategy: 'external_mapping',
+      matchedId: mayRow.resolvedInventoryItemId,
+      requiresReview: false,
+      packCompatibility: 'compatible',
+      candidatePackEvidence: {
+        caseQuantity: 12,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+        normalizedUnit: 'EA',
+        totalBaseUnits: 12,
+      },
+    });
+
+    const julyResult = await applyBatchApproval(julyBatch, approvalAuth);
+    expect(julyResult.itemsCreated).toBe(0);
+    const [julyRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, julyBatch));
+    expect(julyRow.resolvedInventoryItemId).toBe(mayRow.resolvedInventoryItemId);
   });
 
   it('offers and applies a cross-vendor Avocado pack link when the new Item Code is descriptive', async () => {

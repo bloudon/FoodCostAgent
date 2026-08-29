@@ -1684,25 +1684,33 @@ export async function runResolutionPreview(
     latestPriorRowsByStableCode.set(code, rows);
   }
 
-  function priorApprovedPackItemId(row: InventoryImportRow): string | undefined {
+  function priorApprovedPackResolution(row: InventoryImportRow): {
+    itemId: string;
+    evidence: PackEvidence;
+  } | undefined {
     const code = normalizedStableSourceCode(row.sourceItemCode);
     const sourceVendor = normalizeForMatch(row.supplierRaw ?? '');
     if (!code || !sourceVendor) return undefined;
     const incomingGeometry = sourcePackGeometry(row);
     if (normalizePackGeometry(incomingGeometry).status !== 'compatible') return undefined;
 
-    const matchingRows = (latestPriorRowsByStableCode.get(code) ?? []).filter(priorRow =>
+    const codeRows = latestPriorRowsByStableCode.get(code) ?? [];
+    const latestApprovedDate = codeRows[0]?.inventoryDate ?? null;
+    const matchingRows = codeRows.filter(priorRow =>
+      priorRow.inventoryDate === latestApprovedDate &&
       normalizeForMatch(priorRow.supplierRaw ?? '') === sourceVendor &&
       comparePackGeometry(incomingGeometry, priorRow).status === 'compatible'
     );
-    const latestMatchingDate = matchingRows[0]?.inventoryDate ?? null;
     const resolvedIds = new Set<string>(
       matchingRows
-        .filter(priorRow => priorRow.inventoryDate === latestMatchingDate)
         .map(priorRow => priorRow.resolvedInventoryItemId)
         .filter((itemId): itemId is string => typeof itemId === 'string'),
     );
-    return resolvedIds.size === 1 ? [...resolvedIds][0] : undefined;
+    if (resolvedIds.size !== 1 || !matchingRows[0]) return undefined;
+    return {
+      itemId: [...resolvedIds][0],
+      evidence: toPreviewPackEvidence(matchingRows[0]),
+    };
   }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
@@ -1748,8 +1756,8 @@ export async function runResolutionPreview(
     const alternateId = alternateSourceId
       ? alternateMappingLookup.get(alternateSourceId)
       : undefined;
-    const priorPackId = sourceCodeReliability === 'stable' && !alternateId
-      ? priorApprovedPackItemId(row)
+    const priorPackResolution = sourceCodeReliability === 'stable'
+      ? priorApprovedPackResolution(row)
       : undefined;
     if (extId && alternateId && alternateId !== extId) {
       itemMatch = {
@@ -1820,20 +1828,30 @@ export async function runResolutionPreview(
         candidatePackEvidence,
         candidateHasSameVendor,
       );
-      if (
-        candidateHasSameVendor &&
-        packAssessment.status === 'incompatible' &&
-        priorPackId &&
-        priorPackId !== extId
-      ) {
+      if (priorPackResolution && priorPackResolution.itemId !== extId) {
         itemMatch = {
           strategy: 'alternate_identity',
           confidence: 'high',
-          matchedId: priorPackId,
+          matchedId: priorPackResolution.itemId,
           candidateIds: [],
           requiresReview: false,
+          packCompatibility: 'compatible',
+          packCompatibilityReason: 'the incoming pack matches the immediately prior approved month',
+          sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
+          candidatePackEvidence: priorPackResolution.evidence,
         };
-      } else if (candidateHasSameVendor && packAssessment.status === 'incompatible') {
+      } else if (priorPackResolution) {
+        itemMatch = {
+          ...itemMatch,
+          packCompatibility: 'compatible',
+          packCompatibilityReason: 'the incoming pack matches the immediately prior approved month',
+          sourcePackEvidence: toPreviewPackEvidence(sourcePackGeometry(row as any)),
+          candidatePackEvidence: priorPackResolution.evidence,
+        };
+      } else if (
+        candidateHasSameVendor &&
+        packAssessment.status === 'incompatible'
+      ) {
         itemMatch = {
           ...itemMatch,
           matchedId: null,
