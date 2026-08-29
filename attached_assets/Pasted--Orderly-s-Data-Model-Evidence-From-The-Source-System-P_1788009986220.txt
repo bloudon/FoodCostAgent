@@ -1,0 +1,138 @@
+# Orderly's Data Model — Evidence From The Source System
+
+**Purpose:** Direct observations from Orderly's UI that clarify how FnB should model imported inventory. These are not inferences from the export; they are what Orderly itself stores.
+
+**Source:** Orderly Back Office (`app.bepbackoffice.com`), Bay Hill restaurantId `24472`, ingredient detail and vendor-products views.
+
+**Bearing on current work:** confirms the one-item-many-vendors model, explains the `1/1 Case` population, and identifies one fork in the current dev catalog that is wrong.
+
+---
+
+## 1. Orderly models one ingredient with many vendor products
+
+The `Mizuna` ingredient record shows two vendor products:
+
+| Item Code | Vendor Product | Vendor | Pack Size | Price |
+|---|---|---|---|---|
+| `21425` | LETTUCE MIZUNA BOX | Mr. Green's Produce | `1 / 1 Case` | $28.82 on 08/21/26 |
+| `LETMIZ` | LETTUCE MIZUNA | Harvill's Produce Co., Inc. | `1 / 1 Case` | $36.75 on 03/06/26 |
+
+Its audit trail makes the relationship deliberate rather than coincidental:
+
+```
+03/06/26 10:37  The ingredient was created            System
+07/29/26 12:06  Item Code 21425 was added             cdoty@bayhill.com
+08/17/26 07:27  Item Code 22154 was added             System
+08/17/26 11:03  Item Code 22154 was removed           cdoty@bayhill.com
+```
+
+A user explicitly attached a second vendor's code to an existing ingredient. This is Orderly's equivalent of `inventory_items` ↔ `vendor_items`, and it confirms the model FnB already has in schema.
+
+**Implication:** when two source codes belong to one Orderly ingredient, FnB must resolve them to **one inventory item with two vendor packs**. Forking them into separate inventory items contradicts the source.
+
+**Item codes churn under an ingredient.** `22154` was added and removed within four hours. Any FnB identity anchored to a single vendor code will drift as vendors are added or dropped; the ingredient is the stable entity.
+
+---
+
+## 2. `1/1 Case` opacity is genuine at source
+
+The same ingredient record shows:
+
+```
+Default Pack Size : N/A
+Default Price     : N/A
+Default UOM       : Case
+```
+
+Orderly does not know how much is in the box either. The export's `1/1 Case` is a faithful rendering of `N/A` pack size plus a `Case` UOM — not information lost in translation.
+
+**Implication:** the ~133 items carrying `1/1 Case` geometry (~$16.3k across three months) are **permanently unknowable from Orderly**. No lookup will recover a multiplier. Fail-closed handling is correct, and the current behaviour — import the row, retain quantity and value, mark geometry unknown — is the right outcome.
+
+This is distinct from the `N/M Case` population (e.g. Bacardi Mini `12/10 Case` = 120 units), where Orderly *does* hold real multipliers and the parser now recovers them.
+
+---
+
+## 3. Counting is by most recent purchase, not by vendor
+
+The ingredient's Inventory Settings:
+
+```
+Inventory Locations : Produce Walk-in
+Counting Unit 1     : Most Recent Case
+Counting Unit 2     : Most Recent Pack
+Counting Unit 3     : Most Recent Uom
+```
+
+Staff count against **whatever was most recently purchased**, at the ingredient level. They do not count per vendor.
+
+**Implication:** this is the operational reason cross-vendor consolidation matters. If `21425` and `LETMIZ` become separate FnB inventory items, a counter enters a figure against one and the other reads zero — and neither reflects true on-hand. Forking does not merely fragment reporting; it breaks the count.
+
+---
+
+## 4. GL is category-level, shown by name
+
+The ingredient shows `GL Account: Produce` — a name, no number. Consistent with Orderly's chart-of-accounts export note: GL account is assigned per ingredient via a category dropdown, and the ingredient carries no separate numeric GL field.
+
+**Implication:** the Category → account mapping in the chart of accounts is authoritative, and no per-item GL override exists in the source. Supports seeding accounts and attaching them at category level.
+
+---
+
+## 5. One fork in the current dev catalog is wrong
+
+`Mizuna` currently forks in the June→July period comparison:
+
+| Month | Vendor | Item Code | Pack | Value |
+|---|---|---|---|---|
+| May | Harvill's Produce | `LETMIZ` | `1/1 Case` | $36.75 |
+| June | Harvill's Produce | `LETMIZ` | `1/1 Case` | $36.75 |
+| July | Mr. Green's Produce | `21425` | `1/1 Case` | $0.00 |
+
+It forked because the vendor-pack link was **unavailable** — the pack could not be verified, so linking was blocked and only `create_variant` was offered.
+
+But both sides carry **identical** opaque geometry. `1/1 Case` → `1/1 Case` is a continuity match, exactly as `24 EA` → `24 EA` would be. The current rule appears to treat *unverifiable* as *incompatible*, which is the same conflation corrected earlier for unknown geometry in decision-saving.
+
+### Requested
+
+Permit cross-vendor linking when **both sides carry identical opaque geometry**, while continuing to refuse when:
+
+* the two sides' opaque units differ (`1/1 Case` vs `1/1 Box`)
+* one side is unknown and the other is resolved
+* pack evidence is unverifiable *and* the normalized totals conflict
+
+The distinction is between *no information* on both sides — which is a match — and *conflicting information*, which is not.
+
+### Acceptance
+
+After the next May→July re-run, `Mizuna` resolves to **one inventory item with two vendor packs** (`LETMIZ` Harvill's, `21425` Mr. Green's), and does not appear as a name-paired fork.
+
+---
+
+## 6. Worth checking before the re-run
+
+`Mushrooms - Blends/Mix` also forks, and has been assumed **correct** on the basis that June's Mr. Green's row was a one-off substitute at $0.00 while May and July are both Fungi Jon:
+
+| Month | Vendor | Item Code | Pack | Value |
+|---|---|---|---|---|
+| May | Fungi Jon | `2-8 assorted gourmet mushroom varieties…` | `1/5 LB` | $70.00 |
+| June | Mr. Green's Produce | `26045` | `1/1 Case` | $0.00 |
+| July | Fungi Jon | `2-8 assorted gourmet…` | `1/5 LB` | $560.00 |
+
+**If Orderly holds both codes under a single ingredient**, that assumption is wrong and it should consolidate like Mizuna. If they are separate ingredient records, forking is defensible.
+
+The same test applies generally: open the ingredient record and check its Vendor Products tab. Codes under one ingredient must consolidate in FnB.
+
+---
+
+## 7. A better verification tool for the Hit List
+
+Orderly's **Vendor Products** tab answers "which vendors supply this ingredient, at what pack, at what price" in a single view — more efficient than opening item details one at a time.
+
+It also surfaces price staleness directly. Mizuna shows Harvill's at $36.75 last quoted **03/06/26** against Mr. Green's $28.82 on **08/21/26** — a 21% spread on a five-month-stale incumbent price. This is exactly the case cross-vendor comparison exists to surface, once invoice import supplies current pricing.
+
+---
+
+## Summary of asks
+
+1. **Allow cross-vendor linking when both sides carry identical opaque geometry.** Unverifiable-on-both-sides is a match, not a conflict. Fixture: Mizuna, `LETMIZ` ↔ `21425`, both `1/1 Case`.
+2. **Treat the ingredient, not the vendor code, as the stable identity.** Codes are added and removed under an ingredient by users; identity anchored to a single code will drift.
+3. **No change needed for `1/1 Case` value handling** — current behaviour is correct and the opacity is unrecoverable from source.
