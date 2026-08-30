@@ -19,7 +19,8 @@
     "orderly:vendor-identity-report": "esbuild src/services/orderly/vendorIdentityContinuityCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/vendor-identity-report.mjs && node --enable-source-maps dist/vendor-identity-report.mjs",
     "orderly:vendor-identity-apply": "esbuild src/services/orderly/vendorIdentityContinuityApplyCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/vendor-identity-apply.mjs && node --enable-source-maps dist/vendor-identity-apply.mjs",
     "orderly:may-backfill": "esbuild src/services/orderly/mayHistoricalSessionBackfillCli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/orderly-may-backfill.mjs && node --enable-source-maps dist/orderly-may-backfill.mjs",
-    "orderly:remediate": "pnpm run build && node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs"
+    "orderly:remediate": "pnpm run build && node --enable-source-maps ./dist/services/orderly/bayHillDuplicateRemediationCli.mjs",
+    "orderly:preview-indexes": "node --enable-source-maps ./dist/services/orderly/orderlyPreviewIndexesCli.mjs"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.21.0",

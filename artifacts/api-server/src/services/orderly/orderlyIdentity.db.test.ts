@@ -2384,6 +2384,9 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         sql`${inventoryItemExternalMappings.sourceExternalId} LIKE 'ALT|CODE=%'`,
       ));
 
+    // A newer approved batch from another property is not an eligible
+    // predecessor. The property-A preview must still select the newest
+    // property-A batch first, then read only its matching codes.
     const interveningBatch = await stageBatch([{
       code: `UNRELATED-${RUN.toUpperCase()}`,
       description: 'Unrelated Partial Inventory Item',
@@ -2395,7 +2398,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       baseUnitQuantity: 1,
       baseUnit: 'EA',
       packagePrice: 10,
-    }], '2027-07-15');
+    }], '2027-07-15', 'B');
     await applyBatchApproval(interveningBatch, approvalAuth);
 
     const repeatedBatch = await stageBatch([{
@@ -2432,6 +2435,70 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, repeatedBatch));
     expect(repeatedRow.resolvedInventoryItemId).toBe(changedRow.resolvedInventoryItemId);
+  });
+
+  it('does not scan past the newest same-property predecessor batch for an older matching code', async () => {
+    const stableCode = `LATEST-GATE-${RUN.toUpperCase()}`;
+    const olderBatch = await stageBatch([{
+      code: stableCode,
+      description: 'Older Historical Identity',
+      location: 'Wine Cellar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 EA',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 10,
+    }], '2027-08-31');
+    await applyBatchApproval(olderBatch, approvalAuth);
+    const [olderRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, olderBatch));
+    expect(olderRow.resolvedInventoryItemId).toBeTruthy();
+
+    // Remove direct mappings so only the prior-approved-row fallback could
+    // recover this identity. The newer approved batch below intentionally does
+    // not contain the code.
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.inventoryItemId, olderRow.resolvedInventoryItemId!),
+      ));
+
+    const newestPredecessor = await stageBatch([{
+      code: `LATEST-OTHER-${RUN.toUpperCase()}`,
+      description: 'Newest Unrelated Identity',
+      location: 'Dry Storage',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 EA',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 11,
+    }], '2027-09-15');
+    await applyBatchApproval(newestPredecessor, approvalAuth);
+
+    const currentBatch = await stageBatch([{
+      code: stableCode,
+      description: 'QZXJ Incoming Identity',
+      location: 'Main Bar',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '1/1 EA',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 12,
+    }], '2027-09-30');
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+
+    expect(preview.rows[0].itemMatch.matchedId).not.toBe(olderRow.resolvedInventoryItemId);
+    expect(preview.rows[0].itemMatch.packCompatibilityReason)
+      .not.toBe('the incoming pack matches the immediately prior approved month');
   });
 
   it('writes a same-name same-vendor create_variant pack against the new item, not the comparison item', async () => {

@@ -2604,6 +2604,15 @@ export const inventoryImportBatches = pgTable("inventory_import_batches", {
 }, (t) => ({
   companySystemIdx: index("inv_import_batches_company_system_idx").on(t.companyId, t.sourceSystem),
   hashIdx: index("inv_import_batches_hash_idx").on(t.companyId, t.fileHash),
+  orderlyHistoryIdx: index("inv_import_batches_orderly_history_idx").on(
+    t.companyId,
+    t.sourceSystem,
+    t.sourcePropertyId,
+    t.status,
+    t.inventoryDate,
+    t.uploadedAt,
+    t.id,
+  ),
 }));
 
 export const insertInventoryImportBatchSchema = createInsertSchema(inventoryImportBatches).omit({ id: true, uploadedAt: true });
@@ -2700,6 +2709,7 @@ export const inventoryImportRows = pgTable("inventory_import_rows", {
 }, (t) => ({
   batchIdx: index("inv_import_rows_batch_idx").on(t.batchId),
   batchRowIdx: index("inv_import_rows_batch_row_idx").on(t.batchId, t.rowIndex),
+  batchCodeIdx: index("inv_import_rows_batch_code_idx").on(t.batchId, t.sourceItemCode),
 }));
 
 export const insertInventoryImportRowSchema = createInsertSchema(inventoryImportRows).omit({ id: true });

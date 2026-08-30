@@ -24,6 +24,7 @@ async function buildAll() {
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/services/orderly/bayHillDuplicateRemediationCli.ts"),
+      path.resolve(artifactDir, "src/services/orderly/orderlyPreviewIndexesCli.ts"),
     ],
     platform: "node",
     bundle: true,

@@ -1557,7 +1557,47 @@ export async function runResolutionPreview(
   const sourcePropertyScope = scopeRow?.sourcePropertyId ?? '';
   // Parallel: fetch batch meta + import rows + company items + vendors + locations +
   // external mappings + item-location assignments (for ambiguous tiebreaking)
-  const priorApprovedRowsQuery = scopeRow.inventoryDate
+  /*
+   * PERFORMANCE CONTRACT — preserve this access order:
+   *   1. Select exactly one newest eligible predecessor batch.
+   *   2. Materialize distinct source codes from the current batch.
+   *   3. Join only that predecessor batch's resolved rows to those codes.
+   *
+   * Do not invert this into "filter all approved history by current codes".
+   * Once a source-property binding is active, that shape can scan months of
+   * history before narrowing and made the 5,518-row Bay Hill preview exceed
+   * the production proxy timeout.
+   */
+  const [latestPriorApprovedBatch] = scopeRow.inventoryDate
+    ? await runner
+      .select({
+        id: inventoryImportBatches.id,
+        inventoryDate: inventoryImportBatches.inventoryDate,
+      })
+      .from(inventoryImportBatches)
+      .where(and(
+        eq(inventoryImportBatches.companyId, companyId),
+        eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
+        eq(inventoryImportBatches.sourcePropertyId, sourcePropertyScope),
+        eq(inventoryImportBatches.status, 'approved'),
+        lt(inventoryImportBatches.inventoryDate, scopeRow.inventoryDate),
+      ))
+      .orderBy(
+        desc(inventoryImportBatches.inventoryDate),
+        desc(inventoryImportBatches.uploadedAt),
+        desc(inventoryImportBatches.id),
+      )
+      .limit(1)
+    : [];
+  const distinctCurrentBatchCodes = runner
+    .selectDistinct({ sourceItemCode: inventoryImportRows.sourceItemCode })
+    .from(inventoryImportRows)
+    .where(and(
+      eq(inventoryImportRows.batchId, batchId),
+      isNotNull(inventoryImportRows.sourceItemCode),
+    ))
+    .as('distinct_current_batch_codes');
+  const priorApprovedRowsQuery = latestPriorApprovedBatch
     ? runner
       .select({
         inventoryDate: inventoryImportBatches.inventoryDate,
@@ -1571,22 +1611,19 @@ export async function runResolutionPreview(
         resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
       })
       .from(inventoryImportRows)
-      .innerJoin(inventoryImportBatches, eq(inventoryImportBatches.id, inventoryImportRows.batchId))
+      .innerJoin(
+        inventoryImportBatches,
+        eq(inventoryImportBatches.id, inventoryImportRows.batchId),
+      )
+      .innerJoin(
+        distinctCurrentBatchCodes,
+        eq(distinctCurrentBatchCodes.sourceItemCode, inventoryImportRows.sourceItemCode),
+      )
       .where(and(
-        eq(inventoryImportBatches.companyId, companyId),
-        eq(inventoryImportBatches.sourceSystem, 'ORDERLY'),
-        eq(inventoryImportBatches.sourcePropertyId, sourcePropertyScope),
-        eq(inventoryImportBatches.status, 'approved'),
-        lt(inventoryImportBatches.inventoryDate, scopeRow.inventoryDate),
+        eq(inventoryImportBatches.id, latestPriorApprovedBatch.id),
         isNotNull(inventoryImportRows.resolvedInventoryItemId),
-        sql`${inventoryImportRows.sourceItemCode} IN (
-          SELECT current_row.source_item_code
-          FROM inventory_import_rows current_row
-          WHERE current_row.batch_id = ${batchId}
-            AND current_row.source_item_code IS NOT NULL
-        )`,
       ))
-      .orderBy(desc(inventoryImportBatches.inventoryDate), inventoryImportRows.rowIndex)
+      .orderBy(inventoryImportRows.rowIndex)
     : Promise.resolve([]);
   const [batchRows, batchMeta, existingItems, existingVendors, existingLocations, externalMappings, locationAssignments, catalogPackSizeMappings, existingVendorSupplies, priorApprovedRows] =
     await Promise.all([

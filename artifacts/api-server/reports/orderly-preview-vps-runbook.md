@@ -1,0 +1,98 @@
+# Orderly Preview and Approval VPS Runbook
+
+## Required precondition: source-property binding
+
+A missing source-property binding is not a harmless legacy state. It silently
+disables property-scoped historical resolution and can make a preview look fast
+and healthy while producing unnecessary recode or new-pack decisions.
+
+Before the first import for a re-onboarded company, verify all of the following:
+
+- One active `import_source_property_bindings` row exists for the Orderly
+  property.
+- The binding belongs to the current company and destination store.
+- Every staged batch records both `source_property_binding_id` and
+  `source_property_id`.
+- Preview includes an expected known historical match before approval.
+
+Do not treat a fast preview with null binding metadata as acceptance evidence.
+
+## Nginx timeout headroom
+
+Preview is read-only, but approval can take 60–130 seconds and is the
+irreversible operation. Configure explicit headroom for both routes in the
+active HTTPS server block that proxies `/api/` to port `3004`:
+
+```nginx
+location ~ ^/api/inventory-import/orderly/batches/[^/]+/(resolution-preview|approve)$ {
+    proxy_pass http://127.0.0.1:3004;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+}
+```
+
+Place this more-specific location before the general `/api/` location. Preserve
+any authentication, CORS, buffering, or WebSocket directives already present
+in the production proxy rather than replacing the whole server block.
+
+Back up the active file, run `sudo nginx -t`, and use
+`sudo systemctl reload nginx`. If validation fails, restore the backup and do
+not reload.
+
+## Install the supporting indexes before restarting the app
+
+Do not let API startup build these indexes: ordinary `CREATE INDEX` can block
+writes on an active production database. From the application directory, build
+the checked-out commit, then run the dedicated operator command while the
+current PM2 process remains healthy:
+
+```bash
+cd /home/administrator/apps/CostPro/fnbcostpro
+pnpm --filter @workspace/api-server run build
+pnpm --filter @workspace/api-server run orderly:preview-indexes
+```
+
+The command uses a dedicated PostgreSQL session, `CREATE INDEX CONCURRENTLY`,
+a five-second lock timeout, a non-blocking advisory guard, and post-create
+validity/definition checks. It prints only the database name and verified index
+definitions. A non-zero exit is a deployment stop; do not restart PM2.
+
+## Post-deploy preview verification
+
+1. Confirm `/api/build-info` reports the deployed commit and `/api/healthz`
+   returns `{"status":"ok"}`.
+2. Request the July resolution preview through public Nginx, not directly on
+   port `3004`, and make curl report the measured result:
+
+   ```bash
+   curl --silent --show-error --output /tmp/july-preview.json \
+     --write-out 'http=%{http_code} duration=%{time_total}s\n' \
+     --cookie /path/to/operator-cookie.txt \
+     'https://fnbcostpro.com/api/inventory-import/orderly/batches/JULY_BATCH_ID/resolution-preview'
+   ```
+
+   Use the operator's existing authenticated cookie handling; never paste or
+   commit cookie contents.
+3. Record the exact wall-clock duration and HTTP status. Success without a
+   duration is insufficient; a result near the proxy ceiling has no growth
+   margin.
+4. Confirm row 2499 resolves to the approved June inventory item.
+5. Confirm all 228 saved review decisions remain and review the changed
+   `create_variant` count.
+6. Do not retry approval until preview correctness and duration are accepted.
+
+## Approval timing evidence
+
+The approval POST normally returns `202` after durably claiming the job; the
+irreversible work then continues asynchronously. The Nginx timeout protects
+request setup and recovery responses, but it does not measure apply duration.
+After approval is explicitly authorized, record the POST response time and then
+poll the job endpoint until `completed` or `failed`. Preserve the returned
+`startedAt`, `completedAt`, final status, and elapsed wall-clock duration in the
+sanitized operator evidence. A `202` response alone is not approval evidence.
