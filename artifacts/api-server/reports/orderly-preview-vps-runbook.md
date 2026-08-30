@@ -19,12 +19,13 @@ Do not treat a fast preview with null binding metadata as acceptance evidence.
 
 ## Nginx timeout headroom
 
-Preview is read-only, but approval can take 60–130 seconds and is the
-irreversible operation. Configure explicit headroom for both routes in the
+Preview and review-decision loading are read-only, but approval can take
+60–130 seconds and is the irreversible operation. Configure explicit headroom
+for all three routes in the
 active HTTPS server block that proxies `/api/` to port `3004`:
 
 ```nginx
-location ~ ^/api/inventory-import/orderly/batches/[^/]+/(resolution-preview|approve)$ {
+location ~ ^/api/inventory-import/orderly/batches/[^/]+/(resolution-preview|review-decisions|approve)$ {
     proxy_pass http://127.0.0.1:3004;
     proxy_http_version 1.1;
     proxy_set_header Host $host;

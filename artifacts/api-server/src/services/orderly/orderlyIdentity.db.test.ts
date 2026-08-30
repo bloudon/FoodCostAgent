@@ -2507,18 +2507,21 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
   });
 
   it('previews a production-sized repeated-code batch against bounded property-scoped history', async () => {
-    const codes = Array.from({ length: 24 }, (_, index) => `LARGE-${RUN}-${index}`);
+    const codes = [
+      '11017',
+      ...Array.from({ length: 23 }, (_, index) => `${810000 + index}`),
+    ];
     const sourceRows = codes.map(code => ({
       code,
       description: `Large Fixture Item ${code}`,
       location: 'Large Fixture Storage',
       supplier: 'Vendor Gamma',
-      packSizeRaw: '6/1 750ML',
-      caseQuantity: 6,
-      innerPackQuantity: 1,
-      baseUnitQuantity: 750,
-      baseUnit: 'ML',
-      packagePrice: 600,
+      packSizeRaw: '1/72 EA',
+      caseQuantity: 1,
+      innerPackQuantity: 72,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packagePrice: 36.96,
     }));
     const fixtureUnitId = await eachUnitId();
     const seededItems = await db
@@ -2536,9 +2539,11 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         },
         {
           companyId: ID.company,
-          name: `June Sentinel ${row.code}`,
+          name: row.description,
           unitId: fixtureUnitId,
-          caseSize: row.caseQuantity,
+          // Deliberately differs from the source pack so catalog name/case
+          // matching cannot make the historical-resolution assertion pass.
+          caseSize: 40,
           pricePerUnit: row.packagePrice,
           avgCostPerUnit: row.packagePrice,
           active: 1,
@@ -2561,23 +2566,10 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       row.code,
       {
         older: seededItemIdByName.get(`Older Sentinel ${row.code}`)!,
-        june: seededItemIdByName.get(`June Sentinel ${row.code}`)!,
+        june: seededItemIdByName.get(row.description)!,
         wrongProperty: seededItemIdByName.get(`Wrong Property Sentinel ${row.code}`)!,
       },
     ]));
-    await db.insert(inventoryItemExternalMappings).values(sourceRows.map(row => ({
-      companyId: ID.company,
-      inventoryItemId: sentinelsByCode.get(row.code)!.older,
-      sourceSystem: 'ORDERLY',
-      sourcePropertyId: ID.property,
-      sourceExternalId: row.code,
-      sourceDescription: row.description,
-      caseQuantity: row.caseQuantity,
-      innerPackQuantity: row.innerPackQuantity,
-      baseUnitQuantity: row.baseUnitQuantity,
-      baseUnit: row.baseUnit,
-      matchStrategy: 'manual',
-    })));
     const resolutionManifest = (kind: 'older' | 'june' | 'wrongProperty') =>
       JSON.stringify(sourceRows.map(row => ({
         code: row.code,
@@ -2628,7 +2620,6 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       const source = sourceRows[index % sourceRows.length];
       return {
         ...source,
-        description: `Current Large Fixture ${source.code}`,
         location: index % 2 === 0 ? 'Large Fixture Storage' : 'Large Fixture Overflow',
       };
     });

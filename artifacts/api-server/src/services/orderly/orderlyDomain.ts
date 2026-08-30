@@ -1949,6 +1949,23 @@ export async function runResolutionPreview(
       }
     }
 
+    // The latest approved same-property row is authoritative even when the
+    // source code has no durable external mapping yet. This is the common
+    // re-onboarding path: the approved predecessor carries the historical
+    // code/vendor/pack identity that the current batch must inherit.
+    if (priorPackResolution && !extId) {
+      itemMatch = {
+        strategy: 'alternate_identity',
+        confidence: 'high',
+        matchedId: priorPackResolution.itemId,
+        candidateIds: [],
+        requiresReview: false,
+        packCompatibility: 'compatible',
+        packCompatibilityReason: 'the incoming pack matches the immediately prior approved month',
+        candidatePackEvidence: priorPackResolution.evidence,
+      };
+    }
+
     // ── Vendor resolution ──
     const vendorMatch = matchVendor(row.supplierRaw, row.supplierStatus, matchableVendors);
     if (vendorMatch.isNew && row.supplierRaw) newVendorNames.add(row.supplierRaw.trim());
@@ -2049,7 +2066,9 @@ export async function runResolutionPreview(
       sourceCodeReliability === 'stable' &&
       Boolean(row.sourceItemCode?.trim());
     const codeWasMatched =
-      itemMatch.strategy === 'external_mapping' || itemMatch.strategy === 'item_code';
+      itemMatch.strategy === 'external_mapping' ||
+      itemMatch.strategy === 'item_code' ||
+      itemMatch.strategy === 'alternate_identity';
     const isPseudoCodeCandidate = sourceCodeReliability === 'pseudo_code';
     if ((isUnmappedStableCode && !codeWasMatched) || isPseudoCodeCandidate) {
       const normalizedDesc = normalizeForMatch(row.cleanedDescription ?? '');
