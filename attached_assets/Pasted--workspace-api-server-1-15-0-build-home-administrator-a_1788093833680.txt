@@ -1,0 +1,206 @@
+
+> @workspace/api-server@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> node ./build.mjs
+
+
+  dist/index.mjs                                                 13.7mb ⚠️
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs        1.4mb ⚠️
+  dist/pino-worker.mjs                                          153.4kb
+  dist/pino-file.mjs                                            142.1kb
+  dist/pino-pretty.mjs                                          114.4kb
+  dist/thread-stream-worker.mjs                                   7.3kb
+  dist/index.mjs.map                                             23.4mb
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs.map    2.8mb
+  dist/pino-worker.mjs.map                                      256.9kb
+  dist/pino-file.mjs.map                                        229.1kb
+  dist/pino-pretty.mjs.map                                      203.6kb
+  dist/thread-stream-worker.mjs.map                              12.0kb
+
+⚡ Done in 1451ms
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 2  │ docu-submit        │ fork     │ 21   │ online    │ 33.3%    │ 94.4mb   │
+│ 13 │ fnbcostpro         │ fork     │ 1599 │ online    │ 0%       │ 16.5mb   │
+│ 14 │ k5-api             │ fork     │ 10   │ online    │ 0%       │ 107.8mb  │
+│ 12 │ kaye-api           │ fork     │ 19   │ online    │ 0%       │ 90.8mb   │
+│ 1  │ permitflow         │ fork     │ 28   │ online    │ 0%       │ 146.2mb  │
+│ 3  │ tk5-api            │ fork     │ 21   │ online    │ 0%       │ 71.7mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /home/administrator/.pm2/dump.pm2
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ curl -fsS http://127.0.0.1:3004/api/healthz
+echo
+
+curl -fsS http://127.0.0.1:3004/api/build-info
+echo
+
+pm2 logs fnbcostpro --lines 80 --nostream
+{"status":"ok"}
+{"service":"fnb-cost-pro-api","buildId":"api@1.15.0:624bcbc2dcfb8f98aea5c0e897aa95717c2fdb4f"}
+[TAILING] Tailing last 80 lines for [fnbcostpro] process (change the value with --lines option)
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 80 lines:
+13|fnbcost |     headers: {
+13|fnbcost |       'User-Agent': 'google-api-nodejs-client/9.15.1',
+13|fnbcost |       'x-goog-api-client': 'gl-node/20.20.2',
+13|fnbcost |       Accept: 'application/json'
+13|fnbcost |     },
+13|fnbcost |     responseType: 'json',
+13|fnbcost |     paramsSerializer: [Function: paramsSerializer],
+13|fnbcost |     validateStatus: [Function: validateStatus],
+13|fnbcost |     errorRedactor: [Function: defaultErrorRedactor]
+13|fnbcost |   },
+13|fnbcost |   response: undefined,
+13|fnbcost |   error: FetchError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+13|fnbcost |       at ClientRequest.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch/lib/index.js:1501:11)
+13|fnbcost |       at ClientRequest.emit (node:events:524:28)
+13|fnbcost |       at emitErrorEvent (node:_http_client:101:11)
+13|fnbcost |       at Socket.socketErrorListener (node:_http_client:504:5)
+13|fnbcost |       at Socket.emit (node:events:524:28)
+13|fnbcost |       at emitErrorNT (node:internal/streams/destroy:169:8)
+13|fnbcost |       at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:82:21) {
+13|fnbcost |     type: 'system',
+13|fnbcost |     errno: 'ECONNREFUSED',
+13|fnbcost |     code: 'ECONNREFUSED'
+13|fnbcost |   },
+13|fnbcost |   code: 'ECONNREFUSED',
+13|fnbcost |   [Symbol(gaxios-gaxios-error)]: '6.7.1'
+13|fnbcost | }
+13|fnbcost | [ObjectStorageCleanup] Full run failed — could not list bucket objects: GaxiosError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+13|fnbcost |     at Gaxios._request (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/gaxios@6.7.1/node_modules/gaxios/src/gaxios.ts:157:13)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at UrlSubjectTokenSupplier.getSubjectToken (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/urlsubjecttokensupplier.js:54:30)
+13|fnbcost |     at IdentityPoolClient._BaseExternalAccountClient_internalRefreshAccessTokenAsync (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/baseexternalclient.js:408:26)
+13|fnbcost |     at IdentityPoolClient.refreshAccessTokenAsync (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/baseexternalclient.js:316:20)
+13|fnbcost |     at IdentityPoolClient.getAccessToken (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/baseexternalclient.js:190:13)
+13|fnbcost |     at IdentityPoolClient.getRequestHeaders (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/baseexternalclient.js:207:37)
+13|fnbcost |     at GoogleAuth.authorizeRequest (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/google-auth-library@9.15.1/node_modules/google-auth-library/build/src/auth/googleauth.js:742:25)
+13|fnbcost |     at async Promise.all (index 1)
+13|fnbcost |     at prepareRequest (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/@google-cloud+storage@7.21.0/node_modules/@google-cloud/storage/build/esm/src/nodejs-common/util.js:463:61) {
+13|fnbcost |   config: {
+13|fnbcost |     retry: true,
+13|fnbcost |     retryConfig: {
+13|fnbcost |       httpMethodsToRetry: [Array],
+13|fnbcost |       currentRetryAttempt: 2,
+13|fnbcost |       retry: 3,
+13|fnbcost |       noResponseRetries: 2,
+13|fnbcost |       retryDelayMultiplier: 2,
+13|fnbcost |       timeOfFirstRequest: 1788093572156,
+13|fnbcost |       totalTimeout: 9007199254740991,
+13|fnbcost |       maxRetryDelay: 9007199254740991,
+13|fnbcost |       statusCodesToRetry: [Array]
+13|fnbcost |     },
+13|fnbcost |     url: 'http://127.0.0.1:1106/credential',
+13|fnbcost |     method: 'GET',
+13|fnbcost |     headers: {
+13|fnbcost |       'User-Agent': 'google-api-nodejs-client/9.15.1',
+13|fnbcost |       'x-goog-api-client': 'gl-node/20.20.2',
+13|fnbcost |       Accept: 'application/json'
+13|fnbcost |     },
+13|fnbcost |     responseType: 'json',
+13|fnbcost |     paramsSerializer: [Function: paramsSerializer],
+13|fnbcost |     validateStatus: [Function: validateStatus],
+13|fnbcost |     errorRedactor: [Function: defaultErrorRedactor]
+13|fnbcost |   },
+13|fnbcost |   response: undefined,
+13|fnbcost |   error: FetchError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+13|fnbcost |       at ClientRequest.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch/lib/index.js:1501:11)
+13|fnbcost |       at ClientRequest.emit (node:events:524:28)
+13|fnbcost |       at emitErrorEvent (node:_http_client:101:11)
+13|fnbcost |       at Socket.socketErrorListener (node:_http_client:504:5)
+13|fnbcost |       at Socket.emit (node:events:524:28)
+13|fnbcost |       at emitErrorNT (node:internal/streams/destroy:169:8)
+13|fnbcost |       at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:82:21) {
+13|fnbcost |     type: 'system',
+13|fnbcost |     errno: 'ECONNREFUSED',
+13|fnbcost |     code: 'ECONNREFUSED'
+13|fnbcost |   },
+13|fnbcost |   code: 'ECONNREFUSED',
+13|fnbcost |   [Symbol(gaxios-gaxios-error)]: '6.7.1'
+13|fnbcost | }
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 80 lines:
+13|fnbcost | [Migration] orderly source-pack evidence and comparable item relationships ready
+13|fnbcost | [Migration] vendor_invoice_import staging tables ready
+13|fnbcost | [Migration] Already applied (menu_item_recipes)
+13|fnbcost | [Migration] Already applied (voice_interpret_logs)
+13|fnbcost | [Migration] Already applied (operating_units_rename)
+13|fnbcost | [Migration] Already applied (normalize_email_case)
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcost | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcost | [Migration] vendor_deposit_rates ready
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | [Migration] qb_reconciliations table ready
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | [ObjectStorageCleanup] Scheduled — threshold: 24h, interval: 6h, first run in ~60s
+13|fnbcost | {"level":30,"time":1788093512130,"pid":3425440,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] historical invoice retention tables ready
+13|fnbcost | [Migration] vendor_deposit_ledger_events ready
+13|fnbcost | {"level":30,"time":1788093523644,"pid":3425440,"hostname":"vps-BLOUD-Soft","msg":"GET /api/healthz 200 in 15ms :: {\"status\":\"ok\"}"}
+13|fnbcost | {"level":30,"time":1788093523659,"pid":3425440,"hostname":"vps-BLOUD-Soft","msg":"GET /api/build-info 200 in 3ms :: {\"service\":\"fnb-cost-pro-api\",\"buildId\":\"api@…"}
+13|fnbcost | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcost | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcost | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcost | {"level":30,"time":1788093777212,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] inventory item numbers ready"}
+13|fnbcost | {"level":30,"time":1788093777222,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] inventory item remediation schema ready (supersession + audit)"}
+13|fnbcost | {"level":30,"time":1788093777227,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] historical unresolved-row schema ready"}
+13|fnbcost | {"level":30,"time":1788093777236,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] vendor item uniqueness index ready"}
+13|fnbcost | {"level":30,"time":1788093777243,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly pack identity evidence schema ready"}
+13|fnbcost | {"level":30,"time":1788093777247,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly review decisions schema ready"}
+13|fnbcost | {"level":30,"time":1788093777253,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly approval jobs schema ready"}
+13|fnbcost | {"level":30,"time":1788093777261,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"[Migration] accounting classification and import schema ready"}
+13|fnbcost | 🌱 Seeding database with pizza restaurant data...
+13|fnbcost | 📏 Seeding comprehensive kitchen units...
+13|fnbcost | ✅ All 41 comprehensive kitchen units already seeded
+13|fnbcost | ✅ Database already seeded
+13|fnbcost | ✅ All unit conversions already present
+13|fnbcost | 🏢 Creating Brian's Pizza company and stores...
+13|fnbcost | 🔗 Migrating vendors to store assignments...
+13|fnbcost |    All vendors already assigned to stores
+13|fnbcost | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcost | [Migration] orderly source-pack evidence and comparable item relationships ready
+13|fnbcost | [Migration] vendor_invoice_import staging tables ready
+13|fnbcost | [Migration] Already applied (menu_item_recipes)
+13|fnbcost | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcost | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcost | [Migration] Already applied (operating_units_rename)
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (voice_interpret_logs)
+13|fnbcost | [Migration] Already applied (recipe_source_image_path)
+13|fnbcost | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcost | [Migration] Already applied (normalize_email_case)
+13|fnbcost | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcost | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Migration] qb_reconciliations table ready
+13|fnbcost | [Migration] vendor_deposit_rates ready
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] historical invoice retention tables ready
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | [ObjectStorageCleanup] Scheduled — threshold: 24h, interval: 6h, first run in ~60s
+13|fnbcost | {"level":30,"time":1788093777829,"pid":3426310,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] vendor_deposit_ledger_events ready
+13|fnbcost | {"level":30,"time":1788093788228,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"GET /api/healthz 200 in 11ms :: {\"status\":\"ok\"}"}
+13|fnbcost | {"level":30,"time":1788093788242,"pid":3426310,"hostname":"vps-BLOUD-Soft","msg":"GET /api/build-info 200 in 2ms :: {\"service\":\"fnb-cost-pro-api\",\"buildId\":\"api@…"}
