@@ -1,0 +1,37 @@
+PLAN_STATUS=0
+COUNT_RESULT:
+1be3bb58-c7c7-4091-b749-6bc64724fe4b    2026-06-30      4092    2330
+PLAN_SUMMARY:
+       "Node Type": "Sort",                                                                                                                                                                                                +
+       "Actual Total Time": 34.856,                                                                                                                                                                                        +
+           "Node Type": "Hash Join",                                                                                                                                                                                       +
+           "Actual Total Time": 32.055,                                                                                                                                                                                    +
+               "Node Type": "Hash Join",                                                                                                                                                                                   +
+               "Actual Total Time": 29.672,                                                                                                                                                                                +
+                   "Node Type": "Seq Scan",                                                                                                                                                                                +
+                   "Relation Name": "inventory_import_rows",                                                                                                                                                               +
+                   "Actual Total Time": 22.989,                                                                                                                                                                            +
+                   "Node Type": "Hash",                                                                                                                                                                                    +
+                   "Actual Total Time": 2.435,                                                                                                                                                                             +
+                       "Node Type": "Unique",                                                                                                                                                                              +
+                       "Actual Total Time": 1.934,                                                                                                                                                                         +
+                           "Node Type": "Index Only Scan",                                                                                                                                                                 +
+                           "Index Name": "inv_import_rows_batch_code_idx",                                                                                                                                                 +
+                           "Relation Name": "inventory_import_rows",                                                                                                                                                       +
+                           "Actual Total Time": 1.172,                                                                                                                                                                     +
+               "Node Type": "Hash",                                                                                                                                                                                        +
+               "Actual Total Time": 0.104,                                                                                                                                                                                 +
+                   "Node Type": "Subquery Scan",                                                                                                                                                                           +
+                   "Actual Total Time": 0.091,                                                                                                                                                                             +
+                       "Node Type": "Limit",                                                                                                                                                                               +
+                       "Actual Total Time": 0.088,                                                                                                                                                                         +
+                           "Node Type": "Sort",                                                                                                                                                                            +
+                           "Actual Total Time": 0.085,                                                                                                                                                                     +
+                               "Node Type": "Nested Loop",                                                                                                                                                                 +
+                               "Actual Total Time": 0.039,                                                                                                                                                                 +
+                                   "Node Type": "Seq Scan",                                                                                                                                                                +
+                                   "Relation Name": "inventory_import_batches",                                                                                                                                            +
+                                   "Actual Total Time": 0.025,                                                                                                                                                             +
+                                   "Node Type": "Seq Scan",                                                                                                                                                                +
+                                   "Relation Name": "inventory_import_batches",                                                                                                                                            +
+                                   "Actual Total Time": 0.003,                                                                                                                                                             +
