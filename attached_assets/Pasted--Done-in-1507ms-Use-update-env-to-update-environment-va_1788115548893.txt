@@ -1,0 +1,27 @@
+
+⚡ Done in 1507ms
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3340410  │ 17h    │ 21   │ online    │ 6.7%     │ 94.0mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3466883  │ 0s     │ 1601 │ online    │ 0%       │ 24.7mb   │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3340452  │ 17h    │ 10   │ online    │ 0%       │ 110.9mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3340426  │ 17h    │ 19   │ online    │ 0%       │ 96.9mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3340409  │ 17h    │ 28   │ online    │ 0%       │ 148.9mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3340425  │ 17h    │ 21   │ online    │ 6.7%     │ 74.9mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3340410  │ 17h    │ 21   │ online    │ 0%       │ 94.3mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3466883  │ 3s     │ 1601 │ online    │ 0%       │ 257.2mb  │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3340452  │ 17h    │ 10   │ online    │ 0%       │ 109.9mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3340426  │ 17h    │ 19   │ online    │ 0%       │ 97.5mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3340409  │ 17h    │ 28   │ online    │ 0%       │ 148.7mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3340425  │ 17h    │ 21   │ online    │ 0%       │ 75.2mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+curl: (22) The requested URL returned error: 502
+curl: (22) The requested URL returned error: 502
