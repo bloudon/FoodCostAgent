@@ -4,7 +4,7 @@ import pg from 'pg';
 type IndexSpec = {
   name: string;
   createSql: string;
-  requiredDefinitionFragments: string[];
+  expectedKeyColumns: string[];
 };
 
 const INDEXES: IndexSpec[] = [
@@ -22,8 +22,7 @@ const INDEXES: IndexSpec[] = [
           id DESC
         )
     `,
-    requiredDefinitionFragments: [
-      'inventory_import_batches',
+    expectedKeyColumns: [
       'company_id',
       'source_system',
       'source_property_id',
@@ -39,8 +38,7 @@ const INDEXES: IndexSpec[] = [
       CREATE INDEX CONCURRENTLY IF NOT EXISTS inv_import_rows_batch_code_idx
         ON inventory_import_rows (batch_id, source_item_code)
     `,
-    requiredDefinitionFragments: [
-      'inventory_import_rows',
+    expectedKeyColumns: [
       'batch_id',
       'source_item_code',
     ],
@@ -50,12 +48,25 @@ const INDEXES: IndexSpec[] = [
 async function readIndex(
   client: pg.Client,
   name: string,
-): Promise<{ valid: boolean; definition: string } | null> {
+): Promise<{ valid: boolean; definition: string; keyColumns: string[] } | null> {
   const result = await client.query<{
     valid: boolean;
     definition: string;
+    keyColumns: string[];
   }>(`
-    SELECT i.indisvalid AS valid, pg_get_indexdef(c.oid) AS definition
+    SELECT
+      i.indisvalid AS valid,
+      pg_get_indexdef(c.oid) AS definition,
+      ARRAY(
+        SELECT
+          pg_get_indexdef(c.oid, key_position, true) ||
+          CASE
+            WHEN (i.indoption[key_position - 1] & 1) = 1 THEN ' DESC'
+            ELSE ''
+          END
+        FROM generate_series(1, i.indnkeyatts) AS key_position
+        ORDER BY key_position
+      ) AS "keyColumns"
     FROM pg_class c
     INNER JOIN pg_index i ON i.indexrelid = c.oid
     INNER JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -67,8 +78,8 @@ async function readIndex(
 
 function assertExpectedIndex(
   spec: IndexSpec,
-  state: { valid: boolean; definition: string } | null,
-): asserts state is { valid: true; definition: string } {
+  state: { valid: boolean; definition: string; keyColumns: string[] } | null,
+): asserts state is { valid: true; definition: string; keyColumns: string[] } {
   if (!state) {
     throw new Error(`Index ${spec.name} was not found after creation.`);
   }
@@ -77,11 +88,15 @@ function assertExpectedIndex(
       `Index ${spec.name} exists but is invalid. Drop it with DROP INDEX CONCURRENTLY before retrying.`,
     );
   }
-  const normalized = state.definition.toLowerCase().replace(/\s+/g, ' ');
-  const missing = spec.requiredDefinitionFragments.filter(fragment => !normalized.includes(fragment));
-  if (missing.length > 0) {
+  const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+  const actualKeys = state.keyColumns.map(normalize);
+  const expectedKeys = spec.expectedKeyColumns.map(normalize);
+  if (actualKeys.length !== expectedKeys.length ||
+      actualKeys.some((key, index) => key !== expectedKeys[index])) {
     throw new Error(
-      `Index ${spec.name} exists with an unexpected definition; missing: ${missing.join(', ')}.`,
+      `Index ${spec.name} has unexpected ordered keys. ` +
+      `Expected [${expectedKeys.join(', ')}], received [${actualKeys.join(', ')}]. ` +
+      'Drop it with DROP INDEX CONCURRENTLY and rerun this command.',
     );
   }
 }

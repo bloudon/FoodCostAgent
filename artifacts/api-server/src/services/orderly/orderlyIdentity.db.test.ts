@@ -115,7 +115,7 @@ async function stageBatch(
     sourcePropertyBindingId: property === 'A' ? ID.binding : ID.bindingB,
     sourcePropertyId: property === 'A' ? ID.property : ID.propertyB,
   });
-  await db.insert(inventoryImportRows).values(rows.map((row, index) => ({
+  const stagedRows = rows.map((row, index) => ({
     batchId: id,
     rowIndex: index + 1,
     sheetName: 'Inventory Detail',
@@ -138,7 +138,12 @@ async function stageBatch(
     supplierStatus: row.supplier ? 'valid' : 'blank',
     storageLocation: row.location,
     rowStatus: 'new_item_candidate',
-  })));
+  }));
+  // Keep production-sized fixtures below PostgreSQL/driver bind-parameter
+  // limits without changing their persisted row order or content.
+  for (let offset = 0; offset < stagedRows.length; offset += 500) {
+    await db.insert(inventoryImportRows).values(stagedRows.slice(offset, offset + 500));
+  }
   return id;
 }
 
@@ -2500,6 +2505,158 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(preview.rows[0].itemMatch.packCompatibilityReason)
       .not.toBe('the incoming pack matches the immediately prior approved month');
   });
+
+  it('previews a production-sized repeated-code batch against bounded property-scoped history', async () => {
+    const codes = Array.from({ length: 24 }, (_, index) => `LARGE-${RUN}-${index}`);
+    const sourceRows = codes.map(code => ({
+      code,
+      description: `Large Fixture Item ${code}`,
+      location: 'Large Fixture Storage',
+      supplier: 'Vendor Gamma',
+      packSizeRaw: '6/1 750ML',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 600,
+    }));
+    const fixtureUnitId = await eachUnitId();
+    const seededItems = await db
+      .insert(inventoryItems)
+      .values(sourceRows.flatMap(row => [
+        {
+          companyId: ID.company,
+          name: `Older Sentinel ${row.code}`,
+          unitId: fixtureUnitId,
+          caseSize: row.caseQuantity,
+          pricePerUnit: row.packagePrice,
+          avgCostPerUnit: row.packagePrice,
+          active: 1,
+          yieldPercent: 100,
+        },
+        {
+          companyId: ID.company,
+          name: `June Sentinel ${row.code}`,
+          unitId: fixtureUnitId,
+          caseSize: row.caseQuantity,
+          pricePerUnit: row.packagePrice,
+          avgCostPerUnit: row.packagePrice,
+          active: 1,
+          yieldPercent: 100,
+        },
+        {
+          companyId: ID.company,
+          name: `Wrong Property Sentinel ${row.code}`,
+          unitId: fixtureUnitId,
+          caseSize: row.caseQuantity,
+          pricePerUnit: row.packagePrice,
+          avgCostPerUnit: row.packagePrice,
+          active: 1,
+          yieldPercent: 100,
+        },
+      ]))
+      .returning({ id: inventoryItems.id, name: inventoryItems.name });
+    const seededItemIdByName = new Map(seededItems.map(item => [item.name, item.id]));
+    const sentinelsByCode = new Map(sourceRows.map(row => [
+      row.code,
+      {
+        older: seededItemIdByName.get(`Older Sentinel ${row.code}`)!,
+        june: seededItemIdByName.get(`June Sentinel ${row.code}`)!,
+        wrongProperty: seededItemIdByName.get(`Wrong Property Sentinel ${row.code}`)!,
+      },
+    ]));
+    await db.insert(inventoryItemExternalMappings).values(sourceRows.map(row => ({
+      companyId: ID.company,
+      inventoryItemId: sentinelsByCode.get(row.code)!.older,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.property,
+      sourceExternalId: row.code,
+      sourceDescription: row.description,
+      caseQuantity: row.caseQuantity,
+      innerPackQuantity: row.innerPackQuantity,
+      baseUnitQuantity: row.baseUnitQuantity,
+      baseUnit: row.baseUnit,
+      matchStrategy: 'manual',
+    })));
+    const resolutionManifest = (kind: 'older' | 'june' | 'wrongProperty') =>
+      JSON.stringify(sourceRows.map(row => ({
+        code: row.code,
+        item_id: sentinelsByCode.get(row.code)![kind],
+      })));
+    const approveHistoricalFixture = async (
+      batchId: string,
+      manifest: string,
+    ) => {
+      await db
+        .update(inventoryImportBatches)
+        .set({ status: 'approved', approvedAt: new Date(), approvedBy: ID.admin })
+        .where(eq(inventoryImportBatches.id, batchId));
+      await db.execute(sql`
+        UPDATE inventory_import_rows AS target
+        SET resolved_inventory_item_id = resolved.item_id
+        FROM jsonb_to_recordset(${manifest}::jsonb)
+          AS resolved(code text, item_id text)
+        WHERE target.batch_id = ${batchId}
+          AND target.source_item_code = resolved.code
+      `);
+    };
+
+    // Several approved months make a history-first implementation do
+    // materially more work than the latest-batch-first contract.
+    for (const date of [
+      '2030-01-31',
+      '2030-02-28',
+      '2030-03-31',
+      '2030-04-30',
+      '2030-05-31',
+    ]) {
+      const historicalBatch = await stageBatch(sourceRows, date);
+      await approveHistoricalFixture(historicalBatch, resolutionManifest('older'));
+    }
+    const juneBatch = await stageBatch(sourceRows, '2030-06-30');
+    await approveHistoricalFixture(juneBatch, resolutionManifest('june'));
+
+    // A newer batch for another authorized property must not become the
+    // predecessor for the current property.
+    const wrongPropertyBatch = await stageBatch(sourceRows, '2030-07-15', 'B');
+    await approveHistoricalFixture(
+      wrongPropertyBatch,
+      resolutionManifest('wrongProperty'),
+    );
+
+    const currentRows = Array.from({ length: 5518 }, (_, index) => {
+      const source = sourceRows[index % sourceRows.length];
+      return {
+        ...source,
+        description: `Current Large Fixture ${source.code}`,
+        location: index % 2 === 0 ? 'Large Fixture Storage' : 'Large Fixture Overflow',
+      };
+    });
+    const currentBatch = await stageBatch(currentRows, '2030-07-31');
+
+    const startedAt = Date.now();
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(preview.rows).toHaveLength(5518);
+    expect(elapsedMs).toBeLessThan(30_000);
+    const matchedByCode = new Map<string, string | null>();
+    for (const row of preview.rows) {
+      const code = row.sourceItemCode!;
+      expect(row.itemMatch).toMatchObject({
+        strategy: 'alternate_identity',
+        matchedId: sentinelsByCode.get(code)!.june,
+        requiresReview: false,
+      });
+      const previous = matchedByCode.get(code);
+      if (previous === undefined) {
+        matchedByCode.set(code, row.itemMatch.matchedId);
+      } else {
+        expect(row.itemMatch.matchedId).toBe(previous);
+      }
+    }
+    expect(matchedByCode.size).toBe(codes.length);
+  }, 30_000);
 
   it('writes a same-name same-vendor create_variant pack against the new item, not the comparison item', async () => {
     const baseBatch = await stageBatch([{
