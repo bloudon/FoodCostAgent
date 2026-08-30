@@ -28,8 +28,8 @@ interface DeletionStats {
   rowsDeleted: number;
 }
 
-async function getStoreIds(companyId: string): Promise<string[]> {
-  const stores = await db
+async function getStoreIds(executor: any, companyId: string): Promise<string[]> {
+  const stores = await executor
     .select({ id: schema.companyStores.id })
     .from(schema.companyStores)
     // @ts-ignore
@@ -38,8 +38,8 @@ async function getStoreIds(companyId: string): Promise<string[]> {
   return stores.map(s => s.id);
 }
 
-async function getInventoryItemIds(companyId: string): Promise<string[]> {
-  const items = await db
+async function getInventoryItemIds(executor: any, companyId: string): Promise<string[]> {
+  const items = await executor
     .select({ id: schema.inventoryItems.id })
     .from(schema.inventoryItems)
     // @ts-ignore
@@ -48,8 +48,8 @@ async function getInventoryItemIds(companyId: string): Promise<string[]> {
   return items.map(i => i.id);
 }
 
-async function getVendorIds(companyId: string): Promise<string[]> {
-  const vendors = await db
+async function getVendorIds(executor: any, companyId: string): Promise<string[]> {
+  const vendors = await executor
     .select({ id: schema.vendors.id })
     .from(schema.vendors)
     // @ts-ignore
@@ -58,8 +58,8 @@ async function getVendorIds(companyId: string): Promise<string[]> {
   return vendors.map(v => v.id);
 }
 
-async function getRecipeIds(companyId: string): Promise<string[]> {
-  const recipes = await db
+async function getRecipeIds(executor: any, companyId: string): Promise<string[]> {
+  const recipes = await executor
     .select({ id: schema.recipes.id })
     .from(schema.recipes)
     // @ts-ignore
@@ -68,8 +68,8 @@ async function getRecipeIds(companyId: string): Promise<string[]> {
   return recipes.map(r => r.id);
 }
 
-async function getMenuItemIds(companyId: string): Promise<string[]> {
-  const menuItems = await db
+async function getMenuItemIds(executor: any, companyId: string): Promise<string[]> {
+  const menuItems = await executor
     .select({ id: schema.menuItems.id })
     .from(schema.menuItems)
     // @ts-ignore
@@ -78,8 +78,8 @@ async function getMenuItemIds(companyId: string): Promise<string[]> {
   return menuItems.map(m => m.id);
 }
 
-async function getApiCredentialIds(companyId: string): Promise<string[]> {
-  const credentials = await db
+async function getApiCredentialIds(executor: any, companyId: string): Promise<string[]> {
+  const credentials = await executor
     .select({ id: schema.apiCredentials.id })
     .from(schema.apiCredentials)
     // @ts-ignore
@@ -88,8 +88,8 @@ async function getApiCredentialIds(companyId: string): Promise<string[]> {
   return credentials.map(c => c.id);
 }
 
-async function getInventoryCountIds(companyId: string): Promise<string[]> {
-  const counts = await db
+async function getInventoryCountIds(executor: any, companyId: string): Promise<string[]> {
+  const counts = await executor
     .select({ id: schema.inventoryCounts.id })
     .from(schema.inventoryCounts)
     // @ts-ignore
@@ -98,8 +98,18 @@ async function getInventoryCountIds(companyId: string): Promise<string[]> {
   return counts.map(c => c.id);
 }
 
-async function getPrepItemIds(companyId: string): Promise<string[]> {
-  const items = await db
+async function getInventoryImportBatchIds(executor: any, companyId: string): Promise<string[]> {
+  const batches = await executor
+    .select({ id: schema.inventoryImportBatches.id })
+    .from(schema.inventoryImportBatches)
+    // @ts-ignore
+    .where(eq(schema.inventoryImportBatches.companyId, companyId));
+  // @ts-ignore
+  return batches.map(batch => batch.id);
+}
+
+async function getPrepItemIds(executor: any, companyId: string): Promise<string[]> {
+  const items = await executor
     .select({ id: schema.prepItems.id })
     .from(schema.prepItems)
     // @ts-ignore
@@ -108,8 +118,8 @@ async function getPrepItemIds(companyId: string): Promise<string[]> {
   return items.map(i => i.id);
 }
 
-async function getPrepChartRunIds(companyId: string): Promise<string[]> {
-  const runs = await db
+async function getPrepChartRunIds(executor: any, companyId: string): Promise<string[]> {
+  const runs = await executor
     .select({ id: schema.prepChartRuns.id })
     .from(schema.prepChartRuns)
     // @ts-ignore
@@ -118,32 +128,39 @@ async function getPrepChartRunIds(companyId: string): Promise<string[]> {
   return runs.map(r => r.id);
 }
 
-async function countByCompany(tableName: string, companyId: string): Promise<number> {
-  const result = await db.execute(
+async function globalCountByCompany(executor: any, tableName: string, companyId: string): Promise<number> {
+  const result = await executor.execute(
     sql`SELECT COUNT(*)::int AS count FROM ${sql.identifier(tableName)} WHERE company_id = ${companyId}`
   );
   const rows = (result as any).rows ?? result;
   return Number((rows as any)[0]?.count ?? 0);
 }
 
-async function purgeCompanyData(
+async function executePurgeCompanyData(
   companyId: string,
-  dryRun: boolean = false
+  dryRun: boolean,
+  executor: any,
 ): Promise<DeletionStats[]> {
+  // All reads and writes in a destructive purge use this transaction handle.
+  // It is intentionally a local immutable binding, never a mutable global.
+  const db = executor;
+  const countByCompany = (tableName: string, id: string) =>
+    globalCountByCompany(db, tableName, id);
   const stats: DeletionStats[] = [];
 
   console.log(`\n${dryRun ? '🔍 DRY RUN:' : '🗑️  PURGING:'} Company ${companyId}\n`);
 
   // Fetch related IDs up-front for join-table deletions
-  const storeIds = await getStoreIds(companyId);
-  const inventoryItemIds = await getInventoryItemIds(companyId);
-  const vendorIds = await getVendorIds(companyId);
-  const recipeIds = await getRecipeIds(companyId);
-  const menuItemIds = await getMenuItemIds(companyId);
-  const apiCredentialIds = await getApiCredentialIds(companyId);
-  const countIds = await getInventoryCountIds(companyId);
-  const prepItemIds = await getPrepItemIds(companyId);
-  const prepChartRunIds = await getPrepChartRunIds(companyId);
+  const storeIds = await getStoreIds(db, companyId);
+  const inventoryItemIds = await getInventoryItemIds(db, companyId);
+  const vendorIds = await getVendorIds(db, companyId);
+  const recipeIds = await getRecipeIds(db, companyId);
+  const menuItemIds = await getMenuItemIds(db, companyId);
+  const apiCredentialIds = await getApiCredentialIds(db, companyId);
+  const countIds = await getInventoryCountIds(db, companyId);
+  const importBatchIds = await getInventoryImportBatchIds(db, companyId);
+  const prepItemIds = await getPrepItemIds(db, companyId);
+  const prepChartRunIds = await getPrepChartRunIds(db, companyId);
 
   console.log(`Found related entities:`);
   console.log(`  - Stores: ${storeIds.length}`);
@@ -158,6 +175,39 @@ async function purgeCompanyData(
     `(${ids.map(id => `'${id.replace(/'/g, "''")}'`).join(',')})`;
 
   const deletions: DeletionEntry[] = [
+    // ── Shelf Scan Sessions (references inventory_counts) ────────────────
+    {
+      name: "shelf_scan_sessions",
+      count: async () => countByCompany("shelf_scan_sessions", companyId),
+      delete: async () => {
+        const result = await db.delete(schema.shelfScanSessions)
+          // @ts-ignore
+          .where(eq(schema.shelfScanSessions.companyId, companyId))
+          .returning({ id: schema.shelfScanSessions.id });
+        return result.length;
+      },
+    },
+
+    // ── Historical unresolved imports (references inventory_counts) ──────
+    {
+      name: "historical_session_unresolved_rows",
+      count: async () => {
+        if (countIds.length === 0) return 0;
+        const r = await db.execute(sql`
+          SELECT COUNT(*)::int AS c FROM historical_session_unresolved_rows
+          WHERE session_id IN ${sql.raw(inList(countIds))}
+        `);
+        return Number(((r as any).rows ?? r)[0]?.c ?? 0);
+      },
+      delete: async () => {
+        if (countIds.length === 0) return 0;
+        const result = await db.delete(schema.historicalSessionUnresolvedRows)
+          // @ts-ignore
+          .where(inArray(schema.historicalSessionUnresolvedRows.sessionId, countIds))
+          .returning({ id: schema.historicalSessionUnresolvedRows.id });
+        return result.length;
+      },
+    },
 
     // ── Inventory Count Entries (child of count_lines) ──────────────────
     {
@@ -220,6 +270,99 @@ async function purgeCompanyData(
           // @ts-ignore
           .where(eq(schema.inventoryCounts.companyId, companyId))
           .returning({ id: schema.inventoryCounts.id });
+        return result.length;
+      },
+    },
+
+    // Count sessions can retain source_batch_id, so batches are deleted only
+    // after their linked inventory counts have been removed.
+    // ── Orderly Import Review Decisions (child of import batches) ─────────
+    {
+      name: "orderly_import_review_decisions",
+      count: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const r = await db.execute(sql`
+          SELECT COUNT(*)::int AS c FROM orderly_import_review_decisions
+          WHERE batch_id IN ${sql.raw(inList(importBatchIds))}
+        `);
+        return Number(((r as any).rows ?? r)[0]?.c ?? 0);
+      },
+      delete: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const result = await db.delete(schema.orderlyImportReviewDecisions)
+          // @ts-ignore
+          .where(inArray(schema.orderlyImportReviewDecisions.batchId, importBatchIds))
+          .returning({ id: schema.orderlyImportReviewDecisions.id });
+        return result.length;
+      },
+    },
+
+    // ── Orderly Import Approval Jobs (child of import batches) ────────────
+    {
+      name: "orderly_import_approval_jobs",
+      count: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const r = await db.execute(sql`
+          SELECT COUNT(*)::int AS c FROM orderly_import_approval_jobs
+          WHERE batch_id IN ${sql.raw(inList(importBatchIds))}
+        `);
+        return Number(((r as any).rows ?? r)[0]?.c ?? 0);
+      },
+      delete: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const result = await db.delete(schema.orderlyImportApprovalJobs)
+          // @ts-ignore
+          .where(inArray(schema.orderlyImportApprovalJobs.batchId, importBatchIds))
+          .returning({ id: schema.orderlyImportApprovalJobs.id });
+        return result.length;
+      },
+    },
+
+    // ── Inventory Import Rows (child of import batches) ───────────────────
+    {
+      name: "inventory_import_rows",
+      count: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const r = await db.execute(sql`
+          SELECT COUNT(*)::int AS c FROM inventory_import_rows
+          WHERE batch_id IN ${sql.raw(inList(importBatchIds))}
+        `);
+        return Number(((r as any).rows ?? r)[0]?.c ?? 0);
+      },
+      delete: async () => {
+        if (importBatchIds.length === 0) return 0;
+        const result = await db.delete(schema.inventoryImportRows)
+          // @ts-ignore
+          .where(inArray(schema.inventoryImportRows.batchId, importBatchIds))
+          .returning({ id: schema.inventoryImportRows.id });
+        return result.length;
+      },
+    },
+
+    // ── Inventory Import Batches ──────────────────────────────────────────
+    {
+      name: "inventory_import_batches",
+      count: async () => countByCompany("inventory_import_batches", companyId),
+      delete: async () => {
+        const result = await db.delete(schema.inventoryImportBatches)
+          // @ts-ignore
+          .where(eq(schema.inventoryImportBatches.companyId, companyId))
+          .returning({ id: schema.inventoryImportBatches.id });
+        return result.length;
+      },
+    },
+
+    // ── Import Source Property Bindings ───────────────────────────────────
+    // Bindings claim a source property globally and reference a company store,
+    // so remove them after batches and before the destination stores.
+    {
+      name: "import_source_property_bindings",
+      count: async () => countByCompany("import_source_property_bindings", companyId),
+      delete: async () => {
+        const result = await db.delete(schema.importSourcePropertyBindings)
+          // @ts-ignore
+          .where(eq(schema.importSourcePropertyBindings.companyId, companyId))
+          .returning({ id: schema.importSourcePropertyBindings.id });
         return result.length;
       },
     },
@@ -885,19 +1028,6 @@ async function purgeCompanyData(
       },
     },
 
-    // ── Shelf Scan Sessions ──────────────────────────────────────────────
-    {
-      name: "shelf_scan_sessions",
-      count: async () => countByCompany("shelf_scan_sessions", companyId),
-      delete: async () => {
-        const result = await db.delete(schema.shelfScanSessions)
-          // @ts-ignore
-          .where(eq(schema.shelfScanSessions.companyId, companyId))
-          .returning({ id: schema.shelfScanSessions.id });
-        return result.length;
-      },
-    },
-
     // ── Recipe Import Sessions ───────────────────────────────────────────
     {
       name: "recipe_import_sessions",
@@ -1048,6 +1178,24 @@ async function purgeCompanyData(
   }
 
   return stats;
+}
+
+/**
+ * Purge a company's data. The public signature is kept for script callers.
+ * Dry runs use the normal connection and do not open a transaction; destructive
+ * purges perform discovery and every deletion in one transaction.
+ */
+async function purgeCompanyData(
+  companyId: string,
+  dryRun: boolean = false,
+): Promise<DeletionStats[]> {
+  if (dryRun) {
+    return executePurgeCompanyData(companyId, true, db);
+  }
+
+  return db.transaction((tx: any) =>
+    executePurgeCompanyData(companyId, false, tx)
+  );
 }
 
 async function verifyCompanyExists(companyId: string): Promise<boolean> {
