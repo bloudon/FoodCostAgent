@@ -1,0 +1,66 @@
+What I'd say to Replit
+
+Three things, in this order:
+
+Confirm whether the 145 rows were deleted or merely flagged. The API returns 83 total — if the table still holds 228 with 145 marked stale, this is a response-filtering issue and the work is recoverable. If they were deleted, that's data loss on a production batch and needs explaining.
+The correlation is with decision type, not evidence. 124 of 124 link decisions are gone. That's not a pack-evidence pattern; that's the link revalidation path failing wholesale.
+The preview still exceeds 200 seconds. #1284 was meant to fix that and hasn't. Revalidation likely depends on the same query — so the performance problem and the "stale" decisions may be one fault, not two.
+
+Do not re-review the 145 by hand yet. If this is a revalidation bug, redoing three hours of work would be wasted, and the same fault would invalidate it again.
+
+July stays pending. May and June remain approved and reconciling at $254,286.67 and $261,007.67.
+
+228 total
+145 stale
+83 still valid
+
+That reconciles the two readings, and it's better news than what I described.
+
+The 145 are stored but excluded from the API response. The table holds 228; GET review-decisions returns only the 83 that currently revalidate. So nothing was deleted — I read the 83 as the total and was wrong about data loss. Good.
+
+But the diagnostic point stands, and it's the thing worth acting on:
+
+Action	Saved	Still valid
+link_existing	61	0
+link_vendor_pack	63	0
+create_variant	98	77
+held-link	6	6
+
+Every link decision failed. All 124 of them. Zero survivors in either link category, while 77 of 98 variants passed.
+
+That's not a pack-evidence distribution — pack evidence varies row by row, so you'd expect a scatter. A clean sweep of both link types with variants largely intact says the link revalidation path is failing wholesale, not that 145 individual rows have bad evidence.
+
+And the likely mechanism is already visible: the preview has now exceeded 200 seconds and still hasn't returned. If revalidation depends on the same historical/pack-evidence lookup that #1284 was meant to speed up, and that lookup is timing out or returning empty, every link check fails for want of candidate evidence. One fault, two symptoms.
+
+What I'd put to Replit:
+
+Do the 124 link failures share a single reason code, or 124 distinct ones? A single reason confirms a systemic path failure.
+Does revalidation call the same historical lookup that's still timing out in preview? If so, fix the performance issue first and re-check — the staleness may clear on its own.
+Why do 21 variants also fail, when variants assert no compatibility claim? That subset may be a genuinely different issue worth separating.
+
+Don't re-review by hand yet. Three hours of work redone against a broken revalidation path would be invalidated the same way. The performance fix comes first, then re-measure the stale count.
+
+July stays pending, nothing lost. May and June remain approved and reconciling exactly.
+
+would we be better to discard and re submit July?
+
+Not yet — and the reason is that it wouldn't tell you anything.
+
+Discarding doesn't touch the fault. The 124 link failures come from revalidation, which runs against May and June's approved catalog and the same historical lookup that's still timing out. A fresh July batch would be reviewed, then revalidated by the same code, and the links would fail identically. You'd spend three hours to reach the same place.
+
+And it would destroy the best diagnostic you have. Right now there's a batch where 124 of 124 link decisions fail while 77 of 98 variants pass. That correlation is what identifies the fault as systemic rather than row-specific. Discard it and Replit is debugging from description instead of a live case.
+
+The preview is still the unresolved problem. It's been running past 200 seconds. #1284 was meant to fix that and hasn't been confirmed working. Until it is, any rework happens on unstable ground.
+
+When discarding would be right
+
+If Replit determines the staleness is genuine — that these 124 links really do reference pack evidence the system can no longer verify — then a re-review is needed regardless, and a clean batch is the tidier way to do it.
+
+But that determination should come first. The single question that decides it: do the 124 failures share one reason code, or 124 different ones? One reason means a broken path and discarding is premature. Many distinct reasons means the evidence genuinely differs per row.
+
+What I'd do
+Get the preview performance actually fixed and timed — a real number through nginx
+Re-measure the stale count afterward; it may clear entirely
+Only if it doesn't, discard and re-run July with the corrected code
+
+The cost of waiting is a delay. The cost of discarding early is three hours of review plus losing the evidence — and possibly discovering the same failure at the end of it.
