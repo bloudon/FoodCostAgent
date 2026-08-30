@@ -1,0 +1,78 @@
+(async () => {
+  const batchId = "49d087c5-8e33-4bdc-ae06-821f71d2d231";
+  const base = `/api/inventory-import/orderly/batches/${batchId}`;
+
+  const started = performance.now();
+  const previewResponse = await fetch(`${base}/resolution-preview`);
+  const preview = await previewResponse.json();
+  const previewSeconds = ((performance.now() - started) / 1000).toFixed(3);
+
+  const decisionsResponse = await fetch(`${base}/review-decisions`);
+  const decisions = await decisionsResponse.json();
+
+  const row2499 = preview.rows?.find(
+    row => String(row.rowIndex) === "2499"
+  );
+
+  console.log({
+    previewHttp: previewResponse.status,
+    previewSeconds,
+    totalRows: preview.rows?.length,
+    row2499: row2499
+      ? {
+          sourceItemCode: row2499.sourceItemCode,
+          strategy: row2499.itemMatch?.strategy,
+          confidence: row2499.itemMatch?.confidence,
+          matchedId: row2499.itemMatch?.matchedId,
+          requiresReview: row2499.itemMatch?.requiresReview,
+          packCompatibility: row2499.itemMatch?.packCompatibility,
+          recommendedAction: row2499.itemMatch?.recommendedAction,
+          possibleRecode: row2499.itemMatch?.possibleRecode,
+        }
+      : null,
+    createVariantCount: preview.rows?.filter(
+      row => row.itemMatch?.recommendedAction === "create_variant"
+    ).length,
+    decisionsHttp: decisionsResponse.status,
+    validDecisions: decisions.decisions?.length,
+    staleDecisions: decisions.stale?.length,
+  });
+})();
+Promise {<pending>}
+VM1414:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1414:6
+(anonymous) @ VM1414:40
+VM1418:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1418:6
+(anonymous) @ VM1418:40
+VM1424:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1424:6
+(anonymous) @ VM1424:40
+VM1405:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1405:6
+(anonymous) @ VM1405:40
+VM1425:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1425:6
+(anonymous) @ VM1425:40
+VM1415:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1415:6
+(anonymous) @ VM1415:40
+VM1426:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1426:6
+(anonymous) @ VM1426:40
+VM1427:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1427:6
+(anonymous) @ VM1427:40
+VM1422:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1422:6
+(anonymous) @ VM1422:40
+VM1416:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview 500 (Internal Server Error)
+(anonymous) @ VM1416:6
+(anonymous) @ VM1416:40
+VM1431:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview net::ERR_HTTP2_PROTOCOL_ERROR 408 (Request Timeout)
+(anonymous) @ VM1431:6
+(anonymous) @ VM1431:40
+VM1431:6  GET https://app.fnbcostpro.com/api/inventory-import/orderly/batches/49d087c5-8e33-4bdc-ae06-821f71d2d231/resolution-preview net::ERR_HTTP2_PROTOCOL_ERROR 408 (Request Timeout)
+(anonymous) @ VM1431:6
+(anonymous) @ VM1431:40
+VM1431:40 Uncaught (in promise) TypeError: Failed to fetch
