@@ -23,3 +23,16 @@ allowed to stand on its own.
 **How to apply:** For acceptance, verify the latest eligible predecessor row,
 vendor, normalized pack, resolved item, no-review status, and measured public
 preview duration together. Treat `matchedId` alone as insufficient evidence.
+
+Alternate-code predecessor evidence is authoritative only when the supplier
+name resolves to one tenant vendor identity and every relevant predecessor row
+proves one mutually compatible pack geometry. A rejected name collision or
+pack contradiction must not fall through to vendorless item-mapping evidence.
+
+**Why:** Otherwise a surviving item mapping can mask ambiguous predecessor
+provenance and make link validity depend on row order or evidence from another
+vendor.
+
+**How to apply:** Distinguish “no relevant predecessor evidence” from
+“relevant evidence was rejected.” Legacy mapping fallback may serve the first
+case; the second remains unknown and requires review.

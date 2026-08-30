@@ -136,18 +136,11 @@ latest_predecessor AS (
     AND p.inventory_date < c.inventory_date
   ORDER BY p.inventory_date DESC, p.uploaded_at DESC, p.id DESC
   LIMIT 1
-),
-current_codes AS (
-  SELECT DISTINCT source_item_code
-  FROM inventory_import_rows
-  WHERE batch_id = :'batch_id'
-    AND source_item_code IS NOT NULL
 )
 SELECT p.inventory_date, r.row_index, r.source_item_code,
        r.resolved_inventory_item_id
 FROM latest_predecessor p
 INNER JOIN inventory_import_rows r ON r.batch_id = p.id
-INNER JOIN current_codes c ON c.source_item_code = r.source_item_code
 WHERE r.resolved_inventory_item_id IS NOT NULL
 ORDER BY r.row_index;
 
@@ -169,31 +162,25 @@ latest_predecessor AS (
     AND p.inventory_date < c.inventory_date
   ORDER BY p.inventory_date DESC, p.uploaded_at DESC, p.id DESC
   LIMIT 1
-),
-current_codes AS (
-  SELECT DISTINCT source_item_code
-  FROM inventory_import_rows
-  WHERE batch_id = :'batch_id'
-    AND source_item_code IS NOT NULL
 )
 SELECT p.id AS predecessor_batch_id,
        p.inventory_date AS predecessor_date,
-       count(r.id) AS matching_resolved_rows,
-       count(DISTINCT r.source_item_code) AS matching_source_codes
+       count(r.id) AS resolved_rows,
+       count(DISTINCT r.source_item_code) AS resolved_source_codes,
+       count(DISTINCT r.resolved_inventory_item_id) AS resolved_inventory_items
 FROM latest_predecessor p
 LEFT JOIN inventory_import_rows r
   ON r.batch_id = p.id
  AND r.resolved_inventory_item_id IS NOT NULL
-INNER JOIN current_codes c
-  ON c.source_item_code = r.source_item_code
 GROUP BY p.id, p.inventory_date;
 SQL
 unset DB_URL PID BATCH_ID COMPANY_ID
 ```
 
-Save the sanitized plan, execution time, predecessor batch/date, and matching
-row/code counts with the deployment evidence. A timeout, sequential scan over
-multiple history batches, or missing predecessor is a stop condition.
+Save the sanitized plan, execution time, predecessor batch/date, and bounded
+resolved row/code/item counts with the deployment evidence. A timeout,
+sequential scan over multiple history batches, or missing predecessor is a
+stop condition.
 
 ## Post-deploy preview verification
 
@@ -215,9 +202,18 @@ multiple history batches, or missing predecessor is a stop condition.
    duration is insufficient; a result near the proxy ceiling has no growth
    margin.
 4. Confirm row 2499 resolves to the approved June inventory item.
-5. Confirm all 228 saved review decisions remain and review the changed
-   `create_variant` count.
-6. Do not retry approval until preview correctness and duration are accepted.
+5. Confirm all 228 saved review decisions remain and record the valid/stale
+   split without changing, deleting, or re-saving any decision.
+6. Starting from the known 124 stale link decisions, record exactly how many
+   recover as valid and how many remain stale. If all 124 recover, July can
+   proceed with its existing decisions once the other gates pass. If recovery
+   is partial, list the remaining row indexes and reasons for individual
+   review before deciding whether a reset is cheaper.
+7. Confirm the 21 safely superseded variant rows still converge on their
+   originally reviewed inventory targets; do not count them as recovered
+   links or silently classify target drift as safe supersession.
+8. Do not retry approval until preview correctness, duration, and the recovered
+   link count are accepted.
 
 ## Approval timing evidence
 

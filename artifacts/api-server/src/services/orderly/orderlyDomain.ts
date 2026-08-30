@@ -1560,13 +1560,15 @@ export async function runResolutionPreview(
   /*
    * PERFORMANCE CONTRACT — preserve this access order:
    *   1. Select exactly one newest eligible predecessor batch.
-   *   2. Materialize distinct source codes from the current batch.
-   *   3. Join only that predecessor batch's resolved rows to those codes.
+   *   2. Load resolved rows from only that selected predecessor.
+   *   3. Index the bounded result by both stable source code and resolved item.
    *
-   * Do not invert this into "filter all approved history by current codes".
-   * Once a source-property binding is active, that shape can scan months of
-   * history before narrowing and made the 5,518-row Bay Hill preview exceed
-   * the production proxy timeout.
+   * Do not invert this into a scan of all approved history. Once a
+   * source-property binding is active, that shape can scan months of history
+   * and made the 5,518-row Bay Hill preview exceed the production proxy
+   * timeout. The complete selected predecessor is needed because Orderly can
+   * re-code an item between months; filtering by current source codes drops
+   * the only durable candidate pack evidence after re-onboarding.
    */
   const [latestPriorApprovedBatch] = scopeRow.inventoryDate
     ? await runner
@@ -1589,14 +1591,6 @@ export async function runResolutionPreview(
       )
       .limit(1)
     : [];
-  const distinctCurrentBatchCodes = runner
-    .selectDistinct({ sourceItemCode: inventoryImportRows.sourceItemCode })
-    .from(inventoryImportRows)
-    .where(and(
-      eq(inventoryImportRows.batchId, batchId),
-      isNotNull(inventoryImportRows.sourceItemCode),
-    ))
-    .as('distinct_current_batch_codes');
   const priorApprovedRowsQuery = latestPriorApprovedBatch
     ? runner
       .select({
@@ -1614,10 +1608,6 @@ export async function runResolutionPreview(
       .innerJoin(
         inventoryImportBatches,
         eq(inventoryImportBatches.id, inventoryImportRows.batchId),
-      )
-      .innerJoin(
-        distinctCurrentBatchCodes,
-        eq(distinctCurrentBatchCodes.sourceItemCode, inventoryImportRows.sourceItemCode),
       )
       .where(and(
         eq(inventoryImportBatches.id, latestPriorApprovedBatch.id),
@@ -1810,6 +1800,14 @@ export async function runResolutionPreview(
     supplies.push(supply);
     vendorSuppliesByItemId.set(supply.inventoryItemId, supplies);
   }
+  const vendorIdsByNormalizedName = new Map<string, Set<string>>();
+  for (const vendor of existingVendors as MatchableVendor[]) {
+    const normalizedName = normalizeForMatch(vendor.name);
+    if (!normalizedName) continue;
+    const vendorIds = vendorIdsByNormalizedName.get(normalizedName) ?? new Set<string>();
+    vendorIds.add(vendor.id);
+    vendorIdsByNormalizedName.set(normalizedName, vendorIds);
+  }
   type PriorApprovedResolutionRow = {
     inventoryDate: string | null;
     rowIndex: number;
@@ -1823,7 +1821,13 @@ export async function runResolutionPreview(
   };
   const typedPriorApprovedRows = priorApprovedRows as PriorApprovedResolutionRow[];
   const latestPriorRowsByStableCode = new Map<string, PriorApprovedResolutionRow[]>();
+  const latestPriorRowsByResolvedItemId = new Map<string, PriorApprovedResolutionRow[]>();
   for (const priorRow of typedPriorApprovedRows) {
+    if (priorRow.resolvedInventoryItemId) {
+      const itemRows = latestPriorRowsByResolvedItemId.get(priorRow.resolvedInventoryItemId) ?? [];
+      itemRows.push(priorRow);
+      latestPriorRowsByResolvedItemId.set(priorRow.resolvedInventoryItemId, itemRows);
+    }
     const code = normalizedStableSourceCode(priorRow.sourceItemCode);
     if (!code) continue;
     const rows = latestPriorRowsByStableCode.get(code) ?? [];
@@ -1838,6 +1842,8 @@ export async function runResolutionPreview(
     const code = normalizedStableSourceCode(row.sourceItemCode);
     const sourceVendor = normalizeForMatch(row.supplierRaw ?? '');
     if (!code || !sourceVendor) return undefined;
+    const sourceVendorIds = vendorIdsByNormalizedName.get(sourceVendor);
+    if (!sourceVendorIds || sourceVendorIds.size !== 1) return undefined;
     const incomingGeometry = sourcePackGeometry(row);
     if (normalizePackGeometry(incomingGeometry).status !== 'compatible') return undefined;
 
@@ -1858,6 +1864,60 @@ export async function runResolutionPreview(
       itemId: [...resolvedIds][0],
       evidence: toPreviewPackEvidence(matchingRows[0]),
     };
+  }
+
+  function candidatePackEvidenceFor(
+    row: InventoryImportRow,
+    vendorMatch: VendorMatchResult,
+    itemId: string,
+    candidateSuppliers: ExistingVendorSupply[],
+    candidateHasSameVendor: boolean,
+  ): SourcePackGeometry[] {
+    const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
+      ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${itemId}`) ?? []
+      : [];
+    if (sameVendorCatalogEvidence.length > 0) return sameVendorCatalogEvidence;
+
+    const acceptedPriorVendorIds = candidateHasSameVendor && vendorMatch.vendorId
+      ? new Set([vendorMatch.vendorId])
+      : new Set(candidateSuppliers.map(supply => supply.vendorId));
+    const acceptedPriorSupplierNames = candidateHasSameVendor
+      ? new Set([normalizeForMatch(row.supplierRaw ?? '')].filter(Boolean))
+      : new Set(candidateSuppliers.map(supply => normalizeForMatch(supply.vendorName)).filter(Boolean));
+    const relevantPriorEvidence = (latestPriorRowsByResolvedItemId.get(itemId) ?? [])
+      .filter(priorRow =>
+        acceptedPriorSupplierNames.has(normalizeForMatch(priorRow.supplierRaw ?? ''))
+      );
+    if (relevantPriorEvidence.length > 0) {
+      const vendorScopedPriorEvidence = relevantPriorEvidence.filter(priorRow => {
+        const normalizedSupplier = normalizeForMatch(priorRow.supplierRaw ?? '');
+        const matchingVendorIds = vendorIdsByNormalizedName.get(normalizedSupplier);
+        if (!matchingVendorIds || matchingVendorIds.size !== 1) return false;
+        return acceptedPriorVendorIds.has([...matchingVendorIds][0]);
+      });
+      if (vendorScopedPriorEvidence.length !== relevantPriorEvidence.length) return [];
+      const allComplete = vendorScopedPriorEvidence.every(
+        evidence =>
+          normalizePackGeometry(evidence).status === 'compatible' ||
+          isOpaquePackGeometry(evidence),
+      );
+      const mutuallyCompatible = allComplete && vendorScopedPriorEvidence.every(
+        (left, leftIndex) => vendorScopedPriorEvidence
+          .slice(leftIndex + 1)
+          .every(right => comparePackGeometry(left, right).status === 'compatible'),
+      );
+      // A display-name collision cannot establish vendor identity, and
+      // contradictory packs within the selected predecessor cannot establish
+      // one candidate geometry. In either case fail closed instead of choosing
+      // whichever row happens to be assessed first.
+      return mutuallyCompatible ? vendorScopedPriorEvidence : [];
+    }
+
+    // Preserve the legacy item-mapping fallback only when the selected
+    // predecessor has no rows relevant to the candidate vendor scope. A
+    // rejected predecessor identity or geometry must never be masked by this
+    // vendorless mapping evidence.
+    return packEvidenceByItemId.get(itemId) ?? [];
   }
 
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
@@ -1981,12 +2041,13 @@ export async function runResolutionPreview(
         sourceVendorKey === `vendor:${supply.vendorId}` ||
         sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
       );
-      const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
-        ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${extId}`) ?? []
-        : [];
-      const candidatePackEvidence = sameVendorCatalogEvidence.length > 0
-        ? sameVendorCatalogEvidence
-        : packEvidenceByItemId.get(extId) ?? [];
+      const candidatePackEvidence = candidatePackEvidenceFor(
+        row,
+        vendorMatch,
+        extId,
+        candidateSuppliers,
+        candidateHasSameVendor,
+      );
       const packAssessment = assessCandidatePackCompatibility(
         sourcePackGeometry(row as any),
         candidatePackEvidence,
@@ -2086,12 +2147,13 @@ export async function runResolutionPreview(
             sourceVendorKey === `vendor:${supply.vendorId}` ||
             sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
           );
-          const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
-            ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${nameExactMatch.id}`) ?? []
-            : [];
-          const candidatePackEvidence = sameVendorCatalogEvidence.length > 0
-            ? sameVendorCatalogEvidence
-            : packEvidenceByItemId.get(nameExactMatch.id) ?? [];
+          const candidatePackEvidence = candidatePackEvidenceFor(
+            row,
+            vendorMatch,
+            nameExactMatch.id,
+            candidateSuppliers,
+            candidateHasSameVendor,
+          );
           const packAssessment = assessCandidatePackCompatibility(
             sourcePackGeometry(row as any),
             candidatePackEvidence,

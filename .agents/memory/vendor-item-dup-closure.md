@@ -17,3 +17,15 @@ description: PM disposition closing the vendor-item duplicate remediation/preven
 **Process deviation on record:** the prevention task was executed via assignment while the PM had a hold pending the cleanup's exact invariant output. PM classified this as a process deviation, NOT a technical rollback trigger — do not undo or rework the merged prevention code over it. Lesson: an assignment implying approval does not override an explicitly stated PM hold; confirm holds are lifted before treating assignment as GO.
 
 **Re-import refresh is intentional:** the order-guide existing-row branch deliberately refreshes pack geometry + quoted price for a FULL-triple (vendor, inventory item, raw SKU) match through the shared price gate — that is product behavior (order guides are quote catalogs), not a race hazard. Only blind-create paths gate all side effects on `created`.
+
+The full-triple invariant intentionally permits multiple real-SKU packs for one
+vendor/item pair; code that has only historical supplier text and no SKU must
+not choose among conflicting pack geometries.
+
+**Why:** A vendor can legitimately offer the same catalog item in distinct
+packs, while predecessor import rows do not carry enough identity to select one
+pack safely.
+
+**How to apply:** Treat vendor identity as a required scope, but keep pack
+evidence one-to-many. If historical rows for that scope disagree, leave the
+candidate unresolved rather than inferring the SKU.

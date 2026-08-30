@@ -1691,6 +1691,25 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .where(eq(inventoryImportRows.batchId, mayBatch));
     if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected the base item to resolve');
 
+    const baseVendorItems = await db
+      .select({ id: vendorItems.id })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId));
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.inventoryItemId, mayRow.resolvedInventoryItemId),
+      ));
+    if (baseVendorItems.length > 0) {
+      await db
+        .delete(vendorItemExternalMappings)
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, ID.company),
+          inArray(vendorItemExternalMappings.vendorItemId, baseVendorItems.map(item => item.id)),
+        ));
+    }
+
     const juneBatch = await stageBatch([{
       code: 'CROSS-VENDOR-ALT-12',
       description: 'Cross Vendor Tomatoes',
@@ -1709,12 +1728,34 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       recommendedAction: 'link_vendor_pack',
       possibleRecodeMatchedId: mayRow.resolvedInventoryItemId,
     });
+    expect(preview.rows[0].itemMatch.candidatePackEvidence).toMatchObject({
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    });
 
-    await applyBatchApproval(juneBatch, approvalAuth, [{
+    await saveOrderlyReviewDecisionChanges(juneBatch, approvalAuth, [{
       rowIndex: 1,
-      action: 'link_vendor_pack',
-      inventoryItemId: mayRow.resolvedInventoryItemId,
+      expectedRevision: null,
+      decision: {
+        action: 'link_vendor_pack',
+        inventoryItemId: mayRow.resolvedInventoryItemId,
+      },
     }]);
+    const recoveredDraft = await getOrderlyReviewDecisions(juneBatch, approvalAuth);
+    expect(recoveredDraft.decisions).toEqual([
+      expect.objectContaining({
+        rowIndex: 1,
+        decision: {
+          action: 'link_vendor_pack',
+          inventoryItemId: mayRow.resolvedInventoryItemId,
+        },
+      }),
+    ]);
+    expect(recoveredDraft.stale).toEqual([]);
+
+    await applyBatchApproval(juneBatch, approvalAuth, null);
 
     const [juneRow] = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
@@ -3025,6 +3066,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         code: '86276',
         description: 'Red Breast Irish Whiskey 12Yr',
         location: 'Liquor Cage',
+        supplier: 'Vendor Gamma',
         caseQuantity: 1,
         innerPackQuantity: 1,
         baseUnitQuantity: 750,
@@ -3036,12 +3078,33 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, mayBatch));
+    if (!mayRow?.resolvedInventoryItemId) throw new Error('Expected Red Breast to resolve');
+
+    const baseVendorItems = await db
+      .select({ id: vendorItems.id })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, mayRow.resolvedInventoryItemId));
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.inventoryItemId, mayRow.resolvedInventoryItemId),
+      ));
+    if (baseVendorItems.length > 0) {
+      await db
+        .delete(vendorItemExternalMappings)
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, ID.company),
+          inArray(vendorItemExternalMappings.vendorItemId, baseVendorItems.map(item => item.id)),
+        ));
+    }
 
     const juneBatch = await stageBatch([
       {
         code: '417747',
         description: 'Red Breast Irish Whiskey 12Yr',
         location: 'Liquor Cage',
+        supplier: 'Vendor Gamma',
         caseQuantity: 1,
         innerPackQuantity: 1,
         baseUnitQuantity: 750,
@@ -3067,14 +3130,27 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       totalBaseUnits: 750,
     });
 
-    await expect(applyBatchApproval(juneBatch, approvalAuth)).rejects.toMatchObject<Partial<ImportApprovalError>>({
-      code: 'CONFLICT',
-    });
-    await applyBatchApproval(juneBatch, approvalAuth, [{
+    await saveOrderlyReviewDecisionChanges(juneBatch, approvalAuth, [{
       rowIndex: 1,
-      action: 'link_existing',
-      inventoryItemId: mayRow.resolvedInventoryItemId,
+      expectedRevision: null,
+      decision: {
+        action: 'link_existing',
+        inventoryItemId: mayRow.resolvedInventoryItemId,
+      },
     }]);
+    const recoveredDraft = await getOrderlyReviewDecisions(juneBatch, approvalAuth);
+    expect(recoveredDraft.decisions).toEqual([
+      expect.objectContaining({
+        rowIndex: 1,
+        decision: {
+          action: 'link_existing',
+          inventoryItemId: mayRow.resolvedInventoryItemId,
+        },
+      }),
+    ]);
+    expect(recoveredDraft.stale).toEqual([]);
+
+    await applyBatchApproval(juneBatch, approvalAuth, null);
     const [juneRow] = await db
       .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
       .from(inventoryImportRows)
@@ -3407,5 +3483,141 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         eq(inventoryItemExternalMappings.sourceExternalId, newCode),
       ));
     expect(newCodeMappings).toEqual([]);
+  });
+
+  it('fails closed when the newest predecessor has conflicting packs for one item and vendor', async () => {
+    const description = `Conflicting Predecessor Pack ${RUN}`;
+    const supplier = `Conflict Vendor ${RUN}`;
+    const predecessorBatch = await stageBatch([{
+      code: `CONFLICT-OLD-${RUN}-A`,
+      description,
+      location: 'Dry Storage',
+      supplier,
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2040-01-31');
+    await applyBatchApproval(predecessorBatch, approvalAuth);
+    const [predecessorRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, predecessorBatch));
+    const itemId = predecessorRow?.resolvedInventoryItemId;
+    if (!itemId) throw new Error('Expected the predecessor row to resolve');
+    await db.insert(inventoryImportRows).values({
+      batchId: predecessorBatch,
+      rowIndex: 2,
+      sheetName: 'Inventory Detail',
+      rawData: {},
+      rawDescription: description,
+      cleanedDescription: description,
+      cleaningMethod: 'none',
+      cleaningConfidence: 1,
+      caseQuantity: 12,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+      sourceItemCode: `CONFLICT-OLD-${RUN}-B`,
+      itemCodeStatus: 'valid',
+      supplierRaw: supplier,
+      supplierStatus: 'valid',
+      storageLocation: 'Dry Storage',
+      packagePrice: 30,
+      totalCost: 30,
+      rowStatus: 'matched',
+      resolvedInventoryItemId: itemId,
+    });
+    const predecessorVendorItems = await db
+      .select({ id: vendorItems.id })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, itemId));
+    if (predecessorVendorItems.length > 0) {
+      await db
+        .delete(vendorItemExternalMappings)
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, ID.company),
+          inArray(
+            vendorItemExternalMappings.vendorItemId,
+            predecessorVendorItems.map(item => item.id),
+          ),
+        ));
+    }
+
+    const currentBatch = await stageBatch([{
+      code: `CONFLICT-NEW-${RUN}`,
+      description,
+      location: 'Dry Storage',
+      supplier,
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2040-02-29');
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecodeMatchedId: itemId,
+      packCompatibility: 'unknown',
+      recodeEvidenceClass: 'pack_evidence_missing',
+      candidatePackEvidence: null,
+    });
+  });
+
+  it('fails closed when a predecessor supplier name maps to multiple vendor identities', async () => {
+    const description = `Ambiguous Vendor Identity ${RUN}`;
+    const supplier = `Duplicate Vendor ${RUN}`;
+    const predecessorBatch = await stageBatch([{
+      code: `DUP-VENDOR-OLD-${RUN}`,
+      description,
+      location: 'Dry Storage',
+      supplier,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2041-01-31');
+    await applyBatchApproval(predecessorBatch, approvalAuth);
+    const [predecessorRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, predecessorBatch));
+    const itemId = predecessorRow?.resolvedInventoryItemId;
+    if (!itemId) throw new Error('Expected the predecessor row to resolve');
+
+    const predecessorVendorItems = await db
+      .select({ id: vendorItems.id })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, itemId));
+    if (predecessorVendorItems.length > 0) {
+      await db
+        .delete(vendorItemExternalMappings)
+        .where(and(
+          eq(vendorItemExternalMappings.companyId, ID.company),
+          inArray(
+            vendorItemExternalMappings.vendorItemId,
+            predecessorVendorItems.map(item => item.id),
+          ),
+        ));
+    }
+    await db.insert(vendors).values({ companyId: ID.company, name: supplier });
+
+    const currentBatch = await stageBatch([{
+      code: `DUP-VENDOR-NEW-${RUN}`,
+      description,
+      location: 'Dry Storage',
+      supplier,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2041-02-28');
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecodeMatchedId: itemId,
+      packCompatibility: 'unknown',
+      recodeEvidenceClass: 'pack_evidence_missing',
+      candidatePackEvidence: null,
+    });
   });
 });
