@@ -55,7 +55,20 @@ current PM2 process remains healthy:
 ```bash
 cd /home/administrator/apps/CostPro/fnbcostpro
 pnpm --filter @workspace/api-server run build
-pnpm --filter @workspace/api-server run orderly:preview-indexes
+
+PID="$(pm2 pid fnbcostpro | head -n 1)"
+DB_URL="$(tr '\0' '\n' < "/proc/$PID/environ" | \
+  sed -n 's/^DATABASE_URL=//p')"
+test -n "$DB_URL" || {
+  echo "DATABASE_URL is not present in the fnbcostpro PM2 process"
+  exit 1
+}
+
+nohup env DATABASE_URL="$DB_URL" \
+  pnpm --filter @workspace/api-server run orderly:preview-indexes \
+  > /tmp/orderly-preview-indexes.log 2>&1 < /dev/null &
+echo "Index operation started in background; inspect /tmp/orderly-preview-indexes.log after reconnecting."
+unset DB_URL PID
 ```
 
 The command uses a dedicated PostgreSQL session, `CREATE INDEX CONCURRENTLY`,
