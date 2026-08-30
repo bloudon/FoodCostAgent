@@ -1,0 +1,25 @@
+administrator@vps-BLOUD-Soft:~$ curl --max-time 5 http://127.0.0.1:3004/api/healthz
+{"status":"ok"}administrator@vps-BLOUD-Soft:~$ DB_URL="$(pm2 env 13 2>/dev/null | sed -n -E 's/^DATABASE_URL[=:][[:space:]]*//p' | head -n 1)"; [ -n "$DB_URL" ] && echo "DB URL loaded" || echo "DB URL missing"
+DB URL loaded
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -At -c "SELECT current_database(), current_user;"
+fnbcostpro|fnbcostpro_user
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -A -F $'\t' -c "SELECT id,name,status,subscription_plan FROM companies WHERE id IN ('14fb15ba-2d7c-4bf1-8fb1-3f6598b41322','f8134d5a-bb3d-44c4-95bb-973ee471e04f');"
+id      name    status  subscription_plan
+14fb15ba-2d7c-4bf1-8fb1-3f6598b41322    Bay Hill CC     active  enterprise
+(1 row)
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -A -F $'\t' -c "SELECT id,company_id,code,name,status FROM company_stores WHERE company_id IN ('14fb15ba-2d7c-4bf1-8fb1-3f6598b41322','f8134d5a-bb3d-44c4-95bb-973ee471e04f') OR id='9197ad56-a51f-4980-8bac-bb39172afc04' ORDER BY company_id,name;"
+id      company_id      code    name    status
+9935864e-8904-4a93-9ea5-b11702960a8b    14fb15ba-2d7c-4bf1-8fb1-3f6598b41322   BAYHIL   Bay Hill CC's Store     active
+(1 row)
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -A -F $'\t' -c "SELECT id,company_id,source_system,source_property_id,source_property_label,destination_store_id,active,created_at FROM import_source_property_bindings WHERE company_id IN ('14fb15ba-2d7c-4bf1-8fb1-3f6598b41322','f8134d5a-bb3d-44c4-95bb-973ee471e04f') OR (source_system='ORDERLY' AND source_property_id='24472') ORDER BY created_at;"
+id      company_id      source_system   source_property_id      source_property_label   destination_store_id    active  created_at
+(0 rows)
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -A -F $'\t' -c "SELECT id,status,inventory_date,target_store_id,source_property_binding_id,source_property_id FROM inventory_import_batches WHERE id IN ('1be3bb58-c7c7-4091-b749-6bc64724fe4b','49d087c5-8e33-4bdc-ae06-821f71d2d231') ORDER BY inventory_date;"
+id      status  inventory_date  target_store_id source_property_binding_id     source_property_id
+1be3bb58-c7c7-4091-b749-6bc64724fe4b    approved        2026-06-30      9935864e-8904-4a93-9ea5-b11702960a8b
+49d087c5-8e33-4bdc-ae06-821f71d2d231    pending_review  2026-07-31      9935864e-8904-4a93-9ea5-b11702960a8b
+(2 rows)
+administrator@vps-BLOUD-Soft:~$ PGCONNECT_TIMEOUT=5 timeout 10s psql "$DB_URL" -X -P pager=off -A -F $'\t' -c "SELECT batch_id,count(*) AS saved_decisions FROM orderly_import_review_decisions WHERE batch_id='49d087c5-8e33-4bdc-ae06-821f71d2d231' GROUP BY batch_id;"
+batch_id        saved_decisions
+49d087c5-8e33-4bdc-ae06-821f71d2d231    228
+(1 row)
