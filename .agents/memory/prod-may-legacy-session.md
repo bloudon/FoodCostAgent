@@ -1,39 +1,28 @@
 ---
-name: Production May 2026 legacy session state
-description: Production already holds an APPLIED, pre-historical-model May 2026 Bay Hill session — reload is forbidden and any change is PM-gated.
+name: Bay Hill production identity
+description: Historical Bay Hill identifiers must not be reused as current tenant targets; production identity must be verified from the live company and source binding.
 ---
 
-# Production May 2026 is an applied legacy session — never reload
+# Bay Hill production identity must be re-established
 
-Production (VPS DB) already contains the May 2026 Bay Hill import: batch
-`fce3be2b-23b0-449a-9cd4-73788072e3e3` (approved 2026-08-02) and session
-`d76d4676-0793-421f-bd11-5d7f6061a8ad` with `applied=1`,
-`is_historical_import=0`, 2,513 resolved lines, ZERO unresolved-evidence links
-(schema exists but predates the session's creation path). The current model
-would resolve 2,092 lines and hold 1,031 blank-code rows as evidence.
+An earlier forensic record associated Bay Hill history with company
+`43abaf82-44ce-4231-9570-7a01e7c85ced` and store
+`ee9e1530-50db-45f4-ae61-2c45e86827f0`. That was historical evidence, not a
+safe current-tenant identifier.
 
-**Why:** PM decision (hard-stop branch): a second May import/session is
-forbidden — the goal is one authoritative May snapshot. The applied session
-mutated live on-hand, so migrating it is an unwind-and-migrate design problem,
-not a metadata flip.
+Production identity verification later found the current Bay Hill Country Club
+tenant was company `f8134d5a-bb3d-44c4-95bb-973ee471e04f` with store
+`9197ad56-a51f-4980-8bac-bb39172afc04`. That company was subsequently purged
+atomically, including its remaining count, unresolved evidence, and import
+rows.
 
-**PM scope reduction (2026-08-17):** the May/June sessions are the ORIGINAL
-imports that created the duplicate-identity population — valuations reconciled
-exactly through remediation. Default disposition is ACCEPT MAY/JUNE AS
-HISTORICAL BASELINE unless a concrete material mapping error is proven
-(lines referencing superseded items, stopped groups touching those sessions,
-or a demonstrably wrong old-only resolution). Do NOT unwind or re-import
-merely because the current matcher would resolve rows differently. Coherence
-check script: `reports/bay-hill-may-gate/verify_may_june_baseline_coherence.sql`.
+**Why:** Production contained multiple company IDs associated with historical
+and current Bay Hill-related evidence. The live company row and active
+`ORDERLY` property `24472` binding are the authoritative identity checks; old
+reports and pasted operator output are not sufficient targets for destructive
+work.
 
-**Outcome (2026-08-17): ACCEPTED as baseline.** Coherence check passed: zero
-lines on superseded/dead items, valuations cent-exact, stopped groups all known
-(stale/collision/out-of-scope). Residual: ~119 same-name active blank-code item
-groups (mostly beverages) — analytics-splitting duplicates outside the
-code-scoped remediation program; consolidating them is a separate PM-gated
-program, never a May/June "fix".
-
-**How to apply:** Any May-related production work starts read-only (script at
-`artifacts/api-server/reports/bay-hill-may-gate/verify_may_production_readonly.sql`)
-and requires explicit PM sign-off before any write. Watch the file-hash dedupe:
-only `force_new` could create a duplicate — never use it on prod for May.
+**How to apply:** After re-onboarding, query the current company and active
+`ORDERLY`/`24472` binding together before any historical import. Treat the
+re-onboarded company ID as the only valid target; do not reuse either
+historical company ID above.
