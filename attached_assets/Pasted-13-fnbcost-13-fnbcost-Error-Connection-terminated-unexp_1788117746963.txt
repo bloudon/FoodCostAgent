@@ -1,0 +1,150 @@
+13|fnbcost | }
+13|fnbcost | Error: Connection terminated unexpectedly
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at PGStore._asyncQuery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+13|fnbcost | Error: Connection terminated unexpectedly
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at PGStore._asyncQuery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+13|fnbcost | Error: Connection terminated unexpectedly
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at PGStore._asyncQuery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+13|fnbcost | Error: Connection terminated unexpectedly
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at PGStore._asyncQuery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
+13|fnbcost | [OrderlyImport] resolution-preview error: _DrizzleQueryError: Failed query: select "id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4
+13|fnbcost | params: 49d087c5-8e33-4bdc-ae06-821f71d2d231,14fb15ba-2d7c-4bf1-8fb1-3f6598b41322,ORDERLY,1
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |     at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |     at processTimers (node:internal/timers:519:7)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     ... 2 lines matching cause stack trace ...
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25 {
+13|fnbcost |   query: 'select "id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4',
+13|fnbcost |   params: [
+13|fnbcost |     '49d087c5-8e33-4bdc-ae06-821f71d2d231',
+13|fnbcost |     '14fb15ba-2d7c-4bf1-8fb1-3f6598b41322',
+13|fnbcost |     'ORDERLY',
+13|fnbcost |     1
+13|fnbcost |   ],
+13|fnbcost |   cause: Error: timeout exceeded when trying to connect
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |       at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |       at processTimers (node:internal/timers:519:7)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at async Promise.all (index 1)
+13|fnbcost |       at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1629:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25
+13|fnbcost | }
+13|fnbcost | _DrizzleQueryError: Failed query: select "id", "batch_id", "company_id", "status", "phase", "progress_percent", "attempt_count", "force_duplicate_date", "started_by", "started_at", "updated_at", "timeout_at", "completed_at", "result", "error_code", "error_message" from "orderly_import_approval_jobs" where "orderly_import_approval_jobs"."status" = 'timed_out'
+13|fnbcost |             OR ("orderly_import_approval_jobs"."status" = 'running'
+13|fnbcost |                 AND "orderly_import_approval_jobs"."timeout_at" <= $1)
+13|fnbcost | params: Sun Aug 30 2026 19:19:34 GMT+0000 (Coordinated Universal Time)
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |     at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |     at processTimers (node:internal/timers:519:7)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     at recoverJobs (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyApprovalJobs.ts:274:22) {
+13|fnbcost |   query: `select "id", "batch_id", "company_id", "status", "phase", "progress_percent", "attempt_count", "force_duplicate_date", "started_by", "started_at", "updated_at", "timeout_at", "completed_at", "result", "error_code", "error_message" from "orderly_import_approval_jobs" where "orderly_import_approval_jobs"."status" = 'timed_out'\n` +
+13|fnbcost |     `            OR ("orderly_import_approval_jobs"."status" = 'running'\n` +
+13|fnbcost |     '                AND "orderly_import_approval_jobs"."timeout_at" <= $1)',
+13|fnbcost |   params: [ 2026-08-30T19:19:34.742Z ],
+13|fnbcost |   cause: Error: timeout exceeded when trying to connect
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |       at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |       at processTimers (node:internal/timers:519:7)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at recoverJobs (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyApprovalJobs.ts:274:22)
+13|fnbcost | }
+13|fnbcost | [OrderlyImport] resolution-preview error: _DrizzleQueryError: Failed query: select "source_property_id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4
+13|fnbcost | params: 49d087c5-8e33-4bdc-ae06-821f71d2d231,14fb15ba-2d7c-4bf1-8fb1-3f6598b41322,ORDERLY,1
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |     at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |     at processTimers (node:internal/timers:519:7)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1537:22)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25 {
+13|fnbcost |   query: 'select "source_property_id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4',
+13|fnbcost |   params: [
+13|fnbcost |     '49d087c5-8e33-4bdc-ae06-821f71d2d231',
+13|fnbcost |     '14fb15ba-2d7c-4bf1-8fb1-3f6598b41322',
+13|fnbcost |     'ORDERLY',
+13|fnbcost |     1
+13|fnbcost |   ],
+13|fnbcost |   cause: Error: timeout exceeded when trying to connect
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |       at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |       at processTimers (node:internal/timers:519:7)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1537:22)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25
+13|fnbcost | }
+13|fnbcost | [OrderlyImport] resolution-preview error: _DrizzleQueryError: Failed query: select "source_property_id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4
+13|fnbcost | params: 49d087c5-8e33-4bdc-ae06-821f71d2d231,14fb15ba-2d7c-4bf1-8fb1-3f6598b41322,ORDERLY,1
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |     at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |     at processTimers (node:internal/timers:519:7)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1537:22)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25 {
+13|fnbcost |   query: 'select "source_property_id", "inventory_date" from "inventory_import_batches" where ("inventory_import_batches"."id" = $1 and "inventory_import_batches"."company_id" = $2 and "inventory_import_batches"."source_system" = $3) limit $4',
+13|fnbcost |   params: [
+13|fnbcost |     '49d087c5-8e33-4bdc-ae06-821f71d2d231',
+13|fnbcost |     '14fb15ba-2d7c-4bf1-8fb1-3f6598b41322',
+13|fnbcost |     'ORDERLY',
+13|fnbcost |     1
+13|fnbcost |   ],
+13|fnbcost |   cause: Error: timeout exceeded when trying to connect
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |       at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |       at processTimers (node:internal/timers:519:7)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1537:22)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25
+13|fnbcost | }
+13|fnbcost | [OrderlyImport] resolution-preview error: _DrizzleQueryError: Failed query: select "id", "batch_id", "row_index", "sheet_name", "raw_data", "raw_description", "cleaned_description", "cleaning_method", "cleaning_confidence", "removed_suffix", "case_quantity", "inner_pack_quantity", "base_unit_quantity", "case_unit", "inner_unit", "base_unit", "pack_parse_status", "source_item_code", "item_code_status", "supplier_raw", "supplier_status", "storage_location", "source_category", "source_gl_code", "source_par_target", "package_price", "count_unit1", "count1", "count_unit2", "count2", "count_unit3", "count3", "total_units", "total_cost", "previous_case", "previous_pack", "previous_uom", "previous_cost", "row_status", "resolved_inventory_item_id" from "inventory_import_rows" where "inventory_import_rows"."batch_id" = $1 order by "inventory_import_rows"."row_index"
+13|fnbcost | params: 49d087c5-8e33-4bdc-ae06-821f71d2d231
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |     at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |     at processTimers (node:internal/timers:519:7)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     ... 2 lines matching cause stack trace ...
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25 {
+13|fnbcost |   query: 'select "id", "batch_id", "row_index", "sheet_name", "raw_data", "raw_description", "cleaned_description", "cleaning_method", "cleaning_confidence", "removed_suffix", "case_quantity", "inner_pack_quantity", "base_unit_quantity", "case_unit", "inner_unit", "base_unit", "pack_parse_status", "source_item_code", "item_code_status", "supplier_raw", "supplier_status", "storage_location", "source_category", "source_gl_code", "source_par_target", "package_price", "count_unit1", "count1", "count_unit2", "count2", "count_unit3", "count3", "total_units", "total_cost", "previous_case", "previous_pack", "previous_uom", "previous_cost", "row_status", "resolved_inventory_item_id" from "inventory_import_rows" where "inventory_import_rows"."batch_id" = $1 order by "inventory_import_rows"."row_index"',
+13|fnbcost |   params: [ '49d087c5-8e33-4bdc-ae06-821f71d2d231' ],
+13|fnbcost |   cause: Error: timeout exceeded when trying to connect
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at runNextTicks (node:internal/process/task_queues:60:5)
+13|fnbcost |       at listOnTimeout (node:internal/timers:545:9)
+13|fnbcost |       at processTimers (node:internal/timers:519:7)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at async Promise.all (index 0)
+13|fnbcost |       at runResolutionPreview (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts:1629:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes/orderlyImportRoutes.ts:699:25
+13|fnbcost | }
+13|fnbcost | Failed to prune sessions: Error: Connection terminated unexpectedly
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at PGStore._asyncQuery (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/connect-pg-simple@10.0.0/node_modules/connect-pg-simple/index.js:322:21)
