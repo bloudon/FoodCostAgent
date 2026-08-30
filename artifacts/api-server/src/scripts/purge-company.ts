@@ -2,6 +2,8 @@ import { db } from "../db";
 import { sql, eq, inArray } from "drizzle-orm";
 import * as schema from "@workspace/db";
 import * as readline from "readline";
+import path from "path";
+import { fileURLToPath } from "url";
 
 /**
  * Company Data Purge Script
@@ -1296,10 +1298,12 @@ Examples:
   process.exit(0);
 }
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
-const isBundled = !import.meta.url.includes('/server/scripts/');
+const isMainModule = process.argv[1]
+  ? /^purge-company\.(?:[cm]?[jt]s)$/.test(path.basename(process.argv[1]))
+    && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
 
-if (isMainModule && !isBundled) {
+if (isMainModule) {
   main().catch((error) => {
     console.error('\n❌ Fatal error:', error);
     process.exit(1);
