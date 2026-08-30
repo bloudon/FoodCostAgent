@@ -1,0 +1,29 @@
+That last bullet contradicts the ticket's own success criterion, and it matters. Let me verify directly.Over 100 seconds and still running. Two things to flag before you sign anything off.
+
+## The preview is slow, and that needs a number
+
+The report says the preview "returned all 5,518 rows" but gives no timing. From here it's exceeded **100 seconds** and hasn't returned. That may be within the new nginx headroom, but it's far from the 11.4s that was never a real baseline anyway.
+
+Ticket step 6 asked to *"time the July preview through Nginx."* That number should be in the evidence before acceptance — if it lands near the new timeout, the next club with more history breaks again.
+
+## The last bullet contradicts the ticket
+
+> *"Row 2499 is correctly flagged for `create_variant` because its `1/72 EA` pack differs from the June pack evidence."*
+
+But #1284's own Done criterion reads:
+
+> *"Row 2499 **inherits the approved June inventory item**, proving the optimized query preserves the intended historical-resolution behavior."*
+
+And on dev, after the stale-target fix, row 2499 **auto-resolved with no decision required** — I verified it: `NO DECISION (auto-resolved)`, and `create_variant` dropped 96 → 73.
+
+July's row is byte-identical to June's: Mr. Green's, code `11017`, `1/72 EA`. If it's now being compared against June and still called incompatible, then either the comparison is still reaching past June to May's `1/40 EA`, or June's stored pack evidence on production doesn't match what June actually imported.
+
+**"Correctly flagged" and "inherits the June item" cannot both be true.**
+
+## What I'd ask before approving
+
+1. **The preview duration through nginx**, as a number.
+2. **Which pack evidence row 2499 is being compared against** — the June item's stored geometry, specifically. If June holds `1/72 EA`, the comparison should match; if it holds `1/40 EA`, June's own import is the issue.
+3. **Reconciliation of the two contradictory statements** in the report.
+
+Everything remains safe — July pending, 228 decisions, 0 stale, May and June approved. I won't attempt approval until that's resolved.
