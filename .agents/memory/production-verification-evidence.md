@@ -37,6 +37,16 @@ branch that will be pushed; do not rewrite the workspace checkpoint branch to sc
 since that destroys the user's rollback history — note the residual location in the report
 instead.
 
+The API build-info endpoint reports the `APP_BUILD_ID` environment value; a successful
+health/build-info response proves reachability and identifies the label supplied to the
+process, but does not independently prove that the label matches the intended checkout.
+
+**Why:** A live production response can be healthy while its reported SHA differs from the
+reviewed commit, leaving the critical code-version claim unresolved.
+
+**How to apply:** Reconcile the reported build ID with the VPS checkout and deployed
+artifact, or inspect the live source/build provenance before accepting production behavior.
+
 ## CLI working-directory guard
 
 When invoking a package-filtered CLI, pnpm runs the script from the package directory rather than the repository root. Production operator commands must use an absolute manifest path (or the correct relative path from `artifacts/api-server`) and checksum the file before and after.
