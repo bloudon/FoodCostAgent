@@ -1,0 +1,70 @@
+
+administrator@vps-BLOUD-Soft:~$ cd /home/administrator/apps/CostPro/fnbcostpro
+git rev-parse HEAD
+curl -fsS http://127.0.0.1:3004/api/build-info
+echo
+pm2 pid fnbcostpro
+pm2 describe fnbcostpro
+10af102dadad8eafb2facc61b3cbae0198af6042
+{"service":"fnb-cost-pro-api","buildId":"api@1.15.0:65335e815cdc478e97a8ada26dd76989cb88d030"}
+3340450
+ Describing process with id 13 - name fnbcostpro
+┌───────────────────┬─────────────────────────────────────────────────────────────────────────────────┐
+│ status            │ online                                                                          │
+│ name              │ fnbcostpro                                                                      │
+│ namespace         │ default                                                                         │
+│ version           │ 1.15.0                                                                          │
+│ restarts          │ 1597                                                                            │
+│ uptime            │ 11h                                                                             │
+│ script path       │ /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/dist/index.mjs │
+│ script args       │ N/A                                                                             │
+│ error log path    │ /home/administrator/.pm2/logs/fnbcostpro-error.log                              │
+│ out log path      │ /home/administrator/.pm2/logs/fnbcostpro-out.log                                │
+│ pid path          │ /home/administrator/.pm2/pids/fnbcostpro-13.pid                                 │
+│ interpreter       │ /usr/bin/node                                                                   │
+│ interpreter args  │ --enable-source-maps                                                            │
+│ script id         │ 13                                                                              │
+│ exec cwd          │ /home/administrator/apps/CostPro/fnbcostpro                                     │
+│ exec mode         │ fork_mode                                                                       │
+│ node.js version   │ 20.20.2                                                                         │
+│ node env          │ production                                                                      │
+│ watch & reload    │ ✘                                                                               │
+│ unstable restarts │ 0                                                                               │
+│ created at        │ 2026-08-30T00:46:58.802Z                                                        │
+└───────────────────┴─────────────────────────────────────────────────────────────────────────────────┘
+ Actions available
+┌────────────────────────┐
+│ km:heapdump            │
+│ km:cpu:profiling:start │
+│ km:cpu:profiling:stop  │
+│ km:heap:sampling:start │
+│ km:heap:sampling:stop  │
+└────────────────────────┘
+ Trigger via: pm2 trigger fnbcostpro <action_name>
+
+ Code metrics value
+┌────────────────────────┬─────────────┐
+│ Used Heap Size         │ 338.21 MiB  │
+│ Heap Usage             │ 98.37 %     │
+│ Heap Size              │ 343.83 MiB  │
+│ Event Loop Latency p95 │ 1.20 ms     │
+│ Event Loop Latency     │ 0.41 ms     │
+│ Active handles         │ 5           │
+│ Active requests        │ 0           │
+│ HTTP                   │ 0 req/min   │
+│ HTTP P95 Latency       │ 20585.25 ms │
+│ HTTP Mean Latency      │ 46 ms       │
+└────────────────────────┴─────────────┘
+ Divergent env variables from local env
+┌────────────────┬──────────────────────┐
+│ SSH_CONNECTION │ 162.237.250.163 5060 │
+│ SHLVL          │ 2                    │
+│ XDG_SESSION_ID │ 19077                │
+│ SSH_CLIENT     │ 162.237.250.163 5060 │
+│ OLDPWD         │ /home/administrator/ │
+└────────────────┴──────────────────────┘
+
+ Add your own code metrics: http://bit.ly/code-metrics
+ Use `pm2 logs fnbcostpro [--lines 1000]` to display logs
+ Use `pm2 env 13` to display environment variables
+ Use `pm2 monit` to monitor CPU and Memory usage fnbcostpro
