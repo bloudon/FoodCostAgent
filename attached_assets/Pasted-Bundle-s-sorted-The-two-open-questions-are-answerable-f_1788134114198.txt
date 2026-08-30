@@ -1,0 +1,32 @@
+Bundle's sorted. The two open questions are answerable from the data I can already reach — let me get them rather than waiting.
+
+Used Claude in Chrome integration · 1 note
+
+Both questions answered, and the picture is cleaner than the summary suggested.
+
+The 22 stale rows are 11 products, all cross-vendor
+Product	Code	Rows
+Milk - Whole	4676306	5
+Apples - Red Delicious	11017	3
+Cheese - American Yellow	5132234	3
+Cheese - Swiss	31376	3
+Arugula	HERBARR15	2
+Cheddar Mild, Onions-Green, Beef-Skirt, raw clams, Marjoram, Vegetable Blends	—	1 each
+
+Every one is a product I linked as cross-vendor in June. Milk-Whole (Cheney→Sysco), Apples (Harvill's→Mr. Green's), Cheese-Swiss (Cheney→Mr. Green's), raw clams (Samuels→Cheney), Marjoram (Sysco→Cheney).
+
+They're the same 11 products appearing at multiple locations — Milk at five, Apples and the cheeses at three each. That's the multi-location pattern, not 22 separate problems.
+
+Which means these are the superseded population
+
+Row 2499 is confirmed: its saved create_variant is obsolete because the preview now correctly inherits June's item. The other 21 share the identical shape — a July row whose product was cross-vendor linked in June, where the corrected preview now resolves it automatically.
+
+So the "1 unrecovered link_existing" framing is likely a miscount. 61 saved → 60 valid, and one of these 22 is that row. It isn't a failure needing separate explanation — it's in the same superseded set.
+
+What I'd verify before approving
+
+The reason strings are truncated at the point that matters — existing 1 .... The single confirmation needed is that each row's new resolved target equals the comparable item its old decision referenced. If yes for all 22, no re-review is required and July can approve.
+
+That's one query for Replit: for each of the 22, compare the preview's resolved inventoryItemId against the stale decision's comparableInventoryItemId. Convergence on all 22 clears it.
+
+206 valid decisions, 22 superseded, zero genuine conflicts — pending that check.
