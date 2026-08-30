@@ -1,0 +1,98 @@
+  row_count: (.rows | length),
+  row_2499: (.rows[] | select(.rowIndex == 2499))
+}' "$HOME/july-preview.json"
+{
+  "row_count": 5518,
+  "row_2499": {
+    "rowId": "11f97409-0358-4ee3-a0aa-3496bcd745e6",
+    "rowIndex": 2499,
+    "storageLocation": "Halfway House",
+    "sourceItemCode": "11017",
+    "itemCodeStatus": "valid",
+    "sourceCodeReliability": "stable",
+    "packSizeRaw": "1/72 EA",
+    "cleanedDescription": "Apples - Red Delicious",
+    "supplierRaw": "Mr. Green's Produce",
+    "sourceCategory": "Produce",
+    "caseQuantity": 1,
+    "innerPackQuantity": 72,
+    "baseUnitQuantity": 1,
+    "baseUnit": "EA",
+    "packParseStatus": "ok",
+    "packagePrice": 36.96,
+    "totalCost": 3.08,
+    "itemMatch": {
+      "strategy": "name_pack",
+      "confidence": "medium",
+      "matchedId": "e823a23c-cafc-4391-82cf-6d6714e8c093",
+      "candidateIds": [],
+      "requiresReview": true,
+      "possibleRecode": true,
+      "possibleRecodeMatchedId": "e823a23c-cafc-4391-82cf-6d6714e8c093",
+      "packCompatibility": "unknown",
+      "packCompatibilityReason": "the candidate has no confirmed source-pack evidence",
+      "sourcePackEvidence": {
+        "caseQuantity": 1,
+        "innerPackQuantity": 72,
+        "baseUnitQuantity": 1,
+        "baseUnit": "EA",
+        "normalizedUnit": "EA",
+        "totalBaseUnits": 72
+      },
+      "candidatePackEvidence": null,
+      "recodeEvidenceClass": "pack_evidence_missing",
+      "crossVendorPackEligible": false,
+      "existingVendorNames": [
+        "Harvill's Produce Co., Inc.",
+        "Mr. Green's Produce"
+      ],
+      "recommendedAction": "create_variant",
+      "candidates": [],
+      "matchedItem": {
+        "id": "e823a23c-cafc-4391-82cf-6d6714e8c093",
+        "name": "Apples - Red Delicious",
+        "internalItemNumber": 6134,
+        "pluSku": null,
+        "caseSize": 40,
+        "knownLocations": [
+          "Halfway House",
+          "Produce Walk-in",
+          "Cafe"
+        ]
+      },
+      "possibleRecodeItem": {
+        "id": "e823a23c-cafc-4391-82cf-6d6714e8c093",
+        "name": "Apples - Red Delicious",
+        "internalItemNumber": 6134,
+        "pluSku": null,
+        "caseSize": 40,
+        "knownLocations": [
+          "Halfway House",
+          "Produce Walk-in",
+          "Cafe"
+        ]
+      }
+    },
+    "vendorMatch": {
+      "vendorId": "0f8e0533-ffc0-4e46-bdbf-6ed090f17190",
+      "isNew": false,
+      "confidence": "high",
+      "requiresReview": false
+    },
+    "locationMatch": {
+      "locationId": "1ad18f7c-a272-4569-8b6a-13ba67de0838",
+      "isNew": false,
+      "normalizedName": "halfway house"
+    },
+    "heldForReview": false,
+    "holdReason": null,
+    "identityGroupKey": "apples red delicious|case=1|inner=72|base=1|unit=ea",
+    "identityGroupRows": [
+      2499,
+      3332,
+      4143
+    ],
+    "identityGroupStatus": "new_candidate"
+  }
+}
+admini
