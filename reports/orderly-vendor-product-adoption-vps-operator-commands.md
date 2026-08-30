@@ -7,9 +7,9 @@ these commands and returns only the sanitized JSON report.
 ## Fixed reviewed identity
 
 ```text
-Git SHA:       b6bc86aeea7e6ab38b8e02cbb4d436c945cda945
+Git SHA:       7c8f75f750602cc7227a807bf6dbc10fd141fa15
 API version:   1.15.0
-APP_BUILD_ID:  api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945
+APP_BUILD_ID:  api@1.15.0:7c8f75f750602cc7227a807bf6dbc10fd141fa15
 Property:      24472
 ```
 
@@ -172,9 +172,9 @@ Expected deployment output:
 ```json
 {
   "operation": "reviewed-vps-deployment",
-  "gitSha": "b6bc86aeea7e6ab38b8e02cbb4d436c945cda945",
+  "gitSha": "7c8f75f750602cc7227a807bf6dbc10fd141fa15",
   "apiVersion": "1.15.0",
-  "buildId": "api@1.15.0:b6bc86aeea7e6ab38b8e02cbb4d436c945cda945",
+  "buildId": "api@1.15.0:7c8f75f750602cc7227a807bf6dbc10fd141fa15",
   "pm2ProcessVerified": true,
   "startupMigrationPath": "application-startup-idempotent-schema-checks",
   "dbPushExecuted": false,

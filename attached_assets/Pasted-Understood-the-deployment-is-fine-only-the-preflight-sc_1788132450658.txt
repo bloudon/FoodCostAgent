@@ -1,0 +1,46 @@
+Understood — the deployment is fine, only the preflight script's pinned SHA is stale. That's yours to update.
+
+Meanwhile the read-only measurement I can take from the browser doesn't depend on that script at all. Let me get the recovery count now.
+
+Used Claude in Chrome integration
+The fix worked — 123 of 124 links recovered
+Action	Before	After
+link_existing	0	60
+link_vendor_pack	0	63
+create_variant	77	77
+held-link	6	6
+Valid total	83	206
+
+All 63 cross-vendor links are back. link_existing recovered 60 of 61.
+
+Stale is now 22, down from 145 — which reconciles cleanly:
+
+21 superseded variants, the population Replit identified as obsolete rather than broken. Row 2499 is one; its saved create_variant is now correctly replaced by inheritance from June.
+1 link_existing still unrecovered.
+
+That's the "partial recovery" branch of the runbook, but only just — a single link short of complete.
+
+Two things to establish before approving:
+
+Which link_existing didn't recover, and why. One row out of 61 suggests something specific rather than systemic. Worth a reason code before deciding whether to re-review it or accept a variant.
+
+Confirmation the 21 are genuinely superseded. Replit's read is that each now converges on the same comparable item the old decision referenced. If that holds for all 21, they need no action — the preview resolves them correctly. Row 2499 is proven; the other 20 need the same check.
+
+The endpoint still takes 44 seconds, which is fine for a retiring path.
+
+I'd hold approval until those two are answered. But this is very close — 206 valid decisions, one link and a confirmation away from approving July.
+
+how do i update that?
+
+That one's on Replit's side — they wrote the script and know where the SHA is pinned. Ask them to update the expected commit to 7c8f75f7 and hand back the corrected version.
+
+But it may not be needed. That preflight exists to verify the deployment is current before running the read-only Orderly checks — and I've just done those checks directly from the browser. The deployment is demonstrably correct: 123 of 124 links recovered, which couldn't happen on the old build.
+
+So the script would confirm something already proven.
+
+What's actually outstanding is two questions for Replit, neither of which needs the script:
+
+Which link_existing row didn't recover, and what's its reason code? One of 61 — likely something specific rather than systemic.
+Do all 21 superseded variants converge on the same comparable item their old decision referenced? Row 2499 does. If the other 20 do too, they need no action and July can approve.
+
+If you want the script fixed anyway for the record, that's fine — but I'd send those two questions first, since they're what stands between here and approving July.

@@ -13,7 +13,7 @@ set -Eeuo pipefail
 umask 077
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REVIEWED_GIT_SHA="b6bc86aeea7e6ab38b8e02cbb4d436c945cda945"
+readonly REVIEWED_GIT_SHA="7c8f75f750602cc7227a807bf6dbc10fd141fa15"
 readonly REVIEWED_API_VERSION="1.15.0"
 readonly REVIEWED_BUILD_ID="api@${REVIEWED_API_VERSION}:${REVIEWED_GIT_SHA}"
 
