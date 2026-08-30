@@ -1,0 +1,252 @@
+/home/administrator/.pm2/logs/fnbcostpro-error.log last 100 lines:
+13|fnbcost |     responseType: 'json',
+13|fnbcost |     paramsSerializer: [Function: paramsSerializer],
+13|fnbcost |     validateStatus: [Function: validateStatus],
+13|fnbcost |     errorRedactor: [Function: defaultErrorRedactor]
+13|fnbcost |   },
+13|fnbcost |   response: undefined,
+13|fnbcost |   error: FetchError: request to http://127.0.0.1:1106/credential failed, reason: connect ECONNREFUSED 127.0.0.1:1106
+13|fnbcost |       at ClientRequest.<anonymous> (/home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/node-fetch@2.7.0/node_modules/node-fetch/lib/index.js:1501:11)
+13|fnbcost |       at ClientRequest.emit (node:events:524:28)
+13|fnbcost |       at emitErrorEvent (node:_http_client:101:11)
+13|fnbcost |       at Socket.socketErrorListener (node:_http_client:504:5)
+13|fnbcost |       at Socket.emit (node:events:524:28)
+13|fnbcost |       at emitErrorNT (node:internal/streams/destroy:169:8)
+13|fnbcost |       at emitErrorCloseNT (node:internal/streams/destroy:128:3)
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:82:21) {
+13|fnbcost |     type: 'system',
+13|fnbcost |     errno: 'ECONNREFUSED',
+13|fnbcost |     code: 'ECONNREFUSED'
+13|fnbcost |   },
+13|fnbcost |   code: 'ECONNREFUSED',
+13|fnbcost |   [Symbol(gaxios-gaxios-error)]: '6.7.1'
+13|fnbcost | }
+13|fnbcost | ❌ Error deleting from inventory_counts: Failed query: delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"
+13|fnbcost | params: f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost | Error purging company: _DrizzleQueryError: Failed query: delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"
+13|fnbcost | params: f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     ... 2 lines matching cause stack trace ...
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:19334:21 {
+13|fnbcost |   query: 'delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"',
+13|fnbcost |   params: [ 'f8134d5a-bb3d-44c4-95bb-973ee471e04f' ],
+13|fnbcost |   cause: error: update or delete on table "inventory_counts" violates foreign key constraint "historical_session_unresolved_rows_session_id_fkey" on table "historical_session_unresolved_rows"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at Object.delete (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/scripts/purge-company.ts:219:24)
+13|fnbcost |       at purgeCompanyData (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/scripts/purge-company.ts:1035:20)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:19334:21 {
+13|fnbcost |     length: 458,
+13|fnbcost |     severity: 'ERROR',
+13|fnbcost |     code: '23503',
+13|fnbcost |     detail: 'Key (id)=(e2b19dc2-d941-422a-8046-54a898a8c800) is still referenced from table "historical_session_unresolved_rows".',
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: 'public',
+13|fnbcost |     table: 'historical_session_unresolved_rows',
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: 'historical_session_unresolved_rows_session_id_fkey',
+13|fnbcost |     file: 'ri_triggers.c',
+13|fnbcost |     line: '2621',
+13|fnbcost |     routine: 'ri_ReportViolation'
+13|fnbcost |   }
+13|fnbcost | }
+13|fnbcost | ❌ Error deleting from inventory_counts: Failed query: delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"
+13|fnbcost | params: f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost | Error purging company: _DrizzleQueryError: Failed query: delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"
+13|fnbcost | params: f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost |     at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:73:11)
+13|fnbcost |     at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |     ... 2 lines matching cause stack trace ...
+13|fnbcost |     at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:19334:21 {
+13|fnbcost |   query: 'delete from "inventory_counts" where "inventory_counts"."company_id" = $1 returning "id"',
+13|fnbcost |   params: [ 'f8134d5a-bb3d-44c4-95bb-973ee471e04f' ],
+13|fnbcost |   cause: error: update or delete on table "inventory_counts" violates foreign key constraint "historical_session_unresolved_rows_session_id_fkey" on table "historical_session_unresolved_rows"
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/pg-pool@3.14.0_pg@8.22.0/node_modules/pg-pool/index.js:45:11
+13|fnbcost |       at processTicksAndRejections (node:internal/process/task_queues:95:5)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:161:13
+13|fnbcost |       at NodePgPreparedQuery.queryWithCache (file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/pg-core/session.ts:71:12)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/node_modules/.pnpm/drizzle-orm@0.45.2_@neondatabase+serverless@1.1.0_@types+pg@8.20.0_pg@8.22.0/node_modules/src/node-postgres/session.ts:154:19
+13|fnbcost |       at Object.delete (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/scripts/purge-company.ts:219:24)
+13|fnbcost |       at purgeCompanyData (file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/scripts/purge-company.ts:1035:20)
+13|fnbcost |       at file:///home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/routes.ts:19334:21 {
+13|fnbcost |     length: 458,
+13|fnbcost |     severity: 'ERROR',
+13|fnbcost |     code: '23503',
+13|fnbcost |     detail: 'Key (id)=(e2b19dc2-d941-422a-8046-54a898a8c800) is still referenced from table "historical_session_unresolved_rows".',
+13|fnbcost |     hint: undefined,
+13|fnbcost |     position: undefined,
+13|fnbcost |     internalPosition: undefined,
+13|fnbcost |     internalQuery: undefined,
+13|fnbcost |     where: undefined,
+13|fnbcost |     schema: 'public',
+13|fnbcost |     table: 'historical_session_unresolved_rows',
+13|fnbcost |     column: undefined,
+13|fnbcost |     dataType: undefined,
+13|fnbcost |     constraint: 'historical_session_unresolved_rows_session_id_fkey',
+13|fnbcost |     file: 'ri_triggers.c',
+13|fnbcost |     line: '2621',
+13|fnbcost |     routine: 'ri_ReportViolation'
+13|fnbcost |   }
+13|fnbcost | }
+
+/home/administrator/.pm2/logs/fnbcostpro-out.log last 100 lines:
+13|fnbcost | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcost | [Migration] Already applied (menu_descriptions)
+13|fnbcost | [Migration] Already applied (container_size_hierarchy)
+13|fnbcost | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcost | [Migration] Already applied (preferred_language)
+13|fnbcost | [Migration] Already applied (normalize_email_case)
+13|fnbcost | [Storage] Environment detected: local (VPS)
+13|fnbcost | [Storage] Using local filesystem storage with company isolation
+13|fnbcost | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcost | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcost | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcost | [Migration] historical invoice retention tables ready
+13|fnbcost | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcost | [ObjectStorageCleanup] Scheduled — threshold: 24h, interval: 6h, first run in ~60s
+13|fnbcost | {"level":30,"time":1788045356986,"pid":3327993,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcost | [Migration] vendor_deposit_ledger_events ready
+13|fnbcost | {"level":30,"time":1788045357459,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/healthz 200 in 11ms :: {\"status\":\"ok\"}"}
+13|fnbcost | {"level":30,"time":1788045357476,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/build-info 200 in 2ms :: {\"service\":\"fnb-cost-pro-api\",\"buildId\":\"api@…"}
+13|fnbcost | {"level":30,"time":1788046519187,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 47ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"e…"}
+13|fnbcost | {"level":30,"time":1788046519266,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 21ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"e…"}
+13|fnbcost | {"level":30,"time":1788046520201,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f 200 in 60ms :: {\"id\":\"f…"}
+13|fnbcost | {"level":30,"time":1788046520203,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pos-sync-jobs/stuck/count 200 in 36ms :: {\"count\":0}"}
+13|fnbcost | {"level":30,"time":1788046520243,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/purchase-orders 200 in 39ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520276,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/receipts 200 in 29ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520369,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/transfer-orders 200 in 155ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520401,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 224ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"…"}
+13|fnbcost | {"level":30,"time":1788046520425,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/stores/accessible 200 in 238ms :: [{\"id\":\"9197ad56-a51f-4980-8bac-bb39…"}
+13|fnbcost | {"level":30,"time":1788046520435,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 199ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520447,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 222ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"a…"}
+13|fnbcost | {"level":30,"time":1788046520528,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/recipes/missing-ingredients 200 in 271ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520530,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/dashboard/stale-vendor-prices 200 in 261ms :: {\"staleCount\":0,\"thresho…"}
+13|fnbcost | {"level":30,"time":1788046520730,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/tfc/variance/summaries 200 in 35ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520738,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/inventory-counts 200 in 47ms :: [{\"id\":\"e2b19dc2-d941-422a-8046-54a898…"}
+13|fnbcost | {"level":30,"time":1788046520740,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/tfc/variance/top-item 200 in 40ms"}
+13|fnbcost | {"level":30,"time":1788046520741,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/purchase-orders/deadlines 200 in 34ms :: []"}
+13|fnbcost | {"level":30,"time":1788046520758,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/dashboard/reorder-list 200 in 44ms :: {\"items\":[],\"hasParLevels\":false}"}
+13|fnbcost | {"level":30,"time":1788046520762,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f 200 in 38ms :: {\"id\":\"f…"}
+13|fnbcost | {"level":30,"time":1788046520777,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/onboarding/milestones 200 in 43ms :: {\"milestones\":[{\"id\":\"menu_scan\",…"}
+13|fnbcost | {"level":30,"time":1788046521365,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/inventory-count-lines/e2b19dc2-d941-422a-8046-54a898a8c800 200 in 522m…"}
+13|fnbcost | {"level":30,"time":1788046542046,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/inventory-counts 200 in 21ms :: [{\"id\":\"e2b19dc2-d941-422a-8046-54a898…"}
+13|fnbcost | {"level":30,"time":1788046550699,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 22ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788046580797,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 23ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788046610878,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 16ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788046640973,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 15ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788046671057,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 16ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788047573613,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 48ms :: []"}
+13|fnbcost | {"level":30,"time":1788047573630,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 57ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788047586014,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/quickbooks/app-status 200 in 38ms :: {\"data\":{\"configured\":true,…"}
+13|fnbcost | {"level":30,"time":1788047586611,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 10ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"e…"}
+13|fnbcost | {"level":30,"time":1788047586688,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 8ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"em…"}
+13|fnbcost | {"level":30,"time":1788047587465,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pos-sync-jobs/stuck/count 200 in 20ms :: {\"count\":0}"}
+13|fnbcost | {"level":30,"time":1788047587478,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/auth/me 200 in 28ms :: {\"id\":\"f650418c-b7c4-4871-9694-28d60cbfd36f\",\"e…"}
+13|fnbcost | {"level":30,"time":1788047587501,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/quickbooks/app-status 200 in 42ms :: {\"data\":{\"configured\":true,…"}
+13|fnbcost | {"level":30,"time":1788047587554,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies 200 in 99ms :: [{\"id\":\"bc0233f6-72d7-4159-8073-b01ec278522d\"…"}
+13|fnbcost | {"level":30,"time":1788047587578,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/quickbooks/connections 200 in 109ms :: [{\"companyId\":\"bc0233f6-7…"}
+13|fnbcost | {"level":30,"time":1788047587590,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/pos/connections 200 in 43ms :: []"}
+13|fnbcost | {"level":30,"time":1788047587607,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/backup-status 200 in 105ms :: {\"status\":\"success\",\"lastRun\":\"202…"}
+13|fnbcost | {"level":30,"time":1788047587615,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/chat-logs 200 in 130ms :: {\"logs\":[{\"id\":\"a58787ae-7437-4a57-b52…"}
+13|fnbcost | {"level":30,"time":1788047587617,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/orphaned-signups 200 in 60ms :: []"}
+13|fnbcost | {"level":30,"time":1788047587625,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 91ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788047587629,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/stores/accessible 200 in 59ms :: [{\"id\":\"9197ad56-a51f-4980-8bac-bb391…"}
+13|fnbcost | {"level":30,"time":1788047587675,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pending-users 200 in 15ms :: {\"pendingUsers\":[]}"}
+13|fnbcost | {"level":30,"time":1788047604097,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f 200 in 22ms :: {\"id\":\"f…"}
+13|fnbcost | {"level":30,"time":1788047604111,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f/stores 200 in 32ms :: […"}
+13|fnbcost | {"level":30,"time":1788047604114,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f/users 200 in 30ms…"}
+13|fnbcost | {"level":30,"time":1788047614255,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pending-users 200 in 10ms :: {\"pendingUsers\":[]}"}
+13|fnbcost | {"level":30,"time":1788047617789,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 21ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost |
+13|fnbcost | 🗑️  PURGING: Company f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost |
+13|fnbcost | Found related entities:
+13|fnbcost |   - Stores: 1
+13|fnbcost |   - Inventory Items: 2431
+13|fnbcost |   - Vendors: 55
+13|fnbcost |   - Recipes: 0
+13|fnbcost |   - Menu Items: 0
+13|fnbcost |   - Prep Items: 0
+13|fnbcost |
+13|fnbcost |
+13|fnbcost | ✅ inventory_count_lines: 2090 rows deleted
+13|fnbcost | {"level":30,"time":1788047632213,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"DELETE /api/admin/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f/purge 500 in 3…"}
+13|fnbcost | {"level":30,"time":1788047644480,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pending-users 200 in 14ms :: {\"pendingUsers\":[]}"}
+13|fnbcost |
+13|fnbcost | 🗑️  PURGING: Company f8134d5a-bb3d-44c4-95bb-973ee471e04f
+13|fnbcost |
+13|fnbcost | Found related entities:
+13|fnbcost |   - Stores: 1
+13|fnbcost |   - Inventory Items: 2431
+13|fnbcost |   - Vendors: 55
+13|fnbcost |   - Recipes: 0
+13|fnbcost |   - Menu Items: 0
+13|fnbcost |   - Prep Items: 0
+13|fnbcost |
+13|fnbcost |
+13|fnbcost | {"level":30,"time":1788047646399,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"DELETE /api/admin/companies/f8134d5a-bb3d-44c4-95bb-973ee471e04f/purge 500 in 4…"}
+13|fnbcost | {"level":30,"time":1788047647884,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 34ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+13|fnbcost | {"level":30,"time":1788047674287,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/chat-logs 200 in 34ms :: {\"logs\":[{\"id\":\"a58787ae-7437-4a57-b529…"}
+13|fnbcost | {"level":30,"time":1788047674303,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/orphaned-signups 200 in 46ms :: []"}
+13|fnbcost | {"level":30,"time":1788047674573,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/pending-users 200 in 15ms :: {\"pendingUsers\":[]}"}
+13|fnbcost | {"level":30,"time":1788047677972,"pid":3327993,"hostname":"vps-BLOUD-Soft","msg":"GET /api/admin/stats 200 in 19ms :: {\"totalCompanies\":21,\"pendingSignups\":0,\"ac…"}
+
+13|fnbcostpro  | [DB] Using standard PostgreSQL driver (local/VPS mode)
+13|fnbcostpro  | ℹ️ Redis cache not configured (REDIS_URL not set)
+13|fnbcostpro  | [Google SSO] Configured. Production callback: https://app.fnbcostpro.com/api/sso/callback
+13|fnbcostpro  | {"level":30,"time":1788050274521,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] inventory item numbers ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274534,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] inventory item remediation schema ready (supersession + audit)"}
+13|fnbcostpro  | {"level":30,"time":1788050274540,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] historical unresolved-row schema ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274549,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] vendor item uniqueness index ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274558,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly pack identity evidence schema ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274563,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly review decisions schema ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274569,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] Orderly approval jobs schema ready"}
+13|fnbcostpro  | {"level":30,"time":1788050274577,"pid":3338837,"hostname":"vps-BLOUD-Soft","msg":"[Migration] accounting classification and import schema ready"}
+13|fnbcostpro  | 🌱 Seeding database with pizza restaurant data...
+13|fnbcostpro  | 📏 Seeding comprehensive kitchen units...
+13|fnbcostpro  | ✅ All 41 comprehensive kitchen units already seeded
+13|fnbcostpro  | ✅ Database already seeded
+13|fnbcostpro  | ✅ All unit conversions already present
+13|fnbcostpro  | 🏢 Creating Brian's Pizza company and stores...
+13|fnbcostpro  | 🔗 Migrating vendors to store assignments...
+13|fnbcostpro  |    All vendors already assigned to stores
+13|fnbcostpro  | [POS] Square OAuth callback URI: https://app.fnbcostpro.com/api/pos/oauth/square/callback
+13|fnbcostpro  | [Migration] orderly source-pack evidence and comparable item relationships ready
+13|fnbcostpro  | [Migration] vendor_invoice_import staging tables ready
+13|fnbcostpro  | [Migration] vendor_deposit_rates ready
+13|fnbcostpro  | [Migration] Already applied (pos_provider_check_constraint)
+13|fnbcostpro  | [Migration] Already applied (menu_item_recipes)
+13|fnbcostpro  | [Migration] Already applied (orderly_count_session_metadata)
+13|fnbcostpro  | [Storage] Environment detected: local (VPS)
+13|fnbcostpro  | [Storage] Using local filesystem storage with company isolation
+13|fnbcostpro  | [Migration] Already applied (receipt_receive_by_unit)
+13|fnbcostpro  | [Migration] Already applied (operating_units_rename)
+13|fnbcostpro  | [Migration] qb_reconciliations table ready
+13|fnbcostpro  | [Migration] Already applied (mobile_dashboard_columns)
+13|fnbcostpro  | [Migration] Already applied (vendor_receive_by_unit)
+13|fnbcostpro  | [Migration] inventory_import_batches / inventory_import_rows tables ready
+13|fnbcostpro  | [Migration] Already applied (preferred_language)
+13|fnbcostpro  | [Migration] Already applied (container_size_hierarchy)
+13|fnbcostpro  | [Migration] Already applied (voice_interpret_logs)
+13|fnbcostpro  | [Migration] Already applied (normalize_email_case)
+13|fnbcostpro  | [Migration] Already applied (menu_descriptions)
+13|fnbcostpro  | [Migration] Already applied (invitation_notification_sent_at)
+13|fnbcostpro  | [Migration] Already applied (recipe_source_image_path)
+13|fnbcostpro  | [Migration] Orderly count-session columns ready (resolved_inventory_item_id / source_* on inventory_counts)
+13|fnbcostpro  | ✅ WebSocket POS streaming enabled at /ws/pos
+13|fnbcostpro  | [ObjectStorageCleanup] Scheduled — threshold: 24h, interval: 6h, first run in ~60s
+13|fnbcostpro  | [Migration] inventory_locations / inventory_item_location_assignments / inventory_item_external_mappings tables ready
+13|fnbcostpro  | {"level":30,"time":1788050275228,"pid":3338837,"hostname":"vps-BLOUD-Soft","port":3004,"msg":"Server listening"}
+13|fnbcostpro  | [Migration] historical invoice retention tables ready
+13|fnbcostpro  | [Migration] vendor_deposit_ledger_events ready
