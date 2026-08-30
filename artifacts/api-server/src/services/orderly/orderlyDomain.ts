@@ -928,6 +928,48 @@ function assessCandidatePackCompatibility(
     };
   }
   const results = evidences.map(evidence => ({ evidence, comparison: comparePackGeometry(source, evidence) }));
+  const authoritativeCatalogResults = results.filter(
+    (result): result is typeof result & { evidence: CatalogPackSizeEvidence } =>
+      typeof (result.evidence as Partial<CatalogPackSizeEvidence>).packSizeId === 'string' &&
+      !(result.evidence as Partial<CatalogPackSizeEvidence>).packSizeId!.startsWith('fallback|'),
+  );
+  const distinctAuthoritativeCatalogResults = [
+    ...new Map(
+      authoritativeCatalogResults.map(result => [result.evidence.packSizeId, result] as const),
+    ).values(),
+  ];
+  if (distinctAuthoritativeCatalogResults.length > 1) {
+    const compatibleCatalogResults = distinctAuthoritativeCatalogResults.filter(
+      result => result.comparison.status === 'compatible',
+    );
+    const unknownCatalogResults = distinctAuthoritativeCatalogResults.filter(
+      result => result.comparison.status === 'unknown',
+    );
+    if (unknownCatalogResults.length > 0) {
+      return {
+        status: 'unknown',
+        reason:
+          'at least one authoritative catalog pack lacks enough geometry to rule it in or out',
+        candidatePackEvidence: null,
+      };
+    }
+    if (compatibleCatalogResults.length === 1) {
+      const [compatible] = compatibleCatalogResults;
+      return {
+        status: 'compatible',
+        reason: compatible.comparison.reason,
+        candidatePackEvidence: toPreviewPackEvidence(compatible.evidence),
+      };
+    }
+    if (compatibleCatalogResults.length > 1) {
+      return {
+        status: 'unknown',
+        reason:
+          'the incoming geometry matches multiple authoritative catalog packs and does not identify one pack/SKU',
+        candidatePackEvidence: null,
+      };
+    }
+  }
   const incompatible = results.find(result => result.comparison.status === 'incompatible');
   if (preferIncompatible && incompatible) {
     return {
@@ -984,6 +1026,7 @@ function sourceVendorEvidenceKey(
 interface CatalogPackSizeEvidence extends SourcePackGeometry {
   vendorId: string;
   inventoryItemId: string;
+  vendorSku: string | null;
   sourceItemCode: string;
   packSizeId: string;
 }

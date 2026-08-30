@@ -2919,6 +2919,237 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(after).toEqual(before);
   });
 
+  it('keeps vendor-item identity separate from pack/SKU identity during a re-code', async () => {
+    const description = `Multi Pack Flour ${RUN}`;
+    const supplier = `Multi Pack Vendor ${RUN}`;
+    const unitId = await eachUnitId();
+    const [item] = await db.insert(inventoryItems).values({
+      companyId: ID.company,
+      name: description,
+      unitId,
+      caseSize: 1,
+      pricePerUnit: 1,
+      avgCostPerUnit: 1,
+      active: 1,
+      yieldPercent: 100,
+    }).returning({ id: inventoryItems.id });
+    const [vendor] = await db.insert(vendors).values({
+      companyId: ID.company,
+      name: supplier,
+    }).returning({ id: vendors.id });
+    const packs = await db.insert(vendorItems).values([
+      {
+        vendorId: vendor.id,
+        inventoryItemId: item.id,
+        vendorSku: `FLOUR-1-${RUN}`,
+        purchaseUnitId: unitId,
+        caseSize: 1,
+        innerPackSize: 1,
+        packUom: 'LB',
+      },
+      {
+        vendorId: vendor.id,
+        inventoryItemId: item.id,
+        vendorSku: `FLOUR-30-${RUN}`,
+        purchaseUnitId: unitId,
+        caseSize: 30,
+        innerPackSize: 1,
+        packUom: 'LB',
+      },
+    ]).returning({ id: vendorItems.id, vendorSku: vendorItems.vendorSku });
+    expect(packs.map(pack => pack.vendorSku)).toEqual([
+      `FLOUR-1-${RUN}`,
+      `FLOUR-30-${RUN}`,
+    ]);
+    await db.insert(vendorItemExternalMappings).values([
+      {
+        companyId: ID.company,
+        vendorItemId: packs[0].id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `flour-pack-1-${RUN}`,
+        sourceItemCode: '9300001',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LB',
+      },
+      {
+        companyId: ID.company,
+        vendorItemId: packs[1].id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `flour-pack-30-${RUN}`,
+        sourceItemCode: '9300030',
+        caseQuantity: 30,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LB',
+      },
+    ]);
+
+    const ambiguousBatch = await stageBatch([{
+      code: '9390001',
+      description,
+      supplier,
+      location: 'Dry Storage',
+      caseQuantity: null,
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+    }], '2042-01-31');
+    const ambiguousPreview = await runResolutionPreview(ambiguousBatch, ID.company);
+    expect(ambiguousPreview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: item.id,
+      packCompatibility: 'unknown',
+      recodeEvidenceClass: 'pack_evidence_missing',
+      candidatePackEvidence: null,
+    });
+    await expect(saveOrderlyReviewDecisionChanges(ambiguousBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'link_existing',
+        inventoryItemId: item.id,
+      },
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+
+    const matchedBatch = await stageBatch([{
+      code: '9390030',
+      description,
+      supplier,
+      location: 'Dry Storage',
+      caseQuantity: 30,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 45,
+    }], '2042-02-28');
+    const matchedPreview = await runResolutionPreview(matchedBatch, ID.company);
+    expect(matchedPreview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: item.id,
+      packCompatibility: 'compatible',
+      recodeEvidenceClass: 'compatible_alternate',
+      candidatePackEvidence: {
+        caseQuantity: 30,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LB',
+      },
+    });
+    const saved = await saveOrderlyReviewDecisionChanges(matchedBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'link_existing',
+        inventoryItemId: item.id,
+      },
+    }]);
+    expect(saved.decisions).toEqual([
+      expect.objectContaining({
+        rowIndex: 1,
+        decision: {
+          action: 'link_existing',
+          inventoryItemId: item.id,
+        },
+      }),
+    ]);
+    await applyBatchApproval(matchedBatch, approvalAuth, null);
+    const [matchedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, matchedBatch));
+    expect(matchedRow.resolvedInventoryItemId).toBe(item.id);
+
+    await db.insert(vendorItemExternalMappings).values({
+      companyId: ID.company,
+      vendorItemId: packs[0].id,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.property,
+      sourceExternalId: `fallback|flour-pack-unknown-${RUN}`,
+      sourceItemCode: null,
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: null,
+    });
+    const fallbackEvidenceBatch = await stageBatch([{
+      code: '9390032',
+      description,
+      supplier,
+      location: 'Dry Storage',
+      caseQuantity: 30,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 45,
+    }], '2042-03-31');
+    const fallbackEvidencePreview = await runResolutionPreview(fallbackEvidenceBatch, ID.company);
+    expect(fallbackEvidencePreview.rows[0].itemMatch).toMatchObject({
+      possibleRecodeMatchedId: item.id,
+      packCompatibility: 'compatible',
+      recodeEvidenceClass: 'compatible_alternate',
+      candidatePackEvidence: {
+        caseQuantity: 30,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LB',
+      },
+    });
+
+    const [incompletePack] = await db.insert(vendorItems).values({
+      vendorId: vendor.id,
+      inventoryItemId: item.id,
+      vendorSku: `FLOUR-UNKNOWN-${RUN}`,
+      purchaseUnitId: unitId,
+      caseSize: 1,
+      innerPackSize: 1,
+      packUom: 'CS',
+    }).returning({ id: vendorItems.id });
+    await db.insert(vendorItemExternalMappings).values({
+      companyId: ID.company,
+      vendorItemId: incompletePack.id,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.property,
+      sourceExternalId: `flour-pack-unknown-${RUN}`,
+      sourceItemCode: '9300099',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: null,
+    });
+
+    const notUniquelyMatchedBatch = await stageBatch([{
+      code: '9390031',
+      description,
+      supplier,
+      location: 'Dry Storage',
+      caseQuantity: 30,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LB',
+      packagePrice: 45,
+    }], '2042-04-30');
+    const notUniquelyMatchedPreview = await runResolutionPreview(notUniquelyMatchedBatch, ID.company);
+    expect(notUniquelyMatchedPreview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: item.id,
+      packCompatibility: 'unknown',
+      recodeEvidenceClass: 'pack_evidence_missing',
+      candidatePackEvidence: null,
+    });
+    await expect(saveOrderlyReviewDecisionChanges(notUniquelyMatchedBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'link_existing',
+        inventoryItemId: item.id,
+      },
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+  });
+
   it('saves and applies a separate variant when the source pack evidence is incomplete', async () => {
     const mayBatch = await stageBatch([
       {

@@ -107,12 +107,13 @@ describe("getOrCreateVendorItem", () => {
     expect(n).toBe(1);
   });
 
-  it("treats distinct SKUs as distinct identities", async () => {
-    const a = await getOrCreateVendorItem(db, baseValues({ vendorSku: "SKU-A" }));
-    const b = await getOrCreateVendorItem(db, baseValues({ vendorSku: "SKU-B" }));
+  it("retains distinct real-SKU packs for the same vendor-item relationship", async () => {
+    const a = await getOrCreateVendorItem(db, baseValues({ vendorSku: "SKU-A", caseSize: 1 }));
+    const b = await getOrCreateVendorItem(db, baseValues({ vendorSku: "SKU-B", caseSize: 30 }));
     expect(a.created).toBe(true);
     expect(b.created).toBe(true);
     expect(a.vendorItem.id).not.toBe(b.vendorItem.id);
+    expect([a.vendorItem.caseSize, b.vendorItem.caseSize]).toEqual([1, 30]);
   });
 
   it("does not normalize SKUs — raw identity only", async () => {
