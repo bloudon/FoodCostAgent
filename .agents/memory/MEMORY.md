@@ -54,3 +54,4 @@
 - [Duplicate metric definitions](orderly-duplicate-metric-definition.md) — preserve the observed candidate population; vendor changes without an offered link are identity defects, not metric exclusions.
 - [Opaque pack continuity](orderly-opaque-pack-continuity.md) — cross-vendor opaque-vs-resolved stays blocked; same-vendor source silence preserves stronger verified geometry.
 - [Accounting import decisions](accounting-import-decisions.md) — sentinel creation, value-prioritized unassigned work, split mapping/worklist scope, and FK timing are approved constraints.
+- [Orderly re-onboarding property binding](orderly-reonboarding-property-binding.md) — recreate the source-property binding before staged imports can inherit prior approved identity after a company purge.
