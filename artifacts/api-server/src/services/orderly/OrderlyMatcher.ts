@@ -79,6 +79,11 @@ export interface MatchResult {
   matchedId: string | null;
   /** Populated when confidence === 'ambiguous' — user must pick one. */
   candidateIds: string[];
+  /**
+   * When present, limits manual decisions for this match to candidates whose
+   * property-scoped pack provenance is complete and compatible.
+   */
+  decisionEligibleCandidateIds?: string[];
   requiresReview: boolean;
   score?: number;
   /**

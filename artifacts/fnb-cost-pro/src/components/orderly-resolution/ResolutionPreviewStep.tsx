@@ -1361,7 +1361,7 @@ export function ResolutionPreviewStep({
   const hasPendingRecodeDecisions = pendingRecodeCodes.length > 0;
   const hasSourceEvidenceBlockers = recodeSummary.sourceDataConflicts > 0;
   const approvalIsRunning = approvalJob?.status === "running";
-  const approvalDisabled = approving || approvalIsRunning || savingRowIndexes.size > 0 || isManifestImporting || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
+  const approvalDisabled = approving || approvalIsRunning || savingRowIndexes.size > 0 || isManifestImporting || remainingHeldRows > 0 || hasPendingRecodeDecisions || hasSourceEvidenceBlockers || (legacyApprovalStores !== null && !legacyApprovalStoreId);
   const approvalButtonLabel = approvalIsRunning
     ? "Approval running..."
     : approvalJob?.status === "timed_out" || approvalJob?.status === "failed"

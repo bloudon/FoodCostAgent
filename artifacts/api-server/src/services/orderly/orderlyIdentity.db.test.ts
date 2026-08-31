@@ -1355,6 +1355,254 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     ]));
   });
 
+  it('reuses one same-property canonical item for a later equivalent blank-code row', async () => {
+    const description = `Canonical Blank Reuse ${RUN}`;
+    const sourceBatch = await stageBatch([{
+      code: `CANON-750-${RUN}`,
+      description,
+      location: 'Canonical Source Storage',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2031-01-31');
+    await applyBatchApproval(sourceBatch, approvalAuth);
+    const [sourceRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+    expect(sourceRow.resolvedInventoryItemId).toBeTruthy();
+
+    const blankBatch = await stageBatch([{
+      code: null,
+      description,
+      location: 'Canonical Later Storage',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2031-02-28');
+    const preview = await runResolutionPreview(blankBatch, ID.company);
+
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      strategy: 'name_pack',
+      confidence: 'high',
+      matchedId: sourceRow.resolvedInventoryItemId,
+      requiresReview: false,
+      packCompatibility: 'compatible',
+    });
+    expect(preview.rows[0].itemMatch.candidatePackEvidence).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      normalizedUnit: 'ML',
+      totalBaseUnits: 750,
+    });
+    expect(preview.rows[0].heldForReview).toBe(false);
+
+    const result = await applyBatchApproval(blankBatch, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(0);
+    const [resolvedBlank] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, blankBatch));
+    expect(resolvedBlank.resolvedInventoryItemId).toBe(sourceRow.resolvedInventoryItemId);
+  });
+
+  it('does not reuse another property canonical item for an equivalent blank-code row', async () => {
+    const description = `Cross Property Blank ${RUN}`;
+    const sourceBatch = await stageBatch([{
+      code: `PROP-A-750-${RUN}`,
+      description,
+      location: 'Property A Storage',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2031-03-31', 'A');
+    await applyBatchApproval(sourceBatch, approvalAuth);
+    const [sourceRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+
+    const otherPropertyBatch = await stageBatch([{
+      code: null,
+      description,
+      location: 'Property B Storage',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2031-04-30', 'B');
+    const preview = await runResolutionPreview(otherPropertyBatch, ID.company);
+
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      strategy: 'name_pack',
+      confidence: 'medium',
+      matchedId: sourceRow.resolvedInventoryItemId,
+      requiresReview: true,
+      packCompatibility: 'unknown',
+    });
+    expect(preview.rows[0].itemMatch.packCompatibilityReason).toContain(
+      'this property cannot prove the candidate pack',
+    );
+    expect(preview.rows[0].heldForReview).toBe(true);
+
+    await expect(applyBatchApproval(otherPropertyBatch, approvalAuth, [{
+      rowIndex: preview.rows[0].rowIndex,
+      inventoryItemId: sourceRow.resolvedInventoryItemId,
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({
+      code: 'CONFLICT',
+    });
+
+    const result = await applyBatchApproval(otherPropertyBatch, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(1);
+    const [unresolvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, otherPropertyBatch));
+    expect(unresolvedRow.resolvedInventoryItemId).toBeNull();
+  });
+
+  it('keeps blank-code exact-name matches held when property pack evidence is ambiguous', async () => {
+    const unitId = await eachUnitId();
+    const description = `Multiple Compatible Blank ${RUN}`;
+    const candidates = await db
+      .insert(inventoryItems)
+      .values([0, 1].map(() => ({
+        companyId: ID.company,
+        name: description,
+        unitId,
+        caseSize: 750,
+        containerSize: 750,
+        casePkgCount: 1,
+        pricePerUnit: 0.04,
+        avgCostPerUnit: 0.04,
+        active: 1,
+        yieldPercent: 100,
+      })))
+      .returning({ id: inventoryItems.id });
+    await db.insert(inventoryItemExternalMappings).values(candidates.map((candidate, index) => ({
+      companyId: ID.company,
+      inventoryItemId: candidate.id,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.property,
+      sourceExternalId: `MULTI-PACK-${index}-${RUN}`,
+      sourceDescription: description,
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      matchStrategy: 'manual',
+      confidenceScore: 1,
+    })));
+
+    const batchId = await stageBatch([{
+      code: null,
+      description,
+      location: 'Ambiguous Pack Storage',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2031-05-31');
+    const preview = await runResolutionPreview(batchId, ID.company);
+
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      strategy: 'name_pack',
+      confidence: 'ambiguous',
+      matchedId: null,
+      requiresReview: true,
+    });
+    expect(new Set(preview.rows[0].itemMatch.candidateIds)).toEqual(
+      new Set(candidates.map(candidate => candidate.id)),
+    );
+    expect(preview.rows[0].heldForReview).toBe(true);
+  });
+
+  it('keeps incompatible and missing property pack evidence held for blank-code rows', async () => {
+    const unitId = await eachUnitId();
+    const incompatibleDescription = `Incompatible Blank ${RUN}`;
+    const incompleteDescription = `Incomplete Blank ${RUN}`;
+    const [{ id: incompatibleId }, { id: incompleteId }] = await db
+      .insert(inventoryItems)
+      .values([
+        {
+          companyId: ID.company,
+          name: incompatibleDescription,
+          unitId,
+          caseSize: 16,
+          containerSize: 16,
+          casePkgCount: 1,
+          pricePerUnit: 1,
+          avgCostPerUnit: 1,
+          active: 1,
+          yieldPercent: 100,
+        },
+        {
+          companyId: ID.company,
+          name: incompleteDescription,
+          unitId,
+          caseSize: 1,
+          pricePerUnit: 1,
+          avgCostPerUnit: 1,
+          active: 1,
+          yieldPercent: 100,
+        },
+      ])
+      .returning({ id: inventoryItems.id });
+    await db.insert(inventoryItemExternalMappings).values({
+      companyId: ID.company,
+      inventoryItemId: incompatibleId,
+      sourceSystem: 'ORDERLY',
+      sourcePropertyId: ID.property,
+      sourceExternalId: `INCOMPATIBLE-PACK-${RUN}`,
+      sourceDescription: incompatibleDescription,
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 16,
+      baseUnit: 'OZ',
+      matchStrategy: 'manual',
+      confidenceScore: 1,
+    });
+
+    const batchId = await stageBatch([
+      {
+        code: null,
+        description: incompatibleDescription,
+        location: 'Incompatible Storage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'LT',
+      },
+      {
+        code: null,
+        description: incompleteDescription,
+        location: 'Incomplete Storage',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 1,
+        baseUnit: 'EA',
+      },
+    ], '2031-06-30');
+    const preview = await runResolutionPreview(batchId, ID.company);
+    const incompatible = preview.rows.find(row => row.itemMatch.matchedId === incompatibleId);
+    const incomplete = preview.rows.find(row => row.itemMatch.matchedId === incompleteId);
+
+    expect(incompatible?.itemMatch).toMatchObject({
+      requiresReview: true,
+      packCompatibility: 'incompatible',
+    });
+    expect(incomplete?.itemMatch).toMatchObject({
+      requiresReview: true,
+      packCompatibility: 'unknown',
+    });
+    expect(preview.rows.every(row => row.heldForReview)).toBe(true);
+  });
+
   it('keeps a blank row held when multiple coded siblings could establish its identity', async () => {
     const batchId = await stageBatch([
       { code: null, description: `Multiple Code Evidence ${RUN}`, location: 'Member Lounge', caseQuantity: 6, baseUnit: 'ML' },
@@ -1389,7 +1637,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(resolvedByCode.get(`MULTI-B-7-${RUN}`)).toBeTruthy();
   });
 
-  it('does not let a direct blank-row match resolve another blank row in the same group', async () => {
+  it('does not let company-wide location history bypass blank-row property provenance', async () => {
     const unitId = await eachUnitId();
     const description = `Blank Group Location Evidence ${RUN}`;
     const [{ id: locationMatchedCandidateId }, { id: otherCandidateId }] = await db
@@ -1441,21 +1689,22 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     const preview = await runResolutionPreview(batchId, ID.company);
     const matchedBlank = preview.rows.find(row => row.storageLocation === historicalLocation);
     const unresolvedBlank = preview.rows.find(row => row.storageLocation === `New Bar ${RUN}`);
-    expect(matchedBlank?.itemMatch.strategy).toBe('location_history');
-    expect(matchedBlank?.heldForReview).toBe(false);
+    expect(matchedBlank?.itemMatch.strategy).toBe('name_pack');
+    expect(matchedBlank?.itemMatch.confidence).toBe('ambiguous');
+    expect(matchedBlank?.heldForReview).toBe(true);
     expect(unresolvedBlank?.itemMatch.confidence).toBe('ambiguous');
     expect(unresolvedBlank?.heldForReview).toBe(true);
     expect(preview.identitySummary.blankCodeClassification).toEqual({
-      confirmed: { rows: 1, valueTotal: 30 },
+      confirmed: { rows: 0, valueTotal: 0 },
       reviewable: { rows: 0, valueTotal: 0 },
-      conflicted: { rows: 1, valueTotal: 30 },
+      conflicted: { rows: 2, valueTotal: 60 },
       held: { rows: 0, valueTotal: 0 },
     });
-    expect(preview.summary.itemsHeldForReview).toBe(1);
+    expect(preview.summary.itemsHeldForReview).toBe(2);
 
     const result = await applyBatchApproval(batchId, approvalAuth);
-    expect(result.itemsLinked).toBe(1);
-    expect(result.rowsHeldForReview).toBe(1);
+    expect(result.itemsLinked).toBe(0);
+    expect(result.rowsHeldForReview).toBe(2);
 
     const rows = await db
       .select({
@@ -1465,7 +1714,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, batchId));
     const resolvedByLocation = new Map(rows.map(row => [row.storageLocation, row.resolvedInventoryItemId]));
-    expect(resolvedByLocation.get(historicalLocation)).toBe(locationMatchedCandidateId);
+    expect(resolvedByLocation.get(historicalLocation)).toBeNull();
     expect(resolvedByLocation.get(`New Bar ${RUN}`)).toBeNull();
     expect(otherCandidateId).not.toBe(locationMatchedCandidateId);
   });
@@ -1485,16 +1734,35 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         yieldPercent: 100,
       })
       .returning({ id: inventoryItems.id });
-    await db.insert(inventoryItems).values({
-      companyId: ID.company,
-      name: `Held Ambiguous ${RUN}`,
-      unitId,
-      caseSize: 6,
-      pricePerUnit: 30,
-      avgCostPerUnit: 30,
-      active: 1,
-      yieldPercent: 100,
-    });
+    const [ambiguousB] = await db
+      .insert(inventoryItems)
+      .values({
+        companyId: ID.company,
+        name: `Held Ambiguous ${RUN}`,
+        unitId,
+        caseSize: 6,
+        pricePerUnit: 30,
+        avgCostPerUnit: 30,
+        active: 1,
+        yieldPercent: 100,
+      })
+      .returning({ id: inventoryItems.id });
+    await db.insert(inventoryItemExternalMappings).values(
+      [ambiguousA, ambiguousB].map((candidate, index) => ({
+        companyId: ID.company,
+        inventoryItemId: candidate.id,
+        sourceSystem: 'ORDERLY',
+        sourcePropertyId: ID.property,
+        sourceExternalId: `HELD-AMBIGUOUS-${index}-${RUN}`,
+        sourceDescription: `Held Ambiguous ${RUN}`,
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 6,
+        baseUnit: 'ML',
+        matchStrategy: 'manual',
+        confidenceScore: 1,
+      })),
+    );
     const [fuzzyCandidate] = await db
       .insert(inventoryItems)
       .values({
@@ -1510,7 +1778,15 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .returning({ id: inventoryItems.id });
 
     const batchId = await stageBatch([
-      { code: null, description: `Held Ambiguous ${RUN}`, location: 'Member Lounge' },
+      {
+        code: null,
+        description: `Held Ambiguous ${RUN}`,
+        location: 'Member Lounge',
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity: 6,
+        baseUnit: 'ML',
+      },
       { code: null, description: `Held Fuzzy ${RUN}`, location: 'Pool Cafe' },
       { code: null, description: `Held Unlinked Evidence ${RUN}`, location: 'Main Kitchen' },
     ], '2026-09-15');

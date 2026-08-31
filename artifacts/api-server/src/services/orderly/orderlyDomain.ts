@@ -287,6 +287,16 @@ function assertReviewDecisionMatchesPreview(
       `The saved item for row ${row.rowIndex} is no longer one of its review candidates.`,
     );
   }
+  if (
+    row.itemCodeStatus === 'blank' &&
+    row.itemMatch.decisionEligibleCandidateIds !== undefined &&
+    !row.itemMatch.decisionEligibleCandidateIds.includes(selectedItemId)
+  ) {
+    throw new ImportApprovalError(
+      'CONFLICT',
+      `The saved item for blank-code row ${row.rowIndex} lacks compatible pack provenance for this Orderly property.`,
+    );
+  }
 }
 
 /**
@@ -1963,6 +1973,109 @@ export async function runResolutionPreview(
     return packEvidenceByItemId.get(itemId) ?? [];
   }
 
+  /**
+   * A blank Orderly Item Code has no durable source identity of its own. It may
+   * reuse a company catalog item only when this same source property supplies
+   * complete pack provenance that rules every exact-name candidate in or out.
+   *
+   * One compatible candidate plus an unknown candidate is still ambiguous:
+   * missing provenance must never become negative evidence. Complete
+   * incompatible geometry can safely rule a candidate out.
+   */
+  function matchBlankCodeByPropertyPack(
+    row: InventoryImportRow,
+    vendorMatch: VendorMatchResult,
+  ): MatchResult {
+    const normalizedDescription = normalizeForMatch(row.cleanedDescription ?? '');
+    if (!normalizedDescription) {
+      return matchByNamePack(row.cleanedDescription, null, []);
+    }
+
+    const exactNameCandidates = matchableItems.filter(
+      candidate => normalizeForMatch(candidate.name) === normalizedDescription,
+    );
+    if (exactNameCandidates.length === 0) {
+      return matchByNamePack(row.cleanedDescription, null, []);
+    }
+
+    const sourceGeometry = sourcePackGeometry(row);
+    const assessed = exactNameCandidates.map(candidate => {
+      const candidateSuppliers = vendorSuppliesByItemId.get(candidate.id) ?? [];
+      const sourceVendorKey = sourceVendorEvidenceKey(row, { vendorMatch });
+      const candidateHasSameVendor = sourceVendorKey != null && candidateSuppliers.some(supply =>
+        sourceVendorKey === `vendor:${supply.vendorId}` ||
+        sourceVendorKey === `source:${normalizeForMatch(supply.vendorName)}`,
+      );
+      return {
+        candidate,
+        assessment: assessCandidatePackCompatibility(
+          sourceGeometry,
+          candidatePackEvidenceFor(
+            row,
+            vendorMatch,
+            candidate.id,
+            candidateSuppliers,
+            candidateHasSameVendor,
+          ),
+          candidateHasSameVendor,
+        ),
+      };
+    });
+    const compatible = assessed.filter(result => result.assessment.status === 'compatible');
+    const unknown = assessed.filter(result => result.assessment.status === 'unknown');
+
+    if (compatible.length === 1 && unknown.length === 0) {
+      const [resolved] = compatible;
+      return {
+        strategy: 'name_pack',
+        confidence: 'high',
+        matchedId: resolved.candidate.id,
+        candidateIds: [],
+        decisionEligibleCandidateIds: [resolved.candidate.id],
+        requiresReview: false,
+        packCompatibility: 'compatible',
+        packCompatibilityReason:
+          `same-property source evidence confirms ${resolved.assessment.reason}`,
+        candidatePackEvidence: resolved.assessment.candidatePackEvidence,
+      };
+    }
+
+    if (assessed.length === 1) {
+      const [only] = assessed;
+      return {
+        strategy: 'name_pack',
+        confidence: 'medium',
+        matchedId: only.candidate.id,
+        candidateIds: [],
+        decisionEligibleCandidateIds: [],
+        requiresReview: true,
+        packCompatibility: only.assessment.status,
+        packCompatibilityReason: only.assessment.status === 'unknown'
+          ? `this property cannot prove the candidate pack: ${only.assessment.reason}`
+          : only.assessment.reason,
+        candidatePackEvidence: only.assessment.candidatePackEvidence,
+      };
+    }
+
+    return {
+      strategy: 'name_pack',
+      confidence: 'ambiguous',
+      matchedId: null,
+      candidateIds: assessed.map(result => result.candidate.id),
+      decisionEligibleCandidateIds: unknown.length > 0
+        ? []
+        : compatible.map(result => result.candidate.id),
+      requiresReview: true,
+      packCompatibility: unknown.length > 0 ? 'unknown' : undefined,
+      packCompatibilityReason: unknown.length > 0
+        ? 'at least one same-name candidate lacks source-property-compatible pack provenance'
+        : compatible.length > 1
+          ? 'the incoming pack matches multiple same-property catalog candidates'
+          : 'same-name candidates exist, but none has compatible same-property pack evidence',
+      candidatePackEvidence: null,
+    };
+  }
+
   // Build location name lookup and item→locations map for UI enrichment + tiebreaking
   // @ts-ignore
   const locationsById = new Map(existingLocations.map(l => [l.id, l.name]));
@@ -1985,6 +2098,11 @@ export async function runResolutionPreview(
   const newVendorNames = new Set<string>();
 
   for (const row of batchRows) {
+    // Vendor identity is independent of item matching and is needed to select
+    // the correct property-scoped pack provenance for blank-code name matches.
+    const vendorMatch = matchVendor(row.supplierRaw, row.supplierStatus, matchableVendors);
+    if (vendorMatch.isNew && row.supplierRaw) newVendorNames.add(row.supplierRaw.trim());
+
     // ── Item resolution ──
     let itemMatch: MatchResult;
     const sourceCodeReliability = classifySourceItemCode(row.sourceItemCode, row.itemCodeStatus);
@@ -2043,7 +2161,9 @@ export async function runResolutionPreview(
 
       // Strategy 3: name + pack
       if (itemMatch.strategy === 'none') {
-        itemMatch = matchByNamePack(row.cleanedDescription, row.caseQuantity, matchableItems);
+        itemMatch = row.itemCodeStatus === 'blank'
+          ? matchBlankCodeByPropertyPack(row, vendorMatch)
+          : matchByNamePack(row.cleanedDescription, row.caseQuantity, matchableItems);
       }
 
       // Strategy 4: fuzzy
@@ -2068,10 +2188,6 @@ export async function runResolutionPreview(
         candidatePackEvidence: priorPackResolution.evidence,
       };
     }
-
-    // ── Vendor resolution ──
-    const vendorMatch = matchVendor(row.supplierRaw, row.supplierStatus, matchableVendors);
-    if (vendorMatch.isNew && row.supplierRaw) newVendorNames.add(row.supplierRaw.trim());
 
     // A stable Item Code can outlive a physical pack change. The code mapping
     // remains historical identity evidence, but it must not make 1×750 mL look
@@ -2148,7 +2264,11 @@ export async function runResolutionPreview(
     // When the item match is still ambiguous after strategies 1–4, check whether
     // exactly one candidate has a prior location assignment for this row's location.
     // If so, promote that candidate to 'high' confidence automatically.
-    if (itemMatch.confidence === 'ambiguous' && locationMatch.locationId) {
+    if (
+      row.itemCodeStatus !== 'blank' &&
+      itemMatch.confidence === 'ambiguous' &&
+      locationMatch.locationId
+    ) {
       const resolved = breakTieByLocation(
         itemMatch,
         locationMatch.locationId,

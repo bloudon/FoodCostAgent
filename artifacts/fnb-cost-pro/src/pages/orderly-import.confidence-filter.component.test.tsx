@@ -986,6 +986,9 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     fireEvent.click(screen.getByText("Item 6").closest("tr")!);
     expect(await screen.findByTestId("held-row-details-6")).toHaveTextContent("Blank / not provided");
     expect(screen.getByTestId("held-row-details-6")).toHaveTextContent("assigns a permanent internal item number");
+    for (const button of screen.getAllByRole("button", { name: "Approve Import" })) {
+      expect(button).toBeDisabled();
+    }
   });
 
   it("marks an ambiguous held row as an explicit existing-item link without offering creation", async () => {
@@ -1025,6 +1028,9 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     renderStep();
 
     expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+    for (const button of screen.getAllByRole("button", { name: "Approve Import" })) {
+      expect(button).toBeEnabled();
+    }
     expect(vi.mocked(global.fetch).mock.calls.filter(([url]) =>
       !String(url).endsWith("/approval-job")
     )).toHaveLength(0);
