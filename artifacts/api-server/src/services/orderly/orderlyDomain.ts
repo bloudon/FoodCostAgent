@@ -1926,6 +1926,26 @@ export async function runResolutionPreview(
     candidateSuppliers: ExistingVendorSupply[],
     candidateHasSameVendor: boolean,
   ): SourcePackGeometry[] {
+    const samePropertyPredecessorEvidence = latestPriorRowsByResolvedItemId.get(itemId) ?? [];
+    if (row.itemCodeStatus === 'blank' && samePropertyPredecessorEvidence.length > 0) {
+      // Blank Item Codes cannot prove identity through an external-code mapping.
+      // For them, the selected immediately preceding approved batch is itself
+      // the property-scoped provenance boundary. Compare the incoming complete
+      // geometry with those resolved rows rather than requiring a mapping that
+      // a blank source value cannot express.
+      const allComplete = samePropertyPredecessorEvidence.every(
+        evidence =>
+          normalizePackGeometry(evidence).status === 'compatible' ||
+          isOpaquePackGeometry(evidence),
+      );
+      const mutuallyCompatible = allComplete && samePropertyPredecessorEvidence.every(
+        (left, leftIndex) => samePropertyPredecessorEvidence
+          .slice(leftIndex + 1)
+          .every(right => comparePackGeometry(left, right).status === 'compatible'),
+      );
+      return mutuallyCompatible ? samePropertyPredecessorEvidence : [];
+    }
+
     const sameVendorCatalogEvidence = candidateHasSameVendor && vendorMatch.vendorId
       ? catalogPackEvidenceByVendorItem.get(`${vendorMatch.vendorId}\u0000${itemId}`) ?? []
       : [];
@@ -1975,8 +1995,9 @@ export async function runResolutionPreview(
 
   /**
    * A blank Orderly Item Code has no durable source identity of its own. It may
-   * reuse a company catalog item only when this same source property supplies
-   * complete pack provenance that rules every exact-name candidate in or out.
+   * reuse a company catalog item only when the selected immediately preceding
+   * approval for this same property or a same-property catalog mapping supplies
+   * complete pack evidence that rules every exact-name candidate in or out.
    *
    * One compatible candidate plus an unknown candidate is still ambiguous:
    * missing provenance must never become negative evidence. Complete
@@ -2035,7 +2056,7 @@ export async function runResolutionPreview(
         requiresReview: false,
         packCompatibility: 'compatible',
         packCompatibilityReason:
-          `same-property source evidence confirms ${resolved.assessment.reason}`,
+          `same-property predecessor or catalog evidence confirms ${resolved.assessment.reason}`,
         candidatePackEvidence: resolved.assessment.candidatePackEvidence,
       };
     }

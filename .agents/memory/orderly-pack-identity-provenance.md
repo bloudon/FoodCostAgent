@@ -44,3 +44,9 @@ Stable Item Codes own separate pack-specific derived-identity namespaces. An unq
 **Why:** Distinct products can differ only by punctuation that normalization intentionally removes. Reusing one unqualified derived key for their stable codes makes approval order-dependent and can redirect a real source code to another item's pack identity.
 
 **How to apply:** Qualify stable-code pack identities by the exact source code within the existing company/source-property scope. Stable rows may read only their real code or code-qualified pack identity; group caches are allowed only for a proven singleton stable sibling, blank-only group, or pseudo-only new group.
+
+Blank-code name+pack identity may use complete, mutually compatible resolved evidence from the one newest approved predecessor for the same company and source property without requiring an external code mapping.
+
+**Why:** A blank source value cannot express code provenance. Requiring a code mapping held valid same-property items created by earlier approvals even though the selected predecessor already carried their property-scoped identity and pack evidence.
+
+**How to apply:** Keep coded reuse scoped through source-property mappings. For blank rows only, treat the selected predecessor as the provenance boundary; require every candidate evidence row to be complete (or valid opaque evidence), mutually compatible, and tied to one unique exact-name catalog candidate. Conflicting, incomplete, ambiguous, or cross-property evidence remains held.

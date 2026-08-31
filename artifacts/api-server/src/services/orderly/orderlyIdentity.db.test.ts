@@ -1372,6 +1372,13 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, sourceBatch));
     expect(sourceRow.resolvedInventoryItemId).toBeTruthy();
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, sourceRow.resolvedInventoryItemId!),
+      ));
 
     const blankBatch = await stageBatch([{
       code: null,
@@ -4069,6 +4076,156 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       recodeEvidenceClass: 'pack_evidence_missing',
       candidatePackEvidence: null,
     });
+  });
+
+  it('keeps a blank row held when its same-property predecessor has conflicting packs', async () => {
+    const description = `Blank Conflicting Predecessor ${RUN}`;
+    const predecessorBatch = await stageBatch([{
+      code: `BLANK-CONFLICT-OLD-${RUN}`,
+      description,
+      location: 'Wine Cellar',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2042-01-31');
+    await applyBatchApproval(predecessorBatch, approvalAuth);
+    const [predecessorRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, predecessorBatch));
+    const itemId = predecessorRow?.resolvedInventoryItemId;
+    if (!itemId) throw new Error('Expected the predecessor row to resolve');
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, itemId),
+      ));
+    await db.insert(inventoryImportRows).values({
+      batchId: predecessorBatch,
+      rowIndex: 2,
+      sheetName: 'Inventory Detail',
+      rawData: {},
+      rawDescription: description,
+      cleanedDescription: description,
+      caseQuantity: 12,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      packParseStatus: 'ok',
+      sourceItemCode: null,
+      itemCodeStatus: 'blank',
+      supplierRaw: null,
+      supplierStatus: 'blank',
+      storageLocation: 'Main Bar',
+      packagePrice: 30,
+      totalCost: 30,
+      rowStatus: 'matched',
+      resolvedInventoryItemId: itemId,
+    });
+
+    const currentBatch = await stageBatch([{
+      code: null,
+      description,
+      location: 'Wine Cellar',
+      caseQuantity: 24,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+    }], '2042-02-28');
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      matchedId: itemId,
+      requiresReview: true,
+      packCompatibility: 'unknown',
+      candidatePackEvidence: null,
+    });
+    expect(preview.rows[0].heldForReview).toBe(true);
+
+    const result = await applyBatchApproval(currentBatch, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(1);
+    const [currentRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, currentBatch));
+    expect(currentRow.resolvedInventoryItemId).toBeNull();
+  });
+
+  it('keeps a blank row held when one same-property predecessor row has incomplete pack evidence', async () => {
+    const description = `Blank Incomplete Predecessor ${RUN}`;
+    const predecessorBatch = await stageBatch([{
+      code: `BLANK-INCOMPLETE-OLD-${RUN}`,
+      description,
+      location: 'Wine Cellar',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2043-01-31');
+    await applyBatchApproval(predecessorBatch, approvalAuth);
+    const [predecessorRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, predecessorBatch));
+    const itemId = predecessorRow?.resolvedInventoryItemId;
+    if (!itemId) throw new Error('Expected the predecessor row to resolve');
+    await db
+      .delete(inventoryItemExternalMappings)
+      .where(and(
+        eq(inventoryItemExternalMappings.companyId, ID.company),
+        eq(inventoryItemExternalMappings.sourcePropertyId, ID.property),
+        eq(inventoryItemExternalMappings.inventoryItemId, itemId),
+      ));
+    await db.insert(inventoryImportRows).values({
+      batchId: predecessorBatch,
+      rowIndex: 2,
+      sheetName: 'Inventory Detail',
+      rawData: {},
+      rawDescription: description,
+      cleanedDescription: description,
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: 'ML',
+      packParseStatus: 'missing',
+      sourceItemCode: null,
+      itemCodeStatus: 'blank',
+      supplierRaw: null,
+      supplierStatus: 'blank',
+      storageLocation: 'Main Bar',
+      packagePrice: 30,
+      totalCost: 30,
+      rowStatus: 'matched',
+      resolvedInventoryItemId: itemId,
+    });
+
+    const currentBatch = await stageBatch([{
+      code: null,
+      description,
+      location: 'Wine Cellar',
+      caseQuantity: 6,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+    }], '2043-02-28');
+    const preview = await runResolutionPreview(currentBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      matchedId: itemId,
+      requiresReview: true,
+      packCompatibility: 'unknown',
+      candidatePackEvidence: null,
+    });
+    expect(preview.rows[0].heldForReview).toBe(true);
+
+    const result = await applyBatchApproval(currentBatch, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(1);
+    const [currentRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, currentBatch));
+    expect(currentRow.resolvedInventoryItemId).toBeNull();
   });
 
   it('fails closed when a predecessor supplier name maps to multiple vendor identities', async () => {
