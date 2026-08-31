@@ -1,0 +1,47 @@
+Mixed result — one clear win, one thing that needs explaining.
+
+Row 2499 is now fully correct:
+
+strategy:    alternate_identity
+matchedId:   e823a23c      ← was null, now a direct match
+packCompat:  compatible    ← was "incompatible (72 EA vs 40 EA)"
+
+It resolves directly to the June item rather than via a recode candidate. That's #1289 and #1293 working together, and it's the specific acceptance criterion from #1294.
+
+Preview: 200 OK, 49 seconds — back down from 92.
+
+But requiresReview is 1,290 rows, and I want to be careful about what that number means before calling it a regression. It's counting every row where itemMatch.requiresReview is true, which likely includes the 411 descriptive-code rows that resolve by name+pack identity without needing a decision — those have always been in the batch and aren't holds in the operator sense.
+
+Let me get the banner's own figures, which are what actually gate approval.
+
+Used Claude in Chrome integration
+#1294 verification: BLOCKED
+
+Row 2499 passes, but the held-row criterion fails.
+
+Check	Target	Result
+Preview status / duration	200	✅ 200, 49s (down from 92s)
+Row 2499 → e823a23c	required	✅ matched, compatible
+Held rows < 979	required	❌ 1,052 — increased
+Identity decisions	—	86, unchanged
+Approve enabled	when clear	❌ correctly disabled
+
+Held rows went 979 → 1,052, not down. #1293's explicit criterion was "fewer than 979 remaining held rows, but not an unexplained zero." It went the wrong way.
+
+And the classification shifted underneath:
+
+	Before	Now
+Same physical pack	26	93
+New pack size	70	56
+
+So the canonical-pack fix did change matching — 67 more rows now recognised as same-pack, which is the intended effect. But holds rose anyway, which suggests a second population is being held for a different reason.
+
+Two things worth telling Replit:
+
+The fix works where it was aimed. Row 2499 now resolves directly with packCompat: compatible, and same-physical-pack matches nearly quadrupled. That part is confirmed on production data.
+
+But the held population grew. Whatever drives the 1,052 isn't the case-count-versus-canonical-total bug — that's fixed. #1291's investigation grouped 979 by reason; the same grouping on 1,052 would show which reason gained 73 rows and whether it's the same population or a new one.
+
+Saved decisions I haven't re-checked this run, but they were 206/22 before and nothing in this path writes.
+
+July stays paused. May and June remain approved and reconciling at $254,286.67 and $261,007.67.
