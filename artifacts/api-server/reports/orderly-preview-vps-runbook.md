@@ -204,16 +204,45 @@ stop condition.
 4. Confirm row 2499 resolves to the approved June inventory item.
 5. Confirm all 228 saved review decisions remain and record the valid/stale
    split without changing, deleting, or re-saving any decision.
-6. Starting from the known 124 stale link decisions, record exactly how many
-   recover as valid and how many remain stale. If all 124 recover, July can
-   proceed with its existing decisions once the other gates pass. If recovery
-   is partial, list the remaining row indexes and reasons for individual
-   review before deciding whether a reset is cheaper.
+6. Compare the valid/stale split with the reviewed 206-valid / 22-stale
+   baseline. Record every changed row index, action, selected target, and stale
+   reason. The latest read-only run returned 200 valid / 28 stale because all
+   six held-row links became stale; do not generalize an older stale-link count
+   to this frozen July decision set.
 7. Confirm the 21 safely superseded variant rows still converge on their
    originally reviewed inventory targets; do not count them as recovered
    links or silently classify target drift as safe supersession.
 8. Do not retry approval until preview correctness, duration, and the recovered
    link count are accepted.
+
+### Held-row before/after evidence must use one denominator
+
+Do not compare an old UI remainder with a new raw preview total. Record all
+three values from the same run:
+
+```text
+requiresReviewRows = count(preview rows where itemMatch.requiresReview)
+heldForReviewRows = preview.summary.itemsHeldForReview
+blankCodeHeldRows = count(preview rows where heldForReview and itemCodeStatus is blank)
+resolvedHeld = count(preview rows where heldForReview and a valid saved decision exists)
+undecidedHeldRows = heldForReviewRows - resolvedHeld
+displayedHeldRows = held-row banner value from the serving web build
+```
+
+For a corrected-build comparison, retain the prior and corrected preview
+responses outside version control and emit only a sanitized row-level report.
+The report must include every added and removed held row's row index,
+`holdReason`, `identityGroupKey`, match strategy, pack-provenance verdict, and
+source value; it must also state raw held rows, held rows with decisions,
+undecided held rows, and the displayed held-row value for both sides. Under
+the current reviewed client, `displayedHeldRows` must equal
+`undecidedHeldRows`. A difference indicates stale state, an old content-hashed
+web bundle, or a different counter—not an implicit identity-group collapse.
+Record the serving web bundle hash with every UI verification and rebuild/deploy
+it before relying on the displayed number. Under the current API contract,
+`blankCodeHeldRows` must equal `heldForReviewRows`; `requiresReviewRows` is a
+separate, broader population and must never be substituted into held-row
+arithmetic.
 
 ## Approval timing evidence
 
