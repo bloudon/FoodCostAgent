@@ -1,0 +1,60 @@
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro/scripts/vps$ sudo nginx -T 2>/dev/null \
+  | grep -n -A18 -B3 \
+  -E 'inventory-import/orderly|proxy_(connect|send|read)_timeout'
+[sudo] password for administrator:
+278-root /home/administrator/apps/CostPro/fnbcostpro/artifacts/fnb-cost-pro/dist/public;
+279-    index index.html;
+280-
+281:location ~ ^/api/inventory-import/orderly/batches/[^/]+/(resolution-preview|review-decisions|approve)$ {
+282-    proxy_pass http://127.0.0.1:3004;
+283-    proxy_http_version 1.1;
+284-    proxy_set_header Host $host;
+285-    proxy_set_header X-Real-IP $remote_addr;
+286-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+287-    proxy_set_header X-Forwarded-Proto $scheme;
+288:    proxy_connect_timeout 10s;
+289:    proxy_send_timeout 300s;
+290:    proxy_read_timeout 300s;
+291-}
+292-    location /api/ {
+293-        proxy_pass http://127.0.0.1:3004;
+294-        proxy_http_version 1.1;
+295-        proxy_set_header Host $host;
+296-        proxy_set_header X-Real-IP $remote_addr;
+297-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+298-        proxy_set_header X-Forwarded-Proto $scheme;
+299-    }
+300-    location /ws/ {
+301-        proxy_pass http://127.0.0.1:3004;
+302-        proxy_http_version 1.1;
+303-        proxy_set_header Upgrade $http_upgrade;
+304-        proxy_set_header Connection "upgrade";
+305-        proxy_set_header Host $host;
+306-        proxy_set_header X-Real-IP $remote_addr;
+307-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+308-        proxy_set_header X-Forwarded-Proto $scheme;
+--
+459-    proxy_set_header Connection "Upgrade";
+460-    proxy_pass_request_headers on;
+461-    proxy_max_temp_file_size 0;
+462:    proxy_connect_timeout 900;
+463:    proxy_send_timeout 900;
+464:    proxy_read_timeout 900;
+465-    proxy_buffer_size 128k;
+466-    proxy_buffers 4 256k;
+467-    proxy_busy_buffers_size 256k;
+468-    proxy_temp_file_write_size 256k;
+469-  }
+470-
+471-  location ~* ^.+\.(css|js|jpg|jpeg|gif|png|ico|gz|svg|svgz|ttf|otf|woff|woff2|eot|mp4|ogg|ogv|webm|webp|zip|swf)$ {
+472-    add_header Access-Control-Allow-Origin "*";
+473-    expires max;
+474-    access_log on;
+475-  }
+476-
+477-  if (-f $request_filename) {
+478-    break;
+479-  }
+480-}
+481-
+482-# configuration file /etc/nginx/uwsgi_params:
