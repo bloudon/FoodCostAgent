@@ -206,9 +206,11 @@ stop condition.
    split without changing, deleting, or re-saving any decision.
 6. Compare the valid/stale split with the reviewed 206-valid / 22-stale
    baseline. Record every changed row index, action, selected target, and stale
-   reason. The latest read-only run returned 200 valid / 28 stale because all
-   six held-row links became stale; do not generalize an older stale-link count
-   to this frozen July decision set.
+   reason. The corrected-build read-only run returned 200 valid / 28 stale:
+   22 are the previously reviewed safely superseded population, while six
+   held-row links for Demi-Glace and San Pellegrino are genuinely stale and
+   their rows still require review. Do not classify those six as superseded
+   without comparing their persisted targets and current evidence.
 7. Confirm the 21 safely superseded variant rows still converge on their
    originally reviewed inventory targets; do not count them as recovered
    links or silently classify target drift as safe supersession.
@@ -240,9 +242,9 @@ the current reviewed client, `displayedHeldRows` must equal
 web bundle, or a different counter—not an implicit identity-group collapse.
 Record the serving web bundle hash with every UI verification and rebuild/deploy
 it before relying on the displayed number. Under the current API contract,
-`blankCodeHeldRows` must equal `heldForReviewRows`; `requiresReviewRows` is a
-separate, broader population and must never be substituted into held-row
-arithmetic.
+`blankCodeHeldRows` is a subset of `heldForReviewRows`; the remainder may be
+coded rows. `requiresReviewRows` is a separate population and must never be
+substituted into held-row arithmetic.
 
 ## Approval timing evidence
 

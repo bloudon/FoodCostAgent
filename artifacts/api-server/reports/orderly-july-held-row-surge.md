@@ -325,11 +325,12 @@ source-code decision count after saved decisions are applied. It is calculated
 separately from held blank rows. It should not be added to, subtracted from, or
 used to explain the 979 held rows.
 
-The later corrected-build run disproved the expected 206-valid / 22-stale
-split: it returned 200 valid / 28 stale after all six held-row links became
-stale. The UI's identity-decision population remains separate from held
-blank-code identities, but the held-row decision regression now connects the
-two review surfaces.
+The corrected-build run returned 200 valid / 28 stale. Twenty-two stale
+decisions are the previously reviewed safely superseded population. The other
+six are held-row links for three Demi-Glace rows and three San Pellegrino rows;
+all six rows still require review, so they are not superseded. The UI's
+identity-decision population remains separate from held blank-code identities,
+but these six decisions connect the two review surfaces.
 
 ## Expected safe cases
 
