@@ -1,0 +1,41 @@
+
+
+  dist/index.mjs                                                 13.7mb ⚠️
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs        1.4mb ⚠️
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs            194.0kb
+  dist/pino-worker.mjs                                          153.4kb
+  dist/pino-file.mjs                                            142.1kb
+  dist/pino-pretty.mjs                                          114.4kb
+  dist/thread-stream-worker.mjs                                   7.3kb
+  dist/index.mjs.map                                             23.4mb
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs.map    2.8mb
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs.map        315.3kb
+  dist/pino-worker.mjs.map                                      256.9kb
+  dist/pino-file.mjs.map                                        229.1kb
+  dist/pino-pretty.mjs.map                                      203.6kb
+  dist/thread-stream-worker.mjs.map                              12.0kb
+
+⚡ Done in 1443ms
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3681485  │ 72m    │ 23   │ online    │ 0%       │ 82.8mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3692399  │ 0s     │ 1613 │ online    │ 0%       │ 18.8mb   │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3681531  │ 72m    │ 12   │ online    │ 0%       │ 104.9mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3681508  │ 72m    │ 21   │ online    │ 0%       │ 87.3mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3681492  │ 72m    │ 30   │ online    │ 0%       │ 136.9mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3681501  │ 72m    │ 23   │ online    │ 0%       │ 69.2mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+{
+  "operation": "mainline-vps-release",
+  "gitSha": "5b162724f5c39f94792041256bfa3e5e0b75f17b",
+  "buildId": "api@1.15.0:5b162724f5c39f94792041256bfa3e5e0b75f17b",
+  "pm2Process": "fnbcostpro",
+  "apiPort": 3004,
+  "healthVerified": true,
+  "buildIdentityVerified": true,
+  "databaseMigrationCommandExecuted": false,
+  "orderlyPreviewOrApplyExecuted": false
+}
