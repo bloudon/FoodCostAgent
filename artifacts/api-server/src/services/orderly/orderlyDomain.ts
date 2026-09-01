@@ -100,7 +100,7 @@ export interface RowDecision {
    * link reuses one inventory identity; a separate variant creates a new item
    * and records a comparable pack relationship instead.
    */
-  action?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
+  action?: 'link_existing' | 'link_vendor_pack' | 'keep_existing_pack' | 'create_variant';
   /** Existing field retained for legacy/manual match overrides and link_existing. */
   inventoryItemId?: string | null;
   /** The existing comparable item for create_variant. Never becomes this code's mapping. */
@@ -156,6 +156,7 @@ function normalizeReviewDecision(
     action !== undefined &&
     action !== 'link_existing' &&
     action !== 'link_vendor_pack' &&
+    action !== 'keep_existing_pack' &&
     action !== 'create_variant'
   ) {
     throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} has an unsupported action.`);
@@ -176,7 +177,11 @@ function normalizeReviewDecision(
   if (!action && !hasInventoryItemId) {
     throw new ImportApprovalError('INVALID_REQUEST', `Review decision for row ${rowIndex} does not select an outcome.`);
   }
-  if (action === 'link_existing' || action === 'link_vendor_pack') {
+  if (
+    action === 'link_existing' ||
+    action === 'link_vendor_pack' ||
+    action === 'keep_existing_pack'
+  ) {
     if (typeof inventoryItemId !== 'string' || !inventoryItemId.trim() || comparableInventoryItemId !== undefined) {
       throw new ImportApprovalError('INVALID_REQUEST', `Review ${action} decision for row ${rowIndex} needs one existing item.`);
     }
@@ -235,6 +240,20 @@ function assertReviewDecisionMatchesPreview(
       throw new ImportApprovalError(
         'CONFLICT',
         `The saved vendor-pack link for row ${row.rowIndex} no longer matches a verified different-vendor pack candidate.`,
+      );
+    }
+    return;
+  }
+  if (decision.action === 'keep_existing_pack') {
+    if (
+      !row.itemMatch.possibleRecode ||
+      decision.inventoryItemId !== row.itemMatch.possibleRecodeMatchedId ||
+      row.itemMatch.packCompatibility !== 'unknown' ||
+      row.itemMatch.keepExistingPackEligible !== true
+    ) {
+      throw new ImportApprovalError(
+        'CONFLICT',
+        `The saved existing-pack decision for row ${row.rowIndex} no longer has verified same-vendor continuity evidence.`,
       );
     }
     return;
@@ -1045,6 +1064,8 @@ interface ExistingVendorSupply {
   vendorId: string;
   vendorName: string;
   inventoryItemId: string;
+  packGeometryStatus: string | null;
+  canonicalQtyPerPurchaseUnit: number | null;
 }
 
 function normalizedStableSourceCode(value: string | null | undefined): string | null {
@@ -1771,6 +1792,8 @@ export async function runResolutionPreview(
           vendorId: vendorItems.vendorId,
           vendorName: vendors.name,
           inventoryItemId: vendorItems.inventoryItemId,
+          packGeometryStatus: vendorItems.packGeometryStatus,
+          canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
         })
         .from(vendorItems)
         .innerJoin(vendors, and(
@@ -2343,6 +2366,26 @@ export async function runResolutionPreview(
             candidatePackEvidence,
             candidateHasSameVendor,
           );
+          const hasSamePropertyPredecessorIdentity = (
+            latestPriorRowsByResolvedItemId.get(nameExactMatch.id) ?? []
+          ).some(priorRow =>
+            normalizeForMatch(priorRow.supplierRaw ?? '') === normalizeForMatch(row.supplierRaw ?? '')
+          );
+          const hasVerifiedSameVendorPack =
+            candidateHasSameVendor &&
+            vendorMatch.vendorId != null &&
+            candidateSuppliers.some(supply =>
+            supply.vendorId === vendorMatch.vendorId &&
+            supply.packGeometryStatus === 'verified' &&
+            typeof supply.canonicalQtyPerPurchaseUnit === 'number' &&
+            Number.isFinite(supply.canonicalQtyPerPurchaseUnit) &&
+            supply.canonicalQtyPerPurchaseUnit > 0
+          );
+          const keepExistingPackEligible =
+            packAssessment.status === 'unknown' &&
+            isOpaquePackGeometry(sourcePackGeometry(row as any)) &&
+            hasSamePropertyPredecessorIdentity &&
+            hasVerifiedSameVendorPack;
           const crossVendorPackEligible =
             packAssessment.status === 'incompatible' &&
             typeof row.packagePrice === 'number' &&
@@ -2367,8 +2410,13 @@ export async function runResolutionPreview(
             // durable code identity.
             requiresReview: isPseudoCodeCandidate || itemMatch.requiresReview,
             crossVendorPackEligible,
+            keepExistingPackEligible,
             existingVendorNames: candidateSuppliers.map(supply => supply.vendorName),
-            recommendedAction: crossVendorPackEligible ? 'link_vendor_pack' : 'create_variant',
+            recommendedAction: crossVendorPackEligible
+              ? 'link_vendor_pack'
+              : keepExistingPackEligible
+                ? 'keep_existing_pack'
+                : 'create_variant',
           };
           const catalogConflict = findCatalogPackSizeConflict(
             row,
@@ -3586,6 +3634,7 @@ export async function applyBatchApproval(
       decision.action !== undefined &&
       decision.action !== 'link_existing' &&
       decision.action !== 'link_vendor_pack' &&
+      decision.action !== 'keep_existing_pack' &&
       decision.action !== 'create_variant'
     ) {
       throw new ImportApprovalError('INVALID_REQUEST', `Unsupported row decision action on row ${decision.rowIndex}.`);
@@ -3595,6 +3644,9 @@ export async function applyBatchApproval(
     }
     if (decision.action === 'link_vendor_pack' && !decision.inventoryItemId) {
       throw new ImportApprovalError('INVALID_REQUEST', `A vendor-pack link decision on row ${decision.rowIndex} needs an inventory item.`);
+    }
+    if (decision.action === 'keep_existing_pack' && !decision.inventoryItemId) {
+      throw new ImportApprovalError('INVALID_REQUEST', `An existing-pack decision on row ${decision.rowIndex} needs an inventory item.`);
     }
     if (decision.action === 'create_variant' && !decision.comparableInventoryItemId) {
       throw new ImportApprovalError('INVALID_REQUEST', `A separate-variant decision on row ${decision.rowIndex} needs a comparable item.`);
@@ -4291,7 +4343,9 @@ export async function applyBatchApproval(
         if (reliableCode && reliableCodeItemIds.has(reliableCode)) {
           const cachedItemId = reliableCodeItemIds.get(reliableCode) ?? null;
           const requestedExistingItemId =
-            identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack'
+            identityDecision?.action === 'link_existing' ||
+            identityDecision?.action === 'link_vendor_pack' ||
+            identityDecision?.action === 'keep_existing_pack'
             ? identityDecision.inventoryItemId
             : identityDecision?.action === undefined
               ? identityDecision?.inventoryItemId
@@ -4312,7 +4366,9 @@ export async function applyBatchApproval(
         }
         if (groupedExistingItemId) {
           const requestedExistingItemId =
-            identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack'
+            identityDecision?.action === 'link_existing' ||
+            identityDecision?.action === 'link_vendor_pack' ||
+            identityDecision?.action === 'keep_existing_pack'
             ? identityDecision.inventoryItemId
             : identityDecision?.action === undefined
               ? identityDecision?.inventoryItemId
@@ -4331,7 +4387,11 @@ export async function applyBatchApproval(
         if (identityDecision?.action === 'create_variant') {
           return { itemId: await insertNewItem(), created: true };
         }
-        if (identityDecision?.action === 'link_existing' || identityDecision?.action === 'link_vendor_pack') {
+        if (
+          identityDecision?.action === 'link_existing' ||
+          identityDecision?.action === 'link_vendor_pack' ||
+          identityDecision?.action === 'keep_existing_pack'
+        ) {
           return { itemId: identityDecision.inventoryItemId!, created: false };
         }
         if (identityDecision?.inventoryItemId !== undefined) {

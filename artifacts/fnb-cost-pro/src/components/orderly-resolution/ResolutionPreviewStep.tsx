@@ -83,6 +83,9 @@ type RecodeDecision = {
   action: "link_vendor_pack";
   inventoryItemId: string;
 } | {
+  action: "keep_existing_pack";
+  inventoryItemId: string;
+} | {
   action: "create_variant";
   comparableInventoryItemId: string;
 };
@@ -482,6 +485,7 @@ function CandidatePicker({
     const recodeDecision = isRecodeDecision(decision) ? decision : undefined;
     const isLink = recodeDecision?.action === "link_existing";
     const isVendorPackLink = recodeDecision?.action === "link_vendor_pack";
+    const isKeepExistingPack = recodeDecision?.action === "keep_existing_pack";
     const isCreateNew = recodeDecision?.action === "create_variant";
     const isHeld = row.heldForReview;
     const isLeftUnlinked = isHeld && decision === null;
@@ -491,6 +495,7 @@ function CandidatePicker({
     const isIncompatible = packCompatibility === 'incompatible';
     const isUnknown = packCompatibility === 'unknown';
     const linkIsAllowed = isCompatible;
+    const keepExistingPackIsAllowed = isUnknown && match.keepExistingPackEligible === true;
 
     return (
       <>
@@ -512,7 +517,9 @@ function CandidatePicker({
                   ? "The exact product name matches, but this different vendor supplies another verified pack. Review whether to keep one item and add the vendor pack."
                   : "The product name matches, but the normalized physical pack differs. It must be kept as a separate variant."
                 : isUnknown
-                  ? "The incoming physical pack is incomplete, so compatibility cannot be confirmed. Linking stays blocked; create a separate variant to preserve this row without claiming the packs match."
+                  ? keepExistingPackIsAllowed
+                    ? "The incoming pack is opaque, but this same vendor and item have verified pack geometry from the preceding property import. Keep that stronger pack instead of creating a duplicate."
+                    : "The incoming physical pack is incomplete, so compatibility cannot be confirmed. Linking stays blocked; create a separate variant to preserve this row without claiming the packs match."
                   : "This row has a new item code, but its name and physical pack match an existing catalog item."}
             </p>
           </div>
@@ -568,6 +575,33 @@ function CandidatePicker({
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   Link this vendor's verified pack and price to the existing item for cross-vendor comparison.
+                </p>
+              </div>
+            </button>
+          )}
+          {keepExistingPackIsAllowed && !isHeld && (
+            <button
+              onClick={() => onDecision(
+                row.rowIndex,
+                isKeepExistingPack ? undefined : { action: "keep_existing_pack", inventoryItemId: targetId },
+              )}
+              className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                isKeepExistingPack
+                  ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
+                  : "border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 text-foreground"
+              }`}
+            >
+              <div className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isKeepExistingPack ? "border-primary bg-primary" : "border-emerald-500"}`}>
+                {isKeepExistingPack && <div className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
+              </div>
+              <div>
+                <div className="font-semibold flex items-center gap-1.5">
+                  <Package className="h-4 w-4 text-emerald-700" />
+                  Keep existing verified pack
+                  <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800">Recommended</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  Use the existing item and preserve this vendor&apos;s verified pack geometry. The opaque source row remains retained as evidence.
                 </p>
               </div>
             </button>
@@ -2472,7 +2506,9 @@ export function ResolutionPreviewStep({
                                              ? "→ Separate Variant"
                                              : decision.action === "link_vendor_pack"
                                                ? "→ Add Vendor Pack"
-                                               : "→ Link Existing"
+                                               : decision.action === "keep_existing_pack"
+                                                 ? "→ Keep Verified Pack"
+                                                 : "→ Link Existing"
                                             : decision === null
                                               ? row.heldForReview ? "→ Leave Unlinked" : "→ Create FnB item"
                                               : "→ Link Existing"}

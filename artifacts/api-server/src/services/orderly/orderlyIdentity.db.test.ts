@@ -2398,6 +2398,189 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     });
   });
 
+  it('allows an opaque new code to keep verified same-vendor predecessor geometry', async () => {
+    const originalBatch = await stageBatch([{
+      code: 'CAMILLE-1001',
+      description: 'Camille de Labrie',
+      location: 'Liquor Cage',
+      supplier: 'Wine Vendor',
+      packSizeRaw: '1/6 750ML',
+      caseQuantity: 1,
+      innerPackQuantity: 6,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 72,
+      totalCost: 144,
+    }], '2033-01-31');
+    await applyBatchApproval(originalBatch, approvalAuth);
+    const [originalRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, originalBatch));
+    if (!originalRow?.resolvedInventoryItemId) throw new Error('Expected Camille fixture to resolve');
+
+    const opaqueBatch = await stageBatch([{
+      code: 'CAMILLE-1002',
+      description: 'Camille de Labrie',
+      location: 'Liquor Cage',
+      supplier: 'Wine Vendor',
+      packSizeRaw: '1/1 Case',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: 'CASE',
+      packagePrice: 74,
+      totalCost: 148,
+    }], '2033-02-28');
+    const preview = await runResolutionPreview(opaqueBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: originalRow.resolvedInventoryItemId,
+      packCompatibility: 'unknown',
+      recodeEvidenceClass: 'pack_evidence_missing',
+      keepExistingPackEligible: true,
+      recommendedAction: 'keep_existing_pack',
+    });
+
+    await saveOrderlyReviewDecisionChanges(opaqueBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'keep_existing_pack',
+        inventoryItemId: originalRow.resolvedInventoryItemId,
+      },
+    }]);
+    await applyBatchApproval(opaqueBatch, approvalAuth, null);
+
+    const [approvedRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, opaqueBatch));
+    expect(approvedRow.resolvedInventoryItemId).toBe(originalRow.resolvedInventoryItemId);
+
+    const [vendorPack] = await db
+      .select({
+        caseSize: vendorItems.caseSize,
+        innerPackSize: vendorItems.innerPackSize,
+        packUom: vendorItems.packUom,
+        canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+        packGeometryStatus: vendorItems.packGeometryStatus,
+      })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, originalRow.resolvedInventoryItemId));
+    expect(vendorPack).toMatchObject({
+      caseSize: 6,
+      innerPackSize: 750,
+      packUom: 'ML',
+      canonicalQtyPerPurchaseUnit: 4500,
+      packGeometryStatus: 'verified',
+    });
+  });
+
+  it('rejects keep-existing-pack for a resolved same-vendor contradiction', async () => {
+    const originalBatch = await stageBatch([{
+      code: 'DEMI-2001',
+      description: 'Demi-Glace',
+      location: 'Dry Storage',
+      supplier: 'Food Vendor',
+      packSizeRaw: '1/26 946.353ML',
+      caseQuantity: 1,
+      innerPackQuantity: 26,
+      baseUnitQuantity: 946.353,
+      baseUnit: 'ML',
+      packagePrice: 130,
+    }], '2033-03-31');
+    await applyBatchApproval(originalBatch, approvalAuth);
+    const [originalRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, originalBatch));
+    if (!originalRow?.resolvedInventoryItemId) throw new Error('Expected Demi-Glace fixture to resolve');
+
+    const conflictBatch = await stageBatch([{
+      code: 'DEMI-2002',
+      description: 'Demi-Glace',
+      location: 'Dry Storage',
+      supplier: 'Food Vendor',
+      packSizeRaw: '1/36 1QT',
+      caseQuantity: 1,
+      innerPackQuantity: 36,
+      baseUnitQuantity: 1,
+      baseUnit: 'QT',
+      packagePrice: 140,
+    }], '2033-04-30');
+    const preview = await runResolutionPreview(conflictBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: originalRow.resolvedInventoryItemId,
+      packCompatibility: 'incompatible',
+      recodeEvidenceClass: 'new_pack_size',
+      keepExistingPackEligible: false,
+      recommendedAction: 'create_variant',
+    });
+    await expect(saveOrderlyReviewDecisionChanges(conflictBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'keep_existing_pack',
+        inventoryItemId: originalRow.resolvedInventoryItemId,
+      },
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+  });
+
+  it('rejects keep-existing-pack when only an inactive vendor name matches', async () => {
+    const originalBatch = await stageBatch([{
+      code: 'INACTIVE-3001',
+      description: 'Inactive Vendor Wine',
+      location: 'Liquor Cage',
+      supplier: 'Retired Wine Vendor',
+      caseQuantity: 1,
+      innerPackQuantity: 6,
+      baseUnitQuantity: 750,
+      baseUnit: 'ML',
+      packagePrice: 72,
+    }], '2033-05-31');
+    await applyBatchApproval(originalBatch, approvalAuth);
+    const [originalRow] = await db
+      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, originalBatch));
+    if (!originalRow?.resolvedInventoryItemId) throw new Error('Expected inactive-vendor fixture to resolve');
+    const [originalVendorPack] = await db
+      .select({ vendorId: vendorItems.vendorId })
+      .from(vendorItems)
+      .where(eq(vendorItems.inventoryItemId, originalRow.resolvedInventoryItemId));
+    await db.update(vendors).set({ active: 0 }).where(eq(vendors.id, originalVendorPack.vendorId));
+
+    const opaqueBatch = await stageBatch([{
+      code: 'INACTIVE-3002',
+      description: 'Inactive Vendor Wine',
+      location: 'Liquor Cage',
+      supplier: 'Retired Wine Vendor',
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: null,
+      baseUnit: 'CASE',
+      packagePrice: 74,
+    }], '2033-06-30');
+    const preview = await runResolutionPreview(opaqueBatch, ID.company);
+    expect(preview.rows[0].itemMatch).toMatchObject({
+      possibleRecode: true,
+      possibleRecodeMatchedId: originalRow.resolvedInventoryItemId,
+      packCompatibility: 'unknown',
+      keepExistingPackEligible: false,
+      recommendedAction: 'create_variant',
+    });
+    await expect(saveOrderlyReviewDecisionChanges(opaqueBatch, approvalAuth, [{
+      rowIndex: 1,
+      expectedRevision: null,
+      decision: {
+        action: 'keep_existing_pack',
+        inventoryItemId: originalRow.resolvedInventoryItemId,
+      },
+    }])).rejects.toMatchObject<Partial<ImportApprovalError>>({ code: 'CONFLICT' });
+  });
+
   it('still rejects a same-vendor resolved pack that contradicts persisted verified geometry', async () => {
     const mayBatch = await stageBatch([{
       code: 'SAME-VENDOR-RESOLVED-CONFLICT',

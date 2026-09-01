@@ -119,7 +119,13 @@ export interface MatchResult {
   /** Existing suppliers for the exact-name candidate, used for review warnings. */
   existingVendorNames?: string[];
   /** Server recommendation; approval still requires an explicit saved decision. */
-  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
+  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'keep_existing_pack' | 'create_variant';
+  /**
+   * An opaque incoming same-vendor row may reuse this item without replacing
+   * its stronger verified vendor-pack geometry. Computed only from
+   * property-scoped predecessor and canonical vendor-pack evidence.
+   */
+  keepExistingPackEligible?: boolean;
   /** The incoming row's parsed pack evidence, including server normalization. */
   sourcePackEvidence?: PackEvidence | null;
   /** Evidence class for a possible re-code candidate. */

@@ -138,7 +138,8 @@ export interface MatchResult {
   candidatePackEvidence?: PackEvidence | null;
   crossVendorPackEligible?: boolean;
   existingVendorNames?: string[];
-  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'create_variant';
+  recommendedAction?: 'link_existing' | 'link_vendor_pack' | 'keep_existing_pack' | 'create_variant';
+  keepExistingPackEligible?: boolean;
   recodeEvidenceClass?:
     | 'compatible_alternate'
     | 'new_pack_size'

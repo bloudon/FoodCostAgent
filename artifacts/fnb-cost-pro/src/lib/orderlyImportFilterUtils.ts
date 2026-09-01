@@ -37,7 +37,7 @@ export interface RowPreviewLike {
     candidatePackEvidence?: PackEvidenceLike | null;
     crossVendorPackEligible?: boolean;
     existingVendorNames?: string[];
-    recommendedAction?: "link_existing" | "link_vendor_pack" | "create_variant";
+    recommendedAction?: "link_existing" | "link_vendor_pack" | "keep_existing_pack" | "create_variant";
   };
 }
 
