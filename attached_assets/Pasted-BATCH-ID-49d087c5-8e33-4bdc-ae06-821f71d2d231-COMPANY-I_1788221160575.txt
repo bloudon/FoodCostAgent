@@ -1,0 +1,126 @@
+BATCH_ID='49d087c5-8e33-4bdc-ae06-821f71d2d231' COMPANY_ID='14fb15ba-2d7c-4bf1-8fb1-3f6598b41322' bash -c '
+cat > /tmp/orderly-six-ro.sh <<'"'"'SCRIPT'"'"'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+BATCH_ID="$1"
+COMPANY_ID="$2"
+OUT="/tmp/orderly-six-comparison.txt"
+
+PID="$(pm2 pid fnbcostpro | head -n 1 | tr -d "[:space:]")"
+DB_URL="$(tr "\0" "\n" < "/proc/$PID/environ" | sed -n "s/^DATABASE_URL=//p")"
+test -n "$DB_URL" || { echo "DATABASE_URL missing from PM2" >&2; exit 1; }
+
+env PGOPTIONS=" -c statement_timeout=20s -c lock_timeout=1s" \
+psql -X "$DB_URL" -v ON_ERROR_STOP=1 \
+  -v batch_id="$BATCH_ID" \
+  -v company_id="$COMPANY_ID" \
+  > "$OUT" 2>&1 <<'"'"'SQL'"'"'
+\pset pager off
+\pset format aligned
+
+WITH requested(row_index) AS (
+  VALUES (2955), (4008), (4381), (4102), (4641), (5402)
+),
+current_batch AS (
+  SELECT id, company_id, source_property_id, inventory_date
+  FROM inventory_import_batches
+  WHERE id = :'batch_id'
+    AND company_id = :'company_id'
+    AND source_system = 'ORDERLY'
+),
+latest_predecessor AS (
+  SELECT p.id, p.inventory_date
+  FROM inventory_import_batches p
+  JOIN current_batch c
+    ON c.company_id = p.company_id
+   AND c.source_property_id = p.source_property_id
+  WHERE p.source_system = 'ORDERLY'
+    AND p.status = 'approved'
+    AND p.inventory_date < c.inventory_date
+  ORDER BY p.inventory_date DESC, p.uploaded_at DESC, p.id DESC
+  LIMIT 1
+),
+saved AS (
+  SELECT
+    d.row_index,
+    d.decision,
+    COALESCE(
+      d.decision->>'inventoryItemId',
+      d.decision->>'comparableInventoryItemId'
+    ) AS saved_item_id
+  FROM orderly_import_review_decisions d
+  JOIN requested q ON q.row_index = d.row_index
+  WHERE d.batch_id = :'batch_id'
+    AND d.company_id = :'company_id'
+)
+SELECT
+  r.row_index,
+  r.cleaned_description AS july_product,
+  r.case_quantity AS july_case_qty,
+  r.inner_pack_quantity AS july_inner_qty,
+  r.base_unit_quantity AS july_base_qty,
+  r.base_unit AS july_unit,
+  s.decision::text AS saved_decision,
+  left(s.saved_item_id, 12) AS saved_target_prefix,
+  i.name AS saved_target_name,
+  i.case_size AS target_case_size,
+  i.case_pkg_count AS target_case_pkg_count,
+  i.container_size AS target_container_size,
+  u.abbreviation AS target_unit,
+  u.kind AS target_unit_kind,
+  p.inventory_date AS predecessor_date,
+  COALESCE(e.evidence_rows, 0) AS predecessor_evidence_rows,
+  COALESCE(e.sample_evidence, '[]'::jsonb)::text AS predecessor_evidence_sample
+FROM requested q
+JOIN inventory_import_rows r
+  ON r.batch_id = :'batch_id'
+ AND r.row_index = q.row_index
+LEFT JOIN saved s ON s.row_index = q.row_index
+LEFT JOIN inventory_items i
+  ON i.id = s.saved_item_id
+ AND i.company_id = :'company_id'
+LEFT JOIN units u ON u.id = i.unit_id
+LEFT JOIN latest_predecessor p ON true
+LEFT JOIN LATERAL (
+  SELECT
+    count(*)::int AS evidence_rows,
+    jsonb_agg(
+      jsonb_build_object(
+        'row', x.row_index,
+        'description', x.cleaned_description,
+        'caseQuantity', x.case_quantity,
+        'innerPackQuantity', x.inner_pack_quantity,
+        'baseUnitQuantity', x.base_unit_quantity,
+        'baseUnit', x.base_unit
+      )
+      ORDER BY x.row_index
+    ) AS sample_evidence
+  FROM (
+    SELECT
+      pr.row_index,
+      pr.cleaned_description,
+      pr.case_quantity,
+      pr.inner_pack_quantity,
+      pr.base_unit_quantity,
+      pr.base_unit
+    FROM inventory_import_rows pr
+    WHERE pr.batch_id = p.id
+      AND pr.resolved_inventory_item_id = s.saved_item_id
+    ORDER BY pr.row_index
+    LIMIT 25
+  ) x
+) e ON true
+ORDER BY r.row_index;
+SQL
+
+printf "\nSaved comparison written to %s\n\n" "$OUT"
+cat "$OUT"
+SCRIPT
+
+chmod 700 /tmp/orderly-six-ro.sh
+tmux kill-session -t orderly-ro 2>/dev/null || true
+tmux new-session -d -s orderly-ro "/tmp/orderly-six-ro.sh \"$BATCH_ID\" \"$COMPANY_ID\""
+tmux attach -t orderly-ro
+'
