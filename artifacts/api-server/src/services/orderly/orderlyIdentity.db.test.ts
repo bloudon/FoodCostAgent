@@ -85,6 +85,7 @@ type SourceRow = {
   location: string;
   supplier?: string | null;
   packSizeRaw?: string | null;
+  packSizeHeader?: string;
   caseQuantity?: number | null;
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
@@ -123,7 +124,7 @@ async function stageBatch(
     rawData: {
       description: row.description,
       location: row.location,
-      ...(row.packSizeRaw ? { 'Pack Size': row.packSizeRaw } : {}),
+      ...(row.packSizeRaw ? { [row.packSizeHeader ?? 'Pack Size']: row.packSizeRaw } : {}),
     },
     rawDescription: row.description,
     cleanedDescription: row.description,
@@ -1461,6 +1462,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       location: 'Direct Unit Later Storage',
       supplier,
       packSizeRaw: '0/0 LT',
+      packSizeHeader: ' PACK SIZE ',
       caseQuantity: 0,
       innerPackQuantity: 0,
       baseUnitQuantity: 1,
@@ -1509,7 +1511,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       baseUnit: 'LT',
       packParseStatus: 'ok',
     });
-    expect((stagedAfterPreview.rawData as Record<string, unknown>)['Pack Size']).toBe('0/0 LT');
+    expect((stagedAfterPreview.rawData as Record<string, unknown>)[' PACK SIZE ']).toBe('0/0 LT');
 
     const result = await applyBatchApproval(directBatch, approvalAuth);
     expect(result.rowsHeldForReview).toBe(0);
@@ -1531,7 +1533,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       baseUnitQuantity: 1,
       baseUnit: 'LT',
     });
-    expect((resolvedDirect.rawData as Record<string, unknown>)['Pack Size']).toBe('0/0 LT');
+    expect((resolvedDirect.rawData as Record<string, unknown>)[' PACK SIZE ']).toBe('0/0 LT');
 
     const [sourceRowAfter] = await db
       .select({

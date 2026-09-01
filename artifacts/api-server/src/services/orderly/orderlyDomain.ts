@@ -912,6 +912,24 @@ function sourcePackGeometry(row: Pick<
 }
 
 /**
+ * Raw workbook headers are immutable source evidence and retain the exact
+ * spelling exported by the workbook. Format detection trims and folds header
+ * case, so later readers must do the same instead of assuming "Pack Size".
+ * Multiple normalized matches are ambiguous and therefore fail closed.
+ */
+function rawPackSize(rawData: unknown): string | null {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+  const matches = Object.entries(rawData as Record<string, unknown>)
+    .filter(([key, value]) =>
+      key.trim().toLowerCase() === 'pack size' &&
+      typeof value === 'string' &&
+      value.trim().length > 0
+    )
+    .map(([, value]) => String(value));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
  * A pack variant needs a deterministic catalog label without requiring the
  * reviewer to retype source facts. Use the same parsed geometry that drove the
  * incompatible-pack classification.
@@ -1819,8 +1837,8 @@ export async function runResolutionPreview(
   // Already-valid staged geometry is never replaced during a read-only preview.
   for (const row of batchRows) {
     if (normalizePackGeometry(sourcePackGeometry(row)).status === 'compatible') continue;
-    const rawPack = (row.rawData as Record<string, unknown> | null)?.['Pack Size'];
-    if (typeof rawPack !== 'string') continue;
+    const rawPack = rawPackSize(row.rawData);
+    if (rawPack == null) continue;
     const parsedPack = parseOrderlyPackSize(rawPack);
     if (parsedPack.packParseStatus !== 'ok') continue;
     Object.assign(row, parsedPack);
@@ -2723,10 +2741,7 @@ export async function runResolutionPreview(
       sourceItemCode: row.sourceItemCode,
       itemCodeStatus: row.itemCodeStatus,
       sourceCodeReliability: resolutions[i].sourceCodeReliability ?? 'unavailable',
-      packSizeRaw: typeof (row.rawData as Record<string, unknown> | null)?.['Pack Size'] === 'string'
-        && String((row.rawData as Record<string, unknown>)['Pack Size']).trim()
-          ? String((row.rawData as Record<string, unknown>)['Pack Size'])
-          : null,
+      packSizeRaw: rawPackSize(row.rawData),
       cleanedDescription: row.cleanedDescription,
       supplierRaw: row.supplierRaw,
       sourceCategory: (row as any).sourceCategory ?? null,
