@@ -308,8 +308,10 @@ function assertReviewDecisionMatchesPreview(
   }
   if (
     row.itemCodeStatus === 'blank' &&
-    row.itemMatch.decisionEligibleCandidateIds !== undefined &&
-    !row.itemMatch.decisionEligibleCandidateIds.includes(selectedItemId)
+    (
+      row.itemMatch.decisionEligibleCandidateIds === undefined ||
+      !row.itemMatch.decisionEligibleCandidateIds.includes(selectedItemId)
+    )
   ) {
     throw new ImportApprovalError(
       'CONFLICT',
@@ -421,7 +423,11 @@ export function assertReviewDecisionCodeGroupConsistency(
 
   for (const change of changes) {
     const row = rowsByIndex.get(change.rowIndex);
-    if (!row || !isReliableItemCode(row)) continue;
+    if (!row) continue;
+    if (change.decision !== undefined) {
+      assertReviewDecisionMatchesPreview(row, change.decision);
+    }
+    if (!isReliableItemCode(row)) continue;
     const saved = savedByRow.get(change.rowIndex);
     if (change.decision?.action !== undefined || saved?.action !== undefined || change.decision === undefined) {
       impactedCodes.add(row.sourceItemCode!.trim());

@@ -123,6 +123,8 @@ export interface MatchResult {
   confidence: string;
   matchedId: string | null;
   candidateIds: string[];
+  /** Server-authorized link targets after blank-code property pack-provenance checks. */
+  decisionEligibleCandidateIds?: string[];
   requiresReview: boolean;
   score?: number;
   /** Enriched by the server — candidate items the user can pick from (ambiguous rows). */

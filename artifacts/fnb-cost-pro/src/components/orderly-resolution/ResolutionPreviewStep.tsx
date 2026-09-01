@@ -669,6 +669,12 @@ function CandidatePicker({
   // Handle Ambiguous
   if (confidence === "ambiguous") {
     const isHeld = row.heldForReview;
+    const decisionEligibleCandidateIds = row.itemCodeStatus === "blank"
+      ? new Set(match.decisionEligibleCandidateIds ?? [])
+      : null;
+    const eligibleCandidateCount = decisionEligibleCandidateIds == null
+      ? candidates.length
+      : candidates.filter(candidate => decisionEligibleCandidateIds.has(candidate.id)).length;
     const explicitLink = typeof decision === "string" ? decision : undefined;
     const resolvedId = isHeld
       ? explicitLink
@@ -681,24 +687,34 @@ function CandidatePicker({
         {row.heldForReview && <HeldRowDetails row={row} />}
         <div className="px-4 py-4 space-y-3 bg-muted/20 border-t border-border">
           <p className="text-sm font-medium text-foreground">
-            {isHeld
-              ? `${candidates.length} items matched — pick one to link, or leave this row unlinked:`
+            {isHeld && eligibleCandidateCount === 0
+              ? `${candidates.length} possible ${candidates.length === 1 ? "match lacks" : "matches lack"} compatible pack provenance — leave this row unlinked:`
+              : isHeld
+              ? `${candidates.length} items matched — pick an eligible item to link, or leave this row unlinked:`
               : `${candidates.length} items matched — pick one to link, or create a new item:`}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {candidates.map(c => (
-              <ItemChip
-                key={c.id}
-                item={c}
-                selected={resolvedId === c.id}
-                onClick={() => onDecision(
-                  row.rowIndex,
-                  isHeld
-                    ? c.id
-                    : resolvedId === c.id ? undefined : c.id,
-                )}
-              />
-            ))}
+            {candidates.map(c => {
+              const isEligible = decisionEligibleCandidateIds == null ||
+                decisionEligibleCandidateIds.has(c.id);
+              return (
+                <ItemChip
+                  key={c.id}
+                  item={c}
+                  selected={resolvedId === c.id}
+                  disabled={!isEligible}
+                  onClick={() => onDecision(
+                    row.rowIndex,
+                    isHeld
+                      ? c.id
+                      : resolvedId === c.id ? undefined : c.id,
+                  )}
+                  badge={!isEligible
+                    ? <Badge className="bg-slate-200 text-slate-800 border-slate-300">Pack unverified</Badge>
+                    : undefined}
+                />
+              );
+            })}
             {isHeld ? (
               <button
                 type="button"

@@ -399,7 +399,34 @@ describe('assertReviewDecisionCodeGroupConsistency', () => {
     expect(() => assertReviewDecisionCodeGroupConsistency(
       preview([unknownRow]),
       [change(1)],
-    )).toThrow(/conflicting description or pack identities/);
+    )).toThrow(/no longer matches its compatible review candidate/);
+  });
+
+  it('rejects a blank-code link when the preview omits pack-provenance eligibility', () => {
+    const blankRow = previewRow(1, {
+      sourceItemCode: null,
+      itemCodeStatus: 'blank',
+      sourceCodeReliability: 'unavailable',
+      heldForReview: true,
+      holdReason: 'blank_item_code',
+      identityGroupRows: [1],
+      itemMatch: {
+        strategy: 'name_pack',
+        confidence: 'ambiguous',
+        matchedId: null,
+        candidateIds: ['existing-tequila'],
+        requiresReview: true,
+      },
+    });
+
+    expect(() => assertReviewDecisionCodeGroupConsistency(
+      preview([blankRow]),
+      [{
+        rowIndex: 1,
+        expectedRevision: null,
+        decision: { inventoryItemId: 'existing-tequila' },
+      }],
+    )).toThrow(/lacks compatible pack provenance/);
   });
 
   it('rejects a forged complete-group save when the server preview reports divergent identities', () => {

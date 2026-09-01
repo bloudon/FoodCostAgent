@@ -322,6 +322,7 @@ function heldMatchPreview(confidence: "ambiguous" | "low") {
           confidence,
           matchedId: candidate.id,
           candidateIds: [candidate.id],
+          decisionEligibleCandidateIds: [candidate.id],
           requiresReview: true,
           candidates: confidence === "ambiguous" ? [candidate] : [],
           matchedItem: confidence === "low" ? candidate : null,
@@ -1006,6 +1007,53 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
 
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create new item record" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer an ambiguous blank-code candidate whose pack provenance is ineligible", async () => {
+    currentPreview = heldMatchPreview("ambiguous");
+    currentPreview.rows[0].itemMatch.decisionEligibleCandidateIds = [];
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    const candidate = await screen.findByRole("button", { name: /ambiguous candidate.*Pack unverified/ });
+
+    expect(candidate).toBeDisabled();
+    expect(screen.getByText(/possible match lacks compatible pack provenance/i)).toBeInTheDocument();
+    fireEvent.click(candidate);
+    expect(vi.mocked(global.fetch).mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+    expect(screen.getByRole("button", { name: "Leave unlinked" })).toBeEnabled();
+  });
+
+  it("fails closed when an ambiguous blank-code preview omits candidate eligibility", async () => {
+    currentPreview = heldMatchPreview("ambiguous");
+    delete currentPreview.rows[0].itemMatch.decisionEligibleCandidateIds;
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    expect(await screen.findByRole("button", { name: /ambiguous candidate.*Pack unverified/ })).toBeDisabled();
+  });
+
+  it("enables only server-eligible candidates in a mixed ambiguous blank-code match", async () => {
+    currentPreview = heldMatchPreview("ambiguous");
+    const eligible = currentPreview.rows[0].itemMatch.candidates[0];
+    const ineligible = { ...eligible, id: "candidate-ineligible", name: "ineligible candidate" };
+    currentPreview.rows[0].itemMatch.candidates = [eligible, ineligible];
+    currentPreview.rows[0].itemMatch.candidateIds = [eligible.id, ineligible.id];
+    currentPreview.rows[0].itemMatch.decisionEligibleCandidateIds = [eligible.id];
+    renderStep();
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    expect(await screen.findByRole("button", { name: /ineligible candidate.*Pack unverified/ })).toBeDisabled();
+    const eligibleButton = screen.getByRole("button", { name: /ambiguous candidate/ });
+    expect(eligibleButton).toBeEnabled();
+    fireEvent.click(eligibleButton);
+
+    await waitFor(() => {
+      const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(saveCall).toBeDefined();
+      const request = JSON.parse(String(saveCall?.[1]?.body));
+      expect(request.changes[0].decision).toEqual({ inventoryItemId: eligible.id });
+    });
   });
 
   it("marks a fuzzy held row as an explicit existing-item link or leave-unlinked decision", async () => {
