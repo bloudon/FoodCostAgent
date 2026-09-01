@@ -18,13 +18,12 @@ Provide copy/paste commands that fail closed, avoid credentials in output, and
 state the exact hard stop. Treat a production step as unverified until the
 operator returns its sanitized output and PM reviews it.
 
-The standard release helper may print transient JSON.parse errors while PM2 is
-restarting and the health or build-info endpoint returns an empty response; a
-later final JSON record with both verification flags true is the authoritative
-release result.
+The standard release helper treats empty or partial health/build-info responses
+during PM2 restart as normal readiness retries without printing JSON parse noise;
+the final JSON record remains the authoritative release result.
 
 **Why:** The helper retries readiness probes, but its inline JSON validator
-reports empty transient responses noisily before a successful probe.
+must not turn expected empty responses during restart into alarming stack traces.
 
 **How to apply:** Do not treat intermediate parse noise alone as a failed
 release. Require the final record to match the expected commit/build identity

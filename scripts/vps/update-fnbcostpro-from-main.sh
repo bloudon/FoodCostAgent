@@ -132,8 +132,19 @@ for _attempt in $(seq 1 30); do
   health="$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/api/healthz" 2>/dev/null || true)"
   build_info="$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/api/build-info" 2>/dev/null || true)"
   if HEALTH="$health" BUILD_INFO="$build_info" EXPECTED_BUILD_ID="$BUILD_ID" node -e '
-    const health = JSON.parse(process.env.HEALTH);
-    const build = JSON.parse(process.env.BUILD_INFO);
+    const healthText = process.env.HEALTH?.trim();
+    const buildInfoText = process.env.BUILD_INFO?.trim();
+    if (!healthText || !buildInfoText) process.exit(1);
+
+    let health;
+    let build;
+    try {
+      health = JSON.parse(healthText);
+      build = JSON.parse(buildInfoText);
+    } catch {
+      process.exit(1);
+    }
+
     if (health?.status !== "ok") process.exit(1);
     if (build?.service !== "fnb-cost-pro-api") process.exit(1);
     if (build?.buildId !== process.env.EXPECTED_BUILD_ID) process.exit(1);
