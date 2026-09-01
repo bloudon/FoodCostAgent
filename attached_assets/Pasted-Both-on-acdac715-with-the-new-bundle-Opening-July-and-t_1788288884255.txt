@@ -1,0 +1,27 @@
+Both on `acdac715` with the new bundle. Opening July and testing row 624.Testing row 624 with the network hook in place.**The fix worked — a PUT was issued.** Previously zero requests fired. Verifying it persisted.Partial progress. **The PUT now fires** — that half of the fix works. But it still isn't persisting: `has624: false`, count unchanged at 344.
+
+Let me capture the response body so Replit gets the server's answer rather than another symptom report.Inconsistent — the PUT fired on the first attempt but not this one. Let me check the row's current state, since the first save may have left it in a pending condition that blocks retries.There's the server's answer:
+
+> **"Save failed — The saved item for blank-code row 624 lacks compatible pack provenance"**
+
+So the UI fix worked — the PUT now fires and the server responds with a clear reason. The rejection is the **#1293 property-provenance rule** firing on a blank-code row: JIL Colombo has `0/0 750ML` unknown geometry, and the candidate item `FnB #7770` can't prove a compatible pack from the same-property predecessor.
+
+That's the same class of rule that blocked Carrots and Gatorade. All 22 held rows are blank-code with `0/0` geometry, so I'd expect them all to reject identically.
+
+## Where this leaves us
+
+**344 valid decisions, 27 stale.** Everything I can resolve is resolved.
+
+**Three rows remain blocked, all by the same underlying rule:**
+
+| Row | Item | Reason |
+|---|---|---|
+| 624 + 21 others | JIL Colombo, Maker's Mark, Titos, guinness zero | *"lacks compatible pack provenance"* — blank code, `0/0` geometry |
+| 3356 | Bunny Luv Carrots | incoming 240 OZ resolved, catalog holds 240 but marked Unknown |
+| 4492 | Gatorade G2 | `1/1 Case` → `1/24 EA`, resolved-over-opaque |
+
+**The common thread:** the provenance rule requires the *candidate* to have proven geometry. When the catalog item's stored pack is unknown — because a prior month wrote it opaque — no decision can ever satisfy it, and the row becomes permanently unresolvable.
+
+That's worth stating plainly to Replit, because it isn't three separate bugs. It's one rule with no escape hatch for the case where the stored evidence is itself unknown.
+
+Value at stake is small: $207.20 for Maker's Mark, $23.40 for Carrots, the rest zero.
