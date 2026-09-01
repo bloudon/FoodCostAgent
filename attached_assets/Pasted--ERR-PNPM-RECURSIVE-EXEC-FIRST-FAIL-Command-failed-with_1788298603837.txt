@@ -1,0 +1,128 @@
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: tsx --require dotenv/config /tmp/orderly-preview-diagnostic.mts
+administrator@vps-BLOUD-Soft:~/apps/CostPro/fnbcostpro$ cd /home/administrator/apps/CostPro/fnbcostpro
+
+cat >/tmp/orderly-preview-diagnostic.mts <<'TS'
+import {
+  pool,
+  describeDatabaseTarget,
+} from "/home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/db.ts";
+import { runResolutionPreview } from "/home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server/src/services/orderly/orderlyDomain.ts";
+
+const batchPrefix = "49d087c5";
+const targetRowIndex = 747;
+
+try {
+  const batchResult = await pool.query(
+    `SELECT
+       id,
+       company_id,
+       parser_version,
+       status,
+       inventory_date,
+       source_property_id
+     FROM inventory_import_batches
+     WHERE id LIKE $1
+     ORDER BY id`,
+    [`${batchPrefix}%`],
+  );
+
+  if (batchResult.rows.length !== 1) {
+    throw new Error(
+      `Expected exactly one batch beginning ${batchPrefix}; found ${batchResult.rows.length}`,
+    );
+  }
+
+  const batch = batchResult.rows[0];
+
+  const rowResult = await pool.query(
+    `SELECT
+       row_index,
+       pack_parse_status,
+       case_quantity,
+       inner_pack_quantity,
+       base_unit_quantity,
+       case_unit,
+       inner_unit,
+       base_unit,
+       raw_data
+     FROM inventory_import_rows
+     WHERE batch_id = $1
+       AND row_index = $2`,
+  tsx --require dotenv/config /tmp/orderly-preview-diagnostic.mtsnv \,d);
+[DB] Using standard PostgreSQL driver (local/VPS mode)
+ℹ️ Redis cache not configured (REDIS_URL not set)
+{
+  "databaseTarget": {
+    "driver": "node-postgres",
+    "host": "127.0.0.1",
+    "port": "5432",
+    "database": "fnbcostpro",
+    "sslmode": "(unset)"
+  },
+  "batch": {
+    "id": "49d087c5-8e33-4bdc-ae06-821f71d2d231",
+    "company_id": "14fb15ba-2d7c-4bf1-8fb1-3f6598b41322",
+    "parser_version": "1.1",
+    "status": "pending_review",
+    "inventory_date": "2026-07-31",
+    "source_property_id": "24472"
+  },
+  "storedRow": {
+    "rowIndex": 747,
+    "packParseStatus": "unparseable",
+    "caseQuantity": null,
+    "innerPackQuantity": null,
+    "baseUnitQuantity": null,
+    "caseUnit": null,
+    "innerUnit": null,
+    "baseUnit": null,
+    "relevantRawEntries": [
+      [
+        "Pack Size",
+        "0/0 LT"
+      ],
+      [
+        "Total Units",
+        4.6
+      ],
+      [
+        "Package Price",
+        37
+      ],
+      [
+        "Previous Pack",
+        0
+      ],
+      [
+        "Counting Unit 1",
+        "Case"
+      ],
+      [
+        "Counting Unit 2",
+        "Pack"
+      ],
+      [
+        "Counting Unit 3",
+        " LT"
+      ]
+    ]
+  },
+  "directPreviewRow": {
+    "rowIndex": 747,
+    "packSizeRaw": "0/0 LT",
+    "packParseStatus": "ok",
+    "caseQuantity": 1,
+    "innerPackQuantity": 1,
+    "baseUnitQuantity": 1,
+    "baseUnit": "LT",
+    "heldForReview": true,
+    "holdReason": "blank_item_code",
+    "itemMatch": {
+      "strategy": "name_pack",
+      "confidence": "ambiguous",
+      "requiresReview": true,
+      "packCompatibility": "unknown",
+      "packCompatibilityReason": "at least one same-name candidate lacks source-property-compatible pack provenance"
+    }
+  }
+}
