@@ -1,0 +1,78 @@
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3471507  │ 31h    │ 22   │ online    │ 0%       │ 90.5mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3680797  │ 0s     │ 1608 │ online    │ 0%       │ 24.6mb   │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3471536  │ 31h    │ 11   │ online    │ 0%       │ 111.5mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3471523  │ 31h    │ 20   │ online    │ 6.3%     │ 98.0mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3471500  │ 31h    │ 29   │ online    │ 0%       │ 230.3mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3471516  │ 31h    │ 22   │ online    │ 0%       │ 108.1mb  │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+<anonymous_script>:1
+
+
+SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at [eval]:2:25
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:118:14
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3)
+    at node:internal/main/eval_string:51:3
+
+Node.js v20.20.2
+<anonymous_script>:1
+
+
+SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at [eval]:2:25
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:118:14
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3)
+    at node:internal/main/eval_string:51:3
+
+Node.js v20.20.2
+<anonymous_script>:1
+
+
+SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at [eval]:2:25
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:118:14
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3)
+    at node:internal/main/eval_string:51:3
+
+Node.js v20.20.2
+<anonymous_script>:1
+
+
+SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at [eval]:2:25
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:118:14
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3)
+    at node:internal/main/eval_string:51:3
+
+Node.js v20.20.2
+{
+  "operation": "mainline-vps-release",
+  "gitSha": "c610905712d85cdd6fe4ade4fd0ac18a495f8ddd",
+  "buildId": "api@1.15.0:c610905712d85cdd6fe4ade4fd0ac18a495f8ddd",
+  "pm2Process": "fnbcostpro",
+  "apiPort": 3004,
+  "healthVerified": true,
+  "buildIdentityVerified": true,
+  "databaseMigrationCommandExecuted": false,
+  "orderlyPreviewOrApplyExecuted": false
