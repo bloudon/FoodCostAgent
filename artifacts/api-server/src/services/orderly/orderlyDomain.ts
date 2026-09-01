@@ -3170,7 +3170,13 @@ export async function getOrderlyReviewDecisions(
   auth: ApprovalAuthorizationContext | null | undefined,
 ): Promise<{
   decisions: SavedReviewDecision[];
-  stale: Array<{ rowIndex: number; reason: string; sourceItemCode: string | null; description: string | null }>;
+  stale: Array<{
+    rowIndex: number;
+    revision: number;
+    reason: string;
+    sourceItemCode: string | null;
+    description: string | null;
+  }>;
 }> {
   const contract = await resolveApprovalContract(batchId, auth);
   const [preview, decisions] = await Promise.all([
@@ -3179,12 +3185,19 @@ export async function getOrderlyReviewDecisions(
   ]);
   const rowsByIndex = new Map(preview.rows.map(row => [row.rowIndex, row]));
   const valid: SavedReviewDecision[] = [];
-  const stale: Array<{ rowIndex: number; reason: string; sourceItemCode: string | null; description: string | null }> = [];
+  const stale: Array<{
+    rowIndex: number;
+    revision: number;
+    reason: string;
+    sourceItemCode: string | null;
+    description: string | null;
+  }> = [];
   for (const saved of decisions) {
     const row = rowsByIndex.get(saved.rowIndex);
     if (!row) {
       stale.push({
         rowIndex: saved.rowIndex,
+        revision: saved.revision,
         reason: 'This row is no longer part of the staged import.',
         sourceItemCode: null,
         description: null,
@@ -3197,6 +3210,7 @@ export async function getOrderlyReviewDecisions(
     } catch (err: any) {
       stale.push({
         rowIndex: saved.rowIndex,
+        revision: saved.revision,
         reason: `${previewRowConflictLabel(row)}: ${err?.message ?? 'This saved decision no longer matches the current pack evidence.'}`,
         sourceItemCode: row.sourceItemCode,
         description: row.cleanedDescription,

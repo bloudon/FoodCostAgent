@@ -117,6 +117,7 @@ type SavedReviewDecision = {
 
 type StaleReviewDecision = {
   rowIndex: number;
+  revision: number;
   reason: string;
   sourceItemCode: string | null;
   description: string | null;
@@ -916,7 +917,10 @@ export function ResolutionPreviewStep({
       decision.rowIndex,
       fromStoredDecisionPayload(decision.decision),
     ])));
-    setDecisionRevisions(new Map(savedReviewDecisions.decisions.map(decision => [decision.rowIndex, decision.revision])));
+    setDecisionRevisions(new Map([
+      ...savedReviewDecisions.decisions.map(decision => [decision.rowIndex, decision.revision] as const),
+      ...(savedReviewDecisions.stale ?? []).map(decision => [decision.rowIndex, decision.revision] as const),
+    ]));
   }, [batchId, savedReviewDecisions]);
 
   useEffect(() => {

@@ -1079,6 +1079,44 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(screen.queryByText("→ Link Existing")).not.toBeInTheDocument();
   });
 
+  it("replaces a stale stored decision using the revision returned by reconciliation", async () => {
+    currentPreview = packComparisonPreview(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 12, baseUnit: "EA" },
+      "incompatible",
+    );
+    currentSavedReviewDecisions = {
+      decisions: [],
+      stale: [{
+        rowIndex: 1,
+        revision: 7,
+        reason: "The old link no longer matches the current pack evidence.",
+        sourceItemCode: "PACK-1",
+        description: "Item 1",
+      }],
+    };
+    renderStep();
+
+    fireEvent.click((await screen.findAllByText("Item 1"))[1].closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /Create as separate variant/ }));
+
+    await waitFor(() => {
+      const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(saveCall).toBeDefined();
+      const request = JSON.parse(String(saveCall?.[1]?.body));
+      expect(request.changes).toEqual([expect.objectContaining({
+        rowIndex: 1,
+        expectedRevision: 7,
+        decision: expect.objectContaining({ action: "create_variant" }),
+      })]);
+    });
+    const cacheUpdater = mockSetQueryData.mock.calls.at(-1)?.[1] as
+      | ((current: typeof currentSavedReviewDecisions) => typeof currentSavedReviewDecisions)
+      | undefined;
+    expect(cacheUpdater).toBeTypeOf("function");
+    expect(cacheUpdater?.(currentSavedReviewDecisions).stale).toEqual([]);
+  });
+
   it("updates every location row in a reliable item-code group from one save response", async () => {
     const first = packComparisonPreview(
       { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },

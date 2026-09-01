@@ -2791,6 +2791,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(draft.stale).toEqual([
       expect.objectContaining({
         rowIndex: 1,
+        revision: 1,
         sourceItemCode: '623764',
         description: 'HEITZ CAB SAUV MARTHAS 18 WD',
       }),
