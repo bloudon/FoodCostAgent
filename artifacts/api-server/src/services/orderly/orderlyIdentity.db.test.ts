@@ -1435,6 +1435,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       description,
       location: 'Direct Unit Source Storage',
       supplier,
+      packSizeRaw: '1/1 1LT',
       caseQuantity: 1,
       innerPackQuantity: 1,
       baseUnitQuantity: 1,
@@ -1455,6 +1456,37 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, sourceBatch));
     expect(sourceRow.resolvedInventoryItemId).toBeTruthy();
+    await db
+      .update(inventoryImportRows)
+      .set({
+        caseQuantity: null,
+        innerPackQuantity: null,
+        baseUnitQuantity: null,
+        baseUnit: null,
+        packParseStatus: 'unparseable',
+      })
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+    const [legacySourceRow] = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        packParseStatus: inventoryImportRows.packParseStatus,
+        rawData: inventoryImportRows.rawData,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+    expect(legacySourceRow).toMatchObject({
+      resolvedInventoryItemId: sourceRow.resolvedInventoryItemId,
+      caseQuantity: null,
+      innerPackQuantity: null,
+      baseUnitQuantity: null,
+      baseUnit: null,
+      packParseStatus: 'unparseable',
+    });
+    expect((legacySourceRow.rawData as Record<string, unknown>)['Pack Size']).toBe('1/1 1LT');
 
     const directBatch = await stageBatch([{
       code: null,
@@ -1522,6 +1554,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         innerPackQuantity: inventoryImportRows.innerPackQuantity,
         baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
         baseUnit: inventoryImportRows.baseUnit,
+        packParseStatus: inventoryImportRows.packParseStatus,
         rawData: inventoryImportRows.rawData,
       })
       .from(inventoryImportRows)
@@ -1542,11 +1575,12 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         innerPackQuantity: inventoryImportRows.innerPackQuantity,
         baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
         baseUnit: inventoryImportRows.baseUnit,
+        packParseStatus: inventoryImportRows.packParseStatus,
         rawData: inventoryImportRows.rawData,
       })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, sourceBatch));
-    expect(sourceRowAfter).toEqual(sourceRow);
+    expect(sourceRowAfter).toEqual(legacySourceRow);
   });
 
   it('does not reuse another property canonical item for an equivalent blank-code row', async () => {

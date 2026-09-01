@@ -1701,6 +1701,7 @@ export async function runResolutionPreview(
         innerPackQuantity: inventoryImportRows.innerPackQuantity,
         baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
         baseUnit: inventoryImportRows.baseUnit,
+        rawData: inventoryImportRows.rawData,
         resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
       })
       .from(inventoryImportRows)
@@ -1920,9 +1921,21 @@ export async function runResolutionPreview(
     innerPackQuantity: number | null;
     baseUnitQuantity: number | null;
     baseUnit: string | null;
+    rawData: unknown;
     resolvedInventoryItemId: string | null;
   };
   const typedPriorApprovedRows = priorApprovedRows as PriorApprovedResolutionRow[];
+  // The selected predecessor is bounded to one approved same-property batch.
+  // Rehydrate its legacy derived geometry in memory too, so stale parser output
+  // cannot make otherwise provable candidate provenance appear unknown.
+  for (const priorRow of typedPriorApprovedRows) {
+    if (normalizePackGeometry(priorRow).status === 'compatible') continue;
+    const rawPack = rawPackSize(priorRow.rawData);
+    if (rawPack == null) continue;
+    const parsedPack = parseOrderlyPackSize(rawPack);
+    if (parsedPack.packParseStatus !== 'ok') continue;
+    Object.assign(priorRow, parsedPack);
+  }
   const latestPriorRowsByStableCode = new Map<string, PriorApprovedResolutionRow[]>();
   const latestPriorRowsByResolvedItemId = new Map<string, PriorApprovedResolutionRow[]>();
   for (const priorRow of typedPriorApprovedRows) {
