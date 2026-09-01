@@ -89,6 +89,7 @@ type SourceRow = {
   innerPackQuantity?: number | null;
   baseUnitQuantity?: number | null;
   baseUnit?: string | null;
+  packParseStatus?: 'ok' | 'partial' | 'unparseable';
   packagePrice?: number | null;
   totalCost?: number;
 };
@@ -130,6 +131,7 @@ async function stageBatch(
     innerPackQuantity: row.innerPackQuantity === undefined ? 1 : row.innerPackQuantity,
     baseUnitQuantity: row.baseUnitQuantity === undefined ? 1 : row.baseUnitQuantity,
     baseUnit: row.baseUnit === undefined ? 'ML' : row.baseUnit,
+    ...(row.packParseStatus ? { packParseStatus: row.packParseStatus } : {}),
     packagePrice: row.packagePrice === undefined ? 30 : row.packagePrice,
     totalCost: row.totalCost ?? 30,
     sourceItemCode: row.code,
@@ -1368,7 +1370,14 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     }], '2031-01-31');
     await applyBatchApproval(sourceBatch, approvalAuth);
     const [sourceRow] = await db
-      .select({ resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId })
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        rawData: inventoryImportRows.rawData,
+      })
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, sourceBatch));
     expect(sourceRow.resolvedInventoryItemId).toBeTruthy();
@@ -1415,6 +1424,106 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .from(inventoryImportRows)
       .where(eq(inventoryImportRows.batchId, blankBatch));
     expect(resolvedBlank.resolvedInventoryItemId).toBe(sourceRow.resolvedInventoryItemId);
+  });
+
+  it('rehydrates a measurable 0/0 direct-unit row and reuses its same-property item', async () => {
+    const description = `Direct Litre Blank Reuse ${RUN}`;
+    const supplier = `Direct Unit Vendor ${RUN}`;
+    const sourceBatch = await stageBatch([{
+      code: `DIRECT-LT-${RUN}`,
+      description,
+      location: 'Direct Unit Source Storage',
+      supplier,
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+      packagePrice: 37,
+      totalCost: 37,
+    }], '2031-02-28');
+    await applyBatchApproval(sourceBatch, approvalAuth);
+    const [sourceRow] = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        rawData: inventoryImportRows.rawData,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+    expect(sourceRow.resolvedInventoryItemId).toBeTruthy();
+
+    const directBatch = await stageBatch([{
+      code: null,
+      description,
+      location: 'Direct Unit Later Storage',
+      supplier,
+      packSizeRaw: '0/0 LT',
+      caseQuantity: 0,
+      innerPackQuantity: 0,
+      baseUnitQuantity: null,
+      baseUnit: 'LT',
+      packParseStatus: 'unparseable',
+      packagePrice: 37,
+      totalCost: 170.2,
+    }], '2031-03-31');
+    const preview = await runResolutionPreview(directBatch, ID.company);
+
+    expect(preview.rows[0]).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+      heldForReview: false,
+      itemMatch: {
+        strategy: 'name_pack',
+        confidence: 'high',
+        matchedId: sourceRow.resolvedInventoryItemId,
+        requiresReview: false,
+        packCompatibility: 'compatible',
+      },
+    });
+    expect(preview.rows[0].itemMatch.sourcePackEvidence).toMatchObject({
+      normalizedUnit: 'ML',
+      totalBaseUnits: 1000,
+    });
+
+    const result = await applyBatchApproval(directBatch, approvalAuth);
+    expect(result.rowsHeldForReview).toBe(0);
+    const [resolvedDirect] = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        rawData: inventoryImportRows.rawData,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, directBatch));
+    expect(resolvedDirect.resolvedInventoryItemId).toBe(sourceRow.resolvedInventoryItemId);
+    expect(resolvedDirect).toMatchObject({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+    });
+    expect((resolvedDirect.rawData as Record<string, unknown>)['Pack Size']).toBe('0/0 LT');
+
+    const [sourceRowAfter] = await db
+      .select({
+        resolvedInventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        rawData: inventoryImportRows.rawData,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, sourceBatch));
+    expect(sourceRowAfter).toEqual(sourceRow);
   });
 
   it('does not reuse another property canonical item for an equivalent blank-code row', async () => {

@@ -9,11 +9,11 @@ An Orderly `packSizeId` is a distinct source identity. Its source SKU and normal
 
 **How to apply:** When writing Orderly adoption provenance, persist the source code plus normalized outer count, inner size, and unit with the pack identity. Reconciliation must scope comparisons by company, source property, vendor, candidate item, and source code; equivalent normalized geometry is not a conflict, while incomplete legacy geometry remains a review hold.
 
-For Orderly pack comparison, all three parsed tiers (case quantity, inner-pack quantity, and base-unit quantity) must be explicitly present and positive before a normalized total is confirmed. Never silently substitute a missing tier with `1`.
+For Orderly pack comparison, all three parsed tiers (case quantity, inner-pack quantity, and base-unit quantity) must be explicitly present and positive before a normalized total is confirmed. The one source-defined exception is `0/0 <measurable unit>`: Orderly uses it for direct-unit counts, so parse it as one case × one pack × the stated measurable quantity while retaining the literal `0/0` in raw evidence. Never apply this exception to `Case` or another unsupported unit.
 
-**Why:** A display or classifier that turns partial geometry into a numeric total can make missing source evidence look like a safe match.
+**Why:** A display or classifier that turns partial geometry into a numeric total can make missing source evidence look like a safe match. But production rows prove that `0/0 LT`, `0/0 750ML`, and `0/0 EA` carry internally reconciled direct-unit quantities and prices; treating their zero multipliers as missing forks established item history.
 
-**How to apply:** Return an unknown/null normalized total for any absent tier. Preview clients may format server-provided normalized facts, but must show incomplete evidence as unconfirmed and never derive a total themselves.
+**How to apply:** Recognize the exact direct-unit notation in the authoritative parser, persist canonical derived geometry on approval, and preserve the original pack text in immutable source data. Return unknown/null for every other absent tier. Preview clients may format server-provided normalized facts, but must never derive a total themselves.
 
 Descriptive values in Orderly's Item Code column are not vendor code identity, but they do not make the financial row unusable. Such rows may use a source-property-scoped identity derived from normalized product name plus complete canonical pack geometry; the descriptive text itself must never become a code mapping.
 

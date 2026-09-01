@@ -224,6 +224,41 @@ describe('Orderly source pack compatibility', () => {
     });
   });
 
+  it.each([
+    [
+      'litre',
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'LT' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1000, baseUnit: 'ML' },
+      'ML',
+      1000,
+    ],
+    [
+      '750 millilitres',
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 750, baseUnit: 'ML' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 750, baseUnit: 'ML' },
+      'ML',
+      750,
+    ],
+    [
+      'each',
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'EA' },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'EA' },
+      'EA',
+      1,
+    ],
+  ])('confirms a direct %s count against equivalent resolved geometry', (_label, direct, equivalent, unit, total) => {
+    expect(normalizePackGeometry(direct)).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: unit,
+      totalBaseUnits: total,
+    });
+    expect(comparePackGeometry(direct, equivalent)).toMatchObject({
+      status: 'compatible',
+      normalizedUnit: unit,
+      totalBaseUnits: total,
+    });
+  });
+
   it('keeps Case and other unsupported units unknown', () => {
     expect(isSupportedPackUnit('Case')).toBe(false);
     expect(normalizePackGeometry({

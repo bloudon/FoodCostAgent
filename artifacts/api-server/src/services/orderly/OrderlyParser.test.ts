@@ -183,6 +183,28 @@ describe('detectNonAuthoritativeCodes', () => {
 
 describe('Orderly pack-size parsing', () => {
   it.each([
+    ['0/0 LT', { baseUnitQuantity: 1, baseUnit: 'LT' }],
+    ['0 / 0 750ML', { baseUnitQuantity: 750, baseUnit: 'ML' }],
+    ['0/0 EA', { baseUnitQuantity: 1, baseUnit: 'EA' }],
+  ])('treats measurable direct-unit pack %s as one countable unit', (rawPack, expected) => {
+    expect(parseOrderlyPackSize(rawPack)).toEqual({
+      caseQuantity: 1,
+      innerPackQuantity: 1,
+      ...expected,
+      caseUnit: 'Case',
+      innerUnit: 'Pack',
+      packParseStatus: 'ok',
+    });
+  });
+
+  it.each(['0/0 Case', '0/0 FURLONG'])(
+    'keeps non-measurable direct-unit pack %s unconfirmed',
+    rawPack => {
+      expect(parseOrderlyPackSize(rawPack).packParseStatus).not.toBe('ok');
+    },
+  );
+
+  it.each([
     ['1/170 GR', { caseQuantity: 1, innerPackQuantity: 170, baseUnitQuantity: 1, baseUnit: 'GR' }],
     ['1/12 PT', { caseQuantity: 1, innerPackQuantity: 12, baseUnitQuantity: 1, baseUnit: 'PT' }],
     ['1/3 Cup', { caseQuantity: 1, innerPackQuantity: 3, baseUnitQuantity: 1, baseUnit: 'CUP' }],

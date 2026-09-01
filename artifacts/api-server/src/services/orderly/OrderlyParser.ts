@@ -24,7 +24,7 @@ import { isSupportedPackUnit } from './packGeometry';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const ORDERLY_PARSER_VERSION = '1.1';
+export const ORDERLY_PARSER_VERSION = '1.2';
 
 /** 0-based column indices for the Orderly Inventory Detail sheet */
 const COL = {
@@ -183,6 +183,34 @@ export function parseOrderlyPackSize(packSizeStr: string): Pick<
     const parsed = Number(token.replace(/,/g, ''));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
+
+  // Orderly uses 0/0 with a measurable unit for items counted directly in that
+  // unit rather than through case/pack multipliers. Preserve the literal 0/0
+  // in rawData, but project one direct unit into comparable geometry. Unsupported
+  // units such as Case remain opaque and continue through the fail-closed path.
+  const directUnit = packSizeStr.trim().match(
+    new RegExp(
+      String.raw`^0\s*\/\s*0\s+(?:(${numberPattern})\s*)?([A-Za-z]+)$`,
+      'i',
+    ),
+  );
+  if (directUnit) {
+    const baseUnitQuantity = directUnit[1] == null
+      ? 1
+      : parsePositiveNumber(directUnit[1]);
+    const baseUnit = directUnit[2].toUpperCase();
+    if (baseUnitQuantity !== null && isSupportedPackUnit(baseUnit)) {
+      return {
+        caseQuantity: 1,
+        innerPackQuantity: 1,
+        baseUnitQuantity,
+        caseUnit: 'Case',
+        innerUnit: 'Pack',
+        baseUnit,
+        packParseStatus: 'ok',
+      };
+    }
+  }
 
   // Orderly's keg token is self-describing but does not fit its ordinary
   // "N/M UOM" shape. Preserve the source text in rawData while projecting the
