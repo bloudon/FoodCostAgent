@@ -37,11 +37,16 @@ vi.mock("@/lib/queryClient", () => ({
 }));
 
 const mockUseQuery = vi.fn();
+const mockSetQueryData = vi.fn();
+const mockRefetchReviewDecisions = vi.fn();
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: (opts: any) => mockUseQuery(opts),
   useMutation: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-  useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
+  useQueryClient: vi.fn(() => ({
+    invalidateQueries: vi.fn(),
+    setQueryData: mockSetQueryData,
+  })),
   QueryClient: class {
     invalidateQueries = vi.fn();
   },
@@ -354,7 +359,7 @@ function setupQueryMocks() {
         data: currentSavedReviewDecisions,
         isLoading: false,
         isError: false,
-        refetch: vi.fn(),
+        refetch: mockRefetchReviewDecisions,
       };
     }
     return { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
@@ -1011,6 +1016,24 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Leave unlinked" }));
     expect(await screen.findByText("→ Leave Unlinked")).toBeInTheDocument();
+  });
+
+  it("keeps a successful recode decision resolved in place without refetching review state", async () => {
+    currentPreview = packComparisonPreview(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      "compatible",
+    );
+    renderStep();
+
+    expect(await screen.findByText("Action Required")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Item 1").closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /House Spirit/ }));
+
+    expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
+    expect(screen.queryByText("Action Required")).not.toBeInTheDocument();
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+    expect(mockRefetchReviewDecisions).not.toHaveBeenCalled();
   });
 
   it("hydrates a saved review decision without issuing another save", async () => {

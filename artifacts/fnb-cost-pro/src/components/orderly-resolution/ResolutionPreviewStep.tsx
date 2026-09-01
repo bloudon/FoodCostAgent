@@ -843,6 +843,7 @@ export function ResolutionPreviewStep({
   const manifestFileInputRef = useRef<HTMLInputElement>(null);
 
   const PAGE_SIZE = 100;
+  const reviewDecisionsQueryKey = [`/api/inventory-import/orderly/batches/${batchId}/review-decisions`];
 
   function toggleCategory(cat: string) {
     setSelectedCategories(prev => toggleSetValue(prev, cat));
@@ -871,7 +872,7 @@ export function ResolutionPreviewStep({
     isLoading: areReviewDecisionsLoading,
     refetch: refetchReviewDecisions,
   } = useQuery<ReviewDecisionResponse>({
-    queryKey: [`/api/inventory-import/orderly/batches/${batchId}/review-decisions`],
+    queryKey: reviewDecisionsQueryKey,
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/inventory-import/orderly/batches/${batchId}/review-decisions`);
       if (!res.ok) {
@@ -1067,7 +1068,22 @@ export function ResolutionPreviewStep({
         for (const change of changes) next.delete(change.rowIndex);
         return next;
       });
-      await refetchReviewDecisions();
+      // The save response is authoritative for the rows just written. Merge
+      // it into the review-decisions cache instead of refetching: that GET
+      // rebuilds the large resolution preview and can return an older view
+      // while the successful save is already visible locally.
+      qc.setQueryData<ReviewDecisionResponse>(reviewDecisionsQueryKey, current => {
+        const nextDecisions = new Map(
+          (current?.decisions ?? []).map(saved => [saved.rowIndex, saved]),
+        );
+        for (const rowIndex of cleared) nextDecisions.delete(rowIndex);
+        for (const saved of body.decisions) nextDecisions.set(saved.rowIndex, saved);
+        const changedRows = new Set(changes.map(change => change.rowIndex));
+        return {
+          decisions: Array.from(nextDecisions.values()).sort((left, right) => left.rowIndex - right.rowIndex),
+          stale: (current?.stale ?? []).filter(entry => !changedRows.has(entry.rowIndex)),
+        };
+      });
       return true;
     } catch (err: any) {
       const message = err.message ?? "Review the row and try again.";
