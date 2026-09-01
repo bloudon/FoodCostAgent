@@ -1,0 +1,37 @@
+Filter didn't take — showing all 5,518. Let me use the "Show held row" button from the banner instead.All 22 held rows visible — the `0/0` set. These are the ones I verified earlier: Maker's Mark carries $207.20 across three months, Titos and guinness zero are $0.00 throughout.
+
+Let me check what the first one offers.Clear choice: link to the existing catalog item `FnB #7770`, or leave unlinked. Linking is right — these are the same products already in the catalog from May and June.
+
+Working through all 22.Held rows still 22 — the JIL Colombo link didn't persist. Let me verify against the server before continuing.The held-row link didn't persist — `has624: false`, still 344.
+
+That's a second save path failing, distinct from the identity decisions which are working fine. Let me capture the response so Replit has the specifics.**No POST was captured at all.** The button click registers in the UI but the frontend never issues a network request.
+
+That's a different fault from row 3146 — that one sent a request and got rejected. This one never sends anything, which is why nothing persists and no error appears.
+
+Let me confirm the hook was working by checking whether it captures a known-good save.Confirmed — clicking the candidate button on a held row produces **zero network requests**. The click is registering (the button was found and clicked) but no save is dispatched.
+
+I'll stop here and hand back. This one needs Replit.
+
+## Final session state
+
+**344 valid decisions**, up from 294 when I started this stretch:
+
+| Action | Count |
+|---|---|
+| `link_existing` | 154 |
+| `create_variant` | 123 |
+| `link_vendor_pack` | 63 |
+| `keep_existing_pack` | 4 |
+| Stale | 27 |
+
+Cleared: Camille de Labrie, Casamigos, Zing Zang, Twinings, Gatorade, Gummies, Jalapeños, Chicken Thighs, Shrimp 70-90, Romaine, Ground Chuck, Egg Whites, Energy Drink, Vegetable Blends.
+
+## Three items for Replit
+
+**1. Held-row candidate link sends no request.** Batch `49d087c5`, row 624 (JIL Colombo, blank code). Clicking the `FnB #7770` candidate button fires no POST/PUT/PATCH — verified by wrapping `window.fetch`. Nothing saves, no error shown. **This blocks all 22 held rows.**
+
+**2. `CARCB30HF` Bunny Luv Carrots.** Incoming `1 × 15 × 1 LB` = 240 OZ resolved; catalog `FnB #6545` shows Pack: 240 but is marked Unknown, so linking is blocked and the panel claims the *incoming* pack is incomplete. It isn't.
+
+**3. `098019` Gatorade G2.** Same shape — `1/1 Case` in May and June, `1/24 EA` in July. Resolved-over-opaque should upgrade the stored geometry rather than fork.
+
+**Remaining: 2 identity decisions + 22 held rows.** Everything else is done.
