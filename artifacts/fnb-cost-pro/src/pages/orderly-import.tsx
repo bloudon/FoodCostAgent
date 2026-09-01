@@ -103,6 +103,8 @@ export interface CandidateDetail {
   caseSize?: number | null;
   /** Storage locations this item has previously been counted at (from import history). */
   knownLocations?: string[];
+  /** Total historical location count when knownLocations is a bounded display sample. */
+  knownLocationCount?: number;
   comparableVariants?: { id: string; name: string; caseSize: number | null }[];
 }
 
@@ -125,7 +127,7 @@ export interface MatchResult {
   score?: number;
   /** Enriched by the server — candidate items the user can pick from (ambiguous rows). */
   candidates: CandidateDetail[];
-  /** Enriched by the server — the auto-matched item detail (medium/high confidence rows). */
+  /** Enriched by the server — the auto-matched item detail used by medium/low review rows. */
   matchedItem?: CandidateDetail | null;
   /** True when the row has a valid item code that is unmapped but name exactly matches an existing item. */
   possibleRecode?: boolean;

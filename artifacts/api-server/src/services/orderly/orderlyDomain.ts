@@ -2638,8 +2638,21 @@ export async function runResolutionPreview(
 
   // Build id → item lookup so preview rows can carry candidate details
   // (name / caseSize / pluSku / knownLocations) without an extra DB round-trip.
-  // @ts-ignore
-  const itemById = new Map(existingItems.map(item => [item.id, item]));
+  // Keep the browser payload bounded: the review UI displays at most three
+  // historical locations and only renders matched-item details for medium/low
+  // confidence rows. Approval re-runs the domain preview and relies on IDs and
+  // evidence fields, not these display-only enrichments.
+  const itemById = new Map<string, MatchableItem>(
+    existingItems.map((item: MatchableItem) => [item.id, item]),
+  );
+  const enrichItemForReview = (item: MatchableItem) => {
+    const knownLocations = locationsByItemId.get(item.id) ?? [];
+    return {
+      ...item,
+      knownLocations: knownLocations.slice(0, 3),
+      knownLocationCount: knownLocations.length,
+    };
+  };
 
   const rows: ResolutionPreviewResult['rows'] = batchRows.map((row: InventoryImportRow, i: number) => {
     const rawMatch = resolutions[i].itemMatch;
@@ -2647,22 +2660,25 @@ export async function runResolutionPreview(
       .map(id => {
         const item = itemById.get(id);
         if (!item) return null;
-        return { ...item, knownLocations: locationsByItemId.get(id) ?? [] };
+        return enrichItemForReview(item);
       })
-      .filter((item): item is MatchableItem & { knownLocations: string[] } => item != null);
+      .filter((item): item is MatchableItem & { knownLocations: string[]; knownLocationCount: number } => item != null);
     const matchedItemBase = rawMatch.matchedId
       ? (itemById.get(rawMatch.matchedId) ?? null)
       : null;
-    const matchedItem = matchedItemBase
+    const matchedItem = matchedItemBase && (
+      rawMatch.confidence === 'medium' ||
+      rawMatch.confidence === 'low'
+    )
       // @ts-ignore
-      ? { ...matchedItemBase, knownLocations: locationsByItemId.get(matchedItemBase.id) ?? [] }
+      ? enrichItemForReview(matchedItemBase)
       : null;
     const possibleRecodeBase = rawMatch.possibleRecodeMatchedId
       ? (itemById.get(rawMatch.possibleRecodeMatchedId) ?? null)
       : null;
     const possibleRecodeItem = possibleRecodeBase
       // @ts-ignore
-      ? { ...possibleRecodeBase, knownLocations: locationsByItemId.get(possibleRecodeBase.id) ?? [] }
+      ? enrichItemForReview(possibleRecodeBase)
       : null;
 
     const identityGroup = buildOrderlyIdentityGroup(row as any);

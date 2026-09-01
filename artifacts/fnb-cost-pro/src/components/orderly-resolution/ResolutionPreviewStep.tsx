@@ -403,6 +403,7 @@ function CandidatePicker({
   } = match;
 
   function ItemChip({ item, selected, onClick, disabled = false, badge }: { item: CandidateDetail; selected: boolean; onClick: () => void; disabled?: boolean; badge?: React.ReactNode }) {
+    const knownLocationCount = Math.max(item.knownLocations?.length ?? 0, item.knownLocationCount ?? 0);
     return (
       <button
         onClick={disabled ? undefined : onClick}
@@ -432,7 +433,7 @@ function CandidatePicker({
             <div className="text-[11px] text-muted-foreground/60 flex items-center gap-1">
               <MapPin className="h-3 w-3" />
               {item.knownLocations.slice(0, 3).join(" · ")}
-              {item.knownLocations.length > 3 && ` +${item.knownLocations.length - 3}`}
+              {knownLocationCount > item.knownLocations.length && ` +${knownLocationCount - item.knownLocations.length}`}
             </div>
           )}
         </div>
