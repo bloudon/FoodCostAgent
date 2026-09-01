@@ -1194,6 +1194,93 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     expect(await screen.findByText("→ Link Existing")).toBeInTheDocument();
   });
 
+  it("saves held-row candidate links without submitting the surrounding wizard form", async () => {
+    currentPreview = heldMatchPreview("low");
+    const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
+
+    render(
+      <form onSubmit={submit}>
+        <ResolutionPreviewStep
+          batchId="batch-1"
+          onApproved={vi.fn()}
+          onBack={vi.fn()}
+        />
+      </form>,
+    );
+
+    fireEvent.click((await screen.findByText("Item 6")).closest("tr")!);
+    const candidate = await screen.findByRole("button", { name: /low candidate/ });
+    expect(candidate).toHaveAttribute("type", "button");
+    fireEvent.click(candidate);
+
+    await waitFor(() => {
+      const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(saveCall).toBeDefined();
+      const request = JSON.parse(String(saveCall?.[1]?.body));
+      expect(request.changes).toEqual([expect.objectContaining({
+        rowIndex: 6,
+        decision: { inventoryItemId: "candidate-low" },
+      })]);
+    });
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("saves one held-row choice across every row in its identity group", async () => {
+    const held = heldMatchPreview("low").rows[0];
+    currentPreview = {
+      ...heldMatchPreview("low"),
+      totalRows: 2,
+      summary: {
+        ...heldMatchPreview("low").summary,
+        totalRows: 2,
+        itemsHeldForReview: 2,
+      },
+      rows: [
+        { ...held, rowIndex: 624, storageLocation: "Main Bar", identityGroupRows: [624, 625] },
+        { ...held, rowIndex: 625, storageLocation: "Pool Bar", identityGroupRows: [624, 625] },
+      ],
+    };
+
+    renderStep();
+    fireEvent.click((await screen.findAllByText("Item 6"))[0].closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
+
+    await waitFor(() => {
+      const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(saveCall).toBeDefined();
+      const request = JSON.parse(String(saveCall?.[1]?.body));
+      expect(request.changes.map((change: { rowIndex: number }) => change.rowIndex)).toEqual([624, 625]);
+    });
+  });
+
+  it("does not fan a non-held decision across different stable item codes in one identity group", async () => {
+    const first = packComparisonPreview(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      "compatible",
+    ).rows[0];
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 2,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 2, itemsRecode: 2 },
+      rows: [
+        { ...first, rowIndex: 1, sourceItemCode: "CODE-A", sourceCodeReliability: "stable", identityGroupRows: [1, 2] },
+        { ...first, rowIndex: 2, sourceItemCode: "CODE-B", sourceCodeReliability: "stable", identityGroupRows: [1, 2] },
+      ],
+    };
+
+    renderStep();
+    fireEvent.click(screen.getAllByText("Item 1")[0].closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /House Spirit/ }));
+
+    await waitFor(() => {
+      const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+      expect(saveCall).toBeDefined();
+      const request = JSON.parse(String(saveCall?.[1]?.body));
+      expect(request.changes.map((change: { rowIndex: number }) => change.rowIndex)).toEqual([1]);
+    });
+  });
+
   it("imports a review manifest and clearly reports accepted saved decisions", async () => {
     const refetch = vi.fn();
     mockUseQuery.mockImplementation((opts: any) => {

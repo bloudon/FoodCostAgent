@@ -407,6 +407,7 @@ function CandidatePicker({
     const knownLocationCount = Math.max(item.knownLocations?.length ?? 0, item.knownLocationCount ?? 0);
     return (
       <button
+        type="button"
         onClick={disabled ? undefined : onClick}
         disabled={disabled}
         className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors w-full ${
@@ -556,6 +557,7 @@ function CandidatePicker({
           />
           {match.crossVendorPackEligible && !isHeld && (
             <button
+              type="button"
               onClick={() => onDecision(
                 row.rowIndex,
                 isVendorPackLink ? undefined : { action: "link_vendor_pack", inventoryItemId: targetId },
@@ -583,6 +585,7 @@ function CandidatePicker({
           )}
           {keepExistingPackIsAllowed && !isHeld && (
             <button
+              type="button"
               onClick={() => onDecision(
                 row.rowIndex,
                 isKeepExistingPack ? undefined : { action: "keep_existing_pack", inventoryItemId: targetId },
@@ -610,6 +613,7 @@ function CandidatePicker({
           )}
           {isHeld ? (
             <button
+              type="button"
               onClick={() => onDecision(row.rowIndex, null)}
               className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
                 isLeftUnlinked
@@ -629,6 +633,7 @@ function CandidatePicker({
             </button>
           ) : (
             <button
+              type="button"
               onClick={() => onDecision(
                 row.rowIndex,
                 isCreateNew ? undefined : { action: "create_variant", comparableInventoryItemId: targetId },
@@ -696,6 +701,7 @@ function CandidatePicker({
             ))}
             {isHeld ? (
               <button
+                type="button"
                 onClick={() => onDecision(row.rowIndex, null)}
                 className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
                   isLeftUnlinked
@@ -710,6 +716,7 @@ function CandidatePicker({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => onDecision(row.rowIndex, resolvedId === null ? undefined : null)}
                 className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
                   resolvedId === null
@@ -768,6 +775,7 @@ function CandidatePicker({
             </div>
             {isHeld ? (
               <button
+                type="button"
                 onClick={() => onDecision(row.rowIndex, null)}
                 className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                   isLeftUnlinked
@@ -779,6 +787,7 @@ function CandidatePicker({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => onDecision(row.rowIndex, isCreateNew ? undefined : null)}
                 className={`shrink-0 w-full md:w-auto rounded-md border px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                   isCreateNew
@@ -1148,14 +1157,19 @@ export function ResolutionPreviewStep({
   function setDecision(rowIndex: number, value: DecisionValue | undefined) {
     if (!preview) return;
     const sourceRow = preview.rows.find(row => row.rowIndex === rowIndex);
-    const groupRows = sourceRow?.itemMatch.possibleRecode && sourceRow.sourceCodeReliability === "stable" && sourceRow.sourceItemCode
-      ? preview.rows.filter(row =>
-          row.sourceCodeReliability === "stable" &&
-          row.sourceItemCode?.trim() === sourceRow.sourceItemCode!.trim()
-        )
-      : sourceRow
-        ? [sourceRow]
-        : [];
+    const identityGroupRowIndexes = new Set(
+      sourceRow?.heldForReview ? (sourceRow.identityGroupRows ?? []) : [],
+    );
+    const groupRows = identityGroupRowIndexes.size > 0
+      ? preview.rows.filter(row => identityGroupRowIndexes.has(row.rowIndex))
+      : sourceRow?.itemMatch.possibleRecode && sourceRow.sourceCodeReliability === "stable" && sourceRow.sourceItemCode
+        ? preview.rows.filter(row =>
+            row.sourceCodeReliability === "stable" &&
+            row.sourceItemCode?.trim() === sourceRow.sourceItemCode!.trim()
+          )
+        : sourceRow
+          ? [sourceRow]
+          : [];
     const targetRows = groupRows.length > 0 ? groupRows : [{ rowIndex } as RowPreview];
     void persistDecisionChanges(targetRows.map(row => ({
       rowIndex: row.rowIndex,
@@ -2360,6 +2374,7 @@ export function ResolutionPreviewStep({
                         <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground w-20 shrink-0">Category</span>
                         <div className="flex flex-wrap gap-1.5">
                           <button
+                            type="button"
                             onClick={() => { setSelectedCategories(new Set()); setCurrentPage(0); }}
                             className={`text-xs px-2.5 py-1 rounded-full border transition-all font-medium ${
                               selectedCategories.size === 0
@@ -2371,6 +2386,7 @@ export function ResolutionPreviewStep({
                           </button>
                           {uniqueCategories.map(cat => (
                             <button
+                              type="button"
                               key={cat}
                               onClick={() => toggleCategory(cat)}
                               className={`text-xs px-2.5 py-1 rounded-full border transition-all font-medium ${
@@ -2392,6 +2408,7 @@ export function ResolutionPreviewStep({
                         <span className="text-xs uppercase tracking-wider font-semibold text-muted-foreground w-20 shrink-0">Status</span>
                         <div className="flex flex-wrap gap-1.5">
                           <button
+                            type="button"
                             onClick={() => { setSelectedConfidences(new Set()); setCurrentPage(0); }}
                             className={`text-xs px-2.5 py-1 rounded-full border transition-all font-medium ${
                               selectedConfidences.size === 0
@@ -2403,6 +2420,7 @@ export function ResolutionPreviewStep({
                           </button>
                           {confidenceLevels.map(({ key, label }) => (
                             <button
+                              type="button"
                               key={key}
                               onClick={() => toggleConfidence(key)}
                               className={`text-xs px-2.5 py-1 rounded-full border transition-all font-medium ${
@@ -2454,7 +2472,7 @@ export function ResolutionPreviewStep({
                           <div className="flex flex-col items-center justify-center">
                             <Info className="h-8 w-8 mb-2 opacity-20" />
                             <p className="text-sm font-medium">No rows match the selected filters.</p>
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedCategories(new Set()); setSelectedConfidences(new Set()); }}>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedCategories(new Set()); setSelectedConfidences(new Set()); }}>
                               Clear filters
                             </Button>
                           </div>
@@ -2592,6 +2610,7 @@ export function ResolutionPreviewStep({
                                               : "→ Link Existing"}
                                       </Badge>
                                       <button
+                                        type="button"
                                         onClick={(e) => { e.stopPropagation(); setDecision(row.rowIndex, undefined); }}
                                         className="text-[10px] text-muted-foreground hover:text-foreground underline decoration-dotted underline-offset-2 transition-colors"
                                       >
