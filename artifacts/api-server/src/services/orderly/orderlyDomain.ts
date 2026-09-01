@@ -1072,6 +1072,7 @@ interface ExistingVendorSupply {
   inventoryItemId: string;
   packGeometryStatus: string | null;
   canonicalQtyPerPurchaseUnit: number | null;
+  packUom: string | null;
 }
 
 function normalizedStableSourceCode(value: string | null | undefined): string | null {
@@ -1800,6 +1801,7 @@ export async function runResolutionPreview(
           inventoryItemId: vendorItems.inventoryItemId,
           packGeometryStatus: vendorItems.packGeometryStatus,
           canonicalQtyPerPurchaseUnit: vendorItems.canonicalQtyPerPurchaseUnit,
+          packUom: vendorItems.packUom,
         })
         .from(vendorItems)
         .innerJoin(vendors, and(
@@ -1810,12 +1812,13 @@ export async function runResolutionPreview(
       priorApprovedRowsQuery,
     ]);
 
-  // Earlier parser versions did not understand Orderly's complete three-tier
-  // packs (for example, "1/1 750ML"). Rehydrate only previously unparseable
-  // persisted rows from their immutable raw source value so existing staged
-  // batches use the same safe geometry rules as newly uploaded workbooks.
+  // Earlier parser versions did not understand all complete Orderly packs.
+  // Some legacy rows are marked "ok" despite non-positive tiers (for example,
+  // parser 1.1 stored "0/0 LT" as 0 × 0 × 1 LT). Reparse only rows whose stored
+  // geometry is not actually compatible, using immutable raw source evidence.
+  // Already-valid staged geometry is never replaced during a read-only preview.
   for (const row of batchRows) {
-    if (row.packParseStatus !== 'unparseable') continue;
+    if (normalizePackGeometry(sourcePackGeometry(row)).status === 'compatible') continue;
     const rawPack = (row.rawData as Record<string, unknown> | null)?.['Pack Size'];
     if (typeof rawPack !== 'string') continue;
     const parsedPack = parseOrderlyPackSize(rawPack);
@@ -1972,6 +1975,31 @@ export async function runResolutionPreview(
           .slice(leftIndex + 1)
           .every(right => comparePackGeometry(left, right).status === 'compatible'),
       );
+      const predecessorIsOnlyOpaque = samePropertyPredecessorEvidence.every(isOpaquePackGeometry);
+      if (predecessorIsOnlyOpaque && candidateHasSameVendor && vendorMatch.vendorId) {
+        // The preceding property row proves item continuity, but an opaque
+        // "1/1 Case" cannot veto stronger verified same-vendor geometry.
+        const verifiedSameVendorEvidence = candidateSuppliers
+          .filter(supply =>
+            supply.vendorId === vendorMatch.vendorId &&
+            supply.packGeometryStatus === 'verified' &&
+            typeof supply.canonicalQtyPerPurchaseUnit === 'number' &&
+            Number.isFinite(supply.canonicalQtyPerPurchaseUnit) &&
+            supply.canonicalQtyPerPurchaseUnit > 0 &&
+            typeof supply.packUom === 'string' &&
+            supply.packUom.trim().length > 0
+          )
+          .map(supply => ({
+            caseQuantity: 1,
+            innerPackQuantity: 1,
+            baseUnitQuantity: supply.canonicalQtyPerPurchaseUnit,
+            baseUnit: supply.packUom,
+          }));
+        const compatibleVerifiedEvidence = verifiedSameVendorEvidence.filter(
+          evidence => comparePackGeometry(row, evidence).status === 'compatible',
+        );
+        if (compatibleVerifiedEvidence.length > 0) return compatibleVerifiedEvidence;
+      }
       return mutuallyCompatible ? samePropertyPredecessorEvidence : [];
     }
 

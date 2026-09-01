@@ -1463,9 +1463,10 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       packSizeRaw: '0/0 LT',
       caseQuantity: 0,
       innerPackQuantity: 0,
-      baseUnitQuantity: null,
+      baseUnitQuantity: 1,
       baseUnit: 'LT',
-      packParseStatus: 'unparseable',
+      // Parser 1.1 incorrectly classified this frozen zero geometry as "ok".
+      packParseStatus: 'ok',
       packagePrice: 37,
       totalCost: 170.2,
     }], '2031-03-31');
@@ -1489,6 +1490,26 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       normalizedUnit: 'ML',
       totalBaseUnits: 1000,
     });
+
+    const [stagedAfterPreview] = await db
+      .select({
+        caseQuantity: inventoryImportRows.caseQuantity,
+        innerPackQuantity: inventoryImportRows.innerPackQuantity,
+        baseUnitQuantity: inventoryImportRows.baseUnitQuantity,
+        baseUnit: inventoryImportRows.baseUnit,
+        packParseStatus: inventoryImportRows.packParseStatus,
+        rawData: inventoryImportRows.rawData,
+      })
+      .from(inventoryImportRows)
+      .where(eq(inventoryImportRows.batchId, directBatch));
+    expect(stagedAfterPreview).toMatchObject({
+      caseQuantity: 0,
+      innerPackQuantity: 0,
+      baseUnitQuantity: 1,
+      baseUnit: 'LT',
+      packParseStatus: 'ok',
+    });
+    expect((stagedAfterPreview.rawData as Record<string, unknown>)['Pack Size']).toBe('0/0 LT');
 
     const result = await applyBatchApproval(directBatch, approvalAuth);
     expect(result.rowsHeldForReview).toBe(0);
@@ -1835,7 +1856,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(otherCandidateId).not.toBe(locationMatchedCandidateId);
   });
 
-  it('allows explicit links for ambiguous/fuzzy blanks and numbers a genuinely new blank group', async () => {
+  it('links an eligible ambiguous blank, holds a fuzzy blank, and numbers a genuinely new blank group', async () => {
     const unitId = await eachUnitId();
     const [ambiguousA] = await db
       .insert(inventoryItems)
@@ -1892,7 +1913,6 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
         yieldPercent: 100,
       })
       .returning({ id: inventoryItems.id });
-
     const batchId = await stageBatch([
       {
         code: null,
@@ -1921,11 +1941,10 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
 
     const result = await applyBatchApproval(batchId, approvalAuth, [
       { rowIndex: ambiguousRow!.rowIndex, inventoryItemId: ambiguousA.id },
-      { rowIndex: fuzzyRow!.rowIndex, inventoryItemId: fuzzyCandidate.id },
     ]);
     expect(result.itemsCreated).toBe(1);
-    expect(result.itemsLinked).toBe(2);
-    expect(result.rowsHeldForReview).toBe(0);
+    expect(result.itemsLinked).toBe(1);
+    expect(result.rowsHeldForReview).toBe(1);
 
     const rows = await db
       .select({
@@ -1936,7 +1955,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       .where(eq(inventoryImportRows.batchId, batchId));
     const resolvedByIndex = new Map(rows.map(row => [row.rowIndex, row.resolvedInventoryItemId]));
     expect(resolvedByIndex.get(ambiguousRow!.rowIndex)).toBe(ambiguousA.id);
-    expect(resolvedByIndex.get(fuzzyRow!.rowIndex)).toBe(fuzzyCandidate.id);
+    expect(resolvedByIndex.get(fuzzyRow!.rowIndex)).toBeNull();
     const generatedItemId = resolvedByIndex.get(unlinkedRow!.rowIndex);
     expect(generatedItemId).toBeTruthy();
     const [generatedItem] = await db
@@ -2480,7 +2499,7 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
     expect(siblingLocation.name).toBe('New June Storage');
 
     const julyBatch = await stageBatch([{
-      code: 'CARCB30HF',
+      code: null,
       description: 'Bunny Luv BB Carrots',
       location: 'Produce Walk-in',
       supplier: "Harvill's Produce",
@@ -2492,6 +2511,26 @@ describe.skipIf(SKIP)('Orderly XLSX reliable Item Code identity', () => {
       packagePrice: 48,
       totalCost: 96,
     }], '2032-05-31');
+    const julyPreview = await runResolutionPreview(julyBatch, ID.company);
+    expect(julyPreview.rows[0]).toMatchObject({
+      itemCodeStatus: 'blank',
+      heldForReview: false,
+      itemMatch: {
+        strategy: 'name_pack',
+        confidence: 'high',
+        matchedId: mayRow.resolvedInventoryItemId,
+        requiresReview: false,
+        packCompatibility: 'compatible',
+        sourcePackEvidence: {
+          normalizedUnit: 'OZ',
+          totalBaseUnits: 240,
+        },
+        candidatePackEvidence: {
+          normalizedUnit: 'OZ',
+          totalBaseUnits: 240,
+        },
+      },
+    });
     await applyBatchApproval(julyBatch, approvalAuth);
     const [verifiedJulyPack] = await selectVendorPack();
     expect(verifiedJulyPack).toMatchObject({

@@ -3,8 +3,8 @@ name: Approval-time parser rehydration
 description: Why reparsed source geometry must be persisted in the same approval transaction that consumes it.
 ---
 
-When approval reparses immutable raw import evidence, it must persist every recovered derived field and status atomically with the resolution that consumes them.
+Preview and approval must reparse immutable raw import evidence whenever the persisted geometry is unusable, even if an older parser labeled it `ok`. Preview uses the recovered fields in memory only; approval persists every recovered derived field and status atomically with the resolution that consumes them.
 
-**Why:** An in-memory reparse can create correct catalog geometry while leaving the approved source row marked unparseable. Downstream count and costing paths may then use fallback math against evidence that approval already treated as measurable.
+**Why:** Older parser versions may freeze non-positive tiers under an `ok` status, so gating rehydration on status alone leaves staged batches permanently stale. An in-memory reparse can also create correct catalog geometry while leaving the approved source row inconsistent unless approval persists the complete derived contract.
 
-**How to apply:** Any approval-time parser upgrade must update the staged row's complete derived contract in the approval transaction, while retaining the untouched raw source value as authority. Regression coverage should compare the persisted row, created provenance, and downstream reconciliation basis.
+**How to apply:** Decide whether to reparse from normalized geometry validity, not the stored status string. Never replace already-compatible staged geometry during preview. Approval must update the complete derived contract in its transaction while retaining untouched raw source authority. Regression coverage should prove preview is write-free and compare approval persistence, provenance, and reconciliation basis.
