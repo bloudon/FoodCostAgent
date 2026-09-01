@@ -1,0 +1,78 @@
+> @workspace/fnb-cost-pro@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/fnb-cost-pro
+> vite build --config vite.config.ts
+
+vite v7.3.6 building client environment for production...
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/select.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/sidebar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+transforming (1790) src/pages/users.tsx
+warn - The class `duration-[1500ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;1500ms&rsqb;` to silence this warning.
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+src/components/ui/dialog.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/form.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/collapsible.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/sheet.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/avatar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/progress.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/hover-card.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+✓ 4322 modules transformed.
+dist/public/index.html                       4.19 kB │ gzip:   1.48 kB
+dist/public/assets/index-C5_BYidG.css      232.83 kB │ gzip:  36.26 kB
+dist/public/assets/index-CJ5sQYvB.js       458.30 kB │ gzip: 118.42 kB
+dist/public/assets/heic2any-C6n2HE10.js  1,352.90 kB │ gzip: 341.25 kB
+dist/public/assets/index-C-HbusvH.js     3,421.61 kB │ gzip: 858.57 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 41.26s
+
+> @workspace/api-server@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> node ./build.mjs
+
+
+  dist/index.mjs                                                 13.7mb ⚠️
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs        1.4mb ⚠️
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs            194.0kb
+  dist/pino-worker.mjs                                          153.4kb
+  dist/pino-file.mjs                                            142.1kb
+  dist/pino-pretty.mjs                                          114.4kb
+  dist/thread-stream-worker.mjs                                   7.3kb
+  dist/index.mjs.map                                             23.5mb
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs.map    2.8mb
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs.map        315.3kb
+  dist/pino-worker.mjs.map                                      256.9kb
+  dist/pino-file.mjs.map                                        229.1kb
+  dist/pino-pretty.mjs.map                                      203.6kb
+  dist/thread-stream-worker.mjs.map                              12.0kb
+
+⚡ Done in 1502ms
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3681485  │ 15h    │ 23   │ online    │ 0%       │ 90.7mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3787737  │ 0s     │ 1619 │ online    │ 0%       │ 24.4mb   │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3681531  │ 15h    │ 12   │ online    │ 0%       │ 108.2mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3681508  │ 15h    │ 21   │ online    │ 0%       │ 94.6mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3681492  │ 15h    │ 30   │ online    │ 0%       │ 204.9mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3681501  │ 15h    │ 23   │ online    │ 6.3%     │ 75.4mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+{
+  "operation": "mainline-vps-release",
+  "gitSha": "acdac715cc0b6dd552d1845ae88cfb38799d62a1",
+  "buildId": "api@1.15.0:acdac715cc0b6dd552d1845ae88cfb38799d62a1",
+  "frontendBundle": "/assets/index-C-HbusvH.js",
+  "frontendBundleSha256": "0e3329b97460f5ab449aaade846f826974790190e14ff72d315c704c16dd9866",
+  "pm2Process": "fnbcostpro",
+  "apiPort": 3004,
+  "healthVerified": true,
+  "buildIdentityVerified": true,
+  "frontendBundleVerified": true,
+  "databaseMigrationCommandExecuted": false,
+  "orderlyPreviewOrApplyExecuted": false
+}
