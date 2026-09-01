@@ -47,7 +47,7 @@ readonly VPS_ENV_FILE="$EXPECTED_VPS_ENV_FILE"
 [[ -f "$APP_DIR/pnpm-lock.yaml" ]] || die "APP_DIR is not the expected pnpm workspace."
 [[ -f "$VPS_ENV_FILE" ]] || die "VPS_ENV_FILE does not exist."
 
-for command in git pnpm pm2 node curl awk mktemp; do
+for command in git pnpm pm2 node curl awk mktemp sha256sum; do
   command -v "$command" >/dev/null 2>&1 || die "Required command is unavailable: $command"
 done
 
@@ -87,9 +87,30 @@ verify_pm2_target() {
 verify_pm2_target \
   || die "PM2 process $PM2_NAME is not online from this checkout's API artifact on port $API_PORT."
 
-# The API build uses esbuild from devDependencies, so retain them on the VPS.
+# Both production artifacts use build tools from devDependencies, so retain
+# them on the VPS. Nginx serves the web build directly from
+# artifacts/fnb-cost-pro/dist/public while PM2 runs the API bundle.
 pnpm install --frozen-lockfile --prod=false
+pnpm --filter @workspace/fnb-cost-pro run build
 pnpm --filter @workspace/api-server run build
+
+readonly FRONTEND_INDEX="${APP_DIR}/artifacts/fnb-cost-pro/dist/public/index.html"
+[[ -f "$FRONTEND_INDEX" ]] || die "Frontend build did not produce index.html."
+readonly FRONTEND_BUNDLE="$(node -e '
+  const fs = require("node:fs");
+  const html = fs.readFileSync(process.argv[1], "utf8");
+  const matches = [...html.matchAll(/src="(\/assets\/index-[^"]+\.js)"/g)];
+  if (matches.length !== 1) process.exit(1);
+  process.stdout.write(matches[0][1]);
+' "$FRONTEND_INDEX")"
+[[ -n "$FRONTEND_BUNDLE" ]] || die "Could not identify the generated frontend bundle."
+[[ -f "${APP_DIR}/artifacts/fnb-cost-pro/dist/public${FRONTEND_BUNDLE}" ]] \
+  || die "Generated frontend bundle is missing from dist/public."
+readonly FRONTEND_BUNDLE_SHA256="$(sha256sum \
+  "${APP_DIR}/artifacts/fnb-cost-pro/dist/public${FRONTEND_BUNDLE}" \
+  | awk '{print $1}')"
+[[ "$FRONTEND_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+  || die "Could not hash the generated frontend bundle."
 
 readonly GIT_SHA="$(git rev-parse HEAD)"
 readonly API_VERSION="$(node -p "require('./artifacts/api-server/package.json').version")"
@@ -124,6 +145,8 @@ PORT="$API_PORT" APP_BUILD_ID="$BUILD_ID" NODE_ENV=production \
 
 health=""
 build_info=""
+served_frontend_bundle=""
+served_frontend_bundle_sha256=""
 for _attempt in $(seq 1 30); do
   if ! verify_pm2_target; then
     sleep 1
@@ -131,6 +154,28 @@ for _attempt in $(seq 1 30); do
   fi
   health="$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/api/healthz" 2>/dev/null || true)"
   build_info="$(curl --fail --silent --show-error "http://127.0.0.1:${API_PORT}/api/build-info" 2>/dev/null || true)"
+  served_frontend_bundle="$(curl --fail --silent --show-error \
+    --header 'Cache-Control: no-cache' \
+    "https://fnbcostpro.com/?release=${GIT_SHA}" 2>/dev/null \
+    | node -e '
+      let html = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk) => { html += chunk; });
+      process.stdin.on("end", () => {
+        const matches = [...html.matchAll(/src="(\/assets\/index-[^"]+\.js)"/g)];
+        if (matches.length !== 1) process.exit(1);
+        process.stdout.write(matches[0][1]);
+      });
+    ' || true)"
+  served_frontend_bundle_sha256="$(curl --fail --silent --show-error \
+    --proto '=https' \
+    --location \
+    --max-redirs 0 \
+    --header 'Cache-Control: no-cache' \
+    "https://fnbcostpro.com${FRONTEND_BUNDLE}?release=${GIT_SHA}" 2>/dev/null \
+    | sha256sum \
+    | awk '{print $1}' \
+    || true)"
   if HEALTH="$health" BUILD_INFO="$build_info" EXPECTED_BUILD_ID="$BUILD_ID" node -e '
     const healthText = process.env.HEALTH?.trim();
     const buildInfoText = process.env.BUILD_INFO?.trim();
@@ -148,16 +193,20 @@ for _attempt in $(seq 1 30); do
     if (health?.status !== "ok") process.exit(1);
     if (build?.service !== "fnb-cost-pro-api") process.exit(1);
     if (build?.buildId !== process.env.EXPECTED_BUILD_ID) process.exit(1);
-  '; then
+  ' && [[ "$served_frontend_bundle" = "$FRONTEND_BUNDLE" ]] \
+    && [[ "$served_frontend_bundle_sha256" = "$FRONTEND_BUNDLE_SHA256" ]]; then
     printf '%s\n' \
       '{' \
       '  "operation": "mainline-vps-release",' \
       "  \"gitSha\": \"${GIT_SHA}\"," \
       "  \"buildId\": \"${BUILD_ID}\"," \
+      "  \"frontendBundle\": \"${FRONTEND_BUNDLE}\"," \
+      "  \"frontendBundleSha256\": \"${FRONTEND_BUNDLE_SHA256}\"," \
       "  \"pm2Process\": \"${PM2_NAME}\"," \
       "  \"apiPort\": ${API_PORT}," \
       '  "healthVerified": true,' \
       '  "buildIdentityVerified": true,' \
+      '  "frontendBundleVerified": true,' \
       '  "databaseMigrationCommandExecuted": false,' \
       '  "orderlyPreviewOrApplyExecuted": false' \
       '}'
@@ -166,4 +215,4 @@ for _attempt in $(seq 1 30); do
   sleep 1
 done
 
-die "The expected fnbcostpro health and build identity were not available on port ${API_PORT} after restart."
+die "The expected API build identity and generated frontend bundle were not both being served after restart."

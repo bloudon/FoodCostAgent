@@ -21,17 +21,21 @@ scripts/vps/update-fnbcostpro-from-main.sh
 ```
 
 The helper refuses a dirty checkout, fetches GitHub `main`, performs only
-`git pull --ff-only origin main`, installs locked dependencies, builds the API,
-refreshes the `fnbcostpro` PM2 environment with `PORT=3004`, verifies that
-PM2 itself remains configured for that port, and then verifies both endpoints:
+`git pull --ff-only origin main`, installs locked dependencies, builds both the
+web artifact and API, refreshes the `fnbcostpro` PM2 environment with
+`PORT=3004`, verifies that PM2 itself remains configured for that port, and
+then verifies both API endpoints:
 
 ```text
 http://127.0.0.1:3004/api/healthz
 http://127.0.0.1:3004/api/build-info
 ```
 
-Its final JSON record contains the Git commit and build identity that are
-actively serving.
+It also extracts the content-hashed JavaScript entry point from the generated
+web `index.html`, confirms that `https://fnbcostpro.com/` serves that exact
+entry point, and confirms that the public asset bytes have the same SHA-256 as
+the generated file. Its final JSON record contains the Git commit, API build
+identity, frontend bundle, and bundle digest that are actively serving.
 
 The helper is intentionally bound to this exact production target:
 
@@ -54,6 +58,8 @@ Stop rather than bypass a failure when:
 - the pull cannot fast-forward
 - PM2 is not running this checkout's `artifacts/api-server/dist/index.mjs`
 - the API build fails
+- the frontend build fails
+- the public site does not serve the newly generated frontend bundle
 - either verification endpoint fails or the returned build ID differs
 
 Do not use `git reset`, `git pull --rebase`, `git stash`, a force-push, or the
