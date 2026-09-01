@@ -1,0 +1,47 @@
+Both on 8288cdcc with bundle index-BuihwXvR.js. Opening July and testing row 3146 — the one that wouldn't save.
+
+Used Claude in Chrome integration · 1 note
+
+Row 3146 still won't save on 8288cdcc — third attempt, has3146: false, count unchanged at 337. Stuck in "Saving decision" indefinitely rather than returning an error.
+
+Let me capture the actual HTTP response so Replit has something concrete instead of a UI symptom.
+
+Used Claude in Chrome integration
+
+clicked: false — the button wasn't available, because the row is still showing "Saving decision" from the previous attempt. It never resolves and never errors.
+
+That's the clearest description of the fault: the save request for row 3146 hangs indefinitely rather than succeeding or failing.
+
+Let me confirm the row state and stop here.
+
+Javascript tool
+
+That's the actual error, and it's diagnostic:
+
+"Save failed — The saved review decision for row 3146 changed in another…"
+
+That's the 409 concurrent-modification guard. The server thinks another session modified this row's decision, so it rejects the write. But there's only one session — mine — and the API reports has3146: false, meaning no decision exists for it at all.
+
+So the row is in an inconsistent state: the concurrency check believes a decision exists, while the decisions table says it doesn't. Every save is rejected as a conflict against a record that isn't there.
+
+That explains all three failed attempts and why the row never clears.
+
+For Replit
+
+Row 3146, batch 49d087c5, build 8288cdcc:
+
+Save rejected with the concurrent-modification message
+GET review-decisions returns has3146: false, count 337
+Only one active session
+Reproducible across three attempts and two deploys
+Likely a stale revision or lock record for this row that the decisions query doesn't see
+
+That's almost certainly clearable server-side.
+
+Current state
+
+337 valid / 28 stale. Nine identity decisions and 22 held rows remain, of which only 3146 is blocked — everything else saved normally this session.
+
+The other two issues I reported earlier still stand: the phantom banner count after reload, and in-place save not working for multi-location groups. Neither blocks progress the way this does.
+
+July pending. May and June approved at $254,286.67 and $261,007.67.
