@@ -250,6 +250,11 @@ function approvalErrorStatus(err: unknown): number {
   return 500;
 }
 
+/** Only authoritative domain failures are safe and useful to return verbatim. */
+function approvalErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof ImportApprovalError ? err.message : fallback;
+}
+
 /** Route-level defense for the irreversible Orderly approval action. */
 function requireOrderlyApprovalRole(req: any, res: any, next: any) {
   const user = req.user;
@@ -730,7 +735,9 @@ export function registerOrderlyImportRoutes(app: Express): void {
         res.json(result);
       } catch (err: any) {
         console.error('[OrderlyImport] review decision load error:', err);
-        res.status(approvalErrorStatus(err)).json({ error: err.message });
+        res.status(approvalErrorStatus(err)).json({
+          error: approvalErrorMessage(err, 'Saved review decisions could not be loaded. Please try again.'),
+        });
       }
     },
   );
@@ -761,7 +768,9 @@ export function registerOrderlyImportRoutes(app: Express): void {
         res.json(result);
       } catch (err: any) {
         console.error('[OrderlyImport] review decision save error:', err);
-        res.status(approvalErrorStatus(err)).json({ error: err.message });
+        res.status(approvalErrorStatus(err)).json({
+          error: approvalErrorMessage(err, 'The review decision could not be saved. Please try again.'),
+        });
       }
     },
   );

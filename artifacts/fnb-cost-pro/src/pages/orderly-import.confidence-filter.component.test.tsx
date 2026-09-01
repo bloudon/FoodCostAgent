@@ -359,6 +359,7 @@ function setupQueryMocks() {
         data: currentSavedReviewDecisions,
         isLoading: false,
         isError: false,
+        error: null,
         refetch: mockRefetchReviewDecisions,
       };
     }
@@ -1073,9 +1074,45 @@ describe("ResolutionPreviewStep — confidence filter chips", () => {
     fireEvent.click(await screen.findByRole("button", { name: /low candidate/ }));
 
     expect(await screen.findByTestId("orderly-decision-save-error-6")).toHaveTextContent(
-      "Save failed — choose a decision again to retry.",
+      "Save failed — The saved decision changed in another session.",
     );
     expect(screen.queryByText("→ Link Existing")).not.toBeInTheDocument();
+  });
+
+  it("updates every location row in a reliable item-code group from one save response", async () => {
+    const first = packComparisonPreview(
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      { caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 24, baseUnit: "EA" },
+      "compatible",
+    ).rows[0];
+    currentPreview = {
+      ...MOCK_PREVIEW,
+      totalRows: 2,
+      summary: { ...MOCK_PREVIEW.summary, totalRows: 2, itemsRecode: 2 },
+      recodeSummary: {
+        compatibleAlternates: 1,
+        newPackSizes: 0,
+        sourceDataConflicts: 0,
+        unreliableCodes: 0,
+        packEvidenceMissing: 0,
+      },
+      rows: [
+        { ...first, rowIndex: 1, storageLocation: "Main Bar", sourceCodeReliability: "stable", identityGroupRows: [1, 2] },
+        { ...first, rowIndex: 2, storageLocation: "Pool Bar", sourceCodeReliability: "stable", identityGroupRows: [1, 2] },
+      ],
+    };
+    renderStep();
+
+    expect(await screen.findAllByText("Action Required")).toHaveLength(2);
+    fireEvent.click(screen.getAllByText("Item 1")[0].closest("tr")!);
+    fireEvent.click(await screen.findByRole("button", { name: /House Spirit/ }));
+
+    await waitFor(() => expect(screen.queryByText("Action Required")).not.toBeInTheDocument());
+    expect(screen.getAllByText("→ Link Existing")).toHaveLength(2);
+    const saveCall = vi.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "PUT");
+    const request = JSON.parse(String(saveCall?.[1]?.body));
+    expect(request.changes.map((change: { rowIndex: number }) => change.rowIndex)).toEqual([1, 2]);
+    expect(mockRefetchReviewDecisions).not.toHaveBeenCalled();
   });
 
   it("asks before a sidebar-style route change while a decision save is still in progress", async () => {

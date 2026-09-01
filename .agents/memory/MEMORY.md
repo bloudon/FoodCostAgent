@@ -56,3 +56,4 @@
 - [Accounting import decisions](accounting-import-decisions.md) — sentinel creation, value-prioritized unassigned work, split mapping/worklist scope, and FK timing are approved constraints.
 - [Orderly re-onboarding property binding](orderly-reonboarding-property-binding.md) — recreate the source-property binding before staged imports can inherit prior approved identity after a company purge.
 - [Orderly UI/API verification](orderly-ui-api-verification.md) — record the serving web bundle hash; never reconcile stale browser counters against corrected API responses.
+- [Self-updating VPS release helpers](self-updating-vps-release-helper.md) — the first run may execute the old script body after pulling its replacement; verify new output fields or rerun once.

@@ -839,6 +839,8 @@ export function ResolutionPreviewStep({
   const [isManifestImporting, setIsManifestImporting] = useState(false);
   const [manifestImportResult, setManifestImportResult] = useState<DecisionManifestImportResult | null>(null);
   const savingRowsRef = useRef<Set<number>>(new Set());
+  const saveOperationByRowRef = useRef<Map<number, symbol>>(new Map());
+  const activeBatchIdRef = useRef(batchId);
   const observedActiveApprovalRef = useRef(false);
   const manifestFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -870,9 +872,16 @@ export function ResolutionPreviewStep({
   const {
     data: savedReviewDecisions,
     isLoading: areReviewDecisionsLoading,
+    isError: areReviewDecisionsError,
+    error: reviewDecisionsError,
     refetch: refetchReviewDecisions,
   } = useQuery<ReviewDecisionResponse>({
     queryKey: reviewDecisionsQueryKey,
+    // This endpoint validates saved decisions against the same large preview.
+    // Running both calculations concurrently made production requests compete
+    // and cross the proxy timeout. Load the preview first, then reconcile the
+    // durable decision draft.
+    enabled: Boolean(preview) && !isError,
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/inventory-import/orderly/batches/${batchId}/review-decisions`);
       if (!res.ok) {
@@ -882,6 +891,18 @@ export function ResolutionPreviewStep({
       return res.json();
     },
   });
+
+  useEffect(() => {
+    // ResolutionPreviewStep can stay mounted while the wizard switches batches.
+    // Never let a failed decision read expose the prior batch's local map.
+    activeBatchIdRef.current = batchId;
+    savingRowsRef.current.clear();
+    saveOperationByRowRef.current.clear();
+    setRowDecisions(new Map());
+    setDecisionRevisions(new Map());
+    setDecisionSaveErrors(new Map());
+    setSavingRowIndexes(new Set());
+  }, [batchId]);
 
   useEffect(() => {
     if (!savedReviewDecisions) return;
@@ -1025,7 +1046,15 @@ export function ResolutionPreviewStep({
     options: { preserveExistingActions?: boolean } = {},
   ): Promise<boolean> {
     if (changes.some(change => savingRowsRef.current.has(change.rowIndex))) return false;
-    for (const change of changes) savingRowsRef.current.add(change.rowIndex);
+    const requestBatchId = batchId;
+    const operation = Symbol(`orderly-review-save:${requestBatchId}`);
+    for (const change of changes) {
+      savingRowsRef.current.add(change.rowIndex);
+      saveOperationByRowRef.current.set(change.rowIndex, operation);
+    }
+    const operationIsCurrent = () =>
+      activeBatchIdRef.current === requestBatchId &&
+      changes.every(change => saveOperationByRowRef.current.get(change.rowIndex) === operation);
     setDecisionSaveErrors(prev => {
       const next = new Map(prev);
       for (const change of changes) next.delete(change.rowIndex);
@@ -1044,9 +1073,10 @@ export function ResolutionPreviewStep({
       });
       const body: ReviewDecisionResponse & { clearedRowIndexes?: number[]; error?: string } = await res.json();
       if (!res.ok) {
-        if (res.status === 409) await refetchReviewDecisions();
+        if (res.status === 409 && operationIsCurrent()) await refetchReviewDecisions();
         throw new Error(body.error ?? "Failed to save review decision");
       }
+      if (!operationIsCurrent()) return false;
 
       const cleared = new Set(body.clearedRowIndexes ?? []);
       setRowDecisions(prev => {
@@ -1086,6 +1116,7 @@ export function ResolutionPreviewStep({
       });
       return true;
     } catch (err: any) {
+      if (!operationIsCurrent()) return false;
       const message = err.message ?? "Review the row and try again.";
       setDecisionSaveErrors(prev => {
         const next = new Map(prev);
@@ -1099,8 +1130,14 @@ export function ResolutionPreviewStep({
       });
       return false;
     } finally {
-      for (const change of changes) savingRowsRef.current.delete(change.rowIndex);
-      setSavingRowIndexes(new Set(savingRowsRef.current));
+      for (const change of changes) {
+        if (saveOperationByRowRef.current.get(change.rowIndex) !== operation) continue;
+        saveOperationByRowRef.current.delete(change.rowIndex);
+        savingRowsRef.current.delete(change.rowIndex);
+      }
+      if (activeBatchIdRef.current === requestBatchId) {
+        setSavingRowIndexes(new Set(savingRowsRef.current));
+      }
     }
   }
 
@@ -1317,7 +1354,7 @@ export function ResolutionPreviewStep({
     onBack();
   }
 
-  if (isLoading || areReviewDecisionsLoading) {
+  if (isLoading || (preview && areReviewDecisionsLoading)) {
     return (
       <div className="flex flex-col items-center justify-center py-24 min-h-[50vh] text-center">
         <RefreshCw className="h-8 w-8 mb-4 text-primary animate-spin" />
@@ -1334,6 +1371,26 @@ export function ResolutionPreviewStep({
       <Alert variant="destructive" className="mt-4">
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>Failed to load resolution preview. Please try again or contact support if the issue persists.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (areReviewDecisionsError) {
+    return (
+      <Alert variant="destructive" className="mt-4" data-testid="orderly-review-decisions-load-error">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Saved decisions could not be reconciled</AlertTitle>
+        <AlertDescription className="mt-2 space-y-3">
+          <p>
+            {reviewDecisionsError instanceof Error
+              ? reviewDecisionsError.message
+              : "The server did not return the authoritative saved-decision count."}
+            {" "}No review counts are shown until this succeeds, so an older browser state cannot be mistaken for the current batch.
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void refetchReviewDecisions()}>
+            Try again
+          </Button>
+        </AlertDescription>
       </Alert>
     );
   }
@@ -2492,7 +2549,7 @@ export function ResolutionPreviewStep({
                                       className="text-[10px] font-medium text-destructive"
                                       data-testid={`orderly-decision-save-error-${row.rowIndex}`}
                                     >
-                                      Save failed — choose a decision again to retry.
+                                      Save failed — {decisionSaveError}
                                     </span>
                                   )}
                                   {row.heldForReview && hasOverride ? (
