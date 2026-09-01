@@ -1,0 +1,129 @@
+# Resolve `0/0` Pack Rows When The Unit Is Measurable
+
+**Priority:** Blocker — 25 July rows cannot be resolved; July approval is gated on this
+**Environment:** Production, Bay Hill CC · batch `49d087c5-8e33-4bdc-ae06-821f71d2d231`
+**Current build verified:** API `252335b4`, bundle `index-DBK-Ui4q.js`
+**Current state:** 344 valid decisions, 27 stale, Approve disabled
+
+---
+
+## Summary
+
+Orderly emits `0/0 <UNIT>` for items counted directly in a base unit rather than by case — typically open bottles on the bar. The parser reads `0/0` as "no pack information", so normalized total is unconfirmable, and every decision on those rows is rejected with:
+
+> `The saved item for blank-code row 624 lacks compatible pack provenance`
+
+The rows cannot be linked, and the only alternative creates a duplicate of a product that already exists in the catalog from May and June.
+
+**The pack is not unknown.** `0/0` means no *case multiplier*. The unit is stated, and for these rows it is measurable.
+
+---
+
+## The evidence
+
+July row 747, Maker's Mark, `0/0 LT`:
+
+| Field | Value |
+|---|---|
+| Pack Size | `0/0 LT` |
+| Package Price | **$37.00** |
+| Total Units | 4.6 |
+| Total Cost | **$170.20** |
+
+$170.20 ÷ 4.6 = **exactly $37.00 per litre.**
+
+The item is counted in litres, priced per litre, and internally consistent. Across all four Maker's Mark rows in July: 5.6 units, $207.20, $37.00/L throughout.
+
+Titos `0/0 LT` carries Package Price $25.50 with zero on hand this month — same structure, no quantity.
+
+---
+
+## The distinction
+
+This is the same measurable-versus-opaque split already established by **#1264** (preserve measurable Orderly units: GR, PT, Cup, KG, DZ, GAL, QT) and **#1277** (`1/1 Case` is genuinely opaque *because `Case` is not a measurable unit*).
+
+| Pack | Unit measurable? | Correct treatment |
+|---|---|---|
+| `0/0 LT` | yes — litre | 1 × 1 × 1 LT |
+| `0/0 750ML` | yes — millilitre | 1 × 1 × 750 ML |
+| `0/0 EA` | yes — each | 1 × 1 × 1 EA |
+| `0/0 Case` | **no** | remains unknown, unchanged |
+
+**Every `0/0` row in the Bay Hill data uses a measurable unit.** Across May, June and July: 45 rows, units are only `LT`, `750ML`, and `EA`. There are no `0/0 Case` rows.
+
+---
+
+## Requested change
+
+**When case and inner counts are zero or absent but the unit is measurable, normalize the row as `1 × 1 × <unit>` — counted directly in that base unit.**
+
+Consequences:
+
+* Normalized total becomes confirmable (1 LT, 750 ML, 1 EA) instead of zero
+* Pack provenance can be satisfied, so blank-code rows link to their existing catalog item
+* Cost per base unit is derived from Package Price, which the data already supports
+* Value, quantity, and source evidence are unchanged
+
+**Explicitly unchanged:** `0/0 Case` or any non-measurable unit stays unknown and continues to fail closed. This does not relax #1277, #1293, or the property-provenance rule — it corrects an input the parser is misreading, so those rules receive confirmable evidence rather than a false zero.
+
+---
+
+## Done looks like
+
+* `0/0 <measurable unit>` rows parse to `1 × 1 × unit` with a confirmable normalized total
+* `0/0 Case` and other non-measurable units continue to parse as unknown geometry
+* July's 22 held rows can link to their existing catalog items rather than creating duplicates
+* Maker's Mark links to its existing item and retains continuity with May and June
+* Regression tests cover `0/0 LT`, `0/0 750ML`, `0/0 EA`, and a negative `0/0 Case` case
+* Approved May and June batches are not modified
+
+---
+
+## Scope in the current batch
+
+**22 held rows across 4 products, $207.20 of counted value in July:**
+
+| Product | Pack | Rows | July value |
+|---|---|---|---|
+| Maker's Mark | `0/0 LT` | 4 | **$207.20** |
+| Titos | `0/0 LT` | 6 | $0.00 |
+| guinness zero | `0/0 EA` | 4 | $0.00 |
+| JIL Colombo | `0/0 750ML` | 1 | $0.00 |
+
+Prior months, for continuity: **May $1,440.05, June $705.30** across the same 15 rows per month. These items are already in the approved catalog — leaving them unlinked would duplicate them and split the count history.
+
+---
+
+## Two related rows, same root cause
+
+These are blocked by the same rule and may resolve with this fix. If not, they need a separate decision.
+
+**`CARCB30HF` Bunny Luv BB Carrots** — July row 3356, $23.40. Incoming `1 × 15 × 1 LB` = **240 OZ, fully resolved**. Catalog item `FnB #6545` shows **Pack: 240** — the same number — but is marked `Unknown`, because June's export wrote `1/1 Case` and that opaque value was stored. Linking is blocked, and the panel states the *incoming* pack is incomplete, which is incorrect. Harvill's Produce in all three months.
+
+**`098019` Gatorade G2** — July row 4492, $0.00. Cheney Brothers throughout. `1/1 Case` in May and June, `1/24 EA` in July.
+
+Both are **resolved-incoming over opaque-existing** — new information that should upgrade the stored geometry rather than fork the item. #1300 handles the reverse direction (opaque incoming, resolved existing) but not this one.
+
+---
+
+## Separate defect — client-side hardening did not deploy
+
+The `9cc8e32a` hardening was reported deployed, but on build `252335b4` / bundle `index-DBK-Ui4q.js` the observed behaviour is:
+
+| Expected | Observed |
+|---|---|
+| Row 624 visible as held | ✅ |
+| Candidate button **disabled**, labelled "Pack unverified" | ❌ enabled, no label |
+| **No PUT** sent on click | ❌ PUT sent |
+| Leave unlinked available | ✅ |
+| Decision count unchanged at 344 | ✅ `has624: false` |
+
+The server guard holds and no bad data was written, but the client still issues a request it knows will fail. Worth confirming `9cc8e32a` is an ancestor of the deployed commit — this same API-advanced-but-frontend-did-not skew has occurred three times in this deployment sequence.
+
+---
+
+## Context
+
+May and June are approved and reconciling exactly at **$254,286.67** and **$261,007.67**. July's target is **$254,299.75**.
+
+August's count is already past. This fix and the two related rows are the remaining work before July can be approved and the seed closed.
