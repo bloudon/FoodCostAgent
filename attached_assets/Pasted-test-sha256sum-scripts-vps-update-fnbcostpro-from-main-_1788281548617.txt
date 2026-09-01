@@ -1,0 +1,120 @@
+test "$(sha256sum scripts/vps/update-fnbcostpro-from-main.sh | awk '{print $1}')" \
+  = "b288e2fa0423bb8a14a1e32156a9161d460389fa10dc16d1ef5df0e1449726cf" \
+  && scripts/vps/update-fnbcostpro-from-main.sh
+remote: Enumerating objects: 47, done.
+remote: Counting objects: 100% (47/47), done.
+remote: Compressing objects: 100% (24/24), done.
+remote: Total 28 (delta 19), reused 8 (delta 4), pack-reused 0 (from 0)
+Unpacking objects: 100% (28/28), 7.46 KiB | 177.00 KiB/s, done.
+From https://github.com/bloudon/FoodCostAgent
+   8288cdc..1471be5  main       -> origin/main
+Already on 'main'
+Your branch is behind 'origin/main' by 3 commits, and can be fast-forwarded.
+  (use "git pull" to update your local branch)
+From https://github.com/bloudon/FoodCostAgent
+ * branch            main       -> FETCH_HEAD
+Updating 8288cdc..1471be5
+Fast-forward
+ .agents/memory/MEMORY.md                                                                         |   3 ++-
+ .agents/memory/stale-review-decision-revisions.md                                                |  10 +++++++
+ artifacts/api-server/src/services/orderly/orderlyDomain.ts                                       |  18 +++++++++++--
+ artifacts/api-server/src/services/orderly/orderlyIdentity.db.test.ts                             |   1 +
+ artifacts/fnb-cost-pro/src/components/orderly-resolution/ResolutionPreviewStep.tsx               |   6 ++++-
+ artifacts/fnb-cost-pro/src/pages/orderly-import.confidence-filter.component.test.tsx             |  38 +++++++++++++++++++++++++++
+ attached_assets/Pasted-Both-on-8288cdcc-with-bundle-index-BuihwXvR-js-Opening-_1788277799149.txt |  47 +++++++++++++++++++++++++++++++++
+ attached_assets/Pasted-administrator-vps-BLOUD-Soft-apps-CostPro-fnbcostpro-cd_1788277099156.txt | 119 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 8 files changed, 238 insertions(+), 4 deletions(-)
+ create mode 100644 .agents/memory/stale-review-decision-revisions.md
+ create mode 100644 attached_assets/Pasted-Both-on-8288cdcc-with-bundle-index-BuihwXvR-js-Opening-_1788277799149.txt
+ create mode 100644 attached_assets/Pasted-administrator-vps-BLOUD-Soft-apps-CostPro-fnbcostpro-cd_1788277099156.txt
+Scope: all 10 workspace projects
+Lockfile is up to date, resolution step is skipped
+Already up to date
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+└─ Done in 22ms
+╭ Warning ───────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                            │
+│   Ignored build scripts: @scarf/scarf@1.4.0, bcrypt@6.0.0, es5-ext@0.10.64.                │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.   │
+│                                                                                            │
+╰────────────────────────────────────────────────────────────────────────────────────────────╯
+Done in 6.9s using pnpm v10.34.5
+
+> @workspace/fnb-cost-pro@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/fnb-cost-pro
+> vite build --config vite.config.ts
+
+vite v7.3.6 building client environment for production...
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/select.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/sidebar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/avatar.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/collapsible.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/sheet.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/form.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/dialog.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/progress.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+src/components/ui/hover-card.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+transforming (2274) src/shared/plan-catalog.ts
+warn - The class `duration-[1500ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;1500ms&rsqb;` to silence this warning.
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 4322 modules transformed.
+dist/public/index.html                       4.19 kB │ gzip:   1.48 kB
+dist/public/assets/index-C5_BYidG.css      232.83 kB │ gzip:  36.26 kB
+dist/public/assets/index-CJ5sQYvB.js       458.30 kB │ gzip: 118.42 kB
+dist/public/assets/heic2any-D2WGsBfr.js  1,352.90 kB │ gzip: 341.25 kB
+dist/public/assets/index-qP8EDr7F.js     3,421.29 kB │ gzip: 858.49 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 40.13s
+
+> @workspace/api-server@1.15.0 build /home/administrator/apps/CostPro/fnbcostpro/artifacts/api-server
+> node ./build.mjs
+
+
+  dist/index.mjs                                                 13.7mb ⚠️
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs        1.4mb ⚠️
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs            194.0kb
+  dist/pino-worker.mjs                                          153.4kb
+  dist/pino-file.mjs                                            142.1kb
+  dist/pino-pretty.mjs                                          114.4kb
+  dist/thread-stream-worker.mjs                                   7.3kb
+  dist/index.mjs.map                                             23.5mb
+  dist/services/orderly/bayHillDuplicateRemediationCli.mjs.map    2.8mb
+  dist/services/orderly/orderlyPreviewIndexesCli.mjs.map        315.3kb
+  dist/pino-worker.mjs.map                                      256.9kb
+  dist/pino-file.mjs.map                                        229.1kb
+  dist/pino-pretty.mjs.map                                      203.6kb
+  dist/thread-stream-worker.mjs.map                              12.0kb
+
+⚡ Done in 1397ms
+[PM2] Applying action restartProcessId on app [fnbcostpro](ids: [ 13 ])
+[PM2] [fnbcostpro](13) ✓
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ docu-submit    │ default     │ 1.0.0   │ fork    │ 3681485  │ 14h    │ 23   │ online    │ 0%       │ 90.6mb   │ adm… │ disabled │
+│ 13 │ fnbcostpro     │ default     │ 1.15.0  │ fork    │ 3780335  │ 0s     │ 1618 │ online    │ 0%       │ 16.6mb   │ adm… │ disabled │
+│ 14 │ k5-api         │ default     │ 0.0.0   │ fork    │ 3681531  │ 14h    │ 12   │ online    │ 0%       │ 107.6mb  │ adm… │ disabled │
+│ 12 │ kaye-api       │ default     │ 0.0.0   │ fork    │ 3681508  │ 14h    │ 21   │ online    │ 0%       │ 94.1mb   │ adm… │ disabled │
+│ 1  │ permitflow     │ default     │ 2.5.8   │ fork    │ 3681492  │ 14h    │ 30   │ online    │ 6.7%     │ 214.2mb  │ adm… │ disabled │
+│ 3  │ tk5-api        │ default     │ 0.0.0   │ fork    │ 3681501  │ 14h    │ 23   │ online    │ 0%       │ 75.2mb   │ adm… │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+{
+  "operation": "mainline-vps-release",
+  "gitSha": "1471be5622dbf7a0a8f5c493f68929135c03cffb",
+  "buildId": "api@1.15.0:1471be5622dbf7a0a8f5c493f68929135c03cffb",
+  "frontendBundle": "/assets/index-qP8EDr7F.js",
+  "frontendBundleSha256": "666ca361cefb31893b736380c099da44fa44f31b6c5c8a4e07e1c3f96cebf49a",
+  "pm2Process": "fnbcostpro",
+  "apiPort": 3004,
+  "healthVerified": true,
+  "buildIdentityVerified": true,
+  "frontendBundleVerified": true,
+  "databaseMigrationCommandExecuted": false,
+  "orderlyPreviewOrApplyExecuted": false
+}
