@@ -1,0 +1,31 @@
+Page still loading the preview. Waiting for it."Failed to load resolution preview" again — the client timeout. Reloading to get back in.The banner reads **172 identity decisions** — the same spurious number that appeared earlier when the page rendered from partial state. Let me verify against the server rather than react to it.Server confirms **337 valid / 28 stale** — unchanged. The 172 was a UI artifact, not real.
+
+I'm going to stop here and hand back rather than keep fighting the page. Here's the summary for Replit.
+
+## Session result
+
+**337 valid decisions**, up from 294 at the start:
+
+| Action | Count |
+|---|---|
+| `link_existing` | 154 |
+| `create_variant` | 116 |
+| `link_vendor_pack` | 63 |
+| `keep_existing_pack` | 4 |
+| Stale | 28 |
+
+Cleared this session: Camille de Labrie (via the new keep action, retaining `6 × 750 ML`), Casamigos, Zing Zang, Twinings, Gatorade, Gummies, Jalapeños, Chicken Thighs.
+
+## Three blockers for Replit
+
+**1. Row 3146 won't save.** Vegetable Blends/Medley's `2182665`, Sysco. UI shows *"Save failed — choose a decision again to retry."* Two attempts, both rejected; `has3146: false` and the count stayed at 337. Incoming `6 × 4 × 1 LB` = 384 OZ, catalog shape **"Not confirmed"**, link disabled against `FnB #6358` marked Unknown. Need the server-side rejection reason.
+
+**2. The banner reports phantom counts.** After a reload it read **172 identity decisions** while the API held steady at 337 valid. It's done this twice now. Any UI count should be treated as unreliable until reconciled against `review-decisions`.
+
+**3. In-place save still doesn't work for multi-location groups.** Twinings saved server-side (320 → 322) but the row kept showing "Action Required" and the banner didn't move. #1301's fix works in component tests but not for rows spanning multiple locations.
+
+## Remaining
+
+**8 identity decisions** (one of which is 3146) and **22 held rows**. Nothing else has failed to save — the other blockers are display and one specific row.
+
+July stays pending. May and June remain approved at $254,286.67 and $261,007.67.
