@@ -58,3 +58,4 @@
 - [Orderly UI/API verification](orderly-ui-api-verification.md) — record the serving web bundle hash; never reconcile stale browser counters against corrected API responses.
 - [Self-updating VPS release helpers](self-updating-vps-release-helper.md) — the first run may execute the old script body after pulling its replacement; verify new output fields or rerun once.
 - [Stale review-decision revisions](stale-review-decision-revisions.md) — hidden stale drafts must expose their revision so explicit replacements preserve optimistic concurrency.
+- [Orderly production identifier contract](orderly-production-id-contract.md) — company IDs are bounded strings, not UUID-only values; batch IDs may be UUID-shaped.
