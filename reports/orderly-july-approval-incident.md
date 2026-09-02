@@ -73,6 +73,10 @@ column. It reports:
 
 The reported headline is confirmed only if it reproduces 5,518 / 5,496 / 22,
 $254,299.75 / $251,946.45 / $2,353.30, and a zero residual.
+The legacy batch header stores `snapshot_total` as PostgreSQL `REAL`; diagnostics
+must promote it to double precision before numeric comparison so PostgreSQL's
+six-significant-digit float4 rendering does not turn `$254,299.75` into
+`$254,300.00`.
 
 ### The 22 unresolved rows
 

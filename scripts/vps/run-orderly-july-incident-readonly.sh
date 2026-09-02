@@ -328,7 +328,7 @@ SELECT jsonb_build_object(
   'reconciliation', jsonb_build_object(
     'declaredSourceRowCount', b.source_row_count,
     'persistedSourceRows', t.source_rows,
-    'declaredSnapshotTotal', round(b.snapshot_total::numeric, 2),
+    'declaredSnapshotTotal', round((b.snapshot_total::double precision)::numeric, 2),
     'authoritativeSourceValue', t.source_value,
     'resolvedRows', t.resolved_rows,
     'resolvedValue', t.resolved_value,
@@ -393,7 +393,8 @@ SELECT jsonb_build_object(
       AND jsonb_typeof(j.result->'rowsHeldForReview') = 'number',
     'sourceRowsReconcile', b.source_row_count = t.source_rows
       AND t.source_rows = t.resolved_rows + t.unresolved_rows,
-    'declaredAndAuthoritativeSourceValueMatch', abs(b.snapshot_total::numeric - t.source_value) < 0.005,
+    'declaredAndAuthoritativeSourceValueMatch',
+      abs(b.snapshot_total::double precision - t.source_value::double precision) < 0.005,
     'sourceValueReconciles', abs(t.source_value - t.resolved_value - t.unresolved_value) < 0.005,
     'reportedJulyShape', t.source_rows = 5518
       AND t.resolved_rows = 5496

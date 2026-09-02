@@ -59,3 +59,4 @@
 - [Self-updating VPS release helpers](self-updating-vps-release-helper.md) — the first run may execute the old script body after pulling its replacement; verify new output fields or rerun once.
 - [Stale review-decision revisions](stale-review-decision-revisions.md) — hidden stale drafts must expose their revision so explicit replacements preserve optimistic concurrency.
 - [Orderly production identifier contract](orderly-production-id-contract.md) — company IDs are bounded strings, not UUID-only values; batch IDs may be UUID-shaped.
+- [PostgreSQL REAL money casts](postgres-real-money-casts.md) — promote legacy REAL money to double before numeric comparison or diagnostics can fabricate rounding gaps.
