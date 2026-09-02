@@ -42,7 +42,8 @@ scripts/vps/run-orderly-july-incident-readonly.sh \
 
 Return only the sanitized JSON and the script SHA-256. The command:
 
-- reads the database selected by the live `fnbcostpro` PM2 process;
+  - reads the database selected by the live `fnbcostpro` PM2 process, falling back
+    only to that checkout's `.env` when procfs blocks environment access;
 - requires the exact approved Orderly batch and July 31 inventory date;
 - opens a PostgreSQL `READ ONLY` transaction and rolls it back;
 - emits `writesExecuted: 0` and `databaseWritesExecuted: 0`;

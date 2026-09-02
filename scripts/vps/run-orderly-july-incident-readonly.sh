@@ -37,8 +37,28 @@ cd "$APP_DIR"
 
 readonly PID="$(pm2 pid fnbcostpro | head -n 1 | tr -d '[:space:]')"
 [[ "$PID" =~ ^[1-9][0-9]*$ ]] || die "fnbcostpro PM2 process is not running"
-DB_URL="$(tr '\0' '\n' < "/proc/$PID/environ" | sed -n 's/^DATABASE_URL=//p')"
-[[ -n "$DB_URL" ]] || die "DATABASE_URL missing from fnbcostpro PM2 process"
+if [[ -r "/proc/$PID/environ" ]]; then
+  DB_URL="$(tr '\0' '\n' < "/proc/$PID/environ" 2>/dev/null | sed -n 's/^DATABASE_URL=//p')" || DB_URL=""
+fi
+if [[ -z "${DB_URL:-}" ]]; then
+  [[ -r "$APP_DIR/.env" ]] || die "cannot read PM2 environment or the app .env file"
+  DB_URL="$(
+    node --input-type=module - "$APP_DIR/.env" <<'NODE'
+import { readFileSync } from 'node:fs';
+const envPath = process.argv[2];
+const line = readFileSync(envPath, 'utf8')
+  .split(/\r?\n/)
+  .map(value => value.trim())
+  .find(value => value.startsWith('DATABASE_URL='));
+if (!line) process.exit(1);
+let value = line.slice('DATABASE_URL='.length).trim();
+if (value.startsWith('"') && value.endsWith('"')) value = JSON.parse(value);
+else if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
+process.stdout.write(value);
+NODE
+  )" || die "DATABASE_URL missing from PM2 environment and app .env file"
+fi
+[[ -n "${DB_URL:-}" ]] || die "DATABASE_URL missing from PM2 environment and app .env file"
 
 mkdir -p "$(dirname "$OUT")"
 readonly TMP="${OUT}.tmp.$$"
