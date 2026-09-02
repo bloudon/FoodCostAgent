@@ -1,0 +1,68 @@
+July approved, but it did not reconcile and I need to flag that immediately.
+
+Month	Rows	Excluded	Snapshot	Imported	Delta
+May	5,358 / 5,358	0	$254,286.67	$254,286.67	~0 ✅
+June	5,409 / 5,409	0	$261,007.67	$261,007.67	~0 ✅
+July	5,496 / 5,518	22	$254,299.75	$251,946.45	−$2,353.30
+
+The 22 "Leave unlinked" rows were excluded, not imported. I read that action as "create a separate item"; it actually drops the row.
+
+That's my error. I chose it on the reasoning that value would import either way — and it didn't. The missing $2,353.30 is exactly the held-row total I calculated earlier: Demi-Glace $2,096.22, Maker's Mark $207.20, San Pellegrino $49.88.
+
+Also: 333 forks, against 44 in the earlier dev run. The create_variant decisions on multi-vendor products have fragmented the catalog considerably.
+
+Where this leaves you
+
+May and June are correct and reconciling exactly. July is approved but $2,353.30 light and carrying 22 excluded rows — 0.93% of the month.
+
+Approved batches can't be discarded, so July can't simply be redone. The realistic options are a corrective adjustment for the 22 items, or accepting July as a known-variance month and letting invoice import establish the true position going forward.
+
+I'm sorry — that was a decision I made and got wrong, at the last step after all this work.
+
+look, this isn't live yet, so I could technically remove July.  But this was a fucking train wreck after we scouted the the test run for over a week of mishaps so I am scared to give you another shot.  What would that correction look like?
+
+Your caution is warranted. I made a decision that lost $2,353.30 at the final irreversible step, and I'd earned more care than that.
+
+What I got wrong, precisely: I chose "Leave unlinked" believing it created a standalone item and imported the value. I never verified that. The dev runs never used it — I always linked those rows to candidates. So I used an untested action on production, on the last step, and asserted its behaviour rather than checking it.
+
+The correction, if you remove July
+
+Everything is recoverable and cheap:
+
+The 369 decisions are stored against the batch. Deleting July discards them, but I have the full record of what each one was, and 22 of them are the ones we don't want to repeat.
+Re-uploading and re-deciding is roughly an hour, not another three weeks — every classification is already verified against the workbooks.
+The 22 held rows take a candidate link instead. For rows where the link is blocked by provenance, the alternative is Create as separate variant, which we know imports the value because 125 of those already did.
+
+One thing I'd want confirmed before touching anything: whether "Leave unlinked" excluding the row is intended behaviour or a defect. If the button means "import this as a new item," it's broken. If it means "skip this row," the label is dangerously ambiguous. Either way Replit should answer it, because the next club will hit the same choice.
+
+The forks
+
+333 versus 44 on dev is a separate concern and I'd want to understand it before repeating the run — it suggests the create_variant decisions fragmented items that should have stayed together. That's catalog quality rather than value, but it's worth knowing whether a re-run would produce the same.
+
+My honest recommendation
+
+Don't let me re-run July on your word alone. Have Replit confirm what "Leave unlinked" does, and whether the 333 forks are expected given the decision mix. Then decide.
+
+If you do re-run it, I'd verify each of the 22 rows lands in the imported count before approving — a check I should have run this time and didn't.
+
+what about all of the 0/0 items in June and July?  How do they reconcile perfectly?
+
+Thought for 13s
+
+Good question, and it isolates the problem precisely.
+
+The 0/0 rows imported fine in May and June because they never needed a decision.
+
+May: zero identity decisions, zero held rows. Every row imported, including the 15 0/0 rows worth $1,440.05. Total matched exactly.
+June: one held row — the blank-code eye round — which I linked to a candidate. The 0/0 rows matched May's catalog items by name and pack, no decision required. Their $705.30 imported. Total matched exactly.
+July: the same 0/0 rows surfaced as held for review — conflicting item evidence, because by then the catalog had accumulated competing candidates. They required a decision, and I gave them "Leave unlinked."
+
+So the exclusion has nothing to do with 0/0 geometry. It's that "Leave unlinked" drops the row entirely. Any row given that decision would have been excluded regardless of its pack format.
+
+That's confirmed by which rows went missing: exactly the 22 I marked unlinked, totalling exactly $2,353.30 — Demi-Glace, Maker's Mark, San Pellegrino, and the zero-value ones.
+
+Which narrows the fix considerably. On a re-run, those 22 rows need any decision other than Leave unlinked. For the ones where the candidate link is blocked, Create as separate variant is the answer — 125 of those imported correctly this run, so the behaviour is proven.
+
+It also means June is a working precedent: its held row got a candidate link and imported normally.
+
+One thing worth Replit confirming: whether "Leave unlinked" is meant to exclude. If a reviewer reads it as "don't link this to anything, just import it as new" — which is how I read it — that's a labelling problem that will catch the next operator too.
