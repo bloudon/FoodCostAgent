@@ -6,7 +6,7 @@
 #
 # Usage:
 #   scripts/vps/run-orderly-july-incident-readonly.sh \
-#     <batch-uuid> <company-uuid> </absolute/output.json>
+#     <batch-uuid> <company-id> </absolute/output.json>
 #
 set -Eeuo pipefail
 umask 077
@@ -16,14 +16,15 @@ die() {
   exit 1
 }
 
-[[ $# -eq 3 ]] || die "expected batch UUID, company UUID, and absolute output path"
+[[ $# -eq 3 ]] || die "expected batch UUID, company ID, and absolute output path"
 readonly BATCH_ID="$1"
 readonly COMPANY_ID="$2"
 readonly OUT="$3"
-readonly UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+readonly BATCH_UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+readonly COMPANY_ID_RE='^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
 
-[[ "$BATCH_ID" =~ $UUID_RE ]] || die "batch ID must be a UUID"
-[[ "$COMPANY_ID" =~ $UUID_RE ]] || die "company ID must be a UUID"
+[[ "$BATCH_ID" =~ $BATCH_UUID_RE ]] || die "batch ID must be a UUID"
+[[ "$COMPANY_ID" =~ $COMPANY_ID_RE ]] || die "company ID must be a non-empty safe identifier"
 [[ "$OUT" = /* ]] || die "output path must be absolute"
 
 for command in pm2 psql node git mkdir dirname; do

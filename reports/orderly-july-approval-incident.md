@@ -36,7 +36,7 @@ sha256sum scripts/vps/run-orderly-july-incident-readonly.sh
 
 scripts/vps/run-orderly-july-incident-readonly.sh \
   '49d087c5-8e33-4bdc-ae06-821f71d2d231' \
-  '<reviewed-company-uuid>' \
+  '<reviewed-company-id>' \
   '/home/administrator/orderly-evidence/july-approval-incident.sanitized.json'
 ```
 
