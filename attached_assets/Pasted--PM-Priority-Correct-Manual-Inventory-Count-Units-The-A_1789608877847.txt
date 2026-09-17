@@ -1,0 +1,44 @@
+# PM Priority — Correct Manual Inventory Count Units
+
+The August manual count is presenting liquor items in mL instead of their practical counting units.
+
+Example: A 750 mL bottle currently interprets an entry of 5.5 as 5.5 mL rather than 5.5 bottles.
+
+This is a counting-workflow defect. Do not work around it by editing the Orderly source data or manually changing inventory quantities.
+
+## Required outcome
+
+A user must be able to count inventory in its practical container or purchase unit while FnB converts that quantity into the canonical base unit for valuation.
+
+For a 750 mL bottle:
+
+5.5 bottles → 4,125 mL → correct valuation using the stored conversion and cost.
+
+This must work for other valid inventory pack configurations, not just liquor.
+
+## Replit investigation and implementation
+
+1. Confirm whether the affected items already have their bottle/container conversion stored in the canonical item and pack definitions.
+2. Determine why canonical Orderly storage locations disable container counting.
+3. Reconnect the existing manual count UI to the established unit-conversion model. Reuse existing conversion logic rather than introducing another unit system.
+4. Make the selected counting unit explicit in the UI so users cannot mistake mL for bottles.
+5. Verify quantities and valuation use the actual stored conversion and unrounded unit cost.
+6. Determine whether any August count entries were already saved using the wrong unit. Report their scope and propose a safe correction without guessing what the operator intended.
+
+## Acceptance
+
+Demonstrate in Dev:
+
+* 5.5 bottles of a 750 mL item becomes 4,125 mL.
+* The valuation reflects 5.5 bottles, not 5.5 mL.
+* Counting works in appropriate units across other inventory categories.
+* Items without a valid conversion cannot silently treat container counts as base-unit counts.
+* Storage-location filters and item assignments continue working.
+* May/June historical counts and valuations remain unchanged.
+* No live on-hand changes occur during the fix.
+
+Provide a concise root-cause finding, the minimum code correction, and test results.
+
+**No August count application or production-data correction is authorized yet.**
+
+Claude simplicity check: Can the existing manual count UI and unit-conversion model be connected correctly without introducing new unit or location infrastructure?

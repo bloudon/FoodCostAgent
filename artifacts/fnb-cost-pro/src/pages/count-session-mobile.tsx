@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment, useCallback } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation as useWouterLocation } from "wouter";
@@ -42,6 +42,8 @@ import {
   X,
   Camera,
   Home,
+  ArrowDownAZ,
+  ArrowUpZA,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -49,11 +51,78 @@ import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { formatUnitName } from "@/lib/utils";
 
 type CountMode = "catch" | "case" | "simple";
+type ItemSortDirection = "asc" | "desc";
+
+function getLineLocationId(line: any): string {
+  return line.storageLocationId || line.inventoryItem?.storageLocationId || "unknown";
+}
+
+function getLineCategoryName(line: any): string {
+  return line.inventoryItem?.category || "Uncategorized";
+}
+
+export function sortMobileCountLines(
+  lines: any[] = [],
+  direction: ItemSortDirection = "asc",
+): any[] {
+  const categoryOrder = new Map<string, number>();
+  lines.forEach((line) => {
+    const category = getLineCategoryName(line);
+    if (!categoryOrder.has(category)) categoryOrder.set(category, categoryOrder.size);
+  });
+
+  const multiplier = direction === "asc" ? 1 : -1;
+  return [...lines].sort((a, b) => {
+    const categoryDifference =
+      (categoryOrder.get(getLineCategoryName(a)) ?? 0) -
+      (categoryOrder.get(getLineCategoryName(b)) ?? 0);
+    if (categoryDifference !== 0) return categoryDifference;
+    return multiplier * String(a.inventoryItem?.name ?? "").localeCompare(
+      String(b.inventoryItem?.name ?? ""),
+      undefined,
+      { sensitivity: "base", numeric: true },
+    );
+  });
+}
+
+export function mobileCategoryAnchor(categoryName: string): string {
+  return `mobile-category-${encodeURIComponent(categoryName).replace(/%/g, "-")}`;
+}
 
 function getCountMode(category: any, location: any): CountMode {
   if (category?.isCatchWeightCategory === 1) return "catch";
   if (location?.allowCaseCounting === 1) return "case";
   return "simple";
+}
+
+export function buildSessionLocations(
+  countLines: any[] = [],
+  legacyLocations: any[] = [],
+): any[] {
+  const configuredById = new Map(
+    legacyLocations.map((location) => [location.id, location]),
+  );
+  const sessionById = new Map<string, any>();
+
+  for (const line of countLines) {
+    const locationId = getLineLocationId(line);
+    const configured = configuredById.get(locationId);
+    sessionById.set(locationId, configured || {
+      id: locationId,
+      name:
+        line.storageLocationName ||
+        line.inventoryItem?.storageLocationName ||
+        "Unknown Location",
+      sortOrder: 999,
+      allowCaseCounting: 0,
+    });
+  }
+
+  return Array.from(sessionById.values()).sort(
+    (a, b) =>
+      (a.sortOrder ?? 999) - (b.sortOrder ?? 999) ||
+      String(a.name).localeCompare(String(b.name)),
+  );
 }
 
 function getInitials(fullName: string): string {
@@ -347,6 +416,8 @@ export default function CountSessionMobile() {
 
   // Location switcher
   const [selectedLocId, setSelectedLocId] = useState<string | null>(null);
+  const [itemSortDirection, setItemSortDirection] =
+    useState<ItemSortDirection>("asc");
   // Sheet state
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
   // Manual case-count toggle (user can switch to case mode regardless of location flag)
@@ -366,6 +437,7 @@ export default function CountSessionMobile() {
   const [catchWeightScanPending, setCatchWeightScanPending] = useState(false);
 
   const primaryInputRef = useRef<HTMLInputElement>(null);
+  const itemListRef = useRef<HTMLDivElement>(null);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const { data: count, isLoading: countLoading } = useQuery<any>({
@@ -388,20 +460,10 @@ export default function CountSessionMobile() {
   // ── Derived data ───────────────────────────────────────────────────────────
 
   // Build ordered list of locations that have items in this session
-  const sessionLocations = (() => {
-    if (!countLines || !storageLocations) return [];
-    const locIds = new Set(
-      countLines.map((l) => l.inventoryItem?.storageLocationId || "unknown")
-    );
-    const locs = storageLocations
-      .filter((l) => locIds.has(l.id))
-      .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
-    // Add an "Unknown" slot if needed
-    if (locIds.has("unknown")) {
-      locs.push({ id: "unknown", name: "Unknown Location", sortOrder: 9999 });
-    }
-    return locs;
-  })();
+  const sessionLocations = useMemo(
+    () => buildSessionLocations(countLines, storageLocations),
+    [countLines, storageLocations],
+  );
 
   // Initialize selected location to first on load
   useEffect(() => {
@@ -411,15 +473,25 @@ export default function CountSessionMobile() {
   }, [sessionLocations.length]);
 
   // Items for the selected location
-  const locationLines = (countLines || []).filter(
-    (l) => (l.inventoryItem?.storageLocationId || "unknown") === selectedLocId
+  const locationLines = useMemo(
+    () =>
+      sortMobileCountLines(
+        (countLines || []).filter((line) => getLineLocationId(line) === selectedLocId),
+        itemSortDirection,
+      ),
+    [countLines, selectedLocId, itemSortDirection],
+  );
+
+  const locationCategories = useMemo(
+    () => Array.from(new Set(locationLines.map(getLineCategoryName))),
+    [locationLines],
   );
 
   // Progress per location
   const progressByLoc = (countLines || []).reduce<
     Record<string, { counted: number; total: number }>
   >((acc, l) => {
-    const locId = l.inventoryItem?.storageLocationId || "unknown";
+    const locId = getLineLocationId(l);
     if (!acc[locId]) acc[locId] = { counted: 0, total: 0 };
     acc[locId].total += 1;
     if ((l.qty || 0) > 0) acc[locId].counted += 1;
@@ -430,7 +502,7 @@ export default function CountSessionMobile() {
   const costByLoc = (countLines || []).reduce<Record<string, number>>(
     (acc, l) => {
       if ((l.qty || 0) > 0) {
-        const locId = l.inventoryItem?.storageLocationId || "unknown";
+        const locId = getLineLocationId(l);
         acc[locId] = (acc[locId] ?? 0) + l.qty * (l.unitCost || 0);
       }
       return acc;
@@ -443,6 +515,30 @@ export default function CountSessionMobile() {
   );
   const locationCostTotal = selectedLocId ? (costByLoc[selectedLocId] ?? 0) : 0;
 
+  function selectLocation(locationId: string) {
+    setSelectedLocId(locationId);
+    requestAnimationFrame(() => {
+      itemListRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
+
+  function jumpToCategory(categoryName: string) {
+    const list = itemListRef.current;
+    const anchor = mobileCategoryAnchor(categoryName);
+    const target = document.getElementById(anchor);
+    const heading = document.getElementById(`${anchor}-heading`);
+    if (!list || !target || !heading) return;
+    const listTop = list.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top;
+    list.scrollTo({
+      top: Math.max(0, list.scrollTop + targetTop - listTop),
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+    heading.focus({ preventScroll: true });
+  }
+
   // Overall session completion
   const totalItems = countLines?.length ?? 0;
   const countedItems = (countLines || []).filter((l) => (l.qty || 0) > 0).length;
@@ -454,7 +550,7 @@ export default function CountSessionMobile() {
   const activeCategory = categoriesData?.find(
     (c) => c.id === activeItem?.categoryId
   );
-  const activeStorageLoc = storageLocations?.find(
+  const activeStorageLoc = sessionLocations.find(
     (l) => l.id === activeLine?.storageLocationId
   );
   const baseMode: CountMode = activeLine
@@ -554,7 +650,7 @@ export default function CountSessionMobile() {
     if (!line) return;
     const item = line.inventoryItem;
     const cat = categoriesData?.find((c) => c.id === item?.categoryId);
-    const loc = storageLocations?.find((l) => l.id === line.storageLocationId);
+    const loc = sessionLocations.find((l) => l.id === line.storageLocationId);
     const mode = getCountMode(cat, loc);
 
     setActiveLineId(lineId);
@@ -656,10 +752,10 @@ export default function CountSessionMobile() {
           });
           if (nextLoc) {
             toast({
-              title: `${storageLocations?.find((l) => l.id === selectedLocId)?.name ?? "Location"} complete`,
+              title: `${sessionLocations.find((l) => l.id === selectedLocId)?.name ?? "Location"} complete`,
               description: `Moving to ${nextLoc.name}`,
             });
-            setSelectedLocId(nextLoc.id);
+            selectLocation(nextLoc.id);
           } else {
             toast({ title: "All items counted!" });
           }
@@ -790,9 +886,9 @@ export default function CountSessionMobile() {
 
       if (matchedLine) {
         // Switch to the item's location if needed
-        const itemLocId = matchedLine.inventoryItem?.storageLocationId || "unknown";
+        const itemLocId = getLineLocationId(matchedLine);
         if (itemLocId !== selectedLocId) {
-          setSelectedLocId(itemLocId);
+          selectLocation(itemLocId);
         }
         // Open the item's entry sheet (slight delay to allow location switch to render)
         setTimeout(() => openSheet(matchedLine.id), 80);
@@ -824,8 +920,9 @@ export default function CountSessionMobile() {
     [countLines, selectedLocId, openSheet, toast]
   );
 
+  const isHistoricalImport = count?.isHistoricalImport === 1;
   const isReadOnly =
-    count && (count.canEdit === false || count.applied === 1);
+    count && (isHistoricalImport || count.canEdit === false || count.applied === 1);
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (countLoading || linesLoading) {
@@ -891,7 +988,7 @@ export default function CountSessionMobile() {
         {isReadOnly ? (
           <Badge variant="outline" className="shrink-0 gap-1">
             <Lock className="h-3 w-3" />
-            Locked
+            {isHistoricalImport ? "Historical" : "Locked"}
           </Badge>
         ) : allCounted ? (
           <Button
@@ -928,7 +1025,7 @@ export default function CountSessionMobile() {
           return (
             <button
               key={loc.id}
-              onClick={() => setSelectedLocId(loc.id)}
+              onClick={() => selectLocation(loc.id)}
               className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
                 active
                   ? "bg-primary text-primary-foreground border-primary"
@@ -947,6 +1044,45 @@ export default function CountSessionMobile() {
           );
         })}
       </div>
+
+      {/* ── Category jump navigation + item sorting ── */}
+      {locationLines.length > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-background shrink-0">
+          <div
+            className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-none"
+            aria-label="Jump to category"
+          >
+            {locationCategories.map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => jumpToCategory(category)}
+                className="shrink-0 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                data-testid={`button-mobile-category-${category}`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-1 px-2"
+            onClick={() =>
+              setItemSortDirection((current) => current === "asc" ? "desc" : "asc")
+            }
+            aria-label={`Sort item names ${itemSortDirection === "asc" ? "descending" : "ascending"}`}
+            data-testid="button-mobile-sort-items"
+          >
+            {itemSortDirection === "asc" ? (
+              <ArrowDownAZ className="h-4 w-4" />
+            ) : (
+              <ArrowUpZA className="h-4 w-4" />
+            )}
+            <span className="text-xs">Name</span>
+          </Button>
+        </div>
+      )}
 
       {/* ── Cost summary bar ── */}
       {countedItems > 0 && (
@@ -972,7 +1108,11 @@ export default function CountSessionMobile() {
       )}
 
       {/* ── Item list ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={itemListRef}
+        className="flex-1 overflow-y-auto scroll-pt-0"
+        data-testid="mobile-item-list"
+      >
         {locationLines.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
             <Package className="h-8 w-8" />
@@ -980,10 +1120,14 @@ export default function CountSessionMobile() {
           </div>
         ) : (
           <div className="divide-y">
-            {locationLines.map((line) => {
+            {locationLines.map((line, index) => {
               const item = line.inventoryItem;
+              const categoryName = getLineCategoryName(line);
+              const startsCategory =
+                index === 0 ||
+                getLineCategoryName(locationLines[index - 1]) !== categoryName;
               const cat = categoriesData?.find((c) => c.id === item?.categoryId);
-              const loc = storageLocations?.find(
+              const loc = sessionLocations.find(
                 (l) => l.id === line.storageLocationId
               );
               const mode = getCountMode(cat, loc);
@@ -993,10 +1137,32 @@ export default function CountSessionMobile() {
               const entryCount = line.entries?.length ?? 0;
 
               return (
+                <Fragment key={line.id}>
+                {startsCategory && (
+                  <>
+                    <div
+                      id={mobileCategoryAnchor(categoryName)}
+                      className="h-0"
+                      aria-hidden="true"
+                    />
+                    <div
+                      id={`${mobileCategoryAnchor(categoryName)}-heading`}
+                      tabIndex={-1}
+                      className="sticky top-0 z-10 flex items-center justify-between border-y bg-muted/95 px-4 py-1.5 backdrop-blur-sm focus:outline-none"
+                      data-testid={`mobile-category-section-${categoryName}`}
+                    >
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {categoryName}
+                      </span>
+                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                        {locationLines.filter((candidate) => getLineCategoryName(candidate) === categoryName).length}
+                      </span>
+                    </div>
+                  </>
+                )}
                 <button
-                  key={line.id}
                   onClick={() => !isReadOnly && openSheet(line.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-left hover-elevate ${
+                  className={`w-full min-h-12 flex items-center gap-2 px-3 py-2 text-left hover-elevate ${
                     isReadOnly ? "cursor-default" : "cursor-pointer"
                   }`}
                   data-testid={`button-mobile-item-${line.id}`}
@@ -1009,9 +1175,9 @@ export default function CountSessionMobile() {
                   />
                   {/* Item info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span
-                        className={`font-medium text-sm ${
+                        className={`font-medium text-sm leading-tight ${
                           isCounted ? "text-foreground" : "text-muted-foreground"
                         }`}
                         data-testid={`text-mobile-item-name-${line.id}`}
@@ -1039,8 +1205,8 @@ export default function CountSessionMobile() {
                     )}
                   </div>
                   {/* Unit + cost */}
-                  <div className="text-right shrink-0">
-                    <div className="text-xs text-muted-foreground">{unitAbbr}</div>
+                  <div className="text-right shrink-0 max-w-[34%]">
+                    <div className="text-[11px] text-muted-foreground truncate">{unitAbbr}</div>
                     {isCounted && (
                       <div className="text-xs font-mono font-medium">
                         ${(line.qty * (line.unitCost || 0)).toFixed(2)}
@@ -1051,6 +1217,7 @@ export default function CountSessionMobile() {
                     <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                   )}
                 </button>
+                </Fragment>
               );
             })}
           </div>
@@ -1136,7 +1303,7 @@ export default function CountSessionMobile() {
                 </div>
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span>{storageLocations?.find((l) => l.id === activeLine.storageLocationId)?.name ?? "Unknown"}</span>
+                  <span>{sessionLocations.find((l) => l.id === activeLine.storageLocationId)?.name ?? "Unknown"}</span>
                   <span>·</span>
                   <span>{activeUnitAbbr}</span>
                   {activeLine.unitCost > 0 && (

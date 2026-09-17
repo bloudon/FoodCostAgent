@@ -1,0 +1,45 @@
+# PM Approval — #1308 Populate Manual Count Sessions
+
+**Decision: GO to Dev implementation.**
+
+The root cause and proposed correction are accepted.
+
+Orderly-approved inventory must be immediately usable for normal manual inventory counts. The manual count workflow should use the canonical inventory-location assignments already populated by Orderly approval.
+
+## Implementation direction
+
+1. Use one shared canonical item/location selection path for both new manual count creation and bounded recovery of the existing empty August session.
+
+2. Preserve normal count-session behavior, company/store isolation, item categories, and one count line per eligible item/location assignment.
+
+3. Recover the existing empty August session without recreating it, changing quantities, or applying inventory.
+
+4. Clearly distinguish Historical sessions from active manual count sessions. Exclude historical sessions from Resume without changing their stored data.
+
+5. Fail visibly when no eligible count lines can be generated.
+
+## Scope constraints
+
+* No Orderly reimport or reapproval.
+* No May, June, or July historical data changes.
+* No changes to live on-hand quantities.
+* No new location model or generalized legacy-table cleanup.
+* No separate recovery engine.
+* No additional hardening beyond what the existing session lifecycle requires.
+
+## Acceptance
+
+Demonstrate in Dev that:
+
+* A new manual session contains Orderly-approved items at their assigned storage locations.
+* Location and category filters populate correctly.
+* The existing empty August session can be populated once without duplicates.
+* Repeating recovery does not add lines.
+* Historical and applied sessions cannot be recovered or resumed as active counts.
+* Existing historical inventory and live on-hand remain unchanged.
+
+Provide the test results and the shortest production rollout/recovery instructions.
+
+**Do not execute August production recovery without Brian's authorization.**
+
+Claude simplicity check: Is anything in this implementation beyond reconnecting manual count creation/display to canonical locations and safely recovering the empty session unnecessary?

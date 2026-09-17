@@ -60,3 +60,5 @@
 - [Stale review-decision revisions](stale-review-decision-revisions.md) — hidden stale drafts must expose their revision so explicit replacements preserve optimistic concurrency.
 - [Orderly production identifier contract](orderly-production-id-contract.md) — company IDs are bounded strings, not UUID-only values; batch IDs may be UUID-shaped.
 - [PostgreSQL REAL money casts](postgres-real-money-casts.md) — promote legacy REAL money to double before numeric comparison or diagnostics can fabricate rounding gaps.
+- [Sticky section navigation](sticky-section-navigation.md) — use non-sticky markers as scroll targets; sticky heading geometry cannot locate earlier content.
+- [Manual count unit boundary](manual-count-unit-boundary.md) — count in practical item packages, persist canonical quantity, and fail closed on incomplete geometry.

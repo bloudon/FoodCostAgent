@@ -42,6 +42,7 @@ interface InventoryCount {
   storeId: string | null;
   storeName?: string;
   lineCount?: number;
+  isHistoricalImport?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +148,9 @@ export default function CountLanding() {
   });
 
   // Separate active (in-progress) from applied
-  const activeCounts = counts.filter((c) => c.applied === 0);
+  const activeCounts = counts.filter(
+    (c) => c.applied === 0 && c.isHistoricalImport !== 1
+  );
   const recentCounts = counts
     .slice()
     .sort(
@@ -313,11 +316,15 @@ export default function CountLanding() {
                         </span>
                       )}
                       <Badge
-                        variant={count.applied === 0 ? "outline" : "secondary"}
+                        variant={count.isHistoricalImport === 1 ? "secondary" : count.applied === 0 ? "outline" : "secondary"}
                         className="text-xs"
                         data-testid={`badge-count-status-${count.id}`}
                       >
-                        {count.applied === 0 ? "In Progress" : "Applied"}
+                        {count.isHistoricalImport === 1
+                          ? "Historical"
+                          : count.applied === 0
+                            ? "In Progress"
+                            : "Applied"}
                       </Badge>
                     </div>
                   </div>

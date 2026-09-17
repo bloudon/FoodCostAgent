@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation as useWouterLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,7 @@ import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUndoableDelete } from "@/hooks/use-undoable-delete";
 import { formatUnitName } from "@/lib/utils";
+import { generateCountSectionAnchor } from "@/lib/count-session-layout";
 import type { Company, CompanyStore } from "@shared/schema";
 
 type CountMode = 'catch' | 'case' | 'simple';
@@ -66,6 +67,17 @@ function getCountMode(category: any, location: any): CountMode {
     return 'case';
   }
   return 'simple';
+}
+
+const countInputClass =
+  "border-orange-500/50 focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/40";
+
+function focusPrimaryCountInput(lineId: string) {
+  const nextInput = document.querySelector(
+    `[data-testid="input-qty-${lineId}"], [data-testid="input-case-qty-${lineId}"]`,
+  ) as HTMLInputElement | null;
+  nextInput?.focus();
+  nextInput?.select();
 }
 
 interface CountQuantityEditorProps {
@@ -87,7 +99,7 @@ interface CountQuantityEditorProps {
   readOnly?: boolean;
 }
 
-function CountQuantityEditor({
+export function CountQuantityEditor({
   line,
   item,
   mode,
@@ -112,6 +124,7 @@ function CountQuantityEditor({
     const looseUnits = isEditing ? editingLooseUnits : (line.looseUnits != null ? line.looseUnits.toString() : '');
     
     const containerLabel = item?.containerLabel || "container";
+    const canonicalUnitLabel = item?.unitAbbreviation || item?.unitName || "units";
     
     let totalQty: number;
     if (hasContainerSize) {
@@ -137,7 +150,7 @@ function CountQuantityEditor({
               onChange={(e) => onCaseQtyChange(e.target.value)}
               onBlur={onBlur}
               onKeyDown={onKeyDown}
-              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              className={`w-full sm:w-24 h-10 sm:h-9 text-base ${countInputClass}`}
               disabled={readOnly}
               data-testid={`input-case-qty-${line.id}`}
             />
@@ -147,21 +160,23 @@ function CountQuantityEditor({
               <label className="text-xs text-muted-foreground mb-1 capitalize">{containerLabel}s</label>
               <Input
                 type="number"
-                step="1"
+                step="0.01"
                 min="0"
                 value={containerQty}
                 onFocus={onFocus}
                 onChange={(e) => onContainerQtyChange(e.target.value)}
                 onBlur={onBlur}
                 onKeyDown={onKeyDown}
-                className="w-full sm:w-24 h-10 sm:h-9 text-base"
+                className={`w-full sm:w-24 h-10 sm:h-9 text-base ${countInputClass}`}
                 disabled={readOnly}
                 data-testid={`input-container-qty-${line.id}`}
               />
             </div>
           )}
           <div className="flex flex-col flex-1 sm:flex-none">
-            <label className="text-xs text-muted-foreground mb-1">Loose Units</label>
+            <label className="text-xs text-muted-foreground mb-1">
+              Loose {canonicalUnitLabel}
+            </label>
             <Input
               type="number"
               step="0.01"
@@ -171,7 +186,7 @@ function CountQuantityEditor({
               onChange={(e) => onLooseUnitsChange(e.target.value)}
               onBlur={onBlur}
               onKeyDown={onKeyDown}
-              className="w-full sm:w-24 h-10 sm:h-9 text-base"
+              className={`w-full sm:w-24 h-10 sm:h-9 text-base ${countInputClass}`}
               disabled={readOnly}
               data-testid={`input-loose-units-${line.id}`}
             />
@@ -197,28 +212,11 @@ function CountQuantityEditor({
       onChange={(e) => onQtyChange(e.target.value)}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
-      className="w-full sm:w-32 h-10 sm:h-9 text-base"
+      className={`w-full sm:w-32 h-10 sm:h-9 text-base ${countInputClass}`}
       disabled={readOnly}
       data-testid={`input-qty-${line.id}`}
     />
   );
-}
-
-// Helper function to generate URL-safe anchor IDs
-function generateAnchorId(prefix: string, value: string): string {
-  // For UUIDs and already URL-safe strings (like location IDs), use as-is
-  const isUrlSafe = /^[a-z0-9-]+$/i.test(value);
-  if (isUrlSafe) {
-    return `${prefix}-${value}`;
-  }
-  
-  // For categories with special characters, create a unique hash to prevent collisions
-  const sanitized = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  // Simple hash to distinguish similar category names
-  const hash = value.split('').reduce((acc, char) => {
-    return ((acc << 5) - acc) + char.charCodeAt(0);
-  }, 0);
-  return `${prefix}-${sanitized}-${Math.abs(hash)}`;
 }
 
 function compactRelativeTime(date: Date): string {
@@ -415,6 +413,7 @@ export default function CountSession() {
   const [groupBy, setGroupBy] = useState<"location" | "category" | "all-entries">("location"); // Toggle between location, category grouping, and flat all-entries view
   const [allEntriesSortCol, setAllEntriesSortCol] = useState<"item" | "location">("item");
   const [allEntriesSortDir, setAllEntriesSortDir] = useState<"asc" | "desc">("asc");
+  const [groupedItemSortDir, setGroupedItemSortDir] = useState<"asc" | "desc">("asc");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>(filterLocationId || "all");
   const [selectedItemId, setSelectedItemId] = useState<string>(filterItemId || "all");
@@ -423,6 +422,8 @@ export default function CountSession() {
   const [editingLineId, setEditingLineId] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const pendingAnchorRef = useRef<string | null>(null);
+  const handledAnchorRef = useRef<string | null>(null);
   
   // Update filters when URL parameters change
   useEffect(() => {
@@ -492,6 +493,23 @@ export default function CountSession() {
   const { data: storageLocations } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
   });
+
+  const countStorageLocations = useMemo(() => {
+    const byId = new Map<string, any>(
+      (storageLocations || []).map((location) => [location.id, location])
+    );
+    for (const line of countLines || []) {
+      if (!byId.has(line.storageLocationId)) {
+        byId.set(line.storageLocationId, {
+          id: line.storageLocationId,
+          name: line.storageLocationName || "Unknown Location",
+          sortOrder: 999,
+          allowCaseCounting: line.storageLocationAllowCaseCounting ?? 0,
+        });
+      }
+    }
+    return Array.from(byId.values());
+  }, [storageLocations, countLines]);
 
   const { data: inventoryItems } = useQuery<any[]>({
     queryKey: ["/api/inventory-items"],
@@ -818,51 +836,58 @@ export default function CountSession() {
     },
   });
 
-  // Helper function to scroll to a section and open it
-  const scrollToSection = (groupKey: string, prefix: string) => {
-    const anchorId = generateAnchorId(prefix, groupKey);
-    
-    // Open the target accordion section if not already open
-    const needsToOpen = !openAccordionSections.includes(groupKey);
-    if (needsToOpen) {
-      setOpenAccordionSections(prev => [...prev, groupKey]);
-    }
-    
-    // Wait for accordion expansion before scrolling
-    const waitForExpansionAndScroll = () => {
-      const element = document.getElementById(anchorId);
-      if (!element) return;
-      
-      const checkAndScroll = () => {
-        // Check for reduced motion preference
-        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        
-        element.scrollIntoView({
-          behavior: prefersReducedMotion ? 'auto' : 'smooth',
-          block: 'start',
-        });
-        
-        // Focus the element for accessibility
-        requestAnimationFrame(() => {
-          const trigger = element.querySelector('[role="button"]');
-          if (trigger instanceof HTMLElement) {
-            trigger.focus({ preventScroll: true });
-          }
-        });
-      };
-      
-      // If accordion was already open or doesn't need animation, scroll immediately
-      if (!needsToOpen) {
-        requestAnimationFrame(checkAndScroll);
-        return;
-      }
-      
-      // Wait for accordion transition to complete (typical transition is 200-300ms)
-      setTimeout(checkAndScroll, 300);
-    };
-    
-    requestAnimationFrame(waitForExpansionAndScroll);
+  // Coordinate grouping/filtering with navigation; scrolling happens after the target renders.
+  const navigateToSection = (groupKey: string, prefix: "category" | "location") => {
+    const anchorId = generateCountSectionAnchor(prefix, groupKey);
+    pendingAnchorRef.current = anchorId;
+    handledAnchorRef.current = null;
+    setGroupBy(prefix);
+    setOpenAccordionSections(prev => prev.includes(groupKey) ? prev : [...prev, groupKey]);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${anchorId}`);
   };
+
+  const clearSectionAnchor = () => {
+    pendingAnchorRef.current = null;
+    handledAnchorRef.current = null;
+    if (window.location.hash) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+  };
+
+  useEffect(() => {
+    if (!countLines?.length) return;
+    const hashAnchor = window.location.hash.slice(1);
+    const requestedAnchor = pendingAnchorRef.current
+      || (hashAnchor && handledAnchorRef.current !== hashAnchor ? hashAnchor : null);
+    if (!requestedAnchor) return;
+
+    const category = Array.from(new Set(countLines.map(line => line.inventoryItem?.category || "Uncategorized")))
+      .find(value => generateCountSectionAnchor("category", value) === requestedAnchor);
+    const location = countStorageLocations
+      .find(value => generateCountSectionAnchor("location", value.id) === requestedAnchor)?.id;
+    const groupKey = category || location;
+    const targetGroup = category ? "category" : location ? "location" : null;
+    if (!groupKey || !targetGroup) return;
+
+    if (groupBy !== targetGroup) setGroupBy(targetGroup);
+    if (targetGroup === "category" && selectedCategory !== groupKey) setSelectedCategory(groupKey);
+    if (targetGroup === "location" && selectedLocation !== groupKey) setSelectedLocation(groupKey);
+    setOpenAccordionSections(prev => prev.includes(groupKey) ? prev : [...prev, groupKey]);
+
+    const frame = requestAnimationFrame(() => {
+      const element = document.getElementById(requestedAnchor);
+      if (!element) return;
+      element.scrollIntoView({
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      const trigger = element.querySelector<HTMLElement>('[role="button"]');
+      trigger?.focus({ preventScroll: true });
+      pendingAnchorRef.current = null;
+      handledAnchorRef.current = requestedAnchor;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [countLines, countStorageLocations, groupBy, selectedCategory, selectedLocation]);
 
   const unlockCountMutation = useMutation({
     mutationFn: async () => {
@@ -953,7 +978,7 @@ export default function CountSession() {
   const locationTotals = linesForLocationTotals.reduce((acc: any, line) => {
     const item = line.inventoryItem;
     const locationId = item?.storageLocationId || "unknown";
-    const locationName = storageLocations?.find(l => l.id === locationId)?.name || "Unknown Location";
+    const locationName = countStorageLocations.find(l => l.id === locationId)?.name || "Unknown Location";
     const value = line.qty * (line.unitCost || 0);
     
     if (!acc[locationId]) {
@@ -1040,7 +1065,8 @@ export default function CountSession() {
     );
   }
 
-  const isReadOnly = count && (count.canEdit === false || count.applied === 1);
+  const isHistoricalImport = count?.isHistoricalImport === 1;
+  const isReadOnly = count && (isHistoricalImport || count.canEdit === false || count.applied === 1);
   
   return (
     <div className="h-full flex flex-col overflow-x-hidden">
@@ -1080,7 +1106,9 @@ export default function CountSession() {
             <p className="hidden sm:block text-sm text-muted-foreground mt-0.5">
               {!isReadOnly
                 ? "Click a quantity to edit. Use filters to view items by category or location."
-                : "Historical count (read-only). Use filters to view items by category or location."}
+                : isHistoricalImport
+                  ? "Historical imported snapshot (read-only). Use filters to view items by category or location."
+                  : "Completed count (read-only). Use filters to view items by category or location."}
             </p>
           </div>
         </div>
@@ -1096,10 +1124,14 @@ export default function CountSession() {
             <div className="flex items-start gap-3">
               <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5" />
               <AlertDescription className="text-amber-800 dark:text-amber-200">
-                <strong>Historical Session (Read-Only)</strong> - This inventory count is from a previous date and cannot be edited. Only administrators can modify historical data.
+                <strong>{isHistoricalImport ? "Historical Import (Read-Only)" : "Completed Session (Read-Only)"}</strong>
+                {" - "}
+                {isHistoricalImport
+                  ? "This imported snapshot is retained as evidence and cannot be edited or applied."
+                  : "This completed inventory count is locked from editing."}
               </AlertDescription>
             </div>
-            {(user?.role === "global_admin" || user?.role === "company_admin") && count?.applied === 1 && (
+            {!isHistoricalImport && (user?.role === "global_admin" || user?.role === "company_admin") && count?.applied === 1 && (
               <Button
                 onClick={() => unlockCountMutation.mutate()}
                 disabled={unlockCountMutation.isPending}
@@ -1201,10 +1233,11 @@ export default function CountSession() {
                     onClick={() => {
                       if (selectedCategory === category) {
                         setSelectedCategory("all");
+                        clearSectionAnchor();
                       } else {
                         setSelectedCategory(category);
                         setGroupBy("category");
-                        scrollToSection(category, "category");
+                        navigateToSection(category, "category");
                       }
                     }}
                     tabIndex={-1}
@@ -1238,8 +1271,8 @@ export default function CountSession() {
                 {Object.entries(locationTotals)
                   .filter(([_, data]: [string, any]) => data.items > 0)
                   .sort((a, b) => {
-                    const locA = storageLocations?.find(l => l.id === a[0]);
-                    const locB = storageLocations?.find(l => l.id === b[0]);
+                    const locA = countStorageLocations.find(l => l.id === a[0]);
+                    const locB = countStorageLocations.find(l => l.id === b[0]);
                     return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
                   })
                   .map(([locationId, data]: [string, any]) => (
@@ -1251,10 +1284,11 @@ export default function CountSession() {
                     onClick={() => {
                       if (selectedLocation === locationId) {
                         setSelectedLocation("all");
+                        clearSectionAnchor();
                       } else {
                         setSelectedLocation(locationId);
                         setGroupBy("location");
-                        scrollToSection(locationId, "location");
+                        navigateToSection(locationId, "location");
                       }
                     }}
                     tabIndex={-1}
@@ -1274,7 +1308,7 @@ export default function CountSession() {
       </Card>
 
       {/* Count Lines Table */}
-      <Card>
+      <Card id="count-entries" className="scroll-mt-28">
         <CardHeader className="gap-2 pb-3">
           {/* Single row: Search + filter icons + clear */}
           <div className="flex items-center gap-2">
@@ -1294,6 +1328,7 @@ export default function CountSession() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    clearSectionAnchor();
                     setSelectedCategory("all");
                     setSelectedLocation("all");
                     setSelectedItemId("all");
@@ -1308,7 +1343,10 @@ export default function CountSession() {
               <Button
                 variant={groupBy === "location" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setGroupBy("location")}
+                onClick={() => {
+                  clearSectionAnchor();
+                  setGroupBy("location");
+                }}
                 data-testid="button-group-location"
               >
                 <Layers className="h-4 w-4 sm:mr-1" />
@@ -1317,7 +1355,10 @@ export default function CountSession() {
               <Button
                 variant={groupBy === "category" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setGroupBy("category")}
+                onClick={() => {
+                  clearSectionAnchor();
+                  setGroupBy("category");
+                }}
                 data-testid="button-group-category"
               >
                 <Package className="h-4 w-4 sm:mr-1" />
@@ -1326,12 +1367,27 @@ export default function CountSession() {
               <Button
                 variant={groupBy === "all-entries" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setGroupBy("all-entries")}
+                onClick={() => {
+                  clearSectionAnchor();
+                  setGroupBy("all-entries");
+                }}
                 data-testid="button-group-all-entries"
               >
                 <ArrowUpDown className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">All Entries</span>
               </Button>
+              {groupBy !== "all-entries" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setGroupedItemSortDir(dir => dir === "asc" ? "desc" : "asc")}
+                  aria-label={`Sort items ${groupedItemSortDir === "asc" ? "descending" : "ascending"}`}
+                  data-testid="button-sort-grouped-items"
+                >
+                  {groupedItemSortDir === "asc" ? <ArrowUpAZ className="h-4 w-4 sm:mr-1" /> : <ArrowDownAZ className="h-4 w-4 sm:mr-1" />}
+                  <span className="hidden sm:inline">Item {groupedItemSortDir === "asc" ? "A–Z" : "Z–A"}</span>
+                </Button>
+              )}
             </div>
           </div>
           {selectedItemId !== "all" && (
@@ -1473,8 +1529,8 @@ export default function CountSession() {
                 // Sort groupOrder by storage location sortOrder when grouping by location
                 if (groupBy === "location") {
                   groupOrder.sort((a, b) => {
-                    const locA = storageLocations?.find(l => l.id === a);
-                    const locB = storageLocations?.find(l => l.id === b);
+                    const locA = countStorageLocations.find(l => l.id === a);
+                    const locB = countStorageLocations.find(l => l.id === b);
                     return (locA?.sortOrder ?? 999) - (locB?.sortOrder ?? 999);
                   });
                 }
@@ -1493,7 +1549,7 @@ export default function CountSession() {
                       // Get group name
                       let groupName: string;
                       if (groupBy === "location") {
-                        groupName = storageLocations?.find(l => l.id === groupKey)?.name || "Unknown Location";
+                        groupName = countStorageLocations.find(l => l.id === groupKey)?.name || "Unknown Location";
                       } else {
                         groupName = groupKey;
                       }
@@ -1503,10 +1559,10 @@ export default function CountSession() {
                       const totalValue = lines.reduce((sum, l) => sum + (l.qty * (l.unitCost || 0)), 0);
                       
                       // Generate anchor ID for this section
-                      const anchorId = generateAnchorId(groupBy, groupKey);
+                      const anchorId = generateCountSectionAnchor(groupBy, groupKey);
                       
                       return (
-                        <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="border rounded-md mb-2">
+                        <AccordionItem key={groupKey} value={groupKey} id={anchorId} className="scroll-mt-28 border rounded-md mb-2">
                           <AccordionTrigger className="px-4 py-2 hover:no-underline bg-muted/30 hover:bg-muted/50 data-[state=open]:bg-muted/40" tabIndex={-1} data-testid={`accordion-group-${groupKey}`}>
                             <div className="flex items-center justify-between w-full pr-4">
                               <div className="flex items-center gap-4 flex-1">
@@ -1538,7 +1594,12 @@ export default function CountSession() {
                                     itemGroups[itemId].push(line);
                                   });
                                   
-                                  return Object.entries(itemGroups).map(([itemId, itemLines]) => {
+                                  return Object.entries(itemGroups)
+                                    .sort(([, a], [, b]) => {
+                                      const comparison = (a[0].inventoryItem?.name || "").localeCompare(b[0].inventoryItem?.name || "", undefined, { sensitivity: "base" });
+                                      return groupedItemSortDir === "asc" ? comparison : -comparison;
+                                    })
+                                    .map(([itemId, itemLines]) => {
                                     const firstLine = itemLines[0];
                                     const item = firstLine.inventoryItem;
                                     
@@ -1558,9 +1619,9 @@ export default function CountSession() {
                                     const isCatchWeight = (catData as any)?.isCatchWeightCategory === 1;
                                     
                                     return (
-                                      <div key={itemId} className="border rounded-lg p-3 space-y-3" data-testid={`item-group-${itemId}`}>
+                                      <div key={itemId} className="border rounded-lg p-3 sm:grid sm:grid-cols-[minmax(180px,0.7fr)_minmax(320px,1.3fr)] sm:gap-4" data-testid={`item-group-${itemId}`}>
                                         {/* Item Header */}
-                                        <div className="flex items-center justify-between gap-4 pb-2 border-b">
+                                        <div className="flex items-start justify-between gap-3 pb-2 sm:pb-0 sm:pr-4 border-b sm:border-b-0 sm:border-r">
                                           <div className="flex-1">
                                             {isReadOnly ? (
                                               <div className="font-medium" data-testid={`text-item-name-${itemId}`}>
@@ -1583,14 +1644,14 @@ export default function CountSession() {
                                               </Badge>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-3 sm:gap-6 text-sm">
+                                          <div className="text-right text-sm shrink-0">
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-qty-${itemId}`}>
                                               {currentTotal.toFixed(2)}
                                             </div>
-                                            <div className="text-muted-foreground">
+                                            <div className="text-muted-foreground text-xs">
                                               {unitAbbr}
                                             </div>
-                                            <div className="font-mono hidden sm:block" data-testid={`text-item-unit-price-${itemId}`}>
+                                            <div className="font-mono text-xs" data-testid={`text-item-unit-price-${itemId}`}>
                                               ${(firstLine.unitCost || 0).toFixed(2)}
                                             </div>
                                             <div className="font-mono font-semibold" data-testid={`text-item-total-value-${itemId}`}>
@@ -1600,10 +1661,10 @@ export default function CountSession() {
                                         </div>
                                         
                                         {/* Location Inputs */}
-                                        <div className="grid grid-cols-1 gap-2">
+                                        <div className="grid grid-cols-1 gap-2 pt-2 sm:pt-0">
                                           {itemLines.map((line, idx) => {
                                             const category = categoriesData?.find(c => c.id === item?.categoryId);
-                                            const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                            const location = countStorageLocations.find(l => l.id === line.storageLocationId);
                                             const mode = getCountMode(category, location);
                                             
                                             return (
@@ -1642,20 +1703,22 @@ export default function CountSession() {
                                                       }
                                                     }}
                                                     onKeyDown={(e) => {
-                                                      if (e.key === 'Enter') {
+                                                      const isLastInputForLine =
+                                                        mode !== 'case' ||
+                                                        (e.currentTarget as HTMLElement).dataset.testid === `input-loose-units-${line.id}`;
+                                                      const shouldAdvanceWithTab =
+                                                        e.key === 'Tab' &&
+                                                        !e.shiftKey &&
+                                                        isLastInputForLine &&
+                                                        idx < itemLines.length - 1;
+                                                      if (e.key === 'Enter' || shouldAdvanceWithTab) {
                                                         e.preventDefault();
                                                         setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
                                                         handleSaveEdit(line.id, mode, item);
                                                         // Focus next input if available
                                                         if (idx < itemLines.length - 1) {
                                                           const nextLine = itemLines[idx + 1];
-                                                          setTimeout(() => {
-                                                            const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
-                                                            if (nextInput) {
-                                                              nextInput.focus();
-                                                              nextInput.select();
-                                                            }
-                                                          }, 0);
+                                                          setTimeout(() => focusPrimaryCountInput(nextLine.id), 0);
                                                         }
                                                       } else if (e.key === 'Escape') {
                                                         handleCancelEdit();
@@ -1676,8 +1739,8 @@ export default function CountSession() {
                                         </div>
                                         
                                         {/* Item Footer */}
-                                        {previousTotal > 0 && previousCountId && (
-                                          <div className="pt-2 border-t">
+                                         {previousTotal > 0 && previousCountId && (
+                                           <div className="pt-2 mt-2 border-t sm:col-span-2">
                                             <Link href={`/count/${previousCountId}?from=${countId}&item=${itemId}`}>
                                               <div className="text-sm text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${itemId}`}>
                                                 Previous count: <span className="font-mono">{previousTotal.toFixed(2)}</span> {formatUnitName(unitName)}
@@ -1693,12 +1756,15 @@ export default function CountSession() {
                             ) : (
                               // Location view: Compact layout similar to category view
                               <div className="space-y-2 p-2">
-                                {lines.map((line, idx) => {
+                                {[...lines].sort((a, b) => {
+                                  const comparison = (a.inventoryItem?.name || "").localeCompare(b.inventoryItem?.name || "", undefined, { sensitivity: "base" });
+                                  return groupedItemSortDir === "asc" ? comparison : -comparison;
+                                }).map((line, idx, sortedLines) => {
                                   const item = line.inventoryItem;
                                   const unitName = item?.unitName || 'unit';
                                   const unitAbbr = line.unitAbbreviation || 'unit';
                                   const category = categoriesData?.find(c => c.id === item?.categoryId);
-                                  const location = storageLocations?.find(l => l.id === line.storageLocationId);
+                                  const location = countStorageLocations.find(l => l.id === line.storageLocationId);
                                   const mode = getCountMode(category, location);
                                   
                                   // Get previous quantity for this specific item at this location
@@ -1709,9 +1775,10 @@ export default function CountSession() {
                                   const previousQty = previousLine?.qty || 0;
                                   
                                   return (
-                                    <div key={line.id} className="border rounded-md p-2.5 space-y-1.5" data-testid={`item-input-${line.id}`}>
-                                      {/* Item Info Header — always horizontal */}
-                                      <div className="flex items-start justify-between gap-2">
+                                      <div key={line.id} className="border rounded-md p-2.5 space-y-1.5" data-testid={`item-input-${line.id}`}>
+                                       <div className="grid grid-cols-1 sm:grid-cols-[minmax(180px,1fr)_auto] gap-2 sm:gap-5 items-center" data-testid={`compact-count-row-${line.id}`}>
+                                       {/* Item title and supporting metadata */}
+                                       <div className="flex items-start justify-between gap-2 min-w-0">
                                         <div className="flex-1 min-w-0">
                                           {isReadOnly ? (
                                             <div className="font-medium text-sm leading-snug" data-testid={`text-item-name-${line.inventoryItemId}`}>
@@ -1743,10 +1810,9 @@ export default function CountSession() {
                                         <div className="text-xs font-mono text-muted-foreground whitespace-nowrap shrink-0 pt-0.5">
                                           ${(line.unitCost || 0).toFixed(2)}/{unitAbbr}
                                         </div>
-                                      </div>
-                                      
-                                      {/* Quantity Input — no "Qty:" label, value shown inline */}
-                                      <div className="flex items-center gap-2">
+                                       </div>
+                                       {/* Quantity editor and immediate value stay aligned with the title on desktop. */}
+                                       <div className="flex items-center justify-end gap-2 min-w-0">
                                         {isReadOnly ? (
                                           <>
                                             <div className="flex-1 h-9 flex items-center font-mono font-semibold text-sm" data-testid={`text-qty-${line.id}`}>
@@ -1758,7 +1824,7 @@ export default function CountSession() {
                                           </>
                                         ) : (
                                           <>
-                                            <div className="flex-1">
+                                               <div className="sm:flex-none">
                                               {addingToLineId === line.id ? (
                                                 <div className="flex flex-col gap-1">
                                                   {mode === 'catch' && (
@@ -1795,7 +1861,7 @@ export default function CountSession() {
                                                     type="number"
                                                     value={addMoreQty}
                                                     onChange={e => setAddMoreQty(e.target.value)}
-                                                    className="h-9 text-base w-24"
+                                                    className={`h-9 text-base w-24 ${countInputClass}`}
                                                     placeholder={mode === 'catch' ? `0.00 ${unitAbbr}` : "0"}
                                                     autoFocus
                                                     onKeyDown={e => {
@@ -1861,27 +1927,29 @@ export default function CountSession() {
                                                   }
                                                 }}
                                                 onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') {
+                                                   const isLastInputForLine =
+                                                     mode !== 'case' ||
+                                                     (e.currentTarget as HTMLElement).dataset.testid === `input-loose-units-${line.id}`;
+                                                   const shouldAdvanceWithTab =
+                                                     e.key === 'Tab' &&
+                                                     !e.shiftKey &&
+                                                     isLastInputForLine &&
+                                                     idx < sortedLines.length - 1;
+                                                   if (e.key === 'Enter' || shouldAdvanceWithTab) {
                                                     e.preventDefault();
                                                     setEditingLineId(null); // clear BEFORE save so onBlur guard skips duplicate
                                                     handleSaveEdit(line.id, mode, item);
-                                                    if (idx < lines.length - 1) {
-                                                      const nextLine = lines[idx + 1];
-                                                      setTimeout(() => {
-                                                        const nextInput = document.querySelector(`[data-testid="input-qty-${nextLine.id}"]`) as HTMLInputElement;
-                                                        if (nextInput) {
-                                                          nextInput.focus();
-                                                          nextInput.select();
-                                                        }
-                                                      }, 0);
+                                                     if (idx < sortedLines.length - 1) {
+                                                       const nextLine = sortedLines[idx + 1];
+                                                       setTimeout(() => focusPrimaryCountInput(nextLine.id), 0);
                                                     }
                                                   } else if (e.key === 'Escape') {
                                                     handleCancelEdit();
                                                   }
                                                 }}
                                               />
-                                              )}
-                                            </div>
+                                               )}
+                                                </div>
                                             <div className="text-sm font-semibold font-mono shrink-0">
                                               = ${(getCurrentQty(line, mode, item) * (line.unitCost || 0)).toFixed(2)}
                                             </div>
@@ -1892,6 +1960,7 @@ export default function CountSession() {
                                                 className="h-9 w-9 shrink-0 text-muted-foreground"
                                                 onClick={() => { setAddingToLineId(line.id); setAddMoreQty(""); }}
                                                 title="Add to this count"
+                                                 tabIndex={-1}
                                                 data-testid={`button-add-more-${line.id}`}
                                               >
                                                 <Plus className="h-4 w-4" />
@@ -1900,6 +1969,7 @@ export default function CountSession() {
                                           </>
                                         )}
                                       </div>
+                                       </div>
                                       {previousQty > 0 && previousCountId && (
                                         <Link href={`/count/${previousCountId}?from=${countId}&item=${line.inventoryItemId}`}>
                                           <div className="text-xs text-muted-foreground hover:underline cursor-pointer" data-testid={`link-previous-${line.id}`}>

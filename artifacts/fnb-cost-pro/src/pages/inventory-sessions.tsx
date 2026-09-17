@@ -135,7 +135,9 @@ function SessionCard({ count }: any) {
             <span>·</span>
             <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
             {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
-            {count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
+            {count.isHistoricalImport === 1
+              ? <><span>·</span><span className="font-medium">Historical</span></>
+              : count.applied === 1 && <><span>·</span><span className="text-emerald-600 dark:text-emerald-400 font-medium">Locked</span></>}
           </div>
           {isEmbedded && (count.totalItems ?? 0) > 0 && (
             <div className="mt-2">
@@ -161,11 +163,11 @@ function SessionCard({ count }: any) {
             variant="ghost"
             size="icon"
             onClick={(e) => { e.stopPropagation(); deleteSessionMutation.mutate(); }}
-            disabled={deleteSessionMutation.isPending || count.applied === 1}
-            title={count.applied === 1 ? "Unlock session before deleting" : undefined}
+            disabled={deleteSessionMutation.isPending || count.applied === 1 || count.isHistoricalImport === 1}
+            title={count.isHistoricalImport === 1 ? "Historical imports are retained as evidence" : count.applied === 1 ? "Unlock session before deleting" : undefined}
             data-testid={`button-delete-session-mobile-${count.id}`}
           >
-            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 || count.isHistoricalImport === 1 ? "text-muted-foreground" : "text-destructive"}`} />
           </Button>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </div>
@@ -258,7 +260,7 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
           <div className="text-xs text-muted-foreground">
             Created {format(createdAt, "p")}
             {count.isPowerSession === 1 && " • Power Count"}
-            {count.applied === 1 && " • Locked"}
+            {count.isHistoricalImport === 1 ? " • Historical" : count.applied === 1 && " • Locked"}
           </div>
         </Link>
       </TableCell>
@@ -286,11 +288,11 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
             variant="ghost"
             size="sm"
             onClick={handleDelete}
-            disabled={deleteSessionMutation.isPending || count.applied === 1}
-            title={count.applied === 1 ? "Unlock the session before deleting" : undefined}
+            disabled={deleteSessionMutation.isPending || count.applied === 1 || count.isHistoricalImport === 1}
+            title={count.isHistoricalImport === 1 ? "Historical imports are retained as evidence" : count.applied === 1 ? "Unlock the session before deleting" : undefined}
             data-testid={`button-delete-session-${count.id}`}
           >
-            <Trash2 className={`h-4 w-4 ${count.applied === 1 ? "text-muted-foreground" : "text-destructive"}`} />
+            <Trash2 className={`h-4 w-4 ${count.applied === 1 || count.isHistoricalImport === 1 ? "text-muted-foreground" : "text-destructive"}`} />
           </Button>
         </div>
       </TableCell>

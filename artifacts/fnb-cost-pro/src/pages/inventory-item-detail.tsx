@@ -53,6 +53,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
+import { getVendorPricePresentation } from "@/lib/vendor-price-presentation";
 import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
@@ -2347,25 +2348,36 @@ export default function InventoryItemDetail() {
                             <TableCell>${vi.lastCasePrice.toFixed(2)}</TableCell>
                             <TableCell>{vi.caseSize}</TableCell>
                             <TableCell className="text-muted-foreground">
-                              {vi.normalizedPricePerCanonicalUnit != null ? (
-                                <span title={`1 ${formatUnitName(vi.unit?.name)} = ${vi.canonicalQtyPerPurchaseUnit ?? "?"} ${formatUnitName(unit?.name)} · Case: $${vi.lastCasePrice.toFixed(2)} · Normalized: $${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/${formatUnitName(unit?.name)}`}>
-                                  ${vi.normalizedPricePerCanonicalUnit.toFixed(4)}/{formatUnitName(unit?.name)}
-                                </span>
-                              ) : vi.packGeometryStatus === "conflicting" ? (
-                                <span className="text-amber-600 dark:text-amber-400 text-xs" title="Cannot normalize price — purchase unit and inventory unit use incompatible measurements.">
-                                  ⚠ incompatible units
-                                </span>
-                              ) : vi.packGeometryStatus === "incomplete" || vi.packGeometryStatus == null ? (
-                                <span className="text-muted-foreground/60 text-xs" title={`Add the total ${formatUnitName(unit?.name)} contained in one ${formatUnitName(vi.unit?.name)} to enable price comparison.`}>
-                                  ${vi.lastPrice.toFixed(4)}
-                                </span>
-                              ) : vi.packGeometryStatus === "variable_weight" ? (
-                                <span className="text-muted-foreground/60 text-xs" title="Weight varies by delivery — estimated price only.">
-                                  ~${vi.lastPrice.toFixed(4)} est.
-                                </span>
-                              ) : (
-                                <span>${vi.lastPrice.toFixed(4)}</span>
-                              )}
+                              {(() => {
+                                const price = getVendorPricePresentation(vi, unit?.name);
+                                return (
+                                  <div className="space-y-0.5">
+                                    <div className="text-foreground" data-testid={`text-purchase-unit-price-${vi.id}`}>
+                                      {price.purchasePrice}
+                                    </div>
+                                    {price.canonicalPrice ? (
+                                      <div
+                                        className="text-xs"
+                                        data-testid={`text-canonical-unit-price-${vi.id}`}
+                                        title={`1 ${formatUnitName(vi.unit?.name)} = ${vi.canonicalQtyPerPurchaseUnit ?? "?"} ${formatUnitName(unit?.name)} · Case: $${vi.lastCasePrice.toFixed(2)}`}
+                                      >
+                                        {price.canonicalPrice}
+                                      </div>
+                                    ) : (
+                                      <div
+                                        className="text-amber-600 dark:text-amber-400 text-xs"
+                                        data-testid={`text-canonical-unit-price-required-${vi.id}`}
+                                      >
+                                        {price.canonicalStatus === "conflicting"
+                                          ? "Canonical cost unavailable — incompatible units"
+                                          : price.canonicalStatus === "variable_weight"
+                                            ? "Canonical cost unavailable — variable weight"
+                                            : "Pack conversion required for canonical cost"}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell data-testid={`text-price-source-${vi.id}`}>
                               {(() => {

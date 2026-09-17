@@ -1,0 +1,66 @@
+# PM Direction — Unit Integrity and August Counting
+
+## Decision
+
+GO on the smallest correction that makes counting and unit-based valuation accurate.
+
+HOLD August count application until verified.
+
+The current evidence identifies disconnected existing unit/pack mechanisms. Do not use this as justification for a new unit subsystem.
+
+## Immediate priorities
+
+**1. Correct manual counting**
+
+Determine whether existing item-level container geometry is complete and valid for the affected items.
+
+Reconnect canonical-location counting to the existing package-counting mechanism.
+
+A 750 mL bottle counted as 5.5 bottles must produce 4,125 mL of canonical quantity and the corresponding valuation.
+
+If the conversion is unavailable, clearly indicate that package conversion is required. Do not interpret 5.5 bottles as 5.5 mL.
+
+**2. Correct vendor price presentation**
+
+A $16.93 bottle price must display as $16.93/bottle.
+
+Only display a price per mL when a valid bottle-to-mL conversion exists.
+
+Do not substitute purchase-unit cost for canonical-unit cost when conversion geometry is missing.
+
+**3. Complete the read-only receiving audit**
+
+Identify whether any actual receipt has recorded purchase quantities as canonical quantities without conversion.
+
+Report affected records and their scope if found.
+
+Do not modify historical receipts, WAC, or on-hand as part of this task.
+
+## Implementation constraint
+
+Reuse existing conversion logic and item/package definitions where possible.
+
+Before adding a new Count Unit field or mapping structure, demonstrate why the existing item-level container configuration cannot support the required counting behavior.
+
+Do not introduce a generalized conversion framework.
+
+## Acceptance demonstration
+
+Show these working examples:
+
+* 5.5 × 750 mL bottles → 4,125 mL.
+* A $203.16 case containing 12 bottles → $16.93/bottle.
+* With verified 750 mL bottle geometry → approximately $0.022573/mL.
+* With missing conversion geometry → no misleading canonical cost.
+* An item with different vendor pack configurations remains countable using its verified physical count configuration.
+* An item without reliable container geometry cannot silently produce an incorrect count.
+
+Confirm that no May/June historical records or live on-hand quantities changed.
+
+## Deliverable
+
+Return the concise root cause, minimum implemented correction, test results, and read-only audit findings.
+
+No additional architecture proposal is required unless the existing data model demonstrably cannot support the correction.
+
+Claude simplicity check: Can the existing unit and container fields satisfy these acceptance cases without introducing another unit model?

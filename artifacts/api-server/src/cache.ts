@@ -147,7 +147,7 @@ export const CacheKeys = {
   
   // Phase 2: Inventory Items (list + item caches)
   inventoryList: (companyId: string, storeId?: string, locationId?: string) => 
-    `inventory:list:${companyId}:${storeId || '*'}:${locationId || '*'}`,
+    `inventory:list:${companyId}:v3:${storeId || '*'}:${locationId || '*'}`,
   inventoryItem: (companyId: string, itemId: string) => 
     `inventory:item:${companyId}:${itemId}`,
   inventoryListPattern: (companyId: string) => `inventory:list:${companyId}:*`,

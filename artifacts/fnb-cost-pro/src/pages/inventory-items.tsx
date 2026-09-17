@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAccessibleStores } from "@/hooks/use-accessible-stores";
 import { useStoreContext } from "@/hooks/use-store-context";
+import { useAuth } from "@/lib/auth-context";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatUnitName, formatDateString } from "@/lib/utils";
 import { SetupProgressBanner } from "@/components/setup-progress-banner";
 import { CostingMethodBadge } from "@/components/costing-method-badge";
+import { SearchableFilterSelect } from "@/components/searchable-filter-select";
 
 interface MilestonesResponse {
   milestones: { id: string; label: string; completed: boolean; path: string }[];
@@ -98,6 +100,34 @@ type Category = {
   sortOrder: number;
 };
 
+export function filterInventoryItems(
+  items: InventoryItemDisplay[],
+  filters: {
+    search: string;
+    locationId: string;
+    categoryId: string;
+    active: "active" | "inactive" | "all";
+  },
+): InventoryItemDisplay[] {
+  const searchLower = filters.search.toLowerCase();
+  return items.filter((item) => {
+    const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
+      item.manufacturer?.toLowerCase().includes(searchLower) ||
+      item.internalItemNumber?.toString().includes(searchLower) ||
+      item.pluSku?.toLowerCase().includes(searchLower) ||
+      item.vendorSkus?.some((sku) => sku.toLowerCase().includes(searchLower));
+    const matchesLocation = filters.locationId === "all" ||
+      item.locations.some((location) => location.id === filters.locationId);
+    const matchesCategory = filters.categoryId === "all" ||
+      item.categoryId === filters.categoryId;
+    const matchesActive =
+      filters.active === "all" ? true :
+      filters.active === "active" ? item.active === 1 :
+      item.active === 0;
+    return matchesSearch && matchesLocation && matchesCategory && matchesActive;
+  });
+}
+
 type CompanyStore = {
   id: string;
   companyId: string;
@@ -152,7 +182,8 @@ export default function InventoryItems() {
   // Use global store context instead of local state
   const { selectedStoreId: selectedStore } = useStoreContext();
 
-  const selectedCompanyId = localStorage.getItem("selectedCompanyId");
+  const { getEffectiveCompanyId } = useAuth();
+  const selectedCompanyId = getEffectiveCompanyId();
 
   // Fetch estimated on-hand data for the selected store
   const { data: estimatedOnHandData } = useQuery<Array<{
@@ -183,7 +214,7 @@ export default function InventoryItems() {
   );
 
   const { data: inventoryItems, isLoading } = useQuery<InventoryItemDisplay[]>({
-    queryKey: ["/api/inventory-items", selectedStore],
+    queryKey: ["/api/inventory-items", selectedCompanyId, selectedStore],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedStore) {
@@ -194,16 +225,54 @@ export default function InventoryItems() {
       if (!response.ok) throw new Error("Failed to fetch inventory items");
       return response.json();
     },
-    enabled: !!selectedStore,
-  });
-
-  const { data: locations } = useQuery<StorageLocation[]>({
-    queryKey: ["/api/storage-locations"],
+    enabled: !!selectedCompanyId && !!selectedStore,
   });
 
   const { data: categories } = useQuery<Category[]>({
-    queryKey: ["/api/categories"],
+    queryKey: ["/api/categories", selectedCompanyId],
+    queryFn: async () => {
+      const response = await fetch("/api/categories");
+      if (!response.ok) throw new Error("Failed to fetch categories");
+      return response.json();
+    },
+    enabled: !!selectedCompanyId,
   });
+
+  const locations = useMemo<StorageLocation[]>(() => {
+    const byId = new Map<string, StorageLocation>();
+    for (const item of inventoryItems || []) {
+      for (const location of item.locations || []) {
+        if (!byId.has(location.id)) {
+          byId.set(location.id, {
+            id: location.id,
+            name: location.name,
+            sortOrder: 999,
+          });
+        }
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [inventoryItems]);
+
+  useEffect(() => {
+    if (
+      categories &&
+      selectedCategory !== "all" &&
+      !categories.some((category) => category.id === selectedCategory)
+    ) {
+      setSelectedCategory("all");
+    }
+  }, [categories, selectedCategory]);
+
+  useEffect(() => {
+    if (
+      inventoryItems &&
+      selectedLocation !== "all" &&
+      !locations.some((location) => location.id === selectedLocation)
+    ) {
+      setSelectedLocation("all");
+    }
+  }, [inventoryItems, locations, selectedLocation]);
 
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, active, storeId }: { id: string; active: number; storeId?: string }) => {
@@ -230,22 +299,12 @@ export default function InventoryItems() {
     },
   });
 
-  const filteredItems = inventoryItems?.filter((item) => {
-    const searchLower = search.toLowerCase();
-    const matchesSearch = item.name?.toLowerCase().includes(searchLower) ||
-      item.manufacturer?.toLowerCase().includes(searchLower) ||
-      item.internalItemNumber?.toString().includes(searchLower) ||
-      item.pluSku?.toLowerCase().includes(searchLower) ||
-      item.vendorSkus?.some(sku => sku.toLowerCase().includes(searchLower));
-    const matchesLocation = selectedLocation === "all" || 
-      item.locations.some(loc => loc.id === selectedLocation);
-    const matchesCategory = selectedCategory === "all" || item.categoryId === selectedCategory;
-    const matchesActive = 
-      activeFilter === "all" ? true :
-      activeFilter === "active" ? item.active === 1 :
-      item.active === 0;
-    return matchesSearch && matchesLocation && matchesCategory && matchesActive;
-  }) || [];
+  const filteredItems = filterInventoryItems(inventoryItems || [], {
+    search,
+    locationId: selectedLocation,
+    categoryId: selectedCategory,
+    active: activeFilter,
+  });
 
   const { sortField, sortDirection, handleSort } = useTableSort("name");
 
@@ -352,32 +411,32 @@ export default function InventoryItems() {
               data-testid="input-search-inventory"
             />
           </div>
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-[160px]" data-testid="select-category-filter">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories?.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-            <SelectTrigger className="w-[160px]" data-testid="select-location-filter">
-              <SelectValue placeholder="Location" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {locations?.map((location) => (
-                <SelectItem key={location.id} value={location.id}>
-                  {location.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableFilterSelect
+            value={selectedCategory}
+            onValueChange={(value) => {
+              setSelectedCategory(value);
+              setCurrentPage(1);
+            }}
+            options={categories || []}
+            allLabel="All Categories"
+            placeholder="Category"
+            searchPlaceholder="Search categories..."
+            emptyMessage="No categories found."
+            testId="select-category-filter"
+          />
+          <SearchableFilterSelect
+            value={selectedLocation}
+            onValueChange={(value) => {
+              setSelectedLocation(value);
+              setCurrentPage(1);
+            }}
+            options={locations || []}
+            allLabel="All Locations"
+            placeholder="Location"
+            searchPlaceholder="Search locations..."
+            emptyMessage="No locations found."
+            testId="select-location-filter"
+          />
           <Select value={activeFilter} onValueChange={(val) => {
             setActiveFilter(val as "active" | "inactive" | "all");
             setCurrentPage(1);

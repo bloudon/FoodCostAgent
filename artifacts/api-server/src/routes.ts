@@ -22,7 +22,10 @@ import { buildSingleItemVendorPrices } from "./services/vendorPriceComparison";
 import { updateVendorItemPackGeometry, invalidatePackGeometryForInventoryItem } from "./services/vendorPackGeometry";
 import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeCompatibility, checkTargetViEligibility, computeProjectedLineSavings, computeProjectedSavingsPerCase, mergeOrderedQty, routingIdempotencyKey, shouldMergeIntoExistingLine } from "./services/routingService";
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
-import { historicalSessionBlock } from "./services/inventory/historicalSessionGuard";
+import { historicalSessionBlock, isHistoricalImportSession } from "./services/inventory/historicalSessionGuard";
+import { ManualCountPopulationError, populateManualCountLines } from "./services/inventory/manualCountPopulation";
+import { calculateCanonicalCountQuantity, InvalidCountGeometryError } from "./services/inventory/countQuantity";
+import { filterItemsByEffectiveLocation, getEffectiveInventoryItemLocationsBatch, getInventoryItemsByEffectiveLocation } from "./services/inventory/effectiveItemLocations";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -8683,7 +8686,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     cacheLog(`MISS inventory list (${companyId}, store=${storeId || '*'}, location=${locationId || '*'})`);
     
     // Cache miss - fetch from database
-    const items = await storage.getInventoryItems(locationId, storeId, companyId);
+    // Effective location filtering happens after canonical-first enrichment.
+    // Passing locationId into storage here would filter only the deprecated
+    // inventory_item_locations relationship before canonical rows are loaded.
+    const items = await storage.getInventoryItems(undefined, storeId, companyId);
 
     // Resolve company costing method once so on-hand valuation honors it.
     const company = await storage.getCompany(companyId);
@@ -8707,34 +8713,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Fetch all item locations, vendor SKUs, and case prices in batched queries
     const itemIds = items.map(item => item.id);
-    const [itemLocationsMap, vendorSkusMap, vendorCasePricesMap] = await Promise.all([
+    const [legacyItemLocationsMap, vendorSkusMap, vendorCasePricesMap] = await Promise.all([
       storage.getInventoryItemLocationsBatch(itemIds),
       storage.getVendorSkusBatch(itemIds),
       storage.getVendorCasePricesBatch(itemIds, companyId),
     ]);
+    const itemLocationsMap = await getEffectiveInventoryItemLocationsBatch(
+      companyId,
+      itemIds,
+      legacyItemLocationsMap,
+      locations,
+    );
     
     const enriched: EnrichedInventoryItem[] = items.map((item) => {
       const unit = units.find((u) => u.id === item.unitId);
       const category = item.categoryId ? categories.find((c) => c.id === item.categoryId) : null;
       
       // Get all locations for this item from the batch result
-      const itemLocationRecords = itemLocationsMap.get(item.id) || [];
-      const itemLocations = itemLocationRecords
-        .map(il => {
-          const loc = locations.find(l => l.id === il.storageLocationId);
-          return loc ? {
-            id: loc.id,
-            name: loc.name,
-            isPrimary: il.isPrimary === 1,
-          } : null;
-        })
-        .filter((l): l is { id: string; name: string; isPrimary: boolean } => l !== null)
-        .sort((a, b) => {
-          // Primary location first
-          if (a.isPrimary && !b.isPrimary) return -1;
-          if (!a.isPrimary && b.isPrimary) return 1;
-          return a.name.localeCompare(b.name);
-        });
+      const itemLocations = itemLocationsMap.get(item.id) || [];
       
       return {
         id: item.id,
@@ -8771,10 +8767,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     });
     
+    const filteredEnriched = filterItemsByEffectiveLocation(enriched, locationId);
+
     // Store in cache
-    await cache.set(cacheKey, enriched, CacheTTL.INVENTORY_ITEMS);
+    await cache.set(cacheKey, filteredEnriched, CacheTTL.INVENTORY_ITEMS);
     
-    res.json(enriched);
+    res.json(filteredEnriched);
   });
 
   app.get("/api/inventory-items/aggregated", async (req, res) => {
@@ -11762,13 +11760,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Legacy endpoint - redirects to inventory items
   app.get("/api/inventory", requireAuth, async (req, res) => {
     const locationId = req.query.location_id as string | undefined;
-    const items = await storage.getInventoryItems(locationId);
-    
-    // @ts-ignore
-    const locations = await storage.getStorageLocations(req.companyId!);
+    const companyId = (req as any).companyId as string;
+    const items = await getInventoryItemsByEffectiveLocation(
+      storage,
+      companyId,
+      locationId,
+    );
+
+    const locations = await storage.getStorageLocations(companyId);
     const units = await storage.getUnits();
     // @ts-ignore
-    const categories = await storage.getCategories();
+    const categories = await storage.getCategories(companyId);
     
     const enriched = items.map((item) => {
       // @ts-ignore
@@ -11970,7 +11972,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({
       ...count,
       isLatest,
-      canEdit: isAdmin || isLatest, // Admins can always edit, non-admins can only edit latest
+      canEdit: !isHistoricalImportSession(count) && (isAdmin || isLatest),
     });
   });
 
@@ -12014,22 +12016,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // @ts-ignore
-  app.get("/api/inventory-count-lines/:countId", async (req, res) => {
-    const lines = await storage.getInventoryCountLines(req.params.countId);
-    
-    // Get the count to find which company this is for (CRITICAL: do this first for multi-tenant isolation)
-    const count = await storage.getInventoryCount(req.params.countId);
-    const companyId = count?.companyId;
-    
-    if (!companyId) {
-      return res.status(400).json({ error: "Count has no associated company" });
+  app.get("/api/inventory-count-lines/:countId", requireAuth, async (req, res) => {
+    const countId = String(req.params.countId);
+    // Resolve and authorize the session before reading any count-line data.
+    const count = await storage.getInventoryCount(countId);
+    const requestCompanyId = (req as any).companyId as string | undefined;
+    if (!count || !requestCompanyId || count.companyId !== requestCompanyId) {
+      return res.status(404).json({ error: "Count not found" });
     }
+
+    const companyId = count?.companyId;
+    const lines = await storage.getInventoryCountLines(countId);
     
     // Fetch data filtered by company for multi-tenant safety
     const units = await storage.getUnits();
     const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
     const categories = await storage.getCategories(companyId);
-    const storageLocations = await storage.getStorageLocations(companyId);
+    const legacyStorageLocations = await storage.getStorageLocations(companyId);
+    const canonicalStorageLocations: { id: string; name: string }[] = await db
+      .select({
+        id: inventoryLocations.id,
+        name: inventoryLocations.name,
+      })
+      .from(inventoryLocations)
+      .where(eq(inventoryLocations.companyId, companyId));
+    const storageLocationMap = new Map<string, { id: string; name: string; sortOrder?: number; allowCaseCounting?: number }>([
+      ...legacyStorageLocations.map((location: { id: string; name: string; sortOrder: number; allowCaseCounting: number }) => [location.id, location] as const),
+      ...canonicalStorageLocations.map(location => [
+        location.id,
+        { ...location, sortOrder: 999, allowCaseCounting: 1 },
+      ] as const),
+    ]);
 
     // Task #78: fetch all entries for all lines in one query, then join with users for names
     const lineIds = lines.map(l => l.id);
@@ -12049,10 +12066,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const unit = units.find(u => u.id === line.unitId);
       const item = inventoryItems.find(i => i.id === line.inventoryItemId);
       const category = item?.categoryId ? categories.find(c => c.id === item.categoryId) : null;
-      const storageLocation = storageLocations.find(sl => sl.id === line.storageLocationId);
+      const storageLocation = storageLocationMap.get(line.storageLocationId);
       
       const enrichedItem = item ? {
         ...item,
+        containerLabel:
+          item.containerLabel ||
+          units.find(candidate => candidate.id === item.containerUnitId)?.name ||
+          null,
+        unitName: unit?.name || "unit",
+        unitAbbreviation: unit?.abbreviation || "unit",
         category: category?.name || null,
         lastCost: item.pricePerUnit * item.caseSize,
         storageLocationId: line.storageLocationId, // Use the location from the count line
@@ -12074,6 +12097,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         unitAbbreviation: unit?.abbreviation || "unit",
         inventoryItem: enrichedItem,
         storageLocationName: storageLocation?.name || null,
+        storageLocationAllowCaseCounting: storageLocation?.allowCaseCounting ?? 0,
         entries,
       };
     });
@@ -12109,10 +12133,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!count) {
         return res.status(404).json({ error: "Count not found" });
       }
+      const requestCompanyId = (req as any).companyId as string | undefined;
+      if (!requestCompanyId || count.companyId !== requestCompanyId) {
+        return res.status(404).json({ error: "Count not found" });
+      }
 
       const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
       if (historicalEditBlock) {
         return res.status(403).json(historicalEditBlock);
+      }
+
+      const item = await storage.getInventoryItem(lineData.inventoryItemId);
+      if (!item || item.companyId !== count.companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      if (lineData.unitId !== item.unitId) {
+        return res.status(422).json({
+          error: "Count line unit does not match the item's canonical inventory unit",
+        });
+      }
+
+      const legacyLocations = await storage.getStorageLocations(count.companyId);
+      const [canonicalLocation] = await db
+        .select({ id: inventoryLocations.id })
+        .from(inventoryLocations)
+        .where(and(
+          eq(inventoryLocations.id, lineData.storageLocationId),
+          eq(inventoryLocations.companyId, count.companyId),
+        ))
+        .limit(1);
+      const locationBelongsToCompany =
+        canonicalLocation != null ||
+        legacyLocations.some(location => location.id === lineData.storageLocationId);
+      if (!locationBelongsToCompany) {
+        return res.status(404).json({ error: "Storage location not found" });
+      }
+
+      const hasPackageParts =
+        lineData.caseQty != null ||
+        lineData.containerQty != null ||
+        lineData.looseUnits != null;
+      const canonicalLineData = { ...lineData };
+      if (hasPackageParts) {
+        try {
+          canonicalLineData.qty = calculateCanonicalCountQuantity(
+            item,
+            lineData.unitId,
+            {
+              caseQty: Number(lineData.caseQty ?? 0),
+              containerQty: Number(lineData.containerQty ?? 0),
+              looseUnits: Number(lineData.looseUnits ?? 0),
+            },
+          );
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
       }
 
       const user = (req as any).user;
@@ -12134,7 +12212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const line = await storage.createInventoryCountLine(lineData);
+      const line = await storage.createInventoryCountLine(canonicalLineData);
 
       // Task #78: write the first entry record for this line
       await storage.createInventoryCountEntry({
@@ -12168,6 +12246,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.getInventoryCount(existingLine.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
+      }
+      const requestCompanyId = (req as any).companyId as string | undefined;
+      if (!requestCompanyId || count.companyId !== requestCompanyId) {
+        return res.status(404).json({ error: "Count line not found" });
       }
 
       const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
@@ -12216,17 +12298,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Loose units cannot be negative" });
         }
         
-        // Recalculate qty from case counts (server-side integrity check)
+        // Recalculate canonical qty from package inputs (server-side integrity check)
         const item = await storage.getInventoryItem(existingLine.inventoryItemId);
-        if (item) {
-          if (item.containerSize && item.casePkgCount) {
-            // Three-level counting: (cases × casePkgCount × containerSize) + (containers × containerSize) + looseUnits
-            updates.qty = (caseQty * item.casePkgCount * item.containerSize) + (containerQty * item.containerSize) + looseUnits;
-          } else {
-            // Two-level counting: (cases × caseSize) + looseUnits
-            const caseSize = item.caseSize || 0;
-            updates.qty = (caseQty * caseSize) + looseUnits;
+        if (!item || item.companyId !== count.companyId) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+        try {
+          updates.qty = calculateCanonicalCountQuantity(
+            item,
+            existingLine.unitId,
+            { caseQty, containerQty, looseUnits },
+          );
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
           }
+          throw error;
         }
       } else if (addQty != null) {
         // Soft pre-flight check (real enforcement is in the atomic SQL)
@@ -12405,16 +12492,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // @ts-ignore
   app.post("/api/inventory-counts", requireAuth, async (req, res) => {
+    let createdCountId: string | null = null;
     try {
-      const countInput = insertInventoryCountSchema.parse(req.body);
+      const parsedInput = insertInventoryCountSchema.parse(req.body);
+      const companyId = (req as any).companyId as string | undefined;
+      const user = (req as any).user;
+      if (!companyId || !user?.id) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const store = await storage.getCompanyStore(parsedInput.storeId, companyId);
+      if (!store) {
+        return res.status(403).json({ error: "Store not found or access denied" });
+      }
+      const countInput = {
+        ...parsedInput,
+        companyId,
+        userId: user.id,
+        sourceSystem: null,
+        sourceBatchId: null,
+        sourceFilename: null,
+        sourceInventoryDate: null,
+        importedSnapshotTotal: null,
+        isHistoricalImport: 0,
+      };
 
       if (countInput.isPowerSession === 1) {
         // power_inventory is a core platform capability — available on all paid plans.
         // Global admins always pass; for other users, verify the company has an active paid plan.
         // Normalize legacy tier values: "pro"/"basic" → "platform", "free"/unknown → null (not paid).
-        const user = (req as any).user;
         if (user?.role !== "global_admin") {
-          const companyId = (req as any).companyId;
           if (companyId) {
             // @ts-ignore
             const [company] = await db.select().from(companiesTable).where(eq(companiesTable.id, companyId));
@@ -12428,107 +12534,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       const count = await storage.createInventoryCount(countInput);
-
-      // Auto-populate count lines for GLOBALLY ACTIVE inventory items associated with THIS STORE
-      // Query database directly to get items where BOTH global active AND store-active = 1
-      // For power sessions, only include power items
-      const whereConditions = [
-        // @ts-ignore
-        eq(inventoryItems.companyId, count.companyId),
-        // @ts-ignore
-        eq(inventoryItems.active, 1), // GLOBAL active
-        // @ts-ignore
-        eq(storeInventoryItems.active, 1) // STORE active
-      ];
-      
-      // If this is a power session, only include power items
-      if (count.isPowerSession === 1) {
-        // @ts-ignore
-        whereConditions.push(eq(inventoryItems.isPowerItem, 1));
-      }
-      
-      const activeItemsQuery = await db
-        .select({
-          inventoryItem: inventoryItems,
-        })
-        .from(inventoryItems)
-        .innerJoin(
-          storeInventoryItems,
-          and(
-            // @ts-ignore
-            eq(storeInventoryItems.inventoryItemId, inventoryItems.id),
-            // @ts-ignore
-            eq(storeInventoryItems.storeId, count.storeId)
-          )
-        )
-        .where(and(...whereConditions));
-      
-      // @ts-ignore
-      const activeItems = activeItemsQuery.map(row => row.inventoryItem);
-
-      // Resolve costing method once so unit-cost snapshots honor company preference
-      const countCompany = await storage.getCompany(count.companyId);
-
-      // Batch fetch storage locations for all items, filtering by company
-      // @ts-ignore
-      const itemIds = activeItems.map(item => item.id);
-      
-      // Query storage locations with company filter
-      const itemLocationsQuery = await db
-        .select({
-          inventoryItemId: inventoryItemLocations.inventoryItemId,
-          storageLocationId: inventoryItemLocations.storageLocationId,
-          isPrimary: inventoryItemLocations.isPrimary,
-        })
-        .from(inventoryItemLocations)
-        .innerJoin(
-          storageLocations,
-          // @ts-ignore
-          eq(inventoryItemLocations.storageLocationId, storageLocations.id)
-        )
-        .where(
-          and(
-            // @ts-ignore
-            inArray(inventoryItemLocations.inventoryItemId, itemIds),
-            // @ts-ignore
-            eq(storageLocations.companyId, count.companyId) // Only locations from this company
-          )
-        );
-
-      // Group by inventory item ID
-      const itemLocationsMap = new Map<string, typeof itemLocationsQuery>();
-      for (const location of itemLocationsQuery) {
-        const existing = itemLocationsMap.get(location.inventoryItemId) || [];
-        existing.push(location);
-        itemLocationsMap.set(location.inventoryItemId, existing);
-      }
-
-      // Create count lines for EACH storage location per item
-      for (const item of activeItems) {
-        const locations = itemLocationsMap.get(item.id) || [];
-        
-        // If item has no assigned locations, skip it (shouldn't happen for properly configured items)
-        if (locations.length === 0) continue;
-
-        // Create one line per location where this item is stored
-        for (const location of locations) {
-          const lineData = {
-            inventoryCountId: count.id,
-            inventoryItemId: item.id,
-            storageLocationId: location.storageLocationId,
-            qty: 0,
-            unitId: item.unitId,
-            unitCost: getEffectiveUnitCost(item, countCompany), // Snapshot the current effective price (Last Cost or WAC per company setting)
-            userId: countInput.userId,
-          };
-
-          await storage.createInventoryCountLine(lineData);
-        }
-      }
+      createdCountId = count.id;
+      await populateManualCountLines(count.id, companyId, user.id);
 
       res.status(201).json(count);
     } catch (error: any) {
+      if (
+        createdCountId &&
+        error instanceof ManualCountPopulationError &&
+        error.code === 'NO_ELIGIBLE_COUNT_LINES'
+      ) {
+        await storage.deleteInventoryCount(createdCountId);
+      }
+      if (error instanceof ManualCountPopulationError) {
+        return res.status(error.status).json({ error: error.message, code: error.code });
+      }
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/inventory-counts/:id/recover-lines", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      const user = (req as any).user;
+      if (!companyId || !user?.id) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      if (user.role !== "global_admin" && user.role !== "company_admin") {
+        return res.status(403).json({ error: "Only administrators can recover an empty count session." });
+      }
+      const result = await populateManualCountLines(String(req.params.id), companyId, user.id);
+      return res.json(result);
+    } catch (error: any) {
+      if (error instanceof ManualCountPopulationError) {
+        return res.status(error.status).json({ error: error.message, code: error.code });
+      }
+      return res.status(400).json({ error: error.message });
     }
   });
 
@@ -15265,7 +15306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // @ts-ignore
           const vendorItems = await storage.getVendorItems(undefined, req.companyId!);
           // @ts-ignore
-          const inventoryItems = await storage.getInventoryItems(req.companyId!);
+          const inventoryItems = await storage.getInventoryItems(undefined, undefined, req.companyId!);
           const units = await storage.getUnits();
           
           // Enrich lines with item details
@@ -17226,19 +17267,63 @@ Return format: ["ingredient1", "ingredient2", ...]`;
     const productId = req.query.product_id as string | undefined;
     const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
     const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
-    // @ts-ignore
-    const transfers = await storage.getTransferLogs(productId, startDate, endDate);
-    res.json(transfers);
+    const companyId = (req as any).companyId as string;
+    const accessibleStoreIds = await getAccessibleStores(
+      (req as any).user,
+      companyId,
+    );
+    const transfers = await storage.getTransferLogs(
+      companyId,
+      productId,
+      undefined,
+      startDate,
+      endDate,
+    );
+    res.json(transfers.filter((transfer) =>
+      accessibleStoreIds.includes(transfer.fromStoreId)
+      || accessibleStoreIds.includes(transfer.toStoreId),
+    ));
   });
 
   // @ts-ignore
   app.post("/api/transfers", requireAuth, requireTier("platform"), async (req, res) => {
     try {
-      const data = insertTransferLogSchema.parse(req.body);
+      const companyId = (req as any).companyId as string;
+      const fromLocationId = z.string().min(1).parse(req.body.fromLocationId);
+      const toLocationId = z.string().min(1).parse(req.body.toLocationId);
+      const parsedTransfer = insertTransferLogSchema
+        .omit({ companyId: true })
+        .parse(req.body);
+      const data = { ...parsedTransfer, companyId };
+      if (data.qty <= 0) {
+        return res.status(400).json({ error: "Transfer quantity must be positive" });
+      }
+
+      const [fromStore, toStore] = await Promise.all([
+        storage.getCompanyStore(data.fromStoreId, companyId),
+        storage.getCompanyStore(data.toStoreId, companyId),
+      ]);
+      if (!fromStore || !toStore) {
+        return res.status(403).json({ error: "Access denied to transfer store" });
+      }
+      const accessibleStoreIds = await getAccessibleStores(
+        (req as any).user,
+        companyId,
+      );
+      if (
+        !accessibleStoreIds.includes(data.fromStoreId)
+        || !accessibleStoreIds.includes(data.toStoreId)
+      ) {
+        return res.status(403).json({ error: "Access denied to transfer store" });
+      }
       
       // Get inventory items at from location
-      // @ts-ignore
-      const inventoryItems = await storage.getInventoryItems(data.fromLocationId);
+      const inventoryItems = await getInventoryItemsByEffectiveLocation(
+        storage,
+        companyId,
+        fromLocationId,
+        data.fromStoreId,
+      );
       const fromItem = inventoryItems.find(i => i.id === data.inventoryItemId);
       // @ts-ignore
       const fromQty = fromItem?.onHandQty || 0;
@@ -17249,29 +17334,23 @@ Return format: ["ingredient1", "ingredient2", ...]`;
           error: `Insufficient inventory. Available: ${fromQty}, Requested: ${data.qty}` 
         });
       }
-      
-      // Create transfer log
-      const transfer = await storage.createTransferLog(data);
-      
-      // Update from location inventory
-      if (fromItem) {
-        await storage.updateInventoryItem(fromItem.id, {
-          // @ts-ignore
-          onHandQty: fromQty - data.qty
-        });
-      }
-      
-      // Update to location inventory
-      // @ts-ignore
-      const toItems = await storage.getInventoryItems(data.toLocationId);
+
+      // Confirm the destination is assigned through its canonical-first
+      // effective location before committing the atomic store transfer.
+      const toItems = await getInventoryItemsByEffectiveLocation(
+        storage,
+        companyId,
+        toLocationId,
+        data.toStoreId,
+      );
       const toItem = toItems.find(i => i.id === data.inventoryItemId);
-      if (toItem) {
-        await storage.updateInventoryItem(toItem.id, {
-          // @ts-ignore
-          onHandQty: (toItem.onHandQty || 0) + data.qty
+      if (!toItem) {
+        return res.status(400).json({
+          error: "Inventory item is not assigned to the destination location",
         });
       }
-      
+
+      const transfer = await storage.createStoreInventoryTransfer(data);
       res.status(201).json(transfer);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -24267,24 +24346,29 @@ Human Handoff:
       const updates: any = {};
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
-        const cQty = caseQty ?? targetLine.caseQty ?? 0;
-        const cnQty = containerQty ?? targetLine.containerQty ?? 0;
-        const lUnits = looseUnits ?? targetLine.looseUnits ?? 0;
-
-        if (cQty < 0) return res.status(400).json({ error: "Case quantity cannot be negative" });
-        if (cnQty < 0) return res.status(400).json({ error: "Container quantity cannot be negative" });
-        if (lUnits < 0) return res.status(400).json({ error: "Loose units cannot be negative" });
+        const cQty = Number(caseQty ?? targetLine.caseQty ?? 0);
+        const cnQty = Number(containerQty ?? targetLine.containerQty ?? 0);
+        const lUnits = Number(looseUnits ?? targetLine.looseUnits ?? 0);
 
         updates.caseQty = cQty;
         updates.containerQty = cnQty;
         updates.looseUnits = lUnits;
 
         const item = await storage.getInventoryItem(targetLine.inventoryItemId);
-        if (item && item.containerSize && item.casePkgCount) {
-          updates.qty = (cQty * item.casePkgCount * item.containerSize) + (cnQty * item.containerSize) + lUnits;
-        } else {
-          const caseSize = item?.caseSize ?? 0;
-          updates.qty = (cQty * caseSize) + lUnits;
+        if (!item || item.companyId !== companyId) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+        try {
+          updates.qty = calculateCanonicalCountQuantity(
+            item,
+            targetLine.unitId,
+            { caseQty: cQty, containerQty: cnQty, looseUnits: lUnits },
+          );
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
         }
       } else if (qty != null) {
         if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
@@ -24869,24 +24953,29 @@ Human Handoff:
       let addedQty: number | null = null; // for entry audit trail
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
-        const cQty = caseQty ?? existingLine.caseQty ?? 0;
-        const cnQty = containerQty ?? existingLine.containerQty ?? 0;
-        const lUnits = looseUnits ?? existingLine.looseUnits ?? 0;
-
-        if (cQty < 0) return res.status(400).json({ error: "Case quantity cannot be negative" });
-        if (cnQty < 0) return res.status(400).json({ error: "Container quantity cannot be negative" });
-        if (lUnits < 0) return res.status(400).json({ error: "Loose units cannot be negative" });
+        const cQty = Number(caseQty ?? existingLine.caseQty ?? 0);
+        const cnQty = Number(containerQty ?? existingLine.containerQty ?? 0);
+        const lUnits = Number(looseUnits ?? existingLine.looseUnits ?? 0);
 
         updates.caseQty = cQty;
         updates.containerQty = cnQty;
         updates.looseUnits = lUnits;
 
         const item = await storage.getInventoryItem(existingLine.inventoryItemId);
-        if (item && item.containerSize && item.casePkgCount) {
-          updates.qty = (cQty * item.casePkgCount * item.containerSize) + (cnQty * item.containerSize) + lUnits;
-        } else {
-          const caseSize = item?.caseSize ?? 0;
-          updates.qty = (cQty * caseSize) + lUnits;
+        if (!item || item.companyId !== count.companyId) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+        try {
+          updates.qty = calculateCanonicalCountQuantity(
+            item,
+            existingLine.unitId,
+            { caseQty: cQty, containerQty: cnQty, looseUnits: lUnits },
+          );
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
         }
         // case-breakdown edits replace the entry
         addedQty = null;

@@ -434,6 +434,7 @@ export interface IStorage {
   // Transfer Logs
   getTransferLogs(companyId: string, inventoryItemId?: string, storeId?: string, startDate?: Date, endDate?: Date): Promise<TransferLog[]>;
   createTransferLog(transfer: InsertTransferLog): Promise<TransferLog>;
+  createStoreInventoryTransfer(transfer: InsertTransferLog): Promise<TransferLog>;
 
   // Transfer Orders
   getTransferOrders(companyId: string, storeId?: string): Promise<TransferOrder[]>;
@@ -3995,6 +3996,45 @@ export class DatabaseStorage implements IStorage {
   async createTransferLog(insertTransfer: InsertTransferLog): Promise<TransferLog> {
     const [transfer] = await db.insert(transferLogs).values(insertTransfer).returning();
     return transfer;
+  }
+
+  async createStoreInventoryTransfer(insertTransfer: InsertTransferLog): Promise<TransferLog> {
+    return db.transaction(async (tx: any) => {
+      const [source] = await tx
+        .update(storeInventoryItems)
+        .set({
+          onHandQty: sql`${storeInventoryItems.onHandQty} - ${insertTransfer.qty}`,
+        })
+        .where(and(
+          eq(storeInventoryItems.storeId, insertTransfer.fromStoreId),
+          eq(storeInventoryItems.inventoryItemId, insertTransfer.inventoryItemId),
+          sql`${storeInventoryItems.onHandQty} >= ${insertTransfer.qty}`,
+        ))
+        .returning();
+      if (!source) {
+        throw new Error("Insufficient inventory");
+      }
+
+      const [destination] = await tx
+        .update(storeInventoryItems)
+        .set({
+          onHandQty: sql`${storeInventoryItems.onHandQty} + ${insertTransfer.qty}`,
+        })
+        .where(and(
+          eq(storeInventoryItems.storeId, insertTransfer.toStoreId),
+          eq(storeInventoryItems.inventoryItemId, insertTransfer.inventoryItemId),
+        ))
+        .returning();
+      if (!destination) {
+        throw new Error("Destination inventory item not found");
+      }
+
+      const [transfer] = await tx
+        .insert(transferLogs)
+        .values(insertTransfer)
+        .returning();
+      return transfer;
+    });
   }
 
   // Transfer Orders
