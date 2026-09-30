@@ -47,3 +47,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Operator-only production count evidence and derived row-level register
+/attached_assets/bay-hill-may-june-rows-private_*.txt
+/reports/bay-hill-vps-may-june-row-findings-private.csv

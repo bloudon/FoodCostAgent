@@ -16,6 +16,15 @@ export interface InventoryItem {
   currentCount: number;
   expectedCount: number | null;
   isCatchWeightCategory: boolean;
+  countMode: "catch" | "package" | "direct" | "unconfigured";
+  countBlockedReason: string | null;
+  countStatus: "ready" | "incomplete" | "historicalLoose" | null;
+  caseQty: number | null;
+  containerQty: number | null;
+  looseUnits: number | null;
+  containerSize: number | null;
+  casePkgCount: number | null;
+  containerLabel: string | null;
 }
 
 export interface InventorySection {
@@ -50,6 +59,18 @@ function numOrNull(v: unknown): number | null {
 }
 
 function normalizeItem(raw: Record<string, unknown>): InventoryItem {
+  const isCatchWeightCategory = !!(raw.isCatchWeightCategory ?? raw.is_catch_weight_category ?? raw.isTareWeightCategory ?? raw.is_tare_weight_category);
+  const containerSize = numOrNull(raw.containerSize ?? raw.container_size);
+  const casePkgCount = numOrNull(raw.casePkgCount ?? raw.case_pkg_count);
+  const containerLabel = strOrNull(raw.containerLabel ?? raw.container_label);
+  const looseUnits = numOrNull(raw.looseUnits ?? raw.loose_units);
+  const hasPackageMetadata = containerSize != null || casePkgCount != null || containerLabel != null;
+  const derivedMode = isCatchWeightCategory
+    ? "catch"
+    : hasPackageMetadata
+      ? "package"
+      : "direct";
+  const rawMode = raw.countMode ?? raw.count_mode;
   return {
     id: str(raw.id ?? raw.inventoryItemId ?? raw.inventory_item_id),
     inventoryItemId: str(raw.inventoryItemId ?? raw.inventory_item_id ?? raw.id),
@@ -62,7 +83,16 @@ function normalizeItem(raw: Record<string, unknown>): InventoryItem {
     locationName: strOrNull(raw.locationName ?? raw.location_name ?? raw.location),
     currentCount: num(raw.currentCount ?? raw.current_count ?? raw.count ?? raw.quantity),
     expectedCount: numOrNull(raw.expectedCount ?? raw.expected_count ?? raw.expected),
-    isCatchWeightCategory: !!(raw.isCatchWeightCategory ?? raw.is_catch_weight_category ?? raw.isTareWeightCategory ?? raw.is_tare_weight_category),
+    isCatchWeightCategory,
+    countMode: (rawMode ?? derivedMode) as InventoryItem["countMode"],
+    countBlockedReason: strOrNull(raw.countBlockedReason ?? raw.count_blocked_reason),
+    countStatus: (raw.countStatus ?? raw.count_status ?? (looseUnits != null && looseUnits > 0 ? "historicalLoose" : hasPackageMetadata && containerSize != null && containerSize > 0 && casePkgCount != null && casePkgCount > 0 ? "ready" : hasPackageMetadata ? "incomplete" : null)) as InventoryItem["countStatus"],
+    caseQty: numOrNull(raw.caseQty ?? raw.case_qty),
+    containerQty: numOrNull(raw.containerQty ?? raw.container_qty),
+    looseUnits,
+    containerSize,
+    casePkgCount,
+    containerLabel,
   };
 }
 

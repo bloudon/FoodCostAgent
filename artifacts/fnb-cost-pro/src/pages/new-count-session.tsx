@@ -44,9 +44,20 @@ export default function NewCountSession() {
       : user?.companyId;
 
   const { data: stores = [] } = useAccessibleStores();
+  const { data: existingCounts = [], isLoading: countsLoading } = useQuery<any[]>({
+    queryKey: ["/api/inventory-counts"],
+  });
 
   // Auto-select when there's only one store
   const resolvedStoreId = storeId || (stores.length === 1 ? stores[0].id : "");
+  const countDateKey = `${countDate.getFullYear()}-${String(countDate.getMonth() + 1).padStart(2, "0")}-${String(countDate.getDate()).padStart(2, "0")}`;
+  const matchingCounts = existingCounts.filter((count) =>
+    count.storeId === resolvedStoreId &&
+    count.countDate?.slice(0, 10) === countDateKey &&
+    count.isHistoricalImport !== 1 &&
+    count.sourceSystem !== "ORDERLY" &&
+    Number(count.isPowerSession) === Number(isPowerSession)
+  );
 
   const createSessionMutation = useMutation({
     mutationFn: async () => {
@@ -217,12 +228,23 @@ export default function NewCountSession() {
           </CardContent>
         </Card>
 
+        {matchingCounts.length > 0 && (
+          <div className="rounded-md border border-amber-500/50 p-3 text-sm space-y-2" data-testid="existing-count-warning">
+            <p>A count for this store and date already exists. Open it to preserve its saved readings.</p>
+            {matchingCounts.map((count) => (
+              <Button key={count.id} variant="outline" onClick={() => setLocation(`/count/${count.id}`)}>
+                Open existing count
+              </Button>
+            ))}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-col gap-3 pt-2">
           <Button
             className="w-full"
             onClick={() => createSessionMutation.mutate()}
-            disabled={createSessionMutation.isPending || !resolvedStoreId}
+            disabled={createSessionMutation.isPending || countsLoading || !resolvedStoreId || matchingCounts.length > 0}
             data-testid="button-create-new-count"
           >
             {createSessionMutation.isPending ? "Creating..." : "Start Count Session"}

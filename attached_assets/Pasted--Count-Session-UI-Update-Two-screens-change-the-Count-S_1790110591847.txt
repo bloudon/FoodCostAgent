@@ -1,0 +1,118 @@
+# Count Session UI Update
+
+Two screens change: the **Count Session index** (item list) and the **count entry sheet**. Business logic, data model, and navigation stay the same except where noted.
+
+---
+
+## 1. Count Session index
+
+### 1.1 Item rows (primary change)
+
+**Problem:** The right column shows pack configuration (e.g. `6/117 OZ`, `Cases / contai…`). The count entered this session isn't visible anywhere on the list.
+
+**Change each row to:**
+
+| Area | Content |
+|---|---|
+| Left | Status icon: **green check in a filled circle** if counted this session; **dashed empty ring** if not |
+| Middle, line 1 | Item name (16px, semibold) |
+| Middle, line 2 | Unit(s) first, then pack size, muted 13px. Single unit: `ctr · 5 oz`. Two-level: `cs + can · 6 × 117 oz` |
+| Right, line 1 | **Counted:** this session's count, numbers only, monospace, 20px semibold. Two-level counts show both numbers in the order of line 2, separated by ` · ` (e.g. `1 · 3`). **Not counted:** a muted `—` |
+| Right, line 2 | **Counted:** change vs. last count, numbers only (`+0.5 vs last`), green if up, red-orange if down. **Not counted:** `last 0.75` (muted) |
+
+- **No unit labels in the right column.** Units appear only in the pack line.
+- **Exception:** if the last count's unit doesn't match the item's configured units (e.g. `1.00 ml` on a case/container item), show the unit in the "last" line and add a small amber `UNIT?` tag after the pack line.
+- The whole row is one tap target (a real `<button>`) that opens the count sheet. Minimum height 64px.
+- Counted rows get a very faint green background tint.
+
+### 1.2 Header
+- Back arrow (44×44), title **Count session**, subtitle `Started 7/31/2026 · Session $2,099.87`.
+- **Scan barcode** gets its own 44×44 header button.
+- Settings moves into a `⋯` overflow button. **Remove the floating gear button**, which currently overlaps the title and scan icon.
+- Add a progress line under the title: `13 of 5,671 counted` on the left, percentage on the right, and a 6px progress bar below.
+
+### 1.3 Location chips
+- Keep the horizontal scrolling chips; the height is 44px.
+- Each chip shows **counted / total** for that location (e.g. `Bay Window 12/216`). The active chip is filled with the primary color.
+
+### 1.4 Filter row
+- Replace the current row (`Dry` · `Last > 0` · `From 7/31/2026` · `Name` sort) with:
+  - a **Filters** button (opens the existing filter options)
+  - active filters shown as removable chips with a ×. Rename `Last > 0` to **Had stock**.
+  - a compact `A–Z` sort button aligned right
+- Remove the duplicate `Last count > 0 ×` pill above the search bar.
+- The session start date moves to the header subtitle (see 1.2).
+
+### 1.5 Location-review warning
+- Shrink it to a single tappable line: `⚠ 1,052 items need a location review` ... `Review ›`, 13px, amber background.
+
+### 1.6 Section headers
+- Format: `DRY GOODS` on the left, `3 / 49 · $184.20` on the right (counted / total · section value). Keep it sticky while scrolling.
+
+### 1.7 Bottom
+- Keep the search bar docked above the bottom nav, with placeholder `Search or scan…`, 48px tall.
+
+---
+
+## 2. Count entry sheet
+
+### 2.1 Top bar
+- Left: **close ×** (44×44). It should no longer sit on the corner of the Save button.
+- Center: `Dry goods · 12 of 49` (section and position).
+- Right: **previous / next item** chevrons (44×44 each).
+- **Remove the floating gear** that overlaps Save & Next.
+
+### 2.2 Item info
+- Item name, 24px bold.
+- Info chips: location (pin icon), pack size (`48 btl / case`), and **cost per counting unit** (`$1.45 / btl`), not cost per oz.
+- Name the counting unit by what it is (`Bottles · 2 oz`), not the generic "containers".
+
+### 2.3 Last count reference (new)
+- A dashed-border strip: `Last count · 7/31` with the value `1 cs 10 btl`.
+- A **Same as last** button fills the inputs with the previous count.
+
+### 2.4 Inputs
+- Two cards side by side: **Cases × 48** and **Bottles 2 oz**.
+- Each card has a large monospace value (34px) with **− / +** stepper buttons (40×40).
+- The active field gets a 2px primary-color border and a light tint.
+
+### 2.5 Result line
+- One line: `= 54 btl · 108 oz`, with the dollar value (`$78.43`) aligned right.
+- Under it, the change vs. last count: `−4 btl vs last count`.
+
+### 2.6 Custom keypad (replaces the system keyboard)
+- Set the inputs to `inputmode="none"` and render an in-app keypad in a 4-column grid, 50px keys:
+
+```
+1      2   3   ⌫
+4      5   6   Clear
+7      8   9   ½
+Skip   0   .   Field →
+```
+
+- `½` adds 0.5. `Field →` moves focus to the next input. `Skip` moves to the next item without saving.
+
+### 2.7 Save & Next
+- Move it to the **very bottom of the screen, under the keypad**, full width, 56px tall, primary orange, labeled `Save & next →`.
+
+---
+
+## 3. Visual tokens
+
+| Token | Value |
+|---|---|
+| Background | `#F6F4EF` |
+| Surface | `#FFFFFF` |
+| Text | `#16201D` |
+| Muted text | `#5A625F` |
+| Borders | `#E2DED6` / `#D5D0C6` |
+| Primary (teal) | `#0B4A5C` |
+| Action (orange) | `#C2410C` (white text passes contrast) |
+| Success | `#2F7D4F` |
+| Negative change | `#A23B12` |
+| Warning background / text | `#FFF4DB` / `#7A4A00` |
+| UI font | Archivo (fallback: system sans-serif) |
+| Numbers font | IBM Plex Mono (all counts, totals, prices) |
+
+- All touch targets are at least 44px.
+- Icon-only buttons need `aria-label`s.

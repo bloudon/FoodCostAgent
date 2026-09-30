@@ -992,6 +992,36 @@ function CountSessionPreviewStep({
         )}
       </div>
 
+      {preview.unitFindings.length > 0 && (
+        <Alert variant="destructive" data-testid="count-unit-findings">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Count session blocked:</strong> {preview.unitFindings.filter(f => f.reason === "unit_mismatch").length} source rows
+            have a verified unit mismatch; {preview.unitFindings.filter(f => f.reason === "unit_unverified").length} have
+            unverified Case/Pack/UOM meaning. Matching dollar totals do not establish the saved quantity's unit.
+            Review the dated source and item unit; this screen will not convert counts or change source values.
+            <div className="mt-3 max-h-56 overflow-auto">
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>Row / item</TableHead><TableHead>Source pack</TableHead>
+                  <TableHead>Source → saved</TableHead><TableHead>Reason</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {preview.unitFindings.map(f => (
+                    <TableRow key={`${f.rowIndex}-${f.inventoryItemId}`}>
+                      <TableCell className="text-xs">{f.rowIndex} · {f.inventoryItemName}</TableCell>
+                      <TableCell className="text-xs">{f.sourcePack ?? "Unknown"}</TableCell>
+                      <TableCell className="text-xs">{f.sourceUnit ?? "?"} → {f.savedUnit ?? "?"}</TableCell>
+                      <TableCell className="text-xs">{f.detail}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Cross-reference discrepancies (May vs June) */}
       {preview.crossReferenceDiscrepancies.length > 0 && (
         <div className="rounded-md border border-orange-200 bg-orange-50/50 dark:bg-orange-950/20 p-4">
@@ -1075,7 +1105,8 @@ function CountSessionPreviewStep({
 
         <Button
           onClick={handleCreate}
-          disabled={creating || !selectedStoreId || (preview.reconciliationExceedsTolerance && !acknowledgedVariance)}
+          disabled={creating || !selectedStoreId || preview.unitFindings.length > 0 ||
+            (preview.reconciliationExceedsTolerance && !acknowledgedVariance)}
           className="w-full"
         >
           {creating
@@ -1782,6 +1813,17 @@ interface CountSessionPreview {
   sourceRowCount: number;
   snapshotTotal: number | null;
   includedRows: CountSessionPreviewRow[];
+  unitFindings: Array<{
+    rowIndex: number;
+    inventoryItemId: string;
+    inventoryItemName: string;
+    sourcePack: string | null;
+    sourceUnit: string | null;
+    savedUnit: string | null;
+    sourceTotal: number | null;
+    reason: "unit_mismatch" | "unit_unverified";
+    detail: string;
+  }>;
   excludedRows: ExcludedRow[];
   importableTotal: number;
   unresolvedTotal: number;

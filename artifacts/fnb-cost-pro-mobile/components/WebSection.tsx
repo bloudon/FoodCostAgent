@@ -12,8 +12,9 @@ import {
 } from "react-native";
 import WebView, { WebViewMessageEvent, WebViewNavigation } from "react-native-webview";
 import { useAuth } from "@/context/AuthContext";
+import { getAppBaseUrl } from "@/lib/appBaseUrl";
 
-const BASE_URL = "https://app.fnbcostpro.com";
+const BASE_URL = getAppBaseUrl();
 
 // Injected BEFORE page JS:
 //  1. Reads ?mobileToken= from URL and patches fetch + XHR to send it as a Bearer header.
@@ -91,7 +92,7 @@ const INJECTED_SCRIPT = `(function(){
 })(); true;`;
 
 export type WebSectionProps = {
-  /** Path on app.fnbcostpro.com, e.g. "/dashboard/mobile" or "/recipes" */
+  /** Main-app path, e.g. "/dashboard/mobile" or "/recipes" */
   path: string;
   /** Shown in loading/error copy, e.g. "dashboard", "Recipes" */
   label: string;
@@ -334,13 +335,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",

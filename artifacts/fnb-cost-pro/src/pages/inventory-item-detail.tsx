@@ -55,6 +55,7 @@ import { filterUnitsBySystem, formatUnitName } from "@/lib/utils";
 import { getSuggestedConversionFactor } from "@/lib/unitConversions";
 import { getVendorPricePresentation } from "@/lib/vendor-price-presentation";
 import { BulkReplaceDialog } from "@/components/bulk-replace-dialog";
+import { SupplierPackHistory } from "@/components/supplier-pack-history";
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { SystemPreferences, InventoryItemUnit } from "@shared/schema";
 
@@ -2349,7 +2350,11 @@ export default function InventoryItemDetail() {
                             <TableCell>{vi.caseSize}</TableCell>
                             <TableCell className="text-muted-foreground">
                               {(() => {
-                                const price = getVendorPricePresentation(vi, unit?.name);
+                                const price = getVendorPricePresentation(
+                                  vi,
+                                  unit?.name,
+                                  item?.containerLabel,
+                                );
                                 return (
                                   <div className="space-y-0.5">
                                     <div className="text-foreground" data-testid={`text-purchase-unit-price-${vi.id}`}>
@@ -2585,6 +2590,11 @@ export default function InventoryItemDetail() {
             );
           })()}
 
+          <SupplierPackHistory
+            itemId={item.id}
+            storeId={selectedStoreId}
+            unitLabel={formatUnitName(unit?.name) || "units"}
+          />
           <div className="grid gap-6 md:grid-cols-2">
           {/* Basic Settings Card */}
           <Card>

@@ -50,7 +50,7 @@
 - [Cross-vendor pack identity](cross-vendor-pack-identity.md) — different vendors may supply different packs of one item; preserve each vendor pack instead of forking the catalog item.
 - [Approval-time parser rehydration](approval-parser-rehydration.md) — persist recovered derived fields atomically when approval reparses immutable raw evidence.
 - [Durable approval retries](durable-approval-retries.md) — fence async attempts, recover expired leases without browser polling, and commit result status with the mutation.
-- [Labeled Orderly units](labeled-orderly-units.md) — container labels may supply count/measure context; preserve decimal punctuation and keep ambiguous labels fail-closed.
+- [Orderly operational pack notation](labeled-orderly-units.md) — slash packs are source notation, not fractions; show raw labels while costing stays canonical.
 - [Duplicate metric definitions](orderly-duplicate-metric-definition.md) — preserve the observed candidate population; vendor changes without an offered link are identity defects, not metric exclusions.
 - [Opaque pack continuity](orderly-opaque-pack-continuity.md) — cross-vendor opaque-vs-resolved stays blocked; same-vendor source silence preserves stronger verified geometry.
 - [Accounting import decisions](accounting-import-decisions.md) — sentinel creation, value-prioritized unassigned work, split mapping/worklist scope, and FK timing are approved constraints.
@@ -61,4 +61,9 @@
 - [Orderly production identifier contract](orderly-production-id-contract.md) — company IDs are bounded strings, not UUID-only values; batch IDs may be UUID-shaped.
 - [PostgreSQL REAL money casts](postgres-real-money-casts.md) — promote legacy REAL money to double before numeric comparison or diagnostics can fabricate rounding gaps.
 - [Sticky section navigation](sticky-section-navigation.md) — use non-sticky markers as scroll targets; sticky heading geometry cannot locate earlier content.
-- [Manual count unit boundary](manual-count-unit-boundary.md) — count in practical item packages, persist canonical quantity, and fail closed on incomplete geometry.
+- [Manual count unit boundary](manual-count-unit-boundary.md) — count in packages; saved parts and unit identity must both reconcile before showing physical history.
+- [Orderly count source unit integrity](orderly-count-source-unit-integrity.md) — matching numbers do not prove unit identity; lock preview evidence and item units through creation.
+- [Expo Router auth redirects](expo-router-auth-redirects.md) — on SDK 57, root auth redirects must run after render or reload can repeatedly remount login.
+- [Bay Hill July location cleanup](bay-hill-july-location-cleanup.md) — VPS cleanup preserves July history and removes two evidenced Main Freezer duplicates only after guarded preflight.
+- [Supplier pack acceptance fixtures](supplier-pack-acceptance-fixtures.md) — browser approval needs both a store-visible item and dated current supplier evidence, not just verified pack geometry.
+- [August physical-count boundary](august-physical-count-boundary.md) — preserve the live draft; compare a scoped workbook read-only when no August import exists, and never test with invented readings.

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { getAppBaseUrl } from "@/lib/appBaseUrl";
 
-const BG_IMAGES_URL = "https://app.fnbcostpro.com/api/mobile/background-images";
-const BASE_URL = "https://app.fnbcostpro.com";
+const BASE_URL = getAppBaseUrl();
+const BG_IMAGES_URL = `${BASE_URL}/api/mobile/background-images`;
 
 export interface BackgroundImage {
   id: string;

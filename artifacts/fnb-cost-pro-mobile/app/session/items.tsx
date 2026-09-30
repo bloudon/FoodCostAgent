@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useSessionItems } from "@/hooks/useSessionItems";
 import { useColors } from "@/hooks/useColors";
+import { formatCurrentCount, formatPackLine } from "@/lib/sessionItemDisplay";
 
 function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -160,16 +161,33 @@ export default function SessionItemsScreen() {
                   key={item.id}
                   style={[
                     styles.itemRow,
+                    item.isCounted && { backgroundColor: colors.success + "0D" },
                     { borderColor: colors.border },
                     i < items.length - 1 && styles.itemRowDivider,
                   ]}
                 >
+                  <View
+                    accessible
+                    accessibilityLabel={item.isCounted ? t("items.counted") : t("items.notCounted")}
+                    style={[
+                      styles.statusIcon,
+                      item.isCounted
+                        ? { borderColor: colors.success, backgroundColor: colors.success + "18" }
+                        : { borderColor: colors.border, borderStyle: "dashed" },
+                    ]}
+                  >
+                    <Feather
+                      name={item.isCounted ? "check" : "circle"}
+                      size={item.isCounted ? 16 : 13}
+                      color={item.isCounted ? colors.success : colors.mutedForeground}
+                    />
+                  </View>
                   <View style={styles.itemLeft}>
-                    <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={2}>
+                    <Text style={[styles.itemName, { color: colors.foreground }]} numberOfLines={1}>
                       {item.name}
                     </Text>
                     <Text style={[styles.itemMeta, { color: colors.mutedForeground }]}>
-                      {item.unit ?? "ea"}
+                      {formatPackLine(item)}
                       {item.categoryName && groupType !== "category"
                         ? ` · ${item.categoryName}`
                         : ""}
@@ -180,10 +198,10 @@ export default function SessionItemsScreen() {
                   </View>
                   <View style={styles.itemRight}>
                     <Text style={[styles.itemQty, { color: colors.primary }]}>
-                      {item.quantity}
+                      {item.isCounted ? formatCurrentCount(item) : "—"}
                     </Text>
-                    <Text style={[styles.itemValue, { color: colors.mutedForeground }]}>
-                      {formatCurrency(item.value)}
+                    <Text style={[styles.itemValue, { color: colors.mutedForeground }]} numberOfLines={1}>
+                      {item.isCounted ? formatCurrency(item.value) : ""}
                     </Text>
                   </View>
                 </View>
@@ -263,7 +281,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    minHeight: 64,
+    paddingVertical: 10,
     gap: 12,
   },
   itemRowDivider: {
@@ -272,6 +291,7 @@ const styles = StyleSheet.create({
   itemLeft: {
     flex: 1,
     gap: 3,
+    minWidth: 0,
   },
   itemName: {
     fontSize: 14,
@@ -290,6 +310,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     fontFamily: "Inter_700Bold",
+  },
+  statusIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   itemValue: {
     fontSize: 12,

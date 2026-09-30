@@ -21,8 +21,9 @@ import {
   parseWebMessage,
   WASTE_BRIDGE_VERSION,
 } from "@/lib/wasteBridge";
+import { getAppBaseUrl } from "@/lib/appBaseUrl";
 
-const WASTE_URL = "https://app.fnbcostpro.com/waste?embedded=true";
+const WASTE_URL = `${getAppBaseUrl()}/waste?embedded=true`;
 const BRIDGE_READY_TIMEOUT_MS = 15000;
 const DRAFT_ACK_TIMEOUT_MS = 10000;
 
@@ -373,14 +374,14 @@ const styles = StyleSheet.create({
   },
   webview: { flex: 1 },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",

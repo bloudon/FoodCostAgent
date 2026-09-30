@@ -7,6 +7,7 @@ uri = "file://attached_assets/fnb-cost-pro-expo-qr.png"
 type = "image"
 title = "FnB Cost Pro Mobile — Expo QR Code"
 description = "Scan this QR code with Expo Go on Android, or with the iPhone Camera app and then open it in Expo Go."
+logical_id = "ff4bebc9-8d0b-44a3-b1f5-37932e49a614"
 
 [[outputs]]
 id = "ZIXRd8LSLQlrzpPEkC_3F"
@@ -14,6 +15,7 @@ uri = "file://reports/bay-hill-pm-review/bay-hill-pm-review-summary.md"
 type = "text"
 title = "Bay Hill PM Review Summary"
 description = "Concise, sanitized PM gate summary with distributions, valuation preflight, known examples, and excluded ambiguous groups."
+logical_id = "15ae017e-00b9-4938-b14b-af6acfcfbfc0"
 
 [[outputs]]
 id = "n4iNsI4Uetf2EzXeKYoM5"
@@ -21,6 +23,7 @@ uri = "file://reports/bay-hill-pm-review/bay-hill-safe-candidate-detail.csv"
 type = "table"
 title = "Bay Hill SAFE_CANDIDATE Detail"
 description = "Detailed sanitized review population for all 893 SAFE_CANDIDATE groups."
+logical_id = "fb428d1c-03cd-40d8-8f11-82e6f6014cf9"
 
 [[outputs]]
 id = "QkYEOyLTsAG0kUGVyDK9R"
@@ -28,6 +31,7 @@ uri = "file://reports/bay-hill-pm-review/bay-hill-safe-candidate-item-codes.csv"
 type = "table"
 title = "Bay Hill Proposed Approval Item Codes"
 description = "Exact proposed Product Owner approval set of 893 SAFE_CANDIDATE source Item Codes."
+logical_id = "aaeb10c3-763f-435e-9ba2-148534305946"
 
 [[outputs]]
 id = "LDZ6v0--4GWDzjPtrHsuT"
@@ -35,6 +39,7 @@ uri = "file://reports/bay-hill-pm-review/bay-hill-ambiguous-groups.csv"
 type = "table"
 title = "Bay Hill Excluded AMBIGUOUS Groups"
 description = "The four AMBIGUOUS groups, their candidate IDs, evidence, mappings, and exclusion reasons."
+logical_id = "44bb1cbb-f775-4573-8e8a-2ec312e2b370"
 
 [[outputs]]
 id = "xkm5jqnOWdp9GfuIChqWf"
@@ -42,6 +47,7 @@ uri = "file://reports/orderly-vendor-product-adoption-manifest-24472.json"
 type = "unspecified"
 title = "Orderly evidence-freeze manifest — property 24472"
 description = "Read-only deterministic manifest for the 3,435 PM-approved safe candidates. APPLY remains disabled."
+logical_id = "ffc17133-a23d-4384-9c06-144d12086ad5"
 
 [[outputs]]
 id = "LypueONaNDdinh5tfM0km"
@@ -49,6 +55,7 @@ uri = "file://reports/orderly-vendor-product-adoption-active-status-overlay-2447
 type = "unspecified"
 title = "Orderly active-status overlay — property 24472"
 description = "Read-only status overlay for the frozen 3,435 candidates. It does not alter the manifest or enable APPLY."
+logical_id = "78e3acc0-f140-485d-9ffe-514637584c92"
 
 [[outputs]]
 id = "XauLB8g6yvr-QAVq5a64S"
@@ -56,6 +63,7 @@ uri = "file://reports/orderly-vendor-product-adoption-post-apply-verification-24
 type = "unspecified"
 title = "Orderly DEV APPLY — PM verification"
 description = "Manifest-bound, read-only verification of the completed DEV-only vendor-product adoption and Harvill resolution lift."
+logical_id = "da068ffa-e007-43e3-b50d-c51b3ba6d5b8"
 
 [[outputs]]
 id = "APQBW8ujl_YujKmSoGq7J"
@@ -63,3 +71,130 @@ uri = "file://reports/orderly-vendor-product-adoption-idempotency-24472.json"
 type = "unspecified"
 title = "Orderly DEV APPLY — idempotency proof"
 description = "Read-only, manifest-bound proof that a repeat run would create no vendor products or mappings."
+logical_id = "8a80f34c-a8b5-4608-bd32-0de3eb3eaa38"
+
+[[outputs]]
+id = "AH_tJpqu8551kXwFIfku2"
+uri = "file://docs/uom-architecture-recovery-audit.md"
+type = "text"
+title = "Updated UOM Architecture Recovery and Audit"
+description = "PM-corrected audit: employees count practical physical packages and fractions; canonical and recipe measurements remain internal conversion units."
+logical_id = "25271bca-6704-4e8a-a6d8-51ab5aa17230"
+content_hash = "sha256:9e61d8f505e26b9cc0eb271f817631680d17dd0582cb8283c9fbaf1fe88b6ff1"
+size = 25188
+mtime_ms = 1789704390917
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/25271bca-6704-4e8a-a6d8-51ab5aa17230/e58f5529-3829-417a-934e-ad94afccfcc0"
+storage_version_token = "1789704415174810"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "Vn7WipSvfa7j3rGHIsZ9Q"
+uri = "file://generated/fnb-cost-pro-mobile-expo-qr.png"
+type = "image"
+title = "FnB Cost Pro Mobile — Expo QR"
+description = "Scan with Expo Go on Android or the Camera app on iOS while the Expo workflow is running."
+logical_id = "9b817a19-aaf6-4d7b-9b8d-37ff3484cfbd"
+content_hash = "sha256:8cd92c0a7ba11a51fe75bc12648447f717fef2df9d477bff28baf3b93bcc88d4"
+size = 3869
+mtime_ms = 1789875766745
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/9b817a19-aaf6-4d7b-9b8d-37ff3484cfbd/ca4e8894-f860-401e-8032-096d8af4c0e1"
+storage_version_token = "1789875767806406"
+content_type = "image/png"
+
+[[outputs]]
+id = "1axMOczONQMHxoxPJDdNj"
+uri = "file://generated/fnb-cost-pro-mobile-expo-sdk57-qr.png"
+type = "image"
+title = "FnB Cost Pro Mobile — Expo SDK 57"
+description = "Scan with stock Expo Go 57. Test navigation, counts, search, camera/scanning, audio, photo selection, sign-in, and embedded web pages."
+logical_id = "f2f55052-0f35-4878-8c8b-e8c056194e7f"
+content_hash = "sha256:8cd92c0a7ba11a51fe75bc12648447f717fef2df9d477bff28baf3b93bcc88d4"
+size = 3869
+mtime_ms = 1789877097636
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/f2f55052-0f35-4878-8c8b-e8c056194e7f/6ab93306-867d-481e-971f-c21662d20c8f"
+storage_version_token = "1789877098397629"
+content_type = "image/png"
+
+[[outputs]]
+id = "ARVMEqviiq7G7OFLCWIg-"
+uri = "file://reports/bay-hill-count-setup-review-2026-09-23.csv"
+type = "table"
+title = "Bay Hill items needing count setup"
+description = "The 200-item worklist with item names, current case quantities, retained source packs, and review reasons."
+logical_id = "271d51d1-8c16-43f4-8a10-569a16b496b3"
+content_hash = "sha256:6343b7fcc31b1b1c6b64c1bb9b94f8be2f103a1a05d4d0f2fe5b35eaeadbd297"
+size = 23394
+mtime_ms = 1790197833647
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/271d51d1-8c16-43f4-8a10-569a16b496b3/6a526147-bc93-41d4-a539-d47a197fef6b"
+storage_version_token = "1790201071493587"
+content_type = "text/csv"
+
+[[outputs]]
+id = "6BLjJGsUwptpRZFXtHGyO"
+uri = "file://reports/bay-hill-remaining-count-review-2026-09-28.csv"
+type = "table"
+title = "Bay Hill: 90-item count review register"
+description = "Read-only development reconciliation, evidence, saved count parts, and the specific confirmation needed for each remaining item."
+logical_id = "74e9b9eb-0be1-48a3-9ea8-a00b5280481b"
+content_hash = "sha256:d0d828b045f0cb02f4fe58379eff41a330805fce0eedae171af99b253d04227c"
+size = 83056
+mtime_ms = 1790624694024
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/74e9b9eb-0be1-48a3-9ea8-a00b5280481b/45493691-8098-4694-a8a6-5b6db8c57588"
+storage_version_token = "1790624753207822"
+content_type = "text/csv"
+
+[[outputs]]
+id = "SnEyd7IllvrCWK7LFzUqU"
+uri = "file://reports/bay-hill-remaining-count-review-2026-09-28.md"
+type = "text"
+title = "Bay Hill: remaining-count review summary"
+description = "Category totals, eight historical holds, evidence limits, and review priorities."
+logical_id = "920b4042-60c5-442a-9d6b-e7da79a6c738"
+content_hash = "sha256:cb10241e9faac66f2b62a0ba08990d945b4d566d9f694a1bfa3788de8f615b45"
+size = 10306
+mtime_ms = 1790624731447
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/920b4042-60c5-442a-9d6b-e7da79a6c738/6320cff9-06ef-4abf-8f7e-145640fbd0b9"
+storage_version_token = "1790624753906475"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "RJZqBVumWFMNu56pd2qZX"
+uri = "file://docs/uom-architecture-north-star.md"
+type = "text"
+title = "FnB Cost Pro UOM architecture north star"
+description = "Approved unit boundaries, Orderly historical-count rules, worked examples, and open decisions."
+logical_id = "4f3a1b3e-de33-495d-9485-5c9cd2c95859"
+content_hash = "sha256:2956a3374e331801fdfeaf6db3a4d7a3bac812135ff3c2449b79824d8dfcb06b"
+size = 11030
+mtime_ms = 1790634813701
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/4f3a1b3e-de33-495d-9485-5c9cd2c95859/bcc2798f-6148-45ae-adb3-cb9c4ac8d52b"
+storage_version_token = "1790634855008422"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "FDSwKI0u-zskQmxwa-qrK"
+uri = "file://reports/bay-hill-historical-count-unit-reconciliation-2026-09-28.csv"
+type = "table"
+title = "Bay Hill historical count row register"
+description = "615 approved May–July source rows with July saved-line, unit, quantity, tier, and value reconciliation."
+logical_id = "c84b46fc-e720-4950-b04d-3edc610265c8"
+content_hash = "sha256:e9254e8ff2a64d5c75c8c57a24ee880a1354e32cda24e2227529e6dc903d3ebd"
+size = 384665
+mtime_ms = 1790635746837
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/c84b46fc-e720-4950-b04d-3edc610265c8/9f698671-ad0f-4456-a0eb-ee6dcdb7afeb"
+storage_version_token = "1790635867794757"
+content_type = "text/csv"
+
+[[outputs]]
+id = "CuzgTMjLmXeFyZ7arVkMZ"
+uri = "file://reports/bay-hill-vps-may-june-row-findings-private.csv"
+type = "table"
+title = "Bay Hill May–June draft row findings"
+description = "Private row-level unit and count-part comparisons for 4,851 saved lines. IDs and findings only; no item names, locations, quantities, or prices. Do not commit or share publicly."
+logical_id = "543dbeb7-7c25-42c0-9e37-cd046beaa60d"
+content_hash = "sha256:6675985e3c4be179f6091d9242819ec643e5033f642f6ed03c19f87ed8140d31"
+size = 1283269
+mtime_ms = 1790707777958
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:57599a0e-3189-4470-b579-f766f62718dc/543dbeb7-7c25-42c0-9e37-cd046beaa60d/c6296fb3-540e-467c-a5f2-84899ba18e7b"
+storage_version_token = "1790707832646688"
+content_type = "text/csv"

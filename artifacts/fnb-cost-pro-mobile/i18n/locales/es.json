@@ -160,7 +160,9 @@
     "noItemsCounted": "Sin artículos contados en esta {{type}}",
     "tryAgain": "Reintentar",
     "itemCount_one": "{{count}} artículo en {{group}}",
-    "itemCount_other": "{{count}} artículos en {{group}}"
+    "itemCount_other": "{{count}} artículos en {{group}}",
+    "counted": "Contado",
+    "notCounted": "Sin contar"
   },
   "inventory": {
     "title": "Inventario"

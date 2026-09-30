@@ -7,12 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "fnb-cost-pro-mobile",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1B4332"
-    },
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
@@ -22,7 +16,12 @@
       }
     },
     "android": {
-      "permissions": ["android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_IMAGES", "android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -36,6 +35,14 @@
       ],
       "expo-font",
       "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#1B4332"
+        }
+      ],
       [
         "expo-camera",
         {
@@ -55,7 +62,9 @@
         {
           "photosPermission": "FNB Cost Pro needs access to your photo library to upload inventory photos for analysis."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

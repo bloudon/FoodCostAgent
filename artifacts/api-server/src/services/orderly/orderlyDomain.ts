@@ -78,6 +78,8 @@ import {
   deriveOrderlyStableCodePackSourceId,
 } from './orderlyIdentity';
 import { parseOrderlyPackSize } from './OrderlyParser';
+import { derivePhysicalCountPack } from '../inventory/orderlyCountPack';
+import { getOperationalContainerLabel } from '../inventory/countQuantity';
 import {
   createOrderlyDecisionManifest,
   fingerprintOrderlyPreview,
@@ -4364,6 +4366,14 @@ export async function applyBatchApproval(
         rowPreview.itemMatch.strategy !== 'same_workbook_identity';
       const insertNewItem = async (): Promise<string> => {
         const catalogGeometry = toCatalogPackGeometry(sourcePackGeometry(rowPreview));
+        const physicalCountPack = rowPreview.packSizeRaw
+          ? derivePhysicalCountPack(rowPreview.packSizeRaw)
+          : null;
+        const countGeometry = physicalCountPack && catalogGeometry &&
+          physicalCountPack.canonicalUnit === catalogGeometry.canonicalUnit &&
+          Math.abs(physicalCountPack.caseSize - catalogGeometry.caseSize) <=
+            Math.max(0.01, catalogGeometry.caseSize * 0.0001)
+          ? physicalCountPack : null;
         const canonicalUnitId = catalogGeometry
           ? catalogUnitByKey.get(normalizeForMatch(catalogGeometry.canonicalUnit))
           : catalogUnitByKey.get('ea') ?? catalogUnitByKey.get('each');
@@ -4394,9 +4404,21 @@ export async function applyBatchApproval(
             name,
             unitId: canonicalUnitId,
             caseSize,
-            containerSize: catalogGeometry?.containerSize ?? null,
-            containerUnitId: catalogGeometry ? canonicalUnitId : null,
-            casePkgCount: catalogGeometry?.casePkgCount ?? null,
+            containerSize: countGeometry?.containerSize ?? null,
+            containerUnitId: countGeometry ? canonicalUnitId : null,
+            casePkgCount: countGeometry?.casePkgCount ?? null,
+            // Incomplete source geometry must not quietly enable counting in
+            // canonical mL/oz/EA. Keep the item in setup-required mode.
+            containerLabel: countGeometry
+              ? countGeometry.explicitLabel ??
+                (catalogGeometry?.canonicalUnit === 'EA'
+                  ? 'each'
+                  : getOperationalContainerLabel({ name, containerLabel: null }) === 'container'
+                    ? countGeometry.sourceSizeLabel
+                      ? `${countGeometry.sourceSizeLabel} package`
+                      : 'package'
+                    : getOperationalContainerLabel({ name, containerLabel: null }))
+              : 'package',
             pricePerUnit: canonicalUnitCost,
             avgCostPerUnit: canonicalUnitCost,
             active: 1,

@@ -10,24 +10,24 @@ import { Platform } from "react-native";
 import { router } from "expo-router";
 import { setAuthTokenGetter, setUnauthorizedHandler } from "@workspace/api-client-react";
 import i18n from "@/i18n";
+import { getAppBaseUrl, PROD_APP_BASE_URL } from "@/lib/appBaseUrl";
 
 const TOKEN_KEY = "fnb_auth_token";
 const USER_KEY = "fnb_auth_user";
 const LANG_KEY = "fnb_language";
 
-const PROD_BASE = "https://app.fnbcostpro.com";
+const PROD_BASE = PROD_APP_BASE_URL;
 
 // On native dev builds we talk to the local Replit API server instead of
-// production, so testers can exercise the full voice-waste pipeline without
-// needing a production account or deployed endpoints.
+// production so physical-device testing uses the same data as the workspace.
 function getAuthBase(): string {
-  if (__DEV__ && Platform.OS !== "web") {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    if (domain) return `https://${domain}/api`;
-  }
-  return PROD_BASE;
+  return getAppBaseUrl();
 }
 const AUTH_BASE = getAuthBase();
+
+export function buildMobileLoginUrl(authBase: string): string {
+  return `${authBase.replace(/\/+$/, "")}/api/mobile/login`;
+}
 
 export interface AuthUser {
   email: string;
@@ -171,11 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    // In native dev mode AUTH_BASE points to the local Replit API server;
-    // that server exposes /mobile/dev-login (any password accepted, auto-seeds data).
-    const loginPath =
-      AUTH_BASE !== PROD_BASE ? "/mobile/dev-login" : "/api/mobile/login";
-    const response = await fetch(`${AUTH_BASE}${loginPath}`, {
+    const response = await fetch(buildMobileLoginUrl(AUTH_BASE), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),

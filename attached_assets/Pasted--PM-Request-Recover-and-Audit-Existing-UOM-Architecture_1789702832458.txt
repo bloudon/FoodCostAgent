@@ -1,0 +1,161 @@
+# PM Request — Recover and Audit Existing UOM Architecture System-Wide
+
+## Objective
+
+We previously invested substantial effort reviewing and designing FnB Cost Pro's unit-of-measure system, including purchasing, pack conversions, physical inventory counting, recipe costing, and inventory valuation.
+
+Recent August counting problems suggest that parts of the established design are disconnected or inconsistently implemented.
+
+**Before proposing any further UOM changes, recover the original design decisions and audit the current implementation against them.**
+
+This is an investigation and documentation request only. No feature development or database changes are authorized.
+
+## 1. Recover the original UOM design
+
+Review `replit.md`, the PM decision log, completed development tasks, architecture documentation, and relevant source-code history.
+
+Identify the original decisions governing:
+
+* Canonical inventory units and their purpose.
+* Vendor purchase units and pack geometry.
+* Physical inventory counting units.
+* Item-specific unit conversions.
+* Recipe units and recipe costing.
+* Issue/transfer units.
+* Receiving quantities and conversions.
+* Inventory valuation, weighted average cost, and price history.
+
+Distinguish original approved decisions from later implementation changes or assumptions.
+
+Provide task numbers, relevant commits, and source-file references wherever available.
+
+**Do not reinterpret the intended design based solely on how the current code happens to behave.**
+
+## 2. Document the intended end-to-end UOM model
+
+Explain how an item moves through the complete system:
+
+Vendor catalog → Purchasing → Receiving → Inventory → Physical counting → Recipe usage → Costing.
+
+Use actual examples from Bay Hill inventory, including:
+
+**Liquor example**
+
+* Purchased by case or bottle.
+* Physically counted as cases, bottles, and partial bottles.
+* Converted internally to the canonical measurement quantity.
+* Used in recipes by ounces or milliliters.
+* Valued correctly regardless of the unit used during counting or purchasing.
+
+**Food example**
+
+Demonstrate an item purchased by case, counted by its practical physical packaging, and consumed in recipes by weight, volume, or portion.
+
+Show where each conversion is defined, which system component owns it, and whether it is item-specific or generic.
+
+## 3. Establish the physical counting contract
+
+Our clarified product requirement is:
+
+**Recipe measurement units must never become inventory counting units merely because they are the item's canonical or recipe unit.**
+
+For liquor, an employee counts bottles and partial bottles—not mL or fluid ounces.
+
+For other products, counting must use the item's appropriate physical or operational counting units.
+
+Determine how our original design intended to support this distinction.
+
+Specifically investigate:
+
+* How count units were originally defined or derived.
+* How cases, containers, individual packages, and partial packages are represented.
+* Whether an item can have more than one valid physical counting configuration.
+* How item-level count geometry relates to vendor-specific pack geometry.
+* How fractional packages are converted and stored.
+* Whether any existing count-unit configuration or conversion definitions are currently unused.
+
+Do not assume we need a new Count Unit table or another UOM framework.
+
+## 4. Audit the actual implementation
+
+Trace the current source code and database schema for each UOM responsibility.
+
+For every relevant workflow, report:
+
+| Area                | Intended behavior | Actual behavior | Source of truth | Gap |
+| ------------------- | ----------------- | --------------- | --------------- | --- |
+| Vendor catalog      |                   |                 |                 |     |
+| Purchasing          |                   |                 |                 |     |
+| Receiving           |                   |                 |                 |     |
+| Inventory storage   |                   |                 |                 |     |
+| Manual counting     |                   |                 |                 |     |
+| Mobile counting     |                   |                 |                 |     |
+| Recipe entry        |                   |                 |                 |     |
+| Recipe costing      |                   |                 |                 |     |
+| Inventory valuation |                   |                 |                 |     |
+| Transfers/issues    |                   |                 |                 |     |
+
+Identify duplicated conversion logic, deprecated fields, inconsistent unit labels, and places where a quantity can pass between workflows without the required conversion.
+
+Pay particular attention to the previously identified split between canonical inventory locations and legacy counting behavior.
+
+## 5. Review the existing unit-integrity corrections
+
+Include the recent manual-count, vendor-pricing, and receiving fixes.
+
+Establish which corrections are implemented, tested, deployed, or still pending.
+
+Confirm the status of the receiving audit identifying:
+
+* 25 potentially mismatched lines.
+* 11 completed receipts.
+* 5 inventory items.
+* 1 company.
+
+Do not interpret those historical quantities as definitively incorrect without transaction-level evidence.
+
+Do not propose automatic historical conversion.
+
+## 6. Identify the minimum remaining work
+
+Separate findings into:
+
+**A. Existing functionality that simply needs reconnecting**
+
+**B. Confirmed implementation defects**
+
+**C. Missing configuration or incomplete item geometry**
+
+**D. Genuine gaps in the previously approved design**
+
+**E. Historical data requiring separate operator review**
+
+For each finding, state the actual operational impact and the smallest correction using existing components.
+
+Do not combine every finding into one large UOM rebuild.
+
+## 7. Required deliverable
+
+Return one concise Markdown report containing:
+
+1. Original approved UOM design and supporting references.
+2. Current system-wide UOM architecture.
+3. End-to-end liquor and food conversion examples.
+4. Physical counting versus recipe-unit rules.
+5. Intended-versus-actual implementation matrix.
+6. Confirmed defects and their operational impact.
+7. Current status of the recent corrections.
+8. Minimum remaining work, grouped by priority.
+9. Any unresolved design decisions requiring Brian's input.
+
+Include a simple unit-flow diagram if useful.
+
+**Do not create new implementation tasks until the PM reviews this report.**
+
+## Simplicity and scope-creep check
+
+Have Claude independently review the findings and answer:
+
+"Are we rediscovering or rebuilding functionality that FnB Cost Pro already has? Which apparent UOM problems can be resolved by reconnecting or correctly configuring the existing design?"
+
+The objective is to restore the intended system, not design another one.

@@ -14,6 +14,11 @@ export function useUpdateItemCount(
   const { getToken, handleUnauthorized } = useAuth();
   const { backendUrl } = useScan();
   const [hasSaveError, setHasSaveError] = useState(false);
+  const packageSaveChainsRef = useRef(new Map<string, Promise<{
+    qty: number;
+    caseQty: number;
+    containerQty: number;
+  } | null>>());
   const onServerQtyRef = useRef(onServerQty);
   onServerQtyRef.current = onServerQty;
 
@@ -53,6 +58,73 @@ export function useUpdateItemCount(
       }
     },
     [getToken, backendUrl, sessionId, handleUnauthorized]
+  );
+
+  // Package counts are absolute physical quantities. They must never use the
+  // canonical direct-set or atomic add queues: the server derives canonical
+  // quantity from cases and physical containers.
+  const savePackageCount = useCallback(
+    async (
+      itemId: string,
+      caseQty: number,
+      containerQty: number,
+    ): Promise<{
+      qty: number;
+      caseQty: number;
+      containerQty: number;
+    } | null> => {
+      const url = `${backendUrl}/api/mobile/sessions/${sessionId}/lines/${itemId}`;
+      const previous = packageSaveChainsRef.current.get(itemId) ?? Promise.resolve(null);
+      const request = previous.then(async () => {
+        try {
+          const token = await getToken();
+          const res = await fetchWithAuth(
+            url,
+            {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                caseQty,
+                containerQty,
+                looseUnits: 0,
+              }),
+            },
+            handleUnauthorized,
+          );
+          if (!res.ok) {
+            setHasSaveError(true);
+            return null;
+          }
+          const line = await res.json();
+          const qty = typeof line?.qty === "number" ? line.qty : null;
+          if (qty === null) {
+            setHasSaveError(true);
+            return null;
+          }
+          const confirmed = {
+            qty,
+            caseQty: typeof line?.caseQty === "number" ? line.caseQty : caseQty,
+            containerQty: typeof line?.containerQty === "number" ? line.containerQty : containerQty,
+          };
+          onServerQtyRef.current?.(itemId, confirmed.qty);
+          return confirmed;
+        } catch {
+          setHasSaveError(true);
+          return null;
+        }
+      });
+      packageSaveChainsRef.current.set(itemId, request);
+      void request.finally(() => {
+        if (packageSaveChainsRef.current.get(itemId) === request) {
+          packageSaveChainsRef.current.delete(itemId);
+        }
+      });
+      return request;
+    },
+    [getToken, backendUrl, sessionId, handleUnauthorized],
   );
 
   const patchSetRef = useRef(patchSet);
@@ -186,5 +258,13 @@ export function useUpdateItemCount(
     };
   }, [flushAll]);
 
-  return { saveCount, addToCount, flushAll, hasSaveError, clearSaveError, clearAllCounts };
+  return {
+    saveCount,
+    savePackageCount,
+    addToCount,
+    flushAll,
+    hasSaveError,
+    clearSaveError,
+    clearAllCounts,
+  };
 }

@@ -1,5 +1,7 @@
 type VendorPriceRow = {
   lastPrice: number;
+  lastCasePrice?: number;
+  caseSize?: number;
   normalizedPricePerCanonicalUnit: number | null;
   packGeometryStatus: string | null;
   unit?: { name: string } | null;
@@ -18,14 +20,28 @@ function displayUnit(name: string | null | undefined): string {
 export function getVendorPricePresentation(
   vendorItem: VendorPriceRow,
   canonicalUnitName: string | null | undefined,
+  physicalPurchaseUnitName?: string | null,
 ): VendorPricePresentation {
-  const purchaseUnit = displayUnit(vendorItem.unit?.name);
+  const hasPhysicalPurchasePrice =
+    Boolean(physicalPurchaseUnitName?.trim()) &&
+    vendorItem.lastCasePrice != null &&
+    Number.isFinite(vendorItem.lastCasePrice) &&
+    vendorItem.lastCasePrice >= 0 &&
+    vendorItem.caseSize != null &&
+    Number.isFinite(vendorItem.caseSize) &&
+    vendorItem.caseSize > 0;
+  const purchaseUnit = displayUnit(
+    hasPhysicalPurchasePrice ? physicalPurchaseUnitName : vendorItem.unit?.name,
+  );
+  const purchasePrice = hasPhysicalPurchasePrice
+    ? vendorItem.lastCasePrice! / vendorItem.caseSize!
+    : vendorItem.lastPrice;
   const canonicalUnit = displayUnit(canonicalUnitName);
   const normalized = vendorItem.normalizedPricePerCanonicalUnit;
 
   if (normalized != null && Number.isFinite(normalized) && normalized >= 0) {
     return {
-      purchasePrice: `$${vendorItem.lastPrice.toFixed(2)}/${purchaseUnit}`,
+      purchasePrice: `$${purchasePrice.toFixed(2)}/${purchaseUnit}`,
       canonicalPrice: `$${normalized.toFixed(6)}/${canonicalUnit}`,
       canonicalStatus: "available",
     };
@@ -39,7 +55,7 @@ export function getVendorPricePresentation(
         : "required";
 
   return {
-    purchasePrice: `$${vendorItem.lastPrice.toFixed(2)}/${purchaseUnit}`,
+    purchasePrice: `$${purchasePrice.toFixed(2)}/${purchaseUnit}`,
     canonicalPrice: null,
     canonicalStatus,
   };

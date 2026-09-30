@@ -92,6 +92,17 @@ export async function canAccessStore(user: User, storeId: string): Promise<boole
   return false;
 }
 
+/** Count-line mutations must honor both the active company context and store access. */
+export async function canEditCountLineInStore(
+  user: User,
+  requestCompanyId: string | undefined,
+  count: { companyId: string; storeId: string },
+): Promise<boolean> {
+  return !!requestCompanyId
+    && requestCompanyId === count.companyId
+    && await canAccessStore(user, count.storeId);
+}
+
 /**
  * Get list of store IDs that a user can access
  */

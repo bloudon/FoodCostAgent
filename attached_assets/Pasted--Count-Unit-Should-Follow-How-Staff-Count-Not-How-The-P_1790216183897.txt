@@ -1,0 +1,115 @@
+# Count Unit Should Follow How Staff Count, Not How The Pack Is Weighed
+
+**Context:** Bay Hill count-setup review, 200 items flagged for pack verification
+**Scope:** How FnB derives an item's canonical count unit from Orderly pack notation
+**Not a bug in one item — a modelling rule that affects the whole catalog**
+
+---
+
+## The principle
+
+**An item's canonical unit should be the thing a person picks up when counting.**
+
+For a bag of chips that is a bag. For a case of broccoli it is a pound. The unit is a property of how the product is handled and sold, not of what the pack notation happens to state.
+
+Weight is only the right unit when the product is genuinely weighed or portioned by weight.
+
+---
+
+## The worked example
+
+`Asst Lays Chips`, retained packs `1/30 EA | 1/60 EA`, canonical unit `ea`.
+
+Research confirms these are not competing case sizes: **Frito-Lay's 60-count foodservice case is two 30-count inner boxes.** Vendor listings describe it as "(2) 30-count variety boxes" and "30 bags per tray, 2 trays per case, giving a stock of 60 individual packs."
+
+So both numbers are real — 60 is the master case, 30 is the inner box. Staff have confirmed counting by the 60-bag case.
+
+**Crucially, the case is not a fixed weight.** Its contents mix 1.5 oz Lay's, 2 oz Cheetos, 1.75 oz Doritos and 1.125 oz Baked Lay's. There is no meaningful "ounces per case."
+
+The club sells a member **one bag** with a sandwich. The cost that matters is `case price ÷ 60`. Any attempt to express this item in ounces would be both impossible to derive and useless once derived.
+
+`ea` is correct here, and `1/60 EA` is the current standard.
+
+---
+
+## Where the model currently goes wrong
+
+The canonical unit appears to be derived from the **pack notation's unit token** rather than from the nature of the product. When a source pack says `12/32 OZ`, the item becomes ounce-based — even when what staff actually handle is a tub, a tray, or a sleeve.
+
+**19 items in this worklist are on `oz` or `ml` while sitting in categories that are discrete by nature:**
+
+| Item | Category | Unit | Retained packs |
+|---|---|---|---|
+| Chocolate Chip Cookie Dough | Vendor Prepared Items | oz | `1/80 EA \| 80/4.5 OZ` |
+| Vegetable Blends/Medley's | Vendor Prepared Items | oz | `12/32 OZ \| 6/4 LB` |
+| Veggie Burger | Vendor Prepared Items | oz | `29/5.5 OZ \| 32/6 OZ` |
+| Roasted Potatoes | Vendor Prepared Items | oz | `5/3 LB \| 6/2.5 LB` |
+| Muffin | Bread | oz | `24/4 OZ \| 96/2.25 OZ` |
+| San Pellegrino | Non-Alcoholic Beverages | ml | `1/12 EA \| 15/1 750ML` |
+| Lemonade | Non-Alcoholic Beverages | oz | `15/14 OZ \| 15/2 GAL` |
+| Tofu - Firm | Dry Goods | oz | `12/16 OZ \| 12/19 OZ` |
+
+`Chocolate Chip Cookie Dough` is the clearest case: one retained pack literally says `1/80 EA` — 80 pucks — while the other says `80/4.5 OZ`, which is the same 80 pucks *described by weight*. The item is 80 discrete portions. It is currently `oz`.
+
+`Muffin` at `24/4 OZ | 96/2.25 OZ` is 24 muffins or 96 muffins. Nobody weighs a muffin.
+
+`San Pellegrino` at `1/12 EA | 15/1 750ML` is bottles, counted as bottles.
+
+---
+
+## Requested rule
+
+**Derive the canonical unit from what is counted, with the pack notation as evidence rather than as the answer.**
+
+1. **When any retained pack for an item is expressed in `EA`, the item is discrete.** Canonical unit is `ea`; the other pack's weight is the *size of one unit*, not the counting dimension. Cookie Dough `1/80 EA | 80/4.5 OZ` → 80 ea, each 4.5 oz.
+
+2. **When a pack states a count of identically-sized containers** — `12/32 OZ`, `24/4 OZ`, `15/1 750ML` — the countable unit is the container. Record both: `ea` for counting, container size for costing and recipes.
+
+3. **Weight or volume is canonical only when the product is genuinely bulk** — meat by the pound, oil by the litre, flour by the kilo. Broccoli at `1/20 POUND` is correctly weight-based.
+
+4. **Never average a weight across a mixed case.** Where a case contains different-sized items (variety packs), weight is not derivable and must not be synthesised.
+
+---
+
+## Why this matters beyond tidiness
+
+**Counting.** Staff count what they can see. Asking for ounces of muffins produces a guess or a blank.
+
+**Costing.** Cost per bag, per muffin, per burger is the figure a chef uses. Cost per ounce of a variety pack is meaningless.
+
+**Recipes.** A recipe calls for one burger patty or two ounces of cheese. The unit must match how the ingredient is consumed, and those are different answers for different items.
+
+**Variance.** A wrong unit does not produce a small error; it produces a nonsensical one. An item counted in bags but valued per ounce will be wrong by whatever the bag weight happens to be.
+
+---
+
+## Done looks like
+
+* Canonical unit derives from countability, not from the first unit token found in pack notation.
+* Any item with an `EA` pack among its retained packs defaults to `ea`, with weight retained as unit size.
+* A pack of the form `N/M <weight or volume unit>` where N > 1 is recognised as N countable containers of M.
+* Items in inherently discrete categories — Vendor Prepared Items, Bread, Paper Products, TOGO Supplies — are not assigned weight units without explicit evidence that they are weighed.
+* Mixed-content cases are never assigned a synthetic average weight.
+* The 19 items listed above are re-evaluated under the corrected rule.
+* Existing approved inventory values are unchanged — this affects unit and costing derivation, not imported value.
+
+---
+
+## Out of scope
+
+* Changing approved May, June or July batch values.
+* Re-running any import.
+* Resolving the 123 `1/1 Case` items, whose contents are genuinely unknown at source and must come from staff or a packing slip.
+
+---
+
+## Reference: the count-setup worklist splits four ways
+
+| Group | Count | Nature |
+|---|---:|---|
+| Equivalent "conflicts" | 10 | Both packs normalize to the same total — close, no question |
+| Genuine pack conflicts | 49 | One question each to staff or vendor |
+| `1/1 Case`, contents unknown at source | 123 | Not researchable; 63 are Vendor Prepared Items |
+| Other / mixed | 18 | Case by case |
+
+Only 49 items need a vendor answer. The unit-model correction above affects how all 200 should be represented regardless of which pack turns out to be current.

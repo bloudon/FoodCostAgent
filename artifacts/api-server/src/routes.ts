@@ -24,8 +24,40 @@ import { buildSavingsReliabilityReasons, checkInventoryItemMatch, checkPackSizeC
 import { createRoutingPOGuard } from "./lib/routeLinesHandler";
 import { historicalSessionBlock, isHistoricalImportSession } from "./services/inventory/historicalSessionGuard";
 import { ManualCountPopulationError, populateManualCountLines } from "./services/inventory/manualCountPopulation";
-import { calculateCanonicalCountQuantity, InvalidCountGeometryError } from "./services/inventory/countQuantity";
-import { filterItemsByEffectiveLocation, getEffectiveInventoryItemLocationsBatch, getInventoryItemsByEffectiveLocation } from "./services/inventory/effectiveItemLocations";
+import { getSupplierPackChronology } from "./services/inventory/supplierPackChronology";
+import {
+  conflictsWithOrdinaryCountDate,
+  isOrdinaryManualCount,
+  ordinaryCountDateLockKey,
+  ordinaryCountStoreLockKey,
+} from "./services/inventory/ordinaryCountGuard";
+import { logger } from "./lib/logger";
+import { correctionVersionMatches, latestConfirmedPackDecision, latestCorrectionId, mayCorrectPackTransition, projectPackDecisions } from "./services/inventory/packTransitionCorrection";
+import {
+  derivePriorZeroEvidence,
+  reconcilePreviousCountLines,
+  selectPreviousEligibleCount,
+} from "./services/inventory/previousCount";
+import { assessBayHillLine, BAY_HILL_LOCATION_CORRECTIONS } from "./services/inventory/bayHillLocationGuard";
+import {
+  calculateCanonicalCountQuantity,
+  directMeasurementCountBlock,
+  getCountInputMode,
+  getCountMetadata,
+  getOperationalContainerLabel,
+  InvalidCountGeometryError,
+  makeCountPackSnapshot,
+  inferSavedLegacyCaseQuantity,
+  resolveOperationalPackSizeRaw,
+  validateCountDelta,
+  validateDirectCountQuantity,
+} from "./services/inventory/countQuantity";
+import {
+  filterItemsByEffectiveLocation,
+  getEffectiveInventoryItemLocationsBatch,
+  getInventoryItemsByEffectiveLocation,
+  isEffectiveInventoryItemLocation,
+} from "./services/inventory/effectiveItemLocations";
 import { createOAuthClient, getActiveConnection, getAuthenticatedClient } from "./services/quickbooks";
 import OAuthClient from "intuit-oauth";
 import { cache, CacheKeys, CacheTTL, cacheInvalidator, cacheLog } from "./cache";
@@ -46,6 +78,7 @@ import { registerSalesByItemRoutes } from "./routes/salesByItemRoutes";
 import { registerReportRoutes } from "./routes/reportRoutes";
 import { registerChatLogsRoutes } from "./routes/chatLogsRoutes";
 import { registerPendingUserAssignRoutes } from "./routes/pendingUserAssignRoute";
+import { registerAugustCountRoutes } from "./routes/augustCountRoutes";
 import healthRouter from "./routes/health";
 import { providerSupportsElectronic, isKnownProvider } from "./integrations/pos/registry";
 import { createReviewStepHandler, createGetMilestonesHandler, getEffectiveCompanyId } from "./lib/milestonesHandler";
@@ -55,12 +88,14 @@ import { createFinalizeHandler } from "./lib/finalizeHandler";
 import type { EnrichedInventoryItem } from "./types";
 import { z } from "zod";
 import { createSession, requireAuth, optionalAuth, requireTier, verifyPassword, hashPassword } from "./auth";
-import { getAccessibleStores, canAccessStore } from "./permissions";
+import { getAccessibleStores, canAccessStore, canEditCountLineInStore } from "./permissions";
 import { db } from "./db";
 import { resolveVendorItemForManualCreate, resolveVendorItemForPoLine } from "./services/vendorItemCallSites";
 import { withTransaction } from "./transaction";
 import { eq, and, or, inArray, gte, lte, like, not, gt, isNull, isNotNull, sql, asc, desc, max } from "drizzle-orm";
-import { inventoryItems, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations, voiceInterpretLogs } from "@workspace/db";
+import { alias } from "drizzle-orm/pg-core";
+import { inventoryItems, inventoryItemExternalMappings, inventoryItemLocationAssignments, inventoryItemPackTransitions, inventoryItemPackTransitionCorrections, vendorItemExternalMappings, storeInventoryItems, inventoryItemLocations, storageLocations, menuItems, storeMenuItems, storeRecipes, inventoryCounts, inventoryCountLines, inventoryCountEntries, inventoryImportBatches, inventoryImportRows, importSourcePropertyBindings, companyStores, vendorItems, inventoryItemPriceHistory, receipts, purchaseOrders, poLines, transferOrders, transferOrderLines, dailyMenuItemSales, theoreticalUsageRuns, theoreticalUsageLines, recipes, recipeComponents, recipeVersions, vendors, categories, onboardingProgress, backgroundImages, companies as companiesTable, invitations, users, authSessions, menuImportSessions, menuItemSizes, menuDepartments, recipeImportSessions, emailOtps, shelfScanSessions, units as unitsTable, orderGuides, orderGuideLines, menuItemRecipes, poExportLogs, platformVendorRegistry, customerSupplierConnections, poRoutingAudit, inventoryLocations, voiceInterpretLogs } from "@workspace/db";
+const canonicalItemUnits = alias(unitsTable, "canonical_inventory_item_unit");
 import { getExportRenderer, detectConnectorFromVendorName } from "./integrations/export";
 import { resolveConnectorId } from "./integrations/capabilityRouter";
 import { listConnectorDefinitions } from "./integrations/connectorRegistry";
@@ -199,6 +234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAccountingRoutes(app);
   registerSalesByItemRoutes(app);
   registerReportRoutes(app);
+  registerAugustCountRoutes(app);
   app.use('/api/extension', extensionRouter);
 
   // GET /api/changelog — parses CHANGELOG.md and returns structured version entries
@@ -9134,6 +9170,336 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // An evidence timeline, not an inferred supplier replacement decision.
+  app.get("/api/inventory-items/:id/pack-history", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      if (!companyId) return res.status(401).json({ error: "Company context required" });
+      const item = await storage.getInventoryItem(req.params.id as string);
+      if (!item || item.companyId !== companyId) return res.status(404).json({ error: "Inventory item not found" });
+
+      const accessibleStoreIds = await getAccessibleStores((req as any).user, companyId);
+      const requestedStore = typeof req.query.storeId === "string" ? req.query.storeId : null;
+      if (requestedStore && !accessibleStoreIds.includes(requestedStore)) {
+        return res.status(404).json({ error: "Store not found" });
+      }
+      const countStoreIds = requestedStore ? [requestedStore] : accessibleStoreIds;
+      const lines = countStoreIds.length ? await db
+        .select({
+          id: inventoryCountLines.id,
+          countDate: inventoryCounts.countDate,
+          storeId: inventoryCounts.storeId,
+          qty: inventoryCountLines.qty,
+          caseQty: inventoryCountLines.caseQty,
+          containerQty: inventoryCountLines.containerQty,
+          looseUnits: inventoryCountLines.looseUnits,
+          unitId: inventoryCountLines.unitId,
+          countPackSnapshot: inventoryCountLines.countPackSnapshot,
+        })
+        .from(inventoryCountLines)
+        .innerJoin(inventoryCounts, eq(inventoryCountLines.inventoryCountId, inventoryCounts.id))
+        .where(and(
+          eq(inventoryCountLines.inventoryItemId, item.id),
+          eq(inventoryCounts.companyId, companyId),
+          inArray(inventoryCounts.storeId, countStoreIds),
+        ))
+        .orderBy(desc(inventoryCounts.countDate)) : [];
+
+      const { events } = await getSupplierPackChronology(item.id, companyId);
+      const transitions = await db.select().from(inventoryItemPackTransitions)
+        .where(and(
+          eq(inventoryItemPackTransitions.companyId, companyId),
+          eq(inventoryItemPackTransitions.inventoryItemId, item.id),
+        ))
+        .orderBy(asc(inventoryItemPackTransitions.effectiveDate));
+      const corrections = await db.select().from(inventoryItemPackTransitionCorrections)
+        .where(and(
+          eq(inventoryItemPackTransitionCorrections.companyId, companyId),
+          eq(inventoryItemPackTransitionCorrections.inventoryItemId, item.id),
+        ))
+        .orderBy(asc(inventoryItemPackTransitionCorrections.createdAt));
+      const activeTransitions = projectPackDecisions(transitions, corrections);
+      const currentCase = Number(item.containerSize ?? 0) * Number(item.casePkgCount ?? 0);
+      const company = await storage.getCompany(companyId);
+      const localToday = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: company?.timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
+      const latestOperationalDecision = latestConfirmedPackDecision(activeTransitions, localToday);
+      const latestConfirmed = (() => {
+        if (!latestOperationalDecision) return null;
+        const pack = latestOperationalDecision.operationalPackSnapshot as {
+          unitId?: string; caseSize?: number; containerSize?: number;
+          casePkgCount?: number; containerLabel?: string | null;
+        } | null;
+        return pack?.unitId === item.unitId &&
+          pack.caseSize === item.caseSize &&
+          pack.containerSize === item.containerSize &&
+          pack.casePkgCount === item.casePkgCount &&
+          pack.containerLabel === item.containerLabel &&
+          currentCase > 0 ? latestOperationalDecision : null;
+      })();
+      return res.json({
+        currentStandard: item.containerSize != null && item.casePkgCount != null &&
+          item.containerSize > 0 && item.casePkgCount > 0
+          ? {
+              canonicalUnitsPerCase: item.containerSize * item.casePkgCount,
+              containersPerCase: item.casePkgCount,
+              canonicalUnitsPerContainer: item.containerSize,
+              label: item.containerLabel,
+              unitId: item.unitId,
+              // Current configuration has no recorded effective date/approval.
+              effectiveDate: latestConfirmed?.effectiveDate ?? null,
+              confirmation: latestConfirmed ? "operator_recorded" : "not_recorded",
+            }
+          : null,
+        events,
+        transitions,
+        corrections,
+        counts: lines.map((line: any) => ({
+          ...line,
+          // Legacy arithmetic is explicitly not a verified package identity.
+          inferredUnitsPerCase: inferSavedLegacyCaseQuantity(line),
+        })),
+      });
+    } catch (error) {
+      console.error("Supplier pack history error", error);
+      return res.status(500).json({ error: "Unable to load pack history" });
+    }
+  });
+
+  // Correction is a new decision, never an edit to the approval or to saved operational evidence.
+  app.post("/api/inventory-items/:id/pack-history/transitions/:transitionId/corrections", requireAuth, async (req, res) => {
+    const companyId = (req as any).companyId as string | undefined;
+    const actor = (req as any).user;
+    if (!companyId || !actor?.id) return res.status(401).json({ error: "Authentication required" });
+    if (!mayCorrectPackTransition(actor.role)) return res.status(403).json({ error: "Company administrator access required" });
+    const parsed = z.discriminatedUnion("decision", [
+      z.object({
+        decision: z.literal("void"), effectiveDate: z.string(), reason: z.string().trim().min(10).max(500),
+        expectedCorrectionId: z.string().nullable(),
+      }).strict(),
+      z.object({
+        decision: z.literal("correct"), effectiveDate: z.string(), reason: z.string().trim().min(10).max(500),
+        expectedCorrectionId: z.string().nullable(),
+        fromVendorItemId: z.string().min(1), toVendorItemId: z.string().min(1),
+      }).strict(),
+    ]).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Provide a decision, date, reason and current correction version" });
+    const input = parsed.data;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveDate) ||
+        Number.isNaN(Date.parse(`${input.effectiveDate}T00:00:00Z`)) ||
+        new Date(`${input.effectiveDate}T00:00:00Z`).toISOString().slice(0, 10) !== input.effectiveDate ||
+        (input.decision === "correct" && input.fromVendorItemId === input.toVendorItemId)) {
+      return res.status(400).json({ error: "Select distinct products and a valid decision date" });
+    }
+    const company = await storage.getCompany(companyId);
+    const today = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: company?.timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    if (input.effectiveDate > today) return res.status(400).json({ error: "Decision date cannot be in the future" });
+    try {
+      const result = await db.transaction(async (tx: any) => {
+        // Serialize all corrections to this original, including the first one.
+        const [original] = await tx.select().from(inventoryItemPackTransitions)
+          .where(and(
+            eq(inventoryItemPackTransitions.id, req.params.transitionId as string),
+            eq(inventoryItemPackTransitions.inventoryItemId, req.params.id as string),
+            eq(inventoryItemPackTransitions.companyId, companyId),
+          )).for("update");
+        if (!original) return { status: 404 as const, error: "Approval not found" };
+        const prior = await tx.select().from(inventoryItemPackTransitionCorrections)
+          .where(and(
+            eq(inventoryItemPackTransitionCorrections.originalTransitionId, original.id),
+            eq(inventoryItemPackTransitionCorrections.companyId, companyId),
+            eq(inventoryItemPackTransitionCorrections.inventoryItemId, original.inventoryItemId),
+          ));
+        const head = latestCorrectionId(original.id, prior);
+        if (!correctionVersionMatches(input.expectedCorrectionId, head)) {
+          return { status: 409 as const, error: "This approval was corrected elsewhere. Reload its history before deciding." };
+        }
+        let pack: {
+          fromVendorItemId: string; toVendorItemId: string;
+          fromPackSnapshot: unknown; toPackSnapshot: unknown;
+        } | null = null;
+        if (input.decision === "correct") {
+          const ids = [input.fromVendorItemId, input.toVendorItemId];
+          const products = await tx.select({
+            id: vendorItems.id, vendorName: vendors.name, vendorSku: vendorItems.vendorSku,
+            caseSize: vendorItems.caseSize, innerPackSize: vendorItems.innerPackSize,
+            packUom: vendorItems.packUom, canonicalQuantity: vendorItems.canonicalQtyPerPurchaseUnit,
+            packGeometryStatus: vendorItems.packGeometryStatus,
+          }).from(vendorItems).innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+            .where(and(inArray(vendorItems.id, ids),
+              eq(vendorItems.inventoryItemId, original.inventoryItemId),
+              eq(vendors.companyId, companyId))).for("share");
+          if (products.length !== 2 || products.some((p: typeof products[number]) =>
+            p.packGeometryStatus !== "verified" ||
+            !Number.isFinite(p.canonicalQuantity) || Number(p.canonicalQuantity) <= 0 ||
+            !Number.isFinite(p.caseSize) || Number(p.caseSize) <= 0 ||
+            !Number.isFinite(p.innerPackSize) || Number(p.innerPackSize) <= 0 || !p.packUom)) {
+            return { status: 422 as const, error: "Both products must have verified pack sizes for this item" };
+          }
+          const mappings = await tx.select({
+            vendorItemId: vendorItemExternalMappings.vendorItemId,
+            sourceExternalId: vendorItemExternalMappings.sourceExternalId,
+          }).from(vendorItemExternalMappings)
+            .where(and(eq(vendorItemExternalMappings.companyId, companyId),
+              inArray(vendorItemExternalMappings.vendorItemId, ids)));
+          const snapshot = (id: string) => {
+            const product = products.find((p: typeof products[number]) => p.id === id)!;
+            const sourceIds = [...new Set(mappings.filter((m: typeof mappings[number]) => m.vendorItemId === id).map((m: typeof mappings[number]) => m.sourceExternalId))];
+            return {
+              vendorName: product.vendorName,
+              sku: product.vendorSku ?? (sourceIds.length === 1 ? sourceIds[0] : null),
+              packLabel: `${product.caseSize} × ${product.innerPackSize} ${product.packUom}`,
+              canonicalQuantity: product.canonicalQuantity,
+            };
+          };
+          pack = {
+            fromVendorItemId: ids[0], toVendorItemId: ids[1],
+            fromPackSnapshot: snapshot(ids[0]), toPackSnapshot: snapshot(ids[1]),
+          };
+        }
+        const [created] = await tx.insert(inventoryItemPackTransitionCorrections).values({
+          originalTransitionId: original.id, supersedesCorrectionId: head,
+          companyId, inventoryItemId: original.inventoryItemId,
+          decision: input.decision, effectiveDate: input.effectiveDate,
+          reason: input.reason, decidedBy: actor.id,
+          ...pack,
+        }).returning();
+        return { status: 201 as const, data: created };
+      });
+      if ("error" in result) return res.status(result.status).json({ error: result.error });
+      return res.status(201).json(result.data);
+    } catch (error) {
+      logger.error({ error }, "Record supplier pack correction failed");
+      return res.status(500).json({ error: "Unable to record correction" });
+    }
+  });
+
+  // Append-only operator decision: never rewrites source evidence or historical counts.
+  app.post("/api/inventory-items/:id/pack-history/transitions", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      const actor = (req as any).user;
+      if (!companyId || !actor?.id) return res.status(401).json({ error: "Authentication required" });
+      if (!["global_admin", "company_admin"].includes(actor.role)) {
+        return res.status(403).json({ error: "Company administrator access required" });
+      }
+      const item = await storage.getInventoryItem(req.params.id as string);
+      if (!item || item.companyId !== companyId) return res.status(404).json({ error: "Inventory item not found" });
+      const parsed = z.object({
+        fromVendorItemId: z.string().min(1),
+        toVendorItemId: z.string().min(1),
+        effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        evidenceNote: z.string().trim().min(10).max(500),
+        confirmCountingStandard: z.boolean().default(false),
+      }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Valid products, date and evidence are required" });
+      const { fromVendorItemId, toVendorItemId, effectiveDate, evidenceNote, confirmCountingStandard } = parsed.data;
+      if (fromVendorItemId === toVendorItemId ||
+          Number.isNaN(Date.parse(`${effectiveDate}T00:00:00Z`)) ||
+          new Date(`${effectiveDate}T00:00:00Z`).toISOString().slice(0, 10) !== effectiveDate) {
+        return res.status(400).json({ error: "Select distinct products and a valid effective date" });
+      }
+      const company = await storage.getCompany(companyId);
+      const localToday = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: company?.timezone ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
+      if (effectiveDate > localToday) {
+        return res.status(400).json({ error: "Replacement date cannot be in the future" });
+      }
+
+      const result = await db.transaction(async (tx: any) => {
+        const [lockedItem] = await tx.select({
+          id: inventoryItems.id,
+          unitId: inventoryItems.unitId,
+          caseSize: inventoryItems.caseSize,
+          containerSize: inventoryItems.containerSize,
+          casePkgCount: inventoryItems.casePkgCount,
+          containerLabel: inventoryItems.containerLabel,
+        }).from(inventoryItems)
+          .where(and(eq(inventoryItems.id, item.id), eq(inventoryItems.companyId, companyId)))
+          .for("share");
+        if (!lockedItem) return null;
+        const products = await tx.select({
+          id: vendorItems.id,
+          vendorName: vendors.name,
+          vendorSku: vendorItems.vendorSku,
+          caseSize: vendorItems.caseSize,
+          innerPackSize: vendorItems.innerPackSize,
+          packUom: vendorItems.packUom,
+          canonicalQuantity: vendorItems.canonicalQtyPerPurchaseUnit,
+          packGeometryStatus: vendorItems.packGeometryStatus,
+        }).from(vendorItems)
+          .innerJoin(vendors, eq(vendorItems.vendorId, vendors.id))
+          .where(and(
+            inArray(vendorItems.id, [fromVendorItemId, toVendorItemId]),
+            eq(vendorItems.inventoryItemId, item.id),
+            eq(vendors.companyId, companyId),
+          )).for("share");
+        if (products.length !== 2 ||
+            products.some((p: any) => p.packGeometryStatus !== "verified" ||
+              !Number.isFinite(p.canonicalQuantity) || p.canonicalQuantity <= 0 ||
+              !Number.isFinite(p.caseSize) || p.caseSize <= 0 ||
+              !Number.isFinite(p.innerPackSize) || p.innerPackSize <= 0 ||
+              !p.packUom)) {
+          return null;
+        }
+        const sourceIds = await tx.select({
+          vendorItemId: vendorItemExternalMappings.vendorItemId,
+          sourceExternalId: vendorItemExternalMappings.sourceExternalId,
+        }).from(vendorItemExternalMappings)
+          .where(and(
+            eq(vendorItemExternalMappings.companyId, companyId),
+            inArray(vendorItemExternalMappings.vendorItemId, [fromVendorItemId, toVendorItemId]),
+          ));
+        const snapshot = (product: typeof products[number]) => {
+          const mappingIds = [...new Set(sourceIds
+            .filter((mapping: any) => mapping.vendorItemId === product.id)
+            .map((mapping: any) => mapping.sourceExternalId))];
+          return {
+            vendorName: product.vendorName,
+            sku: product.vendorSku ?? (mappingIds.length === 1 ? mappingIds[0] : null),
+            packLabel: `${product.caseSize} × ${product.innerPackSize} ${product.packUom}`,
+            canonicalQuantity: product.canonicalQuantity,
+          };
+        };
+        const from = products.find((p: any) => p.id === fromVendorItemId)!;
+        const to = products.find((p: any) => p.id === toVendorItemId)!;
+        const operationalPackSnapshot = confirmCountingStandard ? {
+          unitId: lockedItem.unitId,
+          caseSize: lockedItem.caseSize,
+          containerSize: lockedItem.containerSize,
+          casePkgCount: lockedItem.casePkgCount,
+          containerLabel: lockedItem.containerLabel,
+        } : null;
+        if (confirmCountingStandard &&
+            (!(lockedItem.containerSize != null && lockedItem.containerSize > 0 &&
+               lockedItem.casePkgCount != null && lockedItem.casePkgCount > 0) ||
+             lockedItem.containerSize * lockedItem.casePkgCount !== to.canonicalQuantity ||
+             lockedItem.caseSize !== to.canonicalQuantity)) {
+          return "pack_mismatch";
+        }
+        const [created] = await tx.insert(inventoryItemPackTransitions).values({
+          companyId, inventoryItemId: item.id, fromVendorItemId, toVendorItemId,
+          effectiveDate, evidenceNote, approvedBy: actor.id,
+          fromPackSnapshot: snapshot(from), toPackSnapshot: snapshot(to),
+          countingStandardConfirmed: confirmCountingStandard ? 1 : 0,
+          operationalPackSnapshot,
+        }).onConflictDoNothing().returning();
+        return created ?? "duplicate";
+      });
+      if (result === null) return res.status(422).json({ error: "Both products must have verified pack sizes for this item" });
+      if (result === "pack_mismatch") return res.status(422).json({ error: "Replacement pack does not match this item's current counting standard" });
+      if (result === "duplicate") return res.status(409).json({ error: "This replacement is already recorded" });
+      return res.status(201).json(result);
+    } catch (error) {
+      console.error("Record pack replacement error", error);
+      return res.status(500).json({ error: "Unable to record replacement" });
+    }
+  });
+
   // Bulk vendor price comparison — one comparison entry per selected vendor
   // product. The exact vendor_item ID is the selection identity; vendorId is
   // only display/grouping data because one vendor may have multiple products
@@ -11816,7 +12182,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const storeId = req.query.storeId as string | undefined;
     const storageLocationId = req.query.storageLocationId as string | undefined;
-    const counts = await storage.getInventoryCounts(companyId, storeId, storageLocationId);
+    const user = (req as any).user;
+    const accessibleStoreIds = new Set(await getAccessibleStores(user, companyId));
+    if (storeId && !accessibleStoreIds.has(storeId)) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+    const companyCounts = await storage.getInventoryCounts(companyId, storeId, storageLocationId);
+    const counts = companyCounts.filter((count) => accessibleStoreIds.has(count.storeId));
     
     // Enrich counts with store information
     // Get unique company IDs from counts to fetch all relevant stores
@@ -11836,10 +12208,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       usersByCompany.set(cid, userMap);
     }
     
-    // Fetch progress (countedItems / totalItems) for all sessions in one query
+    // Fetch progress and value/location summaries only for the authorized sessions.
+    // Keeping these grouped queries bounded to countIds avoids the per-session line
+    // reads that the inventory sessions page used to require.
     const countIds = counts.map(c => c.id);
-    const progressData = await storage.getInventoryCountProgressBatch(countIds);
+    const companyIdsForCounts = [...new Set(counts.map(c => c.companyId))];
+    const [progressData, locationSummaryRows, locationNames] = await Promise.all([
+      storage.getInventoryCountProgressBatch(countIds),
+      countIds.length === 0 ? Promise.resolve([]) : db
+        .select({
+          countId: inventoryCountLines.inventoryCountId,
+          locationId: inventoryCountLines.storageLocationId,
+          counted: sql<number>`count(*) filter (where ${inventoryCountLines.qty} > 0)::int`,
+          total: sql<number>`count(*)::int`,
+          value: sql<number>`coalesce(sum(${inventoryCountLines.qty} * ${inventoryCountLines.unitCost}), 0)::float`,
+        })
+        .from(inventoryCountLines)
+        .where(inArray(inventoryCountLines.inventoryCountId, countIds))
+        .groupBy(inventoryCountLines.inventoryCountId, inventoryCountLines.storageLocationId),
+      Promise.all([
+        Promise.all(companyIdsForCounts.map(companyId =>
+          storage.getStorageLocations(companyId)
+        )),
+        companyIdsForCounts.length === 0
+          ? Promise.resolve([])
+          : db.select({ id: inventoryLocations.id, name: inventoryLocations.name })
+            .from(inventoryLocations)
+            .where(inArray(inventoryLocations.companyId, companyIdsForCounts)),
+      ]),
+    ]);
     const progressMap = new Map(progressData.map(p => [p.countId, p]));
+    const locationNameMap = new Map<string, string>();
+    for (const locations of locationNames[0]) {
+      for (const location of locations) locationNameMap.set(location.id, location.name);
+    }
+    for (const location of locationNames[1]) locationNameMap.set(location.id, location.name);
+    const locationSummariesByCount = new Map<string, Array<{
+      id: string; name: string; counted: number; total: number; value: number;
+    }>>();
+    for (const row of locationSummaryRows) {
+      const summaries = locationSummariesByCount.get(row.countId) ?? [];
+      summaries.push({
+        id: row.locationId,
+        name: locationNameMap.get(row.locationId) || "Unknown Location",
+        counted: row.counted ?? 0,
+        total: row.total ?? 0,
+        value: row.value ?? 0,
+      });
+      locationSummariesByCount.set(row.countId, summaries);
+    }
 
     const enrichedCounts = counts.map(count => {
       const store = storesMap.get(count.storeId);
@@ -11851,12 +12268,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? "System"
           : count.userId || "Unknown";
       const progress = progressMap.get(count.id);
+      const locationSummaries = locationSummariesByCount.get(count.id) ?? [];
       return {
         ...count,
         storeName: store?.name || 'Unknown Store',
         userName,
         countedItems: progress?.countedItems ?? 0,
         totalItems: progress?.totalItems ?? 0,
+        distinctItems: progress?.distinctItems ?? 0,
+        totalLines: progress?.totalLines ?? 0,
+        itemLocationLines: progress?.totalLines ?? 0,
+        totalValue: locationSummaries.reduce((sum, location) => sum + location.value, 0),
+        locationSummaries,
       };
     });
     
@@ -11956,6 +12379,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (count.companyId !== companyId) {
       return res.status(404).json({ error: "Count not found" });
     }
+    if (!(await canAccessStore((req as any).user, count.storeId))) {
+      return res.status(404).json({ error: "Count not found" });
+    }
     
     const user = (req as any).user;
     
@@ -12001,6 +12427,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (user.role !== "global_admin" && user.companyId !== store.companyId) {
       return res.status(403).json({ error: "Access denied: Store belongs to different company" });
     }
+    if (!(await canAccessStore(user, storeId))) {
+      return res.status(404).json({ error: "Store not found" });
+    }
     
     // Get all counts for this store (now validated for access)
     const counts = await storage.getInventoryCounts(store.companyId, storeId);
@@ -12018,39 +12447,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // @ts-ignore
   app.get("/api/inventory-count-lines/:countId", requireAuth, async (req, res) => {
     const countId = String(req.params.countId);
+    const compactMobileResponse = req.query.compact === "mobile";
     // Resolve and authorize the session before reading any count-line data.
     const count = await storage.getInventoryCount(countId);
     const requestCompanyId = (req as any).companyId as string | undefined;
     if (!count || !requestCompanyId || count.companyId !== requestCompanyId) {
       return res.status(404).json({ error: "Count not found" });
     }
+    if (!(await canAccessStore((req as any).user, count.storeId))) {
+      return res.status(404).json({ error: "Count not found" });
+    }
 
     const companyId = count?.companyId;
     const lines = await storage.getInventoryCountLines(countId);
     
-    // Fetch data filtered by company for multi-tenant safety
-    const units = await storage.getUnits();
-    const inventoryItems = await storage.getInventoryItems(undefined, undefined, companyId);
-    const categories = await storage.getCategories(companyId);
-    const legacyStorageLocations = await storage.getStorageLocations(companyId);
-    const canonicalStorageLocations: { id: string; name: string }[] = await db
-      .select({
-        id: inventoryLocations.id,
-        name: inventoryLocations.name,
-      })
-      .from(inventoryLocations)
-      .where(eq(inventoryLocations.companyId, companyId));
+    const countItemIds = [...new Set(lines.map(line => line.inventoryItemId))];
+    // These reads are independent. Fetch them together, and keep every item
+    // lookup company-scoped so a line can never enrich from another tenant.
+    const [
+      units,
+      inventoryItems,
+      categories,
+      legacyStorageLocations,
+      sourcePackMappings,
+      canonicalStorageLocations,
+      allEntries,
+    ] = await Promise.all([
+      storage.getUnits(),
+      storage.getInventoryItems(undefined, undefined, companyId),
+      storage.getCategories(companyId),
+      storage.getStorageLocations(companyId),
+      countItemIds.length > 0
+        ? db
+          .select({
+            inventoryItemId: inventoryItemExternalMappings.inventoryItemId,
+            packSizeRaw: inventoryItemExternalMappings.packSizeRaw,
+          })
+          .from(inventoryItemExternalMappings)
+          .where(and(
+            eq(inventoryItemExternalMappings.companyId, companyId),
+            eq(inventoryItemExternalMappings.sourceSystem, "ORDERLY"),
+            inArray(inventoryItemExternalMappings.inventoryItemId, countItemIds),
+          ))
+        : Promise.resolve([]),
+      db
+        .select({
+          id: inventoryLocations.id,
+          name: inventoryLocations.name,
+        })
+        .from(inventoryLocations)
+        .where(eq(inventoryLocations.companyId, companyId)),
+      storage.getEntriesForLines(lines.map(l => l.id)),
+    ]);
+    const sourcePackValuesByItem = new Map<string, Array<string | null>>();
+    for (const mapping of sourcePackMappings) {
+      const values = sourcePackValuesByItem.get(mapping.inventoryItemId) ?? [];
+      values.push(mapping.packSizeRaw);
+      sourcePackValuesByItem.set(mapping.inventoryItemId, values);
+    }
     const storageLocationMap = new Map<string, { id: string; name: string; sortOrder?: number; allowCaseCounting?: number }>([
       ...legacyStorageLocations.map((location: { id: string; name: string; sortOrder: number; allowCaseCounting: number }) => [location.id, location] as const),
-      ...canonicalStorageLocations.map(location => [
+      ...canonicalStorageLocations.map((location: { id: string; name: string }) => [
         location.id,
         { ...location, sortOrder: 999, allowCaseCounting: 1 },
       ] as const),
     ]);
 
-    // Task #78: fetch all entries for all lines in one query, then join with users for names
-    const lineIds = lines.map(l => l.id);
-    const allEntries = await storage.getEntriesForLines(lineIds);
     // Fetch user names for entries that have a userId
     const entryUserIds = [...new Set(allEntries.map(e => e.userId).filter(Boolean))] as string[];
     let entryUsers: { id: string; firstName: string | null; lastName: string | null }[] = [];
@@ -12061,29 +12523,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(inArray(users.id, entryUserIds));
     }
     const entryUserMap = new Map(entryUsers.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown']));
+    const unitsById = new Map(units.map(unit => [unit.id, unit]));
+    const itemsById = new Map(inventoryItems.map(item => [item.id, item]));
+    const categoriesById = new Map(categories.map(category => [category.id, category]));
+    const entriesByLineId = new Map<string, typeof allEntries>();
+    for (const entry of allEntries) {
+      const lineEntries = entriesByLineId.get(entry.inventoryCountLineId) ?? [];
+      lineEntries.push(entry);
+      entriesByLineId.set(entry.inventoryCountLineId, lineEntries);
+    }
 
     const enriched = lines.map(line => {
-      const unit = units.find(u => u.id === line.unitId);
-      const item = inventoryItems.find(i => i.id === line.inventoryItemId);
-      const category = item?.categoryId ? categories.find(c => c.id === item.categoryId) : null;
+      const unit = unitsById.get(line.unitId);
+      const item = itemsById.get(line.inventoryItemId);
+      const category = item?.categoryId ? categoriesById.get(item.categoryId) : null;
       const storageLocation = storageLocationMap.get(line.storageLocationId);
       
+      const countMetadata = item
+        ? getCountMetadata(
+          item,
+          category?.isCatchWeightCategory === 1,
+          line.looseUnits,
+        )
+        : {};
+      const operationalCountMode = item
+        ? getCountInputMode(item, category?.isCatchWeightCategory === 1)
+        : null;
+      const measurementCountBlock = item && operationalCountMode
+        ? directMeasurementCountBlock(operationalCountMode, unit?.kind)
+        : null;
       const enrichedItem = item ? {
-        ...item,
-        containerLabel:
-          item.containerLabel ||
-          units.find(candidate => candidate.id === item.containerUnitId)?.name ||
-          null,
+        ...(compactMobileResponse ? {
+          id: item.id,
+          unitId: item.unitId,
+          name: item.name,
+          barcode: item.barcode,
+          pluSku: item.pluSku,
+          categoryId: item.categoryId,
+          caseSize: item.caseSize,
+          containerSize: item.containerSize,
+          casePkgCount: item.casePkgCount,
+        } : item),
+        // Operational count identity must be explicitly configured on the item.
+        // A measurement unit such as mL is not a physical container label.
+        containerLabel: getOperationalContainerLabel(item, category?.name),
+        sourcePackSizeRaw: resolveOperationalPackSizeRaw(
+          sourcePackValuesByItem.get(item.id) ?? [],
+        ),
         unitName: unit?.name || "unit",
         unitAbbreviation: unit?.abbreviation || "unit",
         category: category?.name || null,
+        ...countMetadata,
+        ...(measurementCountBlock
+          ? { countMode: "unconfigured", countBlockedReason: measurementCountBlock }
+          : { countMode: operationalCountMode }),
         lastCost: item.pricePerUnit * item.caseSize,
         storageLocationId: line.storageLocationId, // Use the location from the count line
         storageLocationName: storageLocation?.name || null
       } : null;
 
-      const entries = allEntries
-        .filter(e => e.inventoryCountLineId === line.id)
+      const entries = (entriesByLineId.get(line.id) ?? [])
         .map(e => ({
           id: e.id,
           qty: e.qty,
@@ -12137,6 +12636,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!requestCompanyId || count.companyId !== requestCompanyId) {
         return res.status(404).json({ error: "Count not found" });
       }
+      const user = (req as any).user;
+      if (!(await canAccessStore(user, count.storeId))) {
+        return res.status(403).json({ error: "Store access denied" });
+      }
 
       const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
       if (historicalEditBlock) {
@@ -12144,7 +12647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const item = await storage.getInventoryItem(lineData.inventoryItemId);
-      if (!item || item.companyId !== count.companyId) {
+      if (!item || item.companyId !== count.companyId || item.active !== 1) {
         return res.status(404).json({ error: "Inventory item not found" });
       }
       if (lineData.unitId !== item.unitId) {
@@ -12152,21 +12655,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: "Count line unit does not match the item's canonical inventory unit",
         });
       }
-
-      const legacyLocations = await storage.getStorageLocations(count.companyId);
-      const [canonicalLocation] = await db
-        .select({ id: inventoryLocations.id })
-        .from(inventoryLocations)
-        .where(and(
-          eq(inventoryLocations.id, lineData.storageLocationId),
-          eq(inventoryLocations.companyId, count.companyId),
-        ))
+      const category = item.categoryId
+        ? await storage.getCategory(item.categoryId, count.companyId)
+        : undefined;
+      const countMode = getCountInputMode(
+        item,
+        category?.isCatchWeightCategory === 1,
+      );
+      const [countUnit] = await db.select({ kind: unitsTable.kind })
+        .from(unitsTable)
+        .where(eq(unitsTable.id, item.unitId))
         .limit(1);
-      const locationBelongsToCompany =
-        canonicalLocation != null ||
-        legacyLocations.some(location => location.id === lineData.storageLocationId);
-      if (!locationBelongsToCompany) {
-        return res.status(404).json({ error: "Storage location not found" });
+      const directUnitBlock = directMeasurementCountBlock(countMode, countUnit?.kind);
+      if (directUnitBlock) {
+        return res.status(422).json({ error: directUnitBlock, code: "MEASUREMENT_UNIT_REQUIRES_COUNT_SETUP" });
+      }
+
+      const effectiveLocations = await getStoreEffectiveLocationsForItem(
+        count.companyId,
+        count.storeId,
+        item.id,
+      );
+      if (effectiveLocations === null) {
+        return res.status(404).json({ error: "Inventory item is not active at this store" });
+      }
+      if (
+        effectiveLocations.length === 0 ||
+        !isEffectiveInventoryItemLocation(effectiveLocations, lineData.storageLocationId)
+      ) {
+        return res.status(403).json({
+          error: "Storage location is not effectively assigned to this item at this store",
+        });
       }
 
       const hasPackageParts =
@@ -12175,6 +12694,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lineData.looseUnits != null;
       const canonicalLineData = { ...lineData };
       if (hasPackageParts) {
+        if (countMode !== "package") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before package counting"
+              : "Package quantities are not valid for this count item",
+          });
+        }
         try {
           canonicalLineData.qty = calculateCanonicalCountQuantity(
             item,
@@ -12185,6 +12711,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               looseUnits: Number(lineData.looseUnits ?? 0),
             },
           );
+          // Client input cannot choose the historical conversion.
+          (canonicalLineData as any).countPackSnapshot = makeCountPackSnapshot(item);
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
+      } else if (countMode !== "direct" && countMode !== "catch") {
+        return res.status(422).json({
+          error: countMode === "unconfigured"
+            ? "Counting setup required before counting this item"
+            : "Use caseQty and containerQty for package counting",
+        });
+      } else if (canonicalLineData.qty != null) {
+        try {
+          canonicalLineData.qty = validateDirectCountQuantity(
+            Number(canonicalLineData.qty),
+          );
         } catch (error) {
           if (error instanceof InvalidCountGeometryError) {
             return res.status(422).json({ error: error.message });
@@ -12193,8 +12738,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const user = (req as any).user;
-      
       // Determine if this is the latest count for the store
       const allCounts = await storage.getInventoryCounts(count.companyId, count.storeId);
       const sortedCounts = allCounts.sort((a, b) => 
@@ -12227,6 +12770,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  const getCountLineEntriesForResponse = async (
+    lineId: string,
+    companyId: string,
+  ) => {
+    const entries = await storage.getEntriesForLines([lineId]);
+    const entryUserIds = [...new Set(entries.map(entry => entry.userId).filter(Boolean))] as string[];
+    const entryUsers = entryUserIds.length > 0
+      ? await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
+        .from(users)
+        .where(and(
+          inArray(users.id, entryUserIds),
+          or(eq(users.companyId, companyId), isNull(users.companyId)),
+        ))
+      : [];
+    const namesByUserId = new Map(
+      entryUsers.map((user: {
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+      }) => [
+        user.id,
+        `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Unknown",
+      ]),
+    );
+    return entries.map(entry => ({
+      id: entry.id,
+      qty: entry.qty,
+      enteredAt: entry.enteredAt,
+      userName: entry.userId ? namesByUserId.get(entry.userId) || "Unknown" : null,
+    }));
+  };
+
+  const getStoreEffectiveLocationsForItem = async (
+    companyId: string,
+    storeId: string,
+    inventoryItemId: string,
+  ) => {
+    const [storeItemAssignment] = await db.select({ id: storeInventoryItems.id })
+      .from(storeInventoryItems)
+      .where(and(
+        eq(storeInventoryItems.companyId, companyId),
+        eq(storeInventoryItems.storeId, storeId),
+        eq(storeInventoryItems.inventoryItemId, inventoryItemId),
+        eq(storeInventoryItems.active, 1),
+      ))
+      .limit(1);
+    if (!storeItemAssignment) return null;
+
+    const [legacyLocationsByItem, companyLocations] = await Promise.all([
+      storage.getInventoryItemLocationsBatch([inventoryItemId]),
+      storage.getStorageLocations(companyId),
+    ]);
+    const effectiveLocationsByItem = await getEffectiveInventoryItemLocationsBatch(
+      companyId,
+      [inventoryItemId],
+      legacyLocationsByItem,
+      companyLocations,
+    );
+    return effectiveLocationsByItem.get(inventoryItemId) ?? [];
+  };
+
   // @ts-ignore
   app.patch("/api/inventory-count-lines/:id", requireAuth, async (req, res) => {
     try {
@@ -12235,6 +12840,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const addQty: number | undefined = req.body.addQty != null ? Number(req.body.addQty) : undefined;
       const { accumulate: _drop, addQty: _dropAddQty, ...bodyWithoutAccumulate } = req.body;
       const lineData = insertInventoryCountLineSchema.partial().parse(bodyWithoutAccumulate);
+      // A count line's identity is immutable. Authorization and location/unit
+      // checks below are scoped to the saved line, not to a client-selected
+      // destination session, item, or unit.
+      if (lineData.inventoryCountId !== undefined ||
+          lineData.inventoryItemId !== undefined ||
+          lineData.unitId !== undefined) {
+        return res.status(422).json({ error: "Count line session, item, and unit cannot be changed" });
+      }
       // @ts-ignore
       const existingLine = await storage.getInventoryCountLine(req.params.id);
       
@@ -12248,7 +12861,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Count session not found" });
       }
       const requestCompanyId = (req as any).companyId as string | undefined;
-      if (!requestCompanyId || count.companyId !== requestCompanyId) {
+      if (!(await canEditCountLineInStore((req as any).user, requestCompanyId, count))) {
         return res.status(404).json({ error: "Count line not found" });
       }
 
@@ -12276,6 +12889,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      const item = await storage.getInventoryItem(existingLine.inventoryItemId);
+      if (!item || item.companyId !== count.companyId || item.active !== 1) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const effectiveLocations = await getStoreEffectiveLocationsForItem(
+        count.companyId,
+        count.storeId,
+        item.id,
+      );
+      if (effectiveLocations === null) {
+        return res.status(404).json({ error: "Inventory item is not active at this store" });
+      }
+      const targetLocationId = lineData.storageLocationId ?? existingLine.storageLocationId;
+      if (!isEffectiveInventoryItemLocation(effectiveLocations, targetLocationId)) {
+        return res.status(403).json({
+          error: "Count line location is not effectively assigned to this item at this store",
+        });
+      }
+      const category = item.categoryId
+        ? await storage.getCategory(item.categoryId, count.companyId)
+        : undefined;
+      const countMode = getCountInputMode(
+        item,
+        category?.isCatchWeightCategory === 1,
+      );
+      const [countUnit] = await db.select({ kind: unitsTable.kind })
+        .from(unitsTable)
+        .where(eq(unitsTable.id, item.unitId))
+        .limit(1);
+      const directUnitBlock = directMeasurementCountBlock(countMode, countUnit?.kind);
+      if (directUnitBlock) {
+        return res.status(422).json({ error: directUnitBlock, code: "MEASUREMENT_UNIT_REQUIRES_COUNT_SETUP" });
+      }
+
       // Server-side validation and qty recalculation for case counting
       const updates: any = { ...lineData };
       
@@ -12283,32 +12930,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updates.caseQty != null || updates.containerQty != null || updates.looseUnits != null) {
         const caseQty = updates.caseQty ?? existingLine.caseQty ?? 0;
         const containerQty = updates.containerQty ?? existingLine.containerQty ?? 0;
-        const looseUnits = updates.looseUnits ?? existingLine.looseUnits ?? 0;
+        const looseUnits = updates.looseUnits ?? 0;
+        if (countMode !== "package") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before package counting"
+              : "Package quantities are not valid for this count item",
+          });
+        }
+        if (Number(existingLine.looseUnits ?? 0) > 0) {
+          return res.status(422).json({
+            error: "Historical loose quantity must be cleared before package recounting",
+          });
+        }
         updates.caseQty = caseQty;
         updates.containerQty = containerQty;
-        updates.looseUnits = looseUnits;
+        updates.looseUnits = 0;
         
-        if (caseQty < 0) {
-          return res.status(400).json({ error: "Case quantity cannot be negative" });
+        if (!Number.isFinite(Number(caseQty)) || Number(caseQty) < 0) {
+          return res.status(400).json({ error: "Case quantity must be finite and non-negative" });
         }
-        if (containerQty < 0) {
-          return res.status(400).json({ error: "Container quantity cannot be negative" });
+        if (!Number.isFinite(Number(containerQty)) || Number(containerQty) < 0) {
+          return res.status(400).json({ error: "Container quantity must be finite and non-negative" });
         }
-        if (looseUnits < 0) {
-          return res.status(400).json({ error: "Loose units cannot be negative" });
-        }
-        
         // Recalculate canonical qty from package inputs (server-side integrity check)
-        const item = await storage.getInventoryItem(existingLine.inventoryItemId);
-        if (!item || item.companyId !== count.companyId) {
-          return res.status(404).json({ error: "Inventory item not found" });
-        }
         try {
           updates.qty = calculateCanonicalCountQuantity(
             item,
             existingLine.unitId,
             { caseQty, containerQty, looseUnits },
           );
+          updates.countPackSnapshot = makeCountPackSnapshot(item);
         } catch (error) {
           if (error instanceof InvalidCountGeometryError) {
             return res.status(422).json({ error: error.message });
@@ -12316,6 +12968,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw error;
         }
       } else if (addQty != null) {
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before counting this item"
+              : "Use caseQty and containerQty for package counting",
+          });
+        }
+        try {
+          validateCountDelta(addQty);
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
         // Soft pre-flight check (real enforcement is in the atomic SQL)
         if ((existingLine.qty ?? 0) + addQty < 0) {
           return res.status(400).json({ error: "Quantity cannot be negative" });
@@ -12325,33 +12992,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const patchUser = (req as any).user;
         // @ts-ignore
         const result = await storage.atomicIncrementCountLineQty(req.params.id, addQty, patchUser?.id ?? null);
-        return res.json(result?.line);
+        if (!result?.line) {
+          return res.status(404).json({ error: "Count line not found" });
+        }
+        const entries = await getCountLineEntriesForResponse(result.line.id, count.companyId);
+        return res.json({ ...result.line, entries });
       } else if (updates.qty != null) {
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before counting this item"
+              : "Use caseQty and containerQty for package counting",
+          });
+        }
         // Regular qty update - clear case counting fields
-        if (updates.qty < 0) {
-          return res.status(400).json({ error: "Quantity cannot be negative" });
+        try {
+          updates.qty = validateDirectCountQuantity(Number(updates.qty));
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
         }
         updates.caseQty = null;
         updates.containerQty = null;
         updates.looseUnits = null;
+        updates.countPackSnapshot = null;
       }
 
-      // @ts-ignore
-      const updatedLine = await storage.updateInventoryCountLine(req.params.id, updates);
+      // Direct replacement (including explicit zero) and its audit entry commit together.
+      const updatedLine = await storage.replaceCountLineAndEntry(
+        String(req.params.id), updates, user?.id ?? null,
+      );
 
-      // Task #78: write entry record(s) for audit trail (direct-set paths only — addQty path returns above)
-      if (updatedLine) {
-        const patchUser = (req as any).user;
-        // Direct edit: replace all entries with a single replacement entry
-        await storage.deleteEntriesForLine(updatedLine.id);
-        await storage.createInventoryCountEntry({
-          inventoryCountLineId: updatedLine.id,
-          qty: updatedLine.qty,
-          userId: patchUser?.id ?? null,
-        });
+      if (!updatedLine) {
+        return res.status(404).json({ error: "Count line not found" });
       }
-
-      res.json(updatedLine);
+      const entries = await getCountLineEntriesForResponse(updatedLine.id, count.companyId);
+      res.json({ ...updatedLine, entries });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -12421,6 +13099,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
       }
+      const requestCompanyId = (req as any).companyId as string | undefined;
+      if (!(await canEditCountLineInStore((req as any).user, requestCompanyId, count))) {
+        return res.status(404).json({ error: "Count line not found" });
+      }
       const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
       if (historicalEditBlock) {
         return res.status(403).json(historicalEditBlock);
@@ -12443,7 +13125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updatedLine) {
         return res.status(404).json({ error: "Count line not found" });
       }
-      res.json(updatedLine);
+      res.json({ ...updatedLine, entries: [] });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -12464,6 +13146,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const count = await storage.getInventoryCount(line.inventoryCountId);
       if (!count) {
         return res.status(404).json({ error: "Count session not found" });
+      }
+      const requestCompanyId = (req as any).companyId as string | undefined;
+      if (!(await canEditCountLineInStore((req as any).user, requestCompanyId, count))) {
+        return res.status(404).json({ error: "Count line not found" });
       }
       const historicalEditBlock = historicalSessionBlock(count as any, 'edit');
       if (historicalEditBlock) {
@@ -12494,15 +13180,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/inventory-counts", requireAuth, async (req, res) => {
     let createdCountId: string | null = null;
     try {
-      const parsedInput = insertInventoryCountSchema.parse(req.body);
       const companyId = (req as any).companyId as string | undefined;
       const user = (req as any).user;
       if (!companyId || !user?.id) {
         return res.status(401).json({ error: "Unauthorized" });
       }
+      // Ownership fields come from the authenticated session, not from the
+      // request body. Validate the actual values to be persisted.
+      const parsedInput = insertInventoryCountSchema.parse({
+        ...req.body,
+        companyId,
+        userId: user.id,
+      });
       const store = await storage.getCompanyStore(parsedInput.storeId, companyId);
       if (!store) {
         return res.status(403).json({ error: "Store not found or access denied" });
+      }
+      if (!(await canAccessStore(user, parsedInput.storeId))) {
+        return res.status(403).json({ error: "Store access denied" });
       }
       const countInput = {
         ...parsedInput,
@@ -12515,7 +13210,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         importedSnapshotTotal: null,
         isHistoricalImport: 0,
       };
-
       if (countInput.isPowerSession === 1) {
         // power_inventory is a core platform capability — available on all paid plans.
         // Global admins always pass; for other users, verify the company has an active paid plan.
@@ -12533,7 +13227,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      const count = await storage.createInventoryCount(countInput);
+      let count: any;
+      if (parsedInput.isPowerSession !== 1) {
+        const targetDate = parsedInput.countDate;
+        const dayStart = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), targetDate.getUTCDate()));
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        const ordinaryCreate = await db.transaction(async (tx: any) => {
+          // The transaction-scoped lock remains held through the duplicate read and insert,
+          // so concurrent creates for this exact company/store/day serialize before either
+          // can pass the check. Different stores/dates do not contend.
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountStoreLockKey({
+            companyId,
+            storeId: parsedInput.storeId,
+          })}, 0))`);
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountDateLockKey({
+            companyId,
+            storeId: parsedInput.storeId,
+            countDate: targetDate,
+          })}, 0))`);
+          const existingOrdinaryCounts = await tx.select()
+            .from(inventoryCounts)
+            .where(and(
+              eq(inventoryCounts.companyId, companyId),
+              eq(inventoryCounts.storeId, parsedInput.storeId),
+              eq(inventoryCounts.isPowerSession, 0),
+              eq(inventoryCounts.isHistoricalImport, 0),
+              isNull(inventoryCounts.sourceSystem),
+              isNull(inventoryCounts.sourceBatchId),
+              gte(inventoryCounts.countDate, dayStart),
+              lte(inventoryCounts.countDate, new Date(dayEnd.getTime() - 1)),
+            ));
+          const existingOrdinaryCount = existingOrdinaryCounts.find((existing: any) =>
+            conflictsWithOrdinaryCountDate(existing, {
+              companyId,
+              storeId: parsedInput.storeId,
+              countDate: targetDate,
+              isPowerSession: parsedInput.isPowerSession,
+            }),
+          );
+          if (existingOrdinaryCount) {
+            return { existingOrdinaryCount, createdCount: null };
+          }
+          const [createdCount] = await tx.insert(inventoryCounts).values(countInput).returning();
+          return { existingOrdinaryCount: null, createdCount };
+        });
+        if (ordinaryCreate.existingOrdinaryCount) {
+          return res.status(409).json({
+            error: "An ordinary count already exists for this store and date. Resume the existing session; a duplicate will not be created.",
+            code: "ORDINARY_COUNT_ALREADY_EXISTS",
+            existingCountId: ordinaryCreate.existingOrdinaryCount.id,
+          });
+        }
+        count = ordinaryCreate.createdCount;
+      } else {
+        count = await storage.createInventoryCount(countInput);
+      }
+
       createdCountId = count.id;
       await populateManualCountLines(count.id, companyId, user.id);
 
@@ -12840,6 +13589,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = (req as any).user;
       const { storeId } = req.body;
 
+      if (!companyId || !user?.id) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
       if (!storeId) {
         return res.status(400).json({ error: "Store ID is required" });
       }
@@ -12849,9 +13601,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
       }
+      if (!(await canAccessStore(user, storeId))) {
+        return res.status(403).json({ error: "Store access denied" });
+      }
 
-      // Check if any applied inventory count already exists for this store
+      // A zero baseline must never overwrite or undermine any ordinary physical
+      // count, even when its date differs from today (e.g. a retained August draft).
+      if (companyId === "61971215-e3ed-49f3-8afc-6dbe1eef1fcc" &&
+          storeId === "7126a705-64a6-4362-8b62-f08349640442") {
+        return res.status(409).json({
+          error: "Bay Hill's August 31 physical count must be entered or resumed; a zero baseline is not an August reading.",
+          code: "BAY_HILL_PHYSICAL_COUNT_REQUIRED",
+        });
+      }
       const existingCounts = await storage.getInventoryCounts(companyId, storeId);
+      const existingOrdinaryCount = existingCounts.find(isOrdinaryManualCount);
+      if (existingOrdinaryCount) {
+        return res.status(409).json({
+          error: "A zero baseline cannot be created because an ordinary count already exists for this store.",
+          code: "ORDINARY_COUNT_ALREADY_EXISTS",
+          existingCountId: existingOrdinaryCount.id,
+        });
+      }
       const appliedCounts = existingCounts.filter((c: any) => c.applied === 1);
       if (appliedCounts.length > 0) {
         return res.status(400).json({ 
@@ -12923,16 +13694,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create the baseline inventory count session
       const today = new Date();
       const countDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-      
-      const baselineCount = await storage.createInventoryCount({
-        companyId,
-        storeId,
-        countDate,
-        // @ts-ignore
-        notes: "System-generated zero baseline for new store initialization",
-        userId: user.id,
-        isPowerSession: 0,
+      const baselineCreate = await db.transaction(async (tx: any) => {
+        // Serialize baseline checks against all ordinary store sessions, including
+        // sessions on other dates, then take the shared date lock for same-day policy.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountStoreLockKey({
+          companyId,
+          storeId,
+        })}, 0))`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountDateLockKey({
+          companyId,
+          storeId,
+          countDate,
+        })}, 0))`);
+        const ordinaryCounts = await tx.select()
+          .from(inventoryCounts)
+          .where(and(
+            eq(inventoryCounts.companyId, companyId),
+            eq(inventoryCounts.storeId, storeId),
+            eq(inventoryCounts.isPowerSession, 0),
+            eq(inventoryCounts.isHistoricalImport, 0),
+            isNull(inventoryCounts.sourceSystem),
+            isNull(inventoryCounts.sourceBatchId),
+          ));
+        const existingCount = ordinaryCounts.find(isOrdinaryManualCount);
+        if (existingCount) return { existingCount, baselineCount: null };
+        const [baselineCount] = await tx.insert(inventoryCounts).values({
+          companyId,
+          storeId,
+          countDate,
+          note: "System-generated zero baseline for new store initialization",
+          userId: user.id,
+          isPowerSession: 0,
+        }).returning();
+        return { existingCount: null, baselineCount };
       });
+      if (baselineCreate.existingCount) {
+        return res.status(409).json({
+          error: "An ordinary count already exists for this store. The zero baseline was not created.",
+          code: "ORDINARY_COUNT_ALREADY_EXISTS",
+          existingCountId: baselineCreate.existingCount.id,
+        });
+      }
+      const baselineCount = baselineCreate.baselineCount;
 
       // Create count lines with qty = 0 for all items
       const baselineCompany = await storage.getCompany(companyId);
@@ -13027,6 +13830,256 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  /**
+   * Bay Hill July → August location-review guard.  This deliberately uses
+   * source code/name and source evidence, rather than development UUIDs.
+   * The response is diagnostic only; the resolver below is the only mutator.
+   */
+  const getLocationReview = async (countId: string, requestCompanyId: string, user: any, conn: typeof db = db) => {
+    const [current] = await conn.select().from(inventoryCounts).where(eq(inventoryCounts.id, countId));
+    if (!current || current.companyId !== requestCompanyId || !(await canAccessStore(user, current.storeId))) {
+      return null;
+    }
+    const allCounts = await conn.select().from(inventoryCounts).where(and(
+      eq(inventoryCounts.companyId, current.companyId), eq(inventoryCounts.storeId, current.storeId),
+    ));
+    const previous = selectPreviousEligibleCount(current, allCounts);
+    const blockers: string[] = [];
+    const [store] = await conn.select({ status: companyStores.status }).from(companyStores)
+      .where(and(eq(companyStores.id, current.storeId), eq(companyStores.companyId, current.companyId))).limit(1);
+    // A store's display name is editable. Verify the approved source-property
+    // destination instead of inferring identity from its name or store count.
+    const [binding] = await conn.select({ id: importSourcePropertyBindings.id })
+      .from(importSourcePropertyBindings).where(and(
+        eq(importSourcePropertyBindings.sourceSystem, "ORDERLY"),
+        eq(importSourcePropertyBindings.sourcePropertyId, "24472"),
+        eq(importSourcePropertyBindings.companyId, current.companyId),
+        eq(importSourcePropertyBindings.destinationStoreId, current.storeId),
+        eq(importSourcePropertyBindings.active, 1),
+      )).limit(1);
+    if (!store || store.status !== "active" || !binding) {
+      blockers.push("Count store is not the active Bay Hill Orderly property destination");
+    }
+    if (!previous) blockers.push("No preceding approved July count session");
+    if (previous && Number(previous.isHistoricalImport) !== 1) blockers.push("Preceding session is not the immutable July historical session");
+    if (previous && (!previous.sourceBatchId || previous.sourceSystem !== "ORDERLY")) blockers.push("July session has no approved source evidence");
+    const currentDate = new Date(current.countDate);
+    const currentDay = currentDate.toISOString().slice(0, 10);
+    if (currentDay !== "2026-08-31") blockers.push("Target session is not the approved August 31, 2026 session");
+    if (current.applied) blockers.push("Target count is already applied");
+    if (current.isHistoricalImport || current.sourceBatchId || current.sourceSystem) blockers.push("Target is not an ordinary manual session");
+    if (previous && new Date(previous.countDate).toISOString().slice(0, 10) !== "2026-07-31") blockers.push("Preceding session is not the approved July 31, 2026 session");
+    if (!previous) return { warnings: [], canRemove: false, blockers };
+
+    const [batch] = await conn.select().from(inventoryImportBatches).where(and(
+      eq(inventoryImportBatches.id, previous.sourceBatchId!),
+      eq(inventoryImportBatches.companyId, current.companyId),
+      eq(inventoryImportBatches.targetStoreId, current.storeId),
+      eq(inventoryImportBatches.sourcePropertyId, "24472"),
+      eq(inventoryImportBatches.sourceSystem, "ORDERLY"),
+      eq(inventoryImportBatches.status, "approved"),
+    )).limit(1);
+    if (!batch) blockers.push("Approved July source batch is missing or outside this store");
+    const sourceRows: Array<{ code: string | null; name: string | null; location: string | null; itemId: string | null; totalUnits: number | null }> = batch ? await conn.select({
+      code: inventoryImportRows.sourceItemCode,
+      name: inventoryImportRows.cleanedDescription,
+      location: inventoryImportRows.storageLocation,
+      itemId: inventoryImportRows.resolvedInventoryItemId,
+      totalUnits: inventoryImportRows.totalUnits,
+    }).from(inventoryImportRows).where(eq(inventoryImportRows.batchId, batch.id)) : [];
+    for (const { code, name, supportedLocation: location } of BAY_HILL_LOCATION_CORRECTIONS) {
+      const matches = sourceRows.filter((row) => row.code === code && row.name?.trim() === name && row.location?.trim() === location);
+      if (matches.length !== 1 || sourceRows.some((row) => row.code === code && row.location?.trim().toLowerCase() === "main freezer")) {
+        blockers.push(`July source evidence differs from the approved location for ${code}`);
+      }
+    }
+    const lines: Array<{ lineId: string; itemId: string; itemName: string; locationId: string; locationName: string | null;
+      qty: number; caseQty: number | null; containerQty: number | null; looseUnits: number | null }> = await conn.select({
+      lineId: inventoryCountLines.id,
+      itemId: inventoryCountLines.inventoryItemId,
+      itemName: inventoryItems.name,
+      locationId: inventoryCountLines.storageLocationId,
+      locationName: sql<string>`coalesce(${storageLocations.name}, ${inventoryLocations.name})`,
+      qty: inventoryCountLines.qty,
+      caseQty: inventoryCountLines.caseQty,
+      containerQty: inventoryCountLines.containerQty,
+      looseUnits: inventoryCountLines.looseUnits,
+    }).from(inventoryCountLines)
+      .innerJoin(inventoryItems, and(eq(inventoryCountLines.inventoryItemId, inventoryItems.id), eq(inventoryItems.companyId, current.companyId)))
+      .leftJoin(storageLocations, and(eq(inventoryCountLines.storageLocationId, storageLocations.id), eq(storageLocations.companyId, current.companyId)))
+      .leftJoin(inventoryLocations, and(eq(inventoryCountLines.storageLocationId, inventoryLocations.id), eq(inventoryLocations.companyId, current.companyId)))
+      .where(eq(inventoryCountLines.inventoryCountId, current.id));
+    const [mappings, assignments, entries]: [
+      Array<{ itemId: string; code: string }>,
+      Array<{ itemId: string; locationId: string; locationName: string; active: number }>,
+      Array<{ lineId: string; count: number }>,
+    ] = await Promise.all([
+      conn.select({ itemId: inventoryItemExternalMappings.inventoryItemId, code: inventoryItemExternalMappings.sourceExternalId })
+        .from(inventoryItemExternalMappings).where(and(
+          eq(inventoryItemExternalMappings.companyId, current.companyId),
+          eq(inventoryItemExternalMappings.sourceSystem, "ORDERLY"),
+          eq(inventoryItemExternalMappings.sourcePropertyId, batch?.sourcePropertyId ?? ""),
+        )),
+      conn.select({ itemId: inventoryItemLocationAssignments.inventoryItemId, locationId: inventoryItemLocationAssignments.locationId, locationName: inventoryLocations.name, active: inventoryItemLocationAssignments.active })
+        .from(inventoryItemLocationAssignments).innerJoin(inventoryLocations, eq(inventoryItemLocationAssignments.locationId, inventoryLocations.id))
+        .where(and(eq(inventoryItemLocationAssignments.companyId, current.companyId), eq(inventoryLocations.companyId, current.companyId))),
+      conn.select({ lineId: inventoryCountEntries.inventoryCountLineId, count: sql<number>`count(*)::int` }).from(inventoryCountEntries)
+        .where(inArray(inventoryCountEntries.inventoryCountLineId, lines.map((line) => line.lineId)))
+        .groupBy(inventoryCountEntries.inventoryCountLineId),
+    ]);
+    const previousLines: Array<typeof inventoryCountLines.$inferSelect> =
+      await conn.select().from(inventoryCountLines).where(eq(inventoryCountLines.inventoryCountId, previous.id));
+    const reconciled = reconcilePreviousCountLines(
+      previousLines,
+      lines.map((line) => ({ id: line.lineId, inventoryItemId: line.itemId, qty: line.qty, storageLocationId: line.locationId })),
+      [...await conn.select({ id: storageLocations.id, name: storageLocations.name }).from(storageLocations).where(eq(storageLocations.companyId, current.companyId)),
+        ...await conn.select({ id: inventoryLocations.id, name: inventoryLocations.name }).from(inventoryLocations).where(eq(inventoryLocations.companyId, current.companyId))],
+      derivePriorZeroEvidence(sourceRows.map((row) => ({ inventoryItemId: row.itemId, storageLocationName: row.location, totalUnits: row.totalUnits }))),
+    );
+    const unmatchedIds = new Set(reconciled.unmatchedLineIds);
+    if (unmatchedIds.size !== reconciled.diagnostics.locationUnmatchedLines) {
+      blockers.push("Location reconciliation contains duplicate or unidentifiable lines");
+    }
+    const codeByItem = new Map(mappings.map((m) => [m.itemId, m.code]));
+    const entryByLine = new Map(entries.map((e) => [e.lineId, Number(e.count)]));
+    for (const { code, name: expectedName, supportedLocation } of BAY_HILL_LOCATION_CORRECTIONS) {
+      const itemIds = [...new Set(mappings.filter((m) => m.code === code).map((m) => m.itemId))];
+      if (itemIds.length !== 1) blockers.push(`Source item ${code} is not unique in this company/store`);
+      if (itemIds.length === 1 && !lines.some((line) => line.itemId === itemIds[0] && line.itemName === expectedName)) {
+        blockers.push(`Source item ${code} name does not match the approved identity`);
+      }
+      const source = sourceRows.filter((row) => row.code === code);
+      if (itemIds.length !== 1 || source.length !== 1 || source[0].itemId !== itemIds[0]) {
+        blockers.push(`July source item identity differs for ${code}`);
+      }
+      const historicalLocations = [
+        ...await conn.select({ id: storageLocations.id, name: storageLocations.name }).from(storageLocations).where(eq(storageLocations.companyId, current.companyId)),
+        ...await conn.select({ id: inventoryLocations.id, name: inventoryLocations.name }).from(inventoryLocations).where(eq(inventoryLocations.companyId, current.companyId)),
+      ];
+      if (itemIds.length === 1 && previousLines.some((line) => line.inventoryItemId === itemIds[0] &&
+        !historicalLocations.some((location) => location.id === line.storageLocationId &&
+          location.name.trim() === supportedLocation))) {
+        blockers.push(`July historical location differs for ${code}`);
+      }
+    }
+    const warnings = lines.flatMap((line) => {
+      const code = codeByItem.get(line.itemId);
+      const entryCount = entryByLine.get(line.lineId) ?? 0;
+      if (!unmatchedIds.has(line.lineId)) return [];
+      // Every reconciliation-unmatched line is returned, including non-zero,
+      // ambiguous, and unsupported lines. Only the two exact Bay Hill rows
+      // can ever be eligible for destructive resolution.
+      const spec = BAY_HILL_LOCATION_CORRECTIONS.find((candidate) =>
+        candidate.code === code && candidate.name === line.itemName &&
+        line.locationName?.trim().toLowerCase() === "main freezer");
+      const supported = assignments.filter((a) => a.itemId === line.itemId && a.active === 1 && a.locationName === spec?.supportedLocation);
+      const unsupported = assignments.filter((a) => a.itemId === line.itemId && a.active === 1 && a.locationName === "Main freezer" && a.locationId === line.locationId);
+      const supportedLines = lines.filter((candidate) => candidate.itemId === line.itemId && candidate.locationId === supported[0]?.locationId);
+      const assessment = assessBayHillLine({
+        code, name: line.itemName, locationName: line.locationName,
+        qty: line.qty, caseQty: line.caseQty, containerQty: line.containerQty, looseUnits: line.looseUnits,
+        entryCount, supportedAssignments: supported.length, unsupportedAssignments: unsupported.length,
+        supportedLines: supportedLines.length, evidenceBlockers: blockers.length,
+      });
+      return [{
+        lineId: line.lineId, itemId: line.itemId, itemName: line.itemName, sourceItemCode: code ?? "",
+        currentLocationName: line.locationName, supportedLocationName: assessment.supportedLocationName,
+        qty: Number(line.qty ?? 0), caseQty: Number(line.caseQty ?? 0), containerQty: Number(line.containerQty ?? 0),
+        looseUnits: Number(line.looseUnits ?? 0), entryCount, reason: assessment.reason,
+        eligibleForRemoval: assessment.eligible,
+      }];
+    });
+    const removable = warnings.length === 2 && warnings.every((warning) => warning.eligibleForRemoval) &&
+      new Set(warnings.map((warning) => warning.sourceItemCode)).size === 2;
+    const mayResolve = ["global_admin", "company_admin", "store_manager"].includes(user?.role);
+    return { warnings, canRemove: removable && mayResolve && blockers.length === 0, blockers };
+  };
+
+  // Review and safely resolve the two known unsupported July-location assignments.
+  // @ts-ignore
+  app.get("/api/inventory-counts/:id/location-review", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      const countId = String(req.params.id);
+      const current = companyId ? await storage.getInventoryCount(countId) : null;
+      if (!companyId || !current || current.companyId !== companyId || !(await canAccessStore((req as any).user, current.storeId))) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+      const result = await getLocationReview(countId, companyId, (req as any).user);
+      return res.json(result ?? { warnings: [], canRemove: false, blockers: ["Count not found"] });
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  // @ts-ignore
+  app.post("/api/inventory-counts/:id/location-review/resolve", requireAuth, async (req, res) => {
+    try {
+      const companyId = (req as any).companyId as string | undefined;
+      const user = (req as any).user;
+      if (!companyId || !user || !["global_admin", "company_admin", "store_manager"].includes(user.role)) {
+        return res.status(403).json({ error: "Manager or administrator permission required" });
+      }
+      const expected = z.object({ expectedLineIds: z.array(z.string().min(1)).length(2) }).parse(req.body).expectedLineIds;
+      if (new Set(expected).size !== 2) return res.status(409).json({ error: "Expected two distinct warning lines" });
+      const countId = String(req.params.id);
+      const current = await storage.getInventoryCount(countId);
+      if (!current || current.companyId !== companyId || !(await canAccessStore(user, current.storeId))) {
+        return res.status(404).json({ error: "Count not found" });
+      }
+      const result = await withTransaction(async (tx) => {
+        // All evidence reads and the deletion share a serializable snapshot. A
+        // concurrent count entry, import edit, assignment or line insert makes
+        // the transaction abort rather than commit against stale evidence.
+        await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`);
+        const [lockedCount] = await tx.select().from(inventoryCounts)
+          .where(and(eq(inventoryCounts.id, countId), eq(inventoryCounts.companyId, companyId))).for("update");
+        if (!lockedCount) throw new Error("Count no longer belongs to this company");
+        const review = await getLocationReview(countId, companyId, user, tx as unknown as typeof db);
+        if (!review || review.blockers.length > 0 || !review.canRemove) throw new Error(review?.blockers.join("; ") || "Location review is not safely removable");
+        const warningIds = new Set(review.warnings.map((w) => w.lineId));
+        if (expected.some((id) => !warningIds.has(id)) || warningIds.size !== 2) {
+          throw new Error("Confirmation is stale; review the current warnings again");
+        }
+        // Recheck all predicates while the transaction holds row locks.
+        const locked = await tx.select({ id: inventoryCountLines.id, itemId: inventoryCountLines.inventoryItemId, locationId: inventoryCountLines.storageLocationId, qty: inventoryCountLines.qty, caseQty: inventoryCountLines.caseQty, containerQty: inventoryCountLines.containerQty, looseUnits: inventoryCountLines.looseUnits })
+          .from(inventoryCountLines).where(and(eq(inventoryCountLines.inventoryCountId, current.id), inArray(inventoryCountLines.id, expected))).for("update");
+        if (locked.length !== expected.length) throw new Error("Confirmation is stale; count lines changed");
+        const entriesNow = await tx.select({ id: inventoryCountEntries.id }).from(inventoryCountEntries).where(inArray(inventoryCountEntries.inventoryCountLineId, expected)).limit(1);
+        if (entriesNow.length || locked.some((l) => [l.qty, l.caseQty, l.containerQty, l.looseUnits].some((v) => v != null && Number(v) !== 0))) throw new Error("Lines are no longer untouched zero lines");
+        const itemIds = [...new Set(locked.map((l) => l.itemId))];
+        if (itemIds.length !== 2) throw new Error("Expected exactly two distinct Bay Hill item identities");
+        const unsupportedAssignments = await tx.select({ id: inventoryItemLocationAssignments.id, itemId: inventoryItemLocationAssignments.inventoryItemId })
+          .from(inventoryItemLocationAssignments).innerJoin(inventoryLocations, eq(inventoryItemLocationAssignments.locationId, inventoryLocations.id))
+          .where(and(eq(inventoryItemLocationAssignments.companyId, current.companyId), inArray(inventoryItemLocationAssignments.inventoryItemId, itemIds),
+            eq(inventoryItemLocationAssignments.active, 1), eq(inventoryLocations.companyId, current.companyId),
+            sql`lower(trim(${inventoryLocations.name})) = 'main freezer'`)).for("update");
+        if (unsupportedAssignments.length !== 2 || new Set(unsupportedAssignments.map((a) => a.itemId)).size !== 2) {
+          throw new Error("Expected exactly two unique active Main freezer assignments");
+        }
+        const assignmentIds = unsupportedAssignments.map((a) => a.id);
+        const unsupported = await tx.update(inventoryItemLocationAssignments).set({ active: 0 }).where(and(
+          inArray(inventoryItemLocationAssignments.id, assignmentIds),
+          eq(inventoryItemLocationAssignments.companyId, companyId),
+          eq(inventoryItemLocationAssignments.active, 1),
+        )).returning({ id: inventoryItemLocationAssignments.id });
+        if (unsupported.length !== 2) throw new Error("Location assignments changed; nothing was removed");
+        const deleted = await tx.delete(inventoryCountLines)
+          .where(and(eq(inventoryCountLines.inventoryCountId, current.id), inArray(inventoryCountLines.id, expected)))
+          .returning({ id: inventoryCountLines.id });
+        if (deleted.length !== 2) throw new Error("Count lines changed; nothing was removed");
+        const after = await getLocationReview(countId, companyId, user, tx as unknown as typeof db);
+        if (!after || after.warnings.length !== 0 || after.blockers.length !== 0) {
+          throw new Error("Post-removal reconciliation failed; nothing was removed");
+        }
+        return { removed: 2, alreadyResolved: false };
+      });
+      return res.json(result);
+    } catch (error: any) {
+      return res.status(error.message?.includes("permission") ? 403 : 409).json({ error: error.message });
+    }
+  });
+
   // Get previous inventory count session (for comparison)
   // @ts-ignore
   app.get("/api/inventory-counts/:id/previous-lines", requireAuth, async (req, res) => {
@@ -13046,38 +14099,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (currentCount.companyId !== companyId) {
         return res.status(404).json({ error: "Count not found" });
       }
+      if (!(await canAccessStore((req as any).user, currentCount.storeId))) {
+        return res.status(404).json({ error: "Count not found" });
+      }
 
       // Get counts from the same company and store, and find the one immediately before this one.
       // Primary sort: countDate (official inventory date); tiebreaker: countedAt (session creation time).
       // This handles same-day sessions where countDate is identical (both stored as local midnight).
       const allCounts = await storage.getInventoryCounts(currentCount.companyId, currentCount.storeId);
-      const currentDate = new Date(currentCount.countDate).getTime();
-      const currentCreated = new Date(currentCount.countedAt).getTime();
-      const previousCount = allCounts
-        .filter(c => {
-          if (c.id === currentCount.id) return false;
-          const cDate = new Date(c.countDate).getTime();
-          if (cDate < currentDate) return true;
-          // Same calendar date — use session creation time as tiebreaker
-          if (cDate === currentDate) {
-            return new Date(c.countedAt).getTime() < currentCreated;
-          }
-          return false;
-        })
-        .sort((a, b) => {
-          const dateDiff = new Date(b.countDate).getTime() - new Date(a.countDate).getTime();
-          if (dateDiff !== 0) return dateDiff;
-          return new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime();
-        })[0];
+      const previousCount = selectPreviousEligibleCount(currentCount, allCounts);
 
       if (!previousCount) {
-        return res.json({ previousCountId: null, lines: [] }); // No previous count exists
+        return res.json({ previousCountId: null, previousCountDate: null, lines: [] }); // No previous count exists
       }
 
-      // Get the previous count's lines
-      const previousLines = await storage.getInventoryCountLines(previousCount.id);
+      // Reconcile legacy historical location IDs to the current operational
+      // location IDs before the client performs item+location matching.
+      const [previousLines, currentLines, legacyLocations, canonicalLocations, priorSourceRows] = await Promise.all([
+        storage.getInventoryCountLines(previousCount.id),
+        storage.getInventoryCountLines(currentCount.id),
+        db
+          .select({ id: storageLocations.id, name: storageLocations.name })
+          .from(storageLocations)
+          .where(eq(storageLocations.companyId, companyId)),
+        db
+          .select({ id: inventoryLocations.id, name: inventoryLocations.name })
+          .from(inventoryLocations)
+          .where(eq(inventoryLocations.companyId, companyId)),
+        previousCount.sourceBatchId
+          ? db
+              .select({
+                inventoryItemId: inventoryImportRows.resolvedInventoryItemId,
+                storageLocationName: inventoryImportRows.storageLocation,
+                totalUnits: inventoryImportRows.totalUnits,
+              })
+              .from(inventoryImportRows)
+              .innerJoin(
+                inventoryImportBatches,
+                eq(inventoryImportRows.batchId, inventoryImportBatches.id),
+              )
+              .where(
+                and(
+                  eq(inventoryImportRows.batchId, previousCount.sourceBatchId),
+                  eq(inventoryImportBatches.status, "approved"),
+                  eq(inventoryImportBatches.companyId, companyId),
+                  eq(inventoryImportBatches.targetStoreId, currentCount.storeId),
+                  isNotNull(inventoryImportRows.resolvedInventoryItemId),
+                ),
+              )
+          : Promise.resolve([]),
+      ]);
+      const priorZeroEvidence = derivePriorZeroEvidence(priorSourceRows);
+      const reconciled = reconcilePreviousCountLines(
+        previousLines,
+        currentLines,
+        [...legacyLocations, ...canonicalLocations],
+        priorZeroEvidence,
+      );
       
-      res.json({ previousCountId: previousCount.id, lines: previousLines });
+      res.json({
+        previousCountId: previousCount.id,
+        previousCountDate: previousCount.countDate,
+        lines: reconciled.lines,
+        reconciliation: reconciled.diagnostics,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -23846,6 +24931,22 @@ Human Handoff:
             if (!userId || (await mobileUserCanAccessStore(userId, count.storeId))) {
               const existingLine = await storage.getInventoryCountLine(lineId);
               if (existingLine && existingLine.inventoryCountId === count.id) {
+                const lineItem = await storage.getInventoryItem(existingLine.inventoryItemId);
+                const lineCategory = lineItem?.categoryId
+                  ? await storage.getCategory(lineItem.categoryId, companyId)
+                  : undefined;
+                if (
+                  !lineItem ||
+                  getCountInputMode(
+                    lineItem,
+                    lineCategory?.isCatchWeightCategory === 1,
+                  ) !== "catch" ||
+                  lineCategory?.isCatchWeightCategory !== 1
+                ) {
+                  return res.status(422).json({
+                    error: "Catch-weight scans can only update catch-weight count lines",
+                  });
+                }
                 const addedWeight = result.netWeight;
                 const atomicResult = await storage.atomicIncrementCountLineQty(lineId, addedWeight, userId ?? null);
                 if (atomicResult) {
@@ -24080,20 +25181,48 @@ Human Handoff:
     const count = await storage.getInventoryCount(sessionId);
     if (!count || count.companyId !== companyId) return null;
 
+    const inventoryFilters = [
+      eq(inventoryCountLines.inventoryCountId, count.id),
+    ];
+    if (categoryIdFilter !== undefined) {
+      inventoryFilters.push(
+        categoryIdFilter === "null" || categoryIdFilter === "__none__" || categoryIdFilter === ""
+          ? isNull(inventoryItems.categoryId)
+          : eq(inventoryItems.categoryId, categoryIdFilter),
+      );
+    }
+    if (locationIdFilter) {
+      inventoryFilters.push(eq(inventoryCountLines.storageLocationId, locationIdFilter));
+    }
+
     const rows = await db
       .select({
         lineId: inventoryCountLines.id,
         inventoryItemId: inventoryCountLines.inventoryItemId,
         qty: inventoryCountLines.qty,
+        caseQty: inventoryCountLines.caseQty,
+        containerQty: inventoryCountLines.containerQty,
+        looseUnits: inventoryCountLines.looseUnits,
         unitCost: inventoryCountLines.unitCost,
         itemName: inventoryItems.name,
         categoryId: categories.id,
         categoryName: categories.name,
         isCatchWeightCategory: categories.isCatchWeightCategory,
         locationId: storageLocations.id,
-        locationName: storageLocations.name,
+      locationName: sql<string>`coalesce(${storageLocations.name}, ${inventoryLocations.name})`,
         unitAbbr: unitsTable.abbreviation,
+        itemUnitKind: canonicalItemUnits.kind,
         itemCategoryId: inventoryItems.categoryId,
+        caseSize: inventoryItems.caseSize,
+        containerSize: inventoryItems.containerSize,
+        casePkgCount: inventoryItems.casePkgCount,
+        containerLabel: inventoryItems.containerLabel,
+        containerUnitId: inventoryItems.containerUnitId,
+        hasCountEntry: sql<number>`case when exists (
+          select 1
+          from ${inventoryCountEntries}
+          where ${inventoryCountEntries.inventoryCountLineId} = ${inventoryCountLines.id}
+        ) then 1 else 0 end`,
       })
       .from(inventoryCountLines)
       // @ts-ignore
@@ -24104,44 +25233,61 @@ Human Handoff:
       .leftJoin(storageLocations, eq(inventoryCountLines.storageLocationId, storageLocations.id))
       // @ts-ignore
       .leftJoin(unitsTable, eq(inventoryCountLines.unitId, unitsTable.id))
+      .leftJoin(canonicalItemUnits, eq(inventoryItems.unitId, canonicalItemUnits.id))
       // @ts-ignore
-      .where(eq(inventoryCountLines.inventoryCountId, count.id))
+      .where(and(...inventoryFilters))
       // @ts-ignore
       .orderBy(asc(inventoryItems.name));
-
-    // Apply optional filters in JS
-    let filtered = rows;
-    if (categoryIdFilter !== undefined) {
-      if (categoryIdFilter === "null" || categoryIdFilter === "__none__" || categoryIdFilter === "") {
-        // @ts-ignore
-        filtered = filtered.filter(r => r.itemCategoryId === null || r.itemCategoryId === undefined);
-      } else {
-        // @ts-ignore
-        filtered = filtered.filter(r => r.itemCategoryId === categoryIdFilter);
-      }
-    }
-    if (locationIdFilter) {
-      // @ts-ignore
-      filtered = filtered.filter(r => r.locationId === locationIdFilter);
-    }
 
     const round2 = (n: number) => Math.round(n * 100) / 100;
 
     return {
       count,
       // @ts-ignore
-      items: filtered.map(r => ({
-        id: r.lineId,               // count line ID — use this for PATCH /lines/:lineId
-        inventoryItemId: r.inventoryItemId,
-        name: r.itemName ?? "Unknown Item",
-        quantity: r.qty ?? 0,
-        unit: r.unitAbbr ?? "",
-        value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
-        categoryName: r.categoryName ?? "Uncategorized",
-        isCatchWeightCategory: (r.isCatchWeightCategory ?? 0) === 1,
-        locationId: r.locationId ?? null,
-        locationName: r.locationName ?? "Unknown Location",
-      })),
+      items: rows.map(r => {
+        const countMetadata = getCountMetadata(
+          r,
+          (r.isCatchWeightCategory ?? 0) === 1,
+          r.looseUnits,
+        );
+        const countBlockedReason = directMeasurementCountBlock(
+          countMetadata.countMode,
+          r.itemUnitKind,
+        );
+        return {
+          id: r.lineId,               // count line ID — use this for PATCH /lines/:lineId
+          inventoryItemId: r.inventoryItemId,
+          name: r.itemName ?? "Unknown Item",
+          quantity: r.qty ?? 0,
+          unit: r.unitAbbr ?? "",
+          caseQty: r.caseQty ?? null,
+          containerQty: r.containerQty ?? null,
+          looseUnits: r.looseUnits ?? null,
+          caseSize: r.caseSize ?? null,
+          containerSize: r.containerSize ?? null,
+          casePkgCount: r.casePkgCount ?? null,
+          // Native count presentation must only name a practical counting unit
+          // when it was explicitly configured. Inferred/default labels are not
+          // sufficient evidence for physical package counting.
+          containerLabel: r.containerLabel?.trim() || null,
+          containerUnitId: r.containerUnitId ?? null,
+          ...countMetadata,
+          ...(countBlockedReason
+            ? { countMode: "unconfigured", countBlockedReason }
+            : {}),
+          isCounted:
+            (r.hasCountEntry ?? 0) === 1 ||
+            r.caseQty != null ||
+            r.containerQty != null ||
+            r.looseUnits != null ||
+            (r.qty ?? 0) > 0,
+          value: round2((r.qty ?? 0) * (r.unitCost ?? 0)),
+          categoryName: r.categoryName ?? "Uncategorized",
+          isCatchWeightCategory: (r.isCatchWeightCategory ?? 0) === 1,
+          locationId: r.locationId ?? null,
+          locationName: r.locationName ?? "Unknown Location",
+        };
+      }),
     };
   }
 
@@ -24244,8 +25390,29 @@ Human Handoff:
         return res.status(403).json(historicalMobileEditBlock);
       }
 
-      // Find the count line(s) for this item in this session
+      const itemId = String(req.params.itemId);
+      const item = await storage.getInventoryItem(itemId);
+      if (!item || item.companyId !== companyId || item.active !== 1) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const effectiveLocations = await getStoreEffectiveLocationsForItem(
+        companyId,
+        count.storeId,
+        item.id,
+      );
+      if (effectiveLocations === null) {
+        return res.status(404).json({ error: "Inventory item is not active at this store" });
+      }
       const locationIdFilter = req.query.locationId as string | undefined;
+      const effectiveLocationIds = new Set(effectiveLocations.map((location) => location.id));
+      if (effectiveLocationIds.size === 0) {
+        return res.status(422).json({ error: "Inventory item has no effective storage location assigned at this store" });
+      }
+      if (locationIdFilter && !isEffectiveInventoryItemLocation(effectiveLocations, locationIdFilter)) {
+        return res.status(403).json({ error: "Storage location is not effectively assigned to this item at this store" });
+      }
+
+      // Find the count line(s) for this item in this session
       const allLines = await db
         .select()
         .from(inventoryCountLines)
@@ -24254,17 +25421,12 @@ Human Handoff:
             // @ts-ignore
             eq(inventoryCountLines.inventoryCountId, count.id),
             // @ts-ignore
-            eq(inventoryCountLines.inventoryItemId, req.params.itemId),
+            eq(inventoryCountLines.inventoryItemId, itemId),
           )
         );
 
       // Helper: create a missing count line on-the-fly (upsert behaviour)
       const createMissingLine = async (resolvedLocationId: string) => {
-        // @ts-ignore
-        const item = await storage.getInventoryItem(req.params.itemId);
-        if (!item || item.companyId !== companyId) {
-          return null;
-        }
         const lineCompany = await storage.getCompany(companyId);
         return storage.createInventoryCountLine({
           inventoryCountId: count.id,
@@ -24276,44 +25438,12 @@ Human Handoff:
           userId,
         });
       };
-
       let targetLine: typeof allLines[0];
 
       if (allLines.length === 0) {
-        // No lines at all — determine the storage location and create one
-        let resolvedLocationId = locationIdFilter;
-        if (!resolvedLocationId) {
-          // Pick the item's first assigned storage location
-          const [firstLoc] = await db
-            .select({ storageLocationId: inventoryItemLocations.storageLocationId })
-            .from(inventoryItemLocations)
-            // @ts-ignore
-            .innerJoin(storageLocations, eq(inventoryItemLocations.storageLocationId, storageLocations.id))
-            .where(
-              and(
-                // @ts-ignore
-                eq(inventoryItemLocations.inventoryItemId, req.params.itemId),
-                // @ts-ignore
-                eq(storageLocations.companyId, companyId),
-              )
-            )
-            .limit(1);
-          if (!firstLoc) {
-            // Item has no location assignment — fall back to any location in the company
-            const [anyLoc] = await db
-              .select({ id: storageLocations.id })
-              .from(storageLocations)
-              // @ts-ignore
-              .where(eq(storageLocations.companyId, companyId))
-              .limit(1);
-            if (!anyLoc) {
-              return res.status(400).json({ error: "No storage locations exist for this company" });
-            }
-            resolvedLocationId = anyLoc.id;
-          } else {
-            resolvedLocationId = firstLoc.storageLocationId;
-          }
-        }
+        // No lines at all — choose only an effective item location, never an
+        // arbitrary company location.
+        const resolvedLocationId = locationIdFilter ?? effectiveLocations[0].id;
         // @ts-ignore
         const newLine = await createMissingLine(resolvedLocationId);
         if (!newLine) {
@@ -24336,34 +25466,71 @@ Human Handoff:
             targetLine = newLine;
           }
         } else {
-          targetLine = allLines[0];
+          const effectiveExistingLine = allLines.find((line: any) => effectiveLocationIds.has(line.storageLocationId));
+          if (effectiveExistingLine) {
+            targetLine = effectiveExistingLine;
+          } else {
+            const newLine = await createMissingLine(effectiveLocations[0].id);
+            if (!newLine) {
+              return res.status(404).json({ error: "Item not found in inventory" });
+            }
+            targetLine = newLine;
+          }
         }
+      }
+      if (!isEffectiveInventoryItemLocation(effectiveLocations, targetLine.storageLocationId)) {
+        return res.status(403).json({ error: "Count line location is not effectively assigned to this item at this store" });
       }
 
       // Accept "count" as an alias for "qty" (mobile app field name)
       const { qty: rawQty, count: rawCount, caseQty, containerQty, looseUnits } = req.body;
       const qty = rawQty ?? rawCount;
       const updates: any = {};
+      const category = item.categoryId
+        ? await storage.getCategory(item.categoryId, companyId)
+        : undefined;
+      const countMode = getCountInputMode(
+        item,
+        category?.isCatchWeightCategory === 1,
+      );
+
+      const [countUnit] = await db.select({ kind: unitsTable.kind })
+        .from(unitsTable)
+        .where(eq(unitsTable.id, item.unitId))
+        .limit(1);
+      const directUnitBlock = directMeasurementCountBlock(countMode, countUnit?.kind);
+      if (directUnitBlock) {
+        return res.status(422).json({ error: directUnitBlock, code: "MEASUREMENT_UNIT_REQUIRES_COUNT_SETUP" });
+      }
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
         const cQty = Number(caseQty ?? targetLine.caseQty ?? 0);
         const cnQty = Number(containerQty ?? targetLine.containerQty ?? 0);
-        const lUnits = Number(looseUnits ?? targetLine.looseUnits ?? 0);
+        const lUnits = Number(looseUnits ?? 0);
+        if (countMode !== "package") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before package counting"
+              : "Package quantities are not valid for this count item",
+          });
+        }
+        if (Number(targetLine.looseUnits ?? 0) > 0) {
+          return res.status(422).json({
+            error: "Historical loose quantity must be cleared before package recounting",
+          });
+        }
 
         updates.caseQty = cQty;
         updates.containerQty = cnQty;
-        updates.looseUnits = lUnits;
+        updates.looseUnits = 0;
 
-        const item = await storage.getInventoryItem(targetLine.inventoryItemId);
-        if (!item || item.companyId !== companyId) {
-          return res.status(404).json({ error: "Inventory item not found" });
-        }
         try {
           updates.qty = calculateCanonicalCountQuantity(
             item,
             targetLine.unitId,
             { caseQty: cQty, containerQty: cnQty, looseUnits: lUnits },
           );
+          updates.countPackSnapshot = makeCountPackSnapshot(item);
         } catch (error) {
           if (error instanceof InvalidCountGeometryError) {
             return res.status(422).json({ error: error.message });
@@ -24371,16 +25538,30 @@ Human Handoff:
           throw error;
         }
       } else if (qty != null) {
-        if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
-        updates.qty = qty;
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before counting this item"
+              : "Use caseQty and containerQty for package counting",
+          });
+        }
+        try {
+          updates.qty = validateDirectCountQuantity(Number(qty));
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
         updates.caseQty = null;
         updates.containerQty = null;
         updates.looseUnits = null;
+        updates.countPackSnapshot = null;
       } else {
         return res.status(400).json({ error: "Provide qty (or count) or at least one of caseQty, containerQty, looseUnits" });
       }
 
-      const updatedLine = await storage.updateInventoryCountLine(targetLine.id, updates);
+      const updatedLine = await storage.replaceCountLineAndEntry(targetLine.id, updates, userId ?? null);
       return res.json(updatedLine);
     } catch (error: any) {
       console.error("[PATCH /api/mobile/sessions/:id/inventory/:itemId]", error);
@@ -24715,15 +25896,60 @@ Human Handoff:
         countDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       }
 
-      const count = await storage.createInventoryCount({
-        companyId,
-        storeId,
-        countDate,
-        userId,
-        name: name ?? null,
-        applied: 0,
-        isPowerSession: 0,
+      const dayStart = new Date(Date.UTC(countDate.getUTCFullYear(), countDate.getUTCMonth(), countDate.getUTCDate()));
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      const mobileCreate = await db.transaction(async (tx: any) => {
+        // Share the same scoped lock as the web creator, so web and native
+        // session requests cannot race past the ordinary-session duplicate check.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountStoreLockKey({
+          companyId,
+          storeId,
+        })}, 0))`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ordinaryCountDateLockKey({
+          companyId,
+          storeId,
+          countDate,
+        })}, 0))`);
+        const existingCounts = await tx.select()
+          .from(inventoryCounts)
+          .where(and(
+            eq(inventoryCounts.companyId, companyId),
+            eq(inventoryCounts.storeId, storeId),
+            eq(inventoryCounts.isPowerSession, 0),
+            eq(inventoryCounts.isHistoricalImport, 0),
+            isNull(inventoryCounts.sourceSystem),
+            isNull(inventoryCounts.sourceBatchId),
+            gte(inventoryCounts.countDate, dayStart),
+            lte(inventoryCounts.countDate, new Date(dayEnd.getTime() - 1)),
+          ));
+        const existingCount = existingCounts.find((candidate: any) =>
+          conflictsWithOrdinaryCountDate(candidate, {
+            companyId,
+            storeId,
+            countDate,
+            isPowerSession: 0,
+          }),
+        );
+        if (existingCount) return { existingCount, createdCount: null };
+        const [createdCount] = await tx.insert(inventoryCounts).values({
+          companyId,
+          storeId,
+          countDate,
+          userId,
+          name: name ?? null,
+          applied: 0,
+          isPowerSession: 0,
+        }).returning();
+        return { existingCount: null, createdCount };
       });
+      if (mobileCreate.existingCount) {
+        return res.status(409).json({
+          error: "An ordinary count already exists for this store and date. Resume the existing session; a duplicate will not be created.",
+          code: "ORDINARY_COUNT_ALREADY_EXISTS",
+          existingCountId: mobileCreate.existingCount.id,
+        });
+      }
+      const count = mobileCreate.createdCount;
 
       // Auto-populate count lines for all active items assigned to this store
       // (same logic as POST /api/inventory-counts on the web)
@@ -24854,6 +26080,8 @@ Human Handoff:
           caseSize: inventoryItems.caseSize,
           containerSize: inventoryItems.containerSize,
           casePkgCount: inventoryItems.casePkgCount,
+          containerLabel: inventoryItems.containerLabel,
+          containerUnitId: inventoryItems.containerUnitId,
           categoryName: categories.name,
           isCatchWeightCategory: categories.isCatchWeightCategory,
           locationId: storageLocations.id,
@@ -24890,10 +26118,20 @@ Human Handoff:
           caseSize: r.caseSize ?? null,
           containerSize: r.containerSize ?? null,
           casePkgCount: r.casePkgCount ?? null,
+          containerLabel: getOperationalContainerLabel(
+            { containerLabel: r.containerLabel, name: r.itemName },
+            r.categoryName,
+          ),
+          containerUnitId: r.containerUnitId ?? null,
           qty: r.qty ?? 0,
           caseQty: r.caseQty ?? null,
           containerQty: r.containerQty ?? null,
           looseUnits: r.looseUnits ?? null,
+          ...getCountMetadata(
+            r,
+            (r.isCatchWeightCategory ?? 0) === 1,
+            r.looseUnits,
+          ),
           unitCost: r.unitCost ?? 0,
         }))
       );
@@ -24951,26 +26189,55 @@ Human Handoff:
       const addQty: number | undefined = rawAddQty != null ? Number(rawAddQty) : undefined;
       const updates: any = {};
       let addedQty: number | null = null; // for entry audit trail
+      const item = await storage.getInventoryItem(existingLine.inventoryItemId);
+      if (!item || item.companyId !== count.companyId) {
+        return res.status(404).json({ error: "Inventory item not found" });
+      }
+      const category = item.categoryId
+        ? await storage.getCategory(item.categoryId, count.companyId)
+        : undefined;
+      const countMode = getCountInputMode(
+        item,
+        category?.isCatchWeightCategory === 1,
+      );
+
+      const [countUnit] = await db.select({ kind: unitsTable.kind })
+        .from(unitsTable)
+        .where(eq(unitsTable.id, item.unitId))
+        .limit(1);
+      const directUnitBlock = directMeasurementCountBlock(countMode, countUnit?.kind);
+      if (directUnitBlock) {
+        return res.status(422).json({ error: directUnitBlock, code: "MEASUREMENT_UNIT_REQUIRES_COUNT_SETUP" });
+      }
 
       if (caseQty != null || containerQty != null || looseUnits != null) {
         const cQty = Number(caseQty ?? existingLine.caseQty ?? 0);
         const cnQty = Number(containerQty ?? existingLine.containerQty ?? 0);
         const lUnits = Number(looseUnits ?? existingLine.looseUnits ?? 0);
+        if (countMode !== "package") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before package counting"
+              : "Package quantities are not valid for this count item",
+          });
+        }
+        if (Number(existingLine.looseUnits ?? 0) > 0) {
+          return res.status(422).json({
+            error: "Historical loose quantity must be cleared before package recounting",
+          });
+        }
 
         updates.caseQty = cQty;
         updates.containerQty = cnQty;
-        updates.looseUnits = lUnits;
+        updates.looseUnits = 0;
 
-        const item = await storage.getInventoryItem(existingLine.inventoryItemId);
-        if (!item || item.companyId !== count.companyId) {
-          return res.status(404).json({ error: "Inventory item not found" });
-        }
         try {
           updates.qty = calculateCanonicalCountQuantity(
             item,
             existingLine.unitId,
             { caseQty: cQty, containerQty: cnQty, looseUnits: lUnits },
           );
+          updates.countPackSnapshot = makeCountPackSnapshot(item);
         } catch (error) {
           if (error instanceof InvalidCountGeometryError) {
             return res.status(422).json({ error: error.message });
@@ -24980,6 +26247,21 @@ Human Handoff:
         // case-breakdown edits replace the entry
         addedQty = null;
       } else if (addQty != null) {
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before counting this item"
+              : "Use caseQty and containerQty for package counting",
+          });
+        }
+        try {
+          validateCountDelta(addQty);
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
         // Soft pre-flight check (real enforcement is in the atomic SQL)
         if ((existingLine.qty ?? 0) + addQty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
         // Atomic SQL increment + entry creation in one serialised transaction —
@@ -24988,29 +26270,31 @@ Human Handoff:
         const result = await storage.atomicIncrementCountLineQty(req.params.lineId, addQty, userId ?? null);
         return res.json(result?.line);
       } else if (qty != null) {
-        if (qty < 0) return res.status(400).json({ error: "Quantity cannot be negative" });
-        updates.qty = qty;
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before counting this item"
+              : "Use caseQty and containerQty for package counting",
+          });
+        }
+        try {
+          updates.qty = validateDirectCountQuantity(Number(qty));
+        } catch (error) {
+          if (error instanceof InvalidCountGeometryError) {
+            return res.status(422).json({ error: error.message });
+          }
+          throw error;
+        }
         updates.caseQty = null;
         updates.containerQty = null;
         updates.looseUnits = null;
+        updates.countPackSnapshot = null;
         addedQty = null; // direct set — will replace entries below
       } else {
         return res.status(400).json({ error: "Provide qty (or count), addQty, or at least one of caseQty, containerQty, looseUnits" });
       }
 
-      // @ts-ignore
-      const updatedLine = await storage.updateInventoryCountLine(req.params.lineId, updates);
-
-      // Write audit entry record(s) — direct-set paths only (addQty returns above)
-      if (updatedLine) {
-        // Direct set: replace all entries with a single record
-        await storage.deleteEntriesForLine(updatedLine.id);
-        await storage.createInventoryCountEntry({
-          inventoryCountLineId: updatedLine.id,
-          qty: updatedLine.qty,
-          userId,
-        });
-      }
+      const updatedLine = await storage.replaceCountLineAndEntry(req.params.lineId as string, updates, userId ?? null);
 
       return res.json(updatedLine);
     } catch (error: any) {
@@ -25178,42 +26462,87 @@ Human Handoff:
       if (!Array.isArray(lineUpdates) || lineUpdates.length === 0) {
         return res.status(400).json({ error: "lines array is required and must not be empty" });
       }
+      if (mode !== "add" && mode !== "set") {
+        return res.status(400).json({ error: 'mode must be "add" or "set"' });
+      }
 
       const results: { lineId: string; newQty: number }[] = [];
+      const validatedUpdates: {
+        lineId: string;
+        qty: number;
+        existingLine: NonNullable<Awaited<ReturnType<typeof storage.getInventoryCountLine>>>;
+      }[] = [];
 
       for (const update of lineUpdates) {
         const { lineId, qty } = update;
-        if (!lineId || qty == null || isNaN(Number(qty))) continue;
+        if (!lineId || qty == null || !Number.isFinite(Number(qty)) || Number(qty) < 0) {
+          continue;
+        }
 
         const existingLine = await storage.getInventoryCountLine(lineId);
         if (!existingLine || existingLine.inventoryCountId !== count.id) continue;
-        if (Number(qty) < 0) continue;
+        const item = await storage.getInventoryItem(existingLine.inventoryItemId);
+        if (!item || item.companyId !== companyId) {
+          return res.status(404).json({ error: "Inventory item not found" });
+        }
+        const category = item.categoryId
+          ? await storage.getCategory(item.categoryId, companyId)
+          : undefined;
+        const countMode = getCountInputMode(
+          item,
+          category?.isCatchWeightCategory === 1,
+        );
+        const [countUnit] = await db.select({ kind: unitsTable.kind })
+          .from(unitsTable)
+          .where(eq(unitsTable.id, item.unitId))
+          .limit(1);
+        const directUnitBlock = directMeasurementCountBlock(countMode, countUnit?.kind);
+        if (directUnitBlock) {
+          return res.status(422).json({
+            error: directUnitBlock,
+            code: "MEASUREMENT_UNIT_REQUIRES_COUNT_SETUP",
+            lineId,
+          });
+        }
+        if (countMode !== "direct" && countMode !== "catch") {
+          return res.status(422).json({
+            error: countMode === "unconfigured"
+              ? "Counting setup required before applying scan results"
+              : "Scan results cannot directly update a package-count item",
+            lineId,
+          });
+        }
+        if (Number(existingLine.looseUnits ?? 0) > 0) {
+          return res.status(422).json({
+            error: "Historical loose quantity must be cleared before applying scan results",
+            lineId,
+          });
+        }
+        validatedUpdates.push({
+          lineId,
+          qty: Number(qty),
+          existingLine,
+        });
+      }
 
+      for (const { lineId, qty, existingLine } of validatedUpdates) {
         if (mode === "set") {
-          const newQty = Number(qty);
-          const updatedLine = await storage.updateInventoryCountLine(lineId, {
+          const newQty = qty;
+          const updatedLine = await storage.replaceCountLineAndEntry(lineId, {
             qty: newQty,
             caseQty: null,
             containerQty: null,
             looseUnits: null,
-          });
+            countPackSnapshot: null,
+          }, userId ?? null);
           if (updatedLine) {
-            // Write audit entry — direct set: replace entries
-            if (newQty !== 0) {
-              await storage.deleteEntriesForLine(lineId);
-              await storage.createInventoryCountEntry({
-                inventoryCountLineId: lineId,
-                qty: newQty,
-                userId,
-              });
-            }
             results.push({ lineId, newQty: updatedLine.qty });
           }
         } else {
           // "add" mode — true atomic SQL increment + audit entry in one
           // serialised transaction (same path as PATCH .../lines/:id addQty),
           // so concurrent applies cannot lose an update.
-          const addQty = Number(qty);
+          const addQty = qty;
           if (addQty === 0) {
             results.push({ lineId, newQty: existingLine.qty ?? 0 });
             continue;

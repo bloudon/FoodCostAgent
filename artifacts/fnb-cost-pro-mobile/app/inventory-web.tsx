@@ -17,8 +17,10 @@ import WebView, { WebViewMessageEvent, WebViewNavigation } from "react-native-we
 import { useAuth } from "@/context/AuthContext";
 import { useScan } from "@/context/ScanContext";
 import CatchWeightScanModal from "@/components/CatchWeightScanModal";
+import { getAppBaseUrl } from "@/lib/appBaseUrl";
 
-const INVENTORY_URL = "https://app.fnbcostpro.com/inventory-sessions?embedded=true";
+const APP_BASE_URL = getAppBaseUrl();
+const INVENTORY_URL = `${APP_BASE_URL}/inventory-sessions?embedded=true`;
 
 // Auth token injection — patches fetch + XHR to carry Bearer token from URL param.
 // Also:
@@ -373,7 +375,7 @@ export default function InventoryWebScreen() {
   }
 
   const baseWebUrl = targetPath
-    ? `https://app.fnbcostpro.com/${targetPath}?embedded=true${locationId ? `&location=${encodeURIComponent(locationId)}` : ""}`
+    ? `${APP_BASE_URL}/${targetPath}?embedded=true${locationId ? `&location=${encodeURIComponent(locationId)}` : ""}`
     : INVENTORY_URL;
   const webViewUri = mobileToken
     ? `${baseWebUrl}&mobileToken=${encodeURIComponent(mobileToken)}`
@@ -506,13 +508,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",

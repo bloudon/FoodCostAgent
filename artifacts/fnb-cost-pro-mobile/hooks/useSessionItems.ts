@@ -11,6 +11,17 @@ export interface SessionItem {
   value: number;
   categoryName: string | null;
   locationName: string | null;
+  caseQty: number | null;
+  containerQty: number | null;
+  looseUnits: number | null;
+  caseSize: number | null;
+  containerSize: number | null;
+  casePkgCount: number | null;
+  containerLabel: string | null;
+  countMode: "catch" | "direct" | "package" | "unconfigured" | null;
+  countStatus: "historicalLoose" | "ready" | "incomplete" | null;
+  isCounted: boolean;
+  isCatchWeightCategory: boolean;
 }
 
 function num(v: unknown, fallback = 0): number {
@@ -19,6 +30,12 @@ function num(v: unknown, fallback = 0): number {
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function nullableNum(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const parsed = num(v, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeItem(raw: Record<string, unknown>): SessionItem {
@@ -30,6 +47,36 @@ function normalizeItem(raw: Record<string, unknown>): SessionItem {
     value: num(raw.value ?? raw.totalValue ?? raw.total_value ?? raw.price),
     categoryName: str(raw.categoryName ?? raw.category_name ?? raw.category),
     locationName: str(raw.locationName ?? raw.location_name ?? raw.location),
+    caseQty: nullableNum(raw.caseQty ?? raw.case_qty),
+    containerQty: nullableNum(raw.containerQty ?? raw.container_qty),
+    looseUnits: nullableNum(raw.looseUnits ?? raw.loose_units),
+    caseSize: nullableNum(raw.caseSize ?? raw.case_size),
+    containerSize: nullableNum(raw.containerSize ?? raw.container_size),
+    casePkgCount: nullableNum(raw.casePkgCount ?? raw.case_pkg_count),
+    containerLabel: str(raw.containerLabel ?? raw.container_label),
+    countMode:
+      raw.countMode === "catch" ||
+      raw.countMode === "direct" ||
+      raw.countMode === "package" ||
+      raw.countMode === "unconfigured"
+        ? raw.countMode
+        : null,
+    countStatus:
+      raw.countStatus === "historicalLoose" ||
+      raw.countStatus === "ready" ||
+      raw.countStatus === "incomplete"
+        ? raw.countStatus
+        : null,
+    isCounted:
+      typeof raw.isCounted === "boolean"
+        ? raw.isCounted
+        : num(raw.quantity ?? raw.qty ?? raw.count) > 0,
+    isCatchWeightCategory: Boolean(
+      raw.isCatchWeightCategory ??
+        raw.is_catch_weight_category ??
+        raw.isTareWeightCategory ??
+        raw.is_tare_weight_category,
+    ),
   };
 }
 

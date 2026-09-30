@@ -13,8 +13,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import { useAuth } from "@/context/AuthContext";
+import { getAppBaseUrl } from "@/lib/appBaseUrl";
 
-const COUNT_BASE_URL = "https://app.fnbcostpro.com/count";
+const COUNT_BASE_URL = `${getAppBaseUrl()}/count`;
 
 const INJECTED_SCRIPT = `(function(){
   var tok=new URLSearchParams(window.location.search).get('mobileToken');
@@ -219,13 +220,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
   errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",

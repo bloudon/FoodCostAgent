@@ -14,3 +14,9 @@ For the same vendor and inventory item, a later opaque source row does not super
 **Why:** Orderly may temporarily drop vendor-product pack detail during routine code churn and later restore measurable pack detail. Treating source silence or a changed case/pack configuration as a contradiction discards stronger historical evidence and can abort an otherwise reviewed batch.
 
 **How to apply:** Limit this exception to measurable, canonical-unit-compatible evidence for the same reviewed item/property scope. Do not apply it to cross-vendor linking without identity evidence, incomplete persisted packs, or resolved incoming totals that disagree with the catalog.
+
+Bay Hill confirmed a separate **operational counting** interpretation for a bounded group of `1/1 Case` inventory EAs: one whole case is one stock EA, and a fraction of a case is that fraction of an EA. This does not identify the pieces inside, establish vendor pack geometry, or authorize a generic parser conversion. Existing historical package parts that purport to count an inner container still need separate review.
+
+**Why:** A business can count its complete stock unit without knowing its contents. Conflating the two would turn a count policy into unsupported purchase and recipe conversion evidence.
+
+**How to apply:** Require current source, unit, supplier, and historical-count evidence to match the reviewed scope before setting item-level counting geometry; retain raw source notation and vendor geometry unchanged. Do not extend the policy to other clubs or opaque `Case` packs merely because their strings look similar.

@@ -177,4 +177,19 @@ describe("POST /api/mobile/sessions/:id/apply-scan — atomic add invariant", ()
     // The historical race: newQty = (existingLine.qty ?? 0) + Number(qty)
     expect(handler).not.toMatch(/existingLine\.qty\s*\?\?\s*0\)\s*\+\s*Number\(qty\)/);
   });
+
+  it("preflights operational count mode and historical loose evidence before mutation", () => {
+    const policyCheck = handler.indexOf("getCountInputMode");
+    const historicalCheck = handler.indexOf("Historical loose quantity must be cleared");
+    const firstMutation = Math.min(
+      ...["updateInventoryCountLine", "atomicIncrementCountLineQty"]
+        .map((needle) => handler.indexOf(needle))
+        .filter((index) => index >= 0),
+    );
+
+    expect(policyCheck).toBeGreaterThan(-1);
+    expect(historicalCheck).toBeGreaterThan(-1);
+    expect(firstMutation).toBeGreaterThan(policyCheck);
+    expect(firstMutation).toBeGreaterThan(historicalCheck);
+  });
 });

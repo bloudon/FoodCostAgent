@@ -20,6 +20,7 @@
 import { db } from '../../db';
 import { eq, and, inArray, or, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
+import { assessCountUnitEvidence, type CountUnitFinding } from './countUnitEvidence';
 import {
   inventoryImportBatches,
   inventoryImportRows,
@@ -537,6 +538,8 @@ export interface CountSessionPreview {
   snapshotTotal: number | null;
   /** Rows that can be imported */
   includedRows: CountSessionPreviewRow[];
+  /** Dated source evidence that does not justify the unit the new line would declare. */
+  unitFindings: CountUnitFinding[];
   /** Rows excluded and why */
   excludedRows: ExcludedRow[];
   /** Sum of totalCost for included rows */
@@ -665,7 +668,10 @@ export interface CreateCountSessionParams {
 
 export interface CountSessionPreviewRow {
   rowIndex: number;
+  sourceRowId: string;
+  sourceFingerprint: string;
   inventoryItemId: string;
+  inventoryUnitId: string | null;
   inventoryItemName: string;
   storageLocation: string | null;
   /** Count tiers from the Orderly file */
@@ -689,6 +695,17 @@ export interface CountSessionPreviewRow {
    * two shows a clean preview and a silently different persisted valuation.
    */
   authoritativeValue: number;
+}
+
+function countUnitSourceFingerprint(row: InventoryImportRow): string {
+  return createHash('sha256').update(JSON.stringify({
+    id: row.id, batchId: row.batchId, rawData: row.rawData,
+    totalUnits: row.totalUnits, count1: row.count1, count2: row.count2, count3: row.count3,
+    countUnit1: row.countUnit1, countUnit2: row.countUnit2, countUnit3: row.countUnit3,
+    caseQuantity: row.caseQuantity, innerPackQuantity: row.innerPackQuantity,
+    baseUnitQuantity: row.baseUnitQuantity, baseUnit: row.baseUnit,
+    resolvedInventoryItemId: row.resolvedInventoryItemId,
+  })).digest('hex');
 }
 
 /**
@@ -812,18 +829,20 @@ export async function previewCountSession(
 
   // Load item names
   const allItemIds = Array.from(rowToItemId.values());
-  let itemNameMap = new Map<string, string>();
+  let itemMap = new Map<string, { id: string; name: string; unitId: string; unit: string | null }>();
   if (allItemIds.length > 0) {
     const items = await db
-      .select({ id: inventoryItems.id, name: inventoryItems.name })
+      .select({ id: inventoryItems.id, name: inventoryItems.name, unitId: inventoryItems.unitId, unit: units.abbreviation })
       .from(inventoryItems)
+      .leftJoin(units, eq(inventoryItems.unitId, units.id))
       // @ts-ignore
-      .where(inArray(inventoryItems.id, allItemIds));
-    itemNameMap = new Map(items.map((i: { id: string; name: string }) => [i.id, i.name]));
+      .where(and(eq(inventoryItems.companyId, companyId), inArray(inventoryItems.id, allItemIds)));
+    itemMap = new Map(items.map((i: { id: string; name: string; unitId: string; unit: string | null }) => [i.id, i]));
   }
 
   // Build included / excluded lists
   const includedRows: CountSessionPreviewRow[] = [];
+  const unitFindings: CountUnitFinding[] = [];
   const excludedRows: ExcludedRow[] = [];
   const locationNames = new Set<string>();
   const unresolvedImportRowIds: string[] = [];
@@ -873,11 +892,20 @@ export async function previewCountSession(
     }
     if (row.storageLocation) locationNames.add(row.storageLocation.trim());
     resolvedValuation += sourceValue;
+    const item = itemMap.get(itemId);
+    const finding = assessCountUnitEvidence(row, item && { id: item.id, name: item.name, unit: item.unit });
+    if (finding) {
+      finding.inventoryItemId = itemId;
+      unitFindings.push(finding);
+    }
 
     includedRows.push({
       rowIndex: row.rowIndex,
+      sourceRowId: row.id,
+      sourceFingerprint: countUnitSourceFingerprint(row),
       inventoryItemId: itemId,
-      inventoryItemName: itemNameMap.get(itemId) ?? `Item ${itemId.slice(0, 8)}`,
+      inventoryUnitId: item?.unitId ?? null,
+      inventoryItemName: item?.name ?? `Item ${itemId.slice(0, 8)}`,
       storageLocation: row.storageLocation ?? null,
       count1: row.count1 ?? null,
       countUnit1: row.countUnit1 ?? null,
@@ -1027,6 +1055,7 @@ export async function previewCountSession(
     sourceRowCount: batch.sourceRowCount,
     snapshotTotal,
     includedRows,
+    unitFindings,
     excludedRows,
     importableTotal,
     unresolvedTotal: reconciliation.unresolvedTotal,
@@ -1060,6 +1089,20 @@ export async function createCountSession(
   const preview = await previewCountSession(batchId, companyId, {
     tolerance: reconciliationTolerance,
   });
+  const mismatches = preview.unitFindings.filter(f => f.reason === 'unit_mismatch');
+  if (mismatches.length) {
+    throw Object.assign(new Error(
+      `${mismatches.length} source rows have a verified count-unit mismatch (first: row ${mismatches[0].rowIndex}, ` +
+      `${mismatches[0].sourceUnit} → ${mismatches[0].savedUnit}). Review source units and item setup before creating a session.`,
+    ), { code: 'COUNT_UNIT_MISMATCH' });
+  }
+  if (preview.unitFindings.length) {
+    const first = preview.unitFindings[0];
+    throw Object.assign(new Error(
+      `${preview.unitFindings.length} source rows have unverified count-unit meaning (first: row ${first.rowIndex}, ` +
+      `${first.detail}). Resolve the dated source tiers before creating a session.`,
+    ), { code: 'COUNT_UNIT_UNVERIFIED' });
+  }
 
   if (preview.reconciliationExceedsTolerance && !acknowledgedVariance) {
     const pct = ((preview.reconciliationDeltaPct ?? 0) * 100).toFixed(2);
@@ -1118,32 +1161,8 @@ export async function createCountSession(
   const [y, m, d] = inventoryDateStr.split('-').map(Number);
   const countDate = new Date(Date.UTC(y, m - 1, d));
 
-  // Fetch all inventory items to get unit costs
+  // Item units are locked and checked inside the write transaction below.
   const allItemIds = Array.from(new Set(preview.includedRows.map(r => r.inventoryItemId)));
-  type ItemRow = { id: string; unitId: string; pricePerUnit: number };
-  const itemsData: ItemRow[] = allItemIds.length > 0
-    ? await db
-        .select({
-          id: inventoryItems.id,
-          unitId: inventoryItems.unitId,
-          pricePerUnit: inventoryItems.pricePerUnit,
-        })
-        .from(inventoryItems)
-        // @ts-ignore
-        .where(inArray(inventoryItems.id, allItemIds))
-    : [];
-  const itemsById = new Map<string, ItemRow>(itemsData.map((i: ItemRow) => [i.id, i]));
-
-  // Get default unit IDs for items (for count lines)
-  const allUnitIds = Array.from(new Set(itemsData.map((i: ItemRow) => i.unitId)));
-  const unitsData = allUnitIds.length > 0
-    // @ts-ignore
-    ? await db.select({ id: units.id }).from(units).where(inArray(units.id, allUnitIds))
-    : [];
-  const validUnitIds = new Set(unitsData.map((u: { id: string }) => u.id));
-
-  // Ensure we have a fallback unit (any "count" kind)
-  let fallbackUnitId = allUnitIds[0] ?? '';
 
   // Resolve/create storage locations (company-scoped storageLocations table)
   const existingStorageLocs = await db
@@ -1160,7 +1179,7 @@ export async function createCountSession(
   // Ownership is re-checked here rather than trusted from the preview: the link
   // is what keeps this valuation alive, so a row from another batch must never
   // be able to inflate a snapshot's total.
-  const unresolvedLinkValues: Array<{ importRowId: string; evidenceHash: string }> = [];
+  const unresolvedLinkValues: Array<{ importRowId: string; evidenceHash: string; fingerprint: string }> = [];
   if (preview.unresolvedImportRowIds.length > 0) {
     const unresolvedRows: InventoryImportRow[] = [];
     const FETCH_CHUNK = 500;
@@ -1189,7 +1208,10 @@ export async function createCountSession(
       seen.add(row.id);
       // Fails loudly if the row lost its authoritative value.
       authoritativeSourceValue(row);
-      unresolvedLinkValues.push({ importRowId: row.id, evidenceHash: sourceEvidenceHash(row) });
+      unresolvedLinkValues.push({
+        importRowId: row.id, evidenceHash: sourceEvidenceHash(row),
+        fingerprint: countUnitSourceFingerprint(row),
+      });
     }
   }
 
@@ -1201,6 +1223,86 @@ export async function createCountSession(
   const sessionName = `Imported from Orderly — ${batch.originalFilename} — ${inventoryDateStr}`;
 
   const verified = await db.transaction(async (tx: any) => {
+    // Hold the approved destination and every item unit through the line writes.
+    // Never substitute a different item unit if an item disappeared or changed.
+    const [lockedBatch] = await tx.select({
+      status: inventoryImportBatches.status,
+      targetStoreId: inventoryImportBatches.targetStoreId,
+      inventoryDate: inventoryImportBatches.inventoryDate,
+      inventoryDateConfirmed: inventoryImportBatches.inventoryDateConfirmed,
+      snapshotTotal: inventoryImportBatches.snapshotTotal,
+      sourceRowCount: inventoryImportBatches.sourceRowCount,
+      originalFilename: inventoryImportBatches.originalFilename,
+    }).from(inventoryImportBatches)
+      .where(and(eq(inventoryImportBatches.id, batchId), eq(inventoryImportBatches.companyId, companyId)))
+      .for('update');
+    if (!lockedBatch || lockedBatch.status !== 'approved' ||
+        lockedBatch.inventoryDate !== preview.inventoryDate ||
+        lockedBatch.inventoryDate !== batch.inventoryDate ||
+        lockedBatch.inventoryDateConfirmed !== batch.inventoryDateConfirmed ||
+        lockedBatch.snapshotTotal !== preview.snapshotTotal ||
+        lockedBatch.sourceRowCount !== preview.sourceRowCount ||
+        lockedBatch.originalFilename !== preview.originalFilename ||
+        lockedBatch.targetStoreId !== batch.targetStoreId ||
+        (lockedBatch.targetStoreId && lockedBatch.targetStoreId !== storeId)) {
+      throw Object.assign(new Error('Approved batch or destination changed; reload the preview.'),
+        { code: 'BATCH_CHANGED' });
+    }
+    // Serializing on the batch lock is only effective if idempotency is checked
+    // after it: a second request must observe the first request's committed row.
+    const [existingUnderLock] = await tx.select({ id: inventoryCounts.id })
+      .from(inventoryCounts)
+      .where(and(eq(inventoryCounts.companyId, companyId), eq(inventoryCounts.sourceBatchId, batchId)))
+      .limit(1);
+    if (existingUnderLock) {
+      throw Object.assign(new Error(`A count session for this batch already exists (id: ${existingUnderLock.id}).`),
+        { code: 'ALREADY_CONVERTED', countSessionId: existingUnderLock.id });
+    }
+    const lockedItems: Array<{ id: string; unitId: string }> = allItemIds.length
+      ? await tx.select({ id: inventoryItems.id, unitId: inventoryItems.unitId })
+        .from(inventoryItems)
+        .where(and(eq(inventoryItems.companyId, companyId), inArray(inventoryItems.id, allItemIds)))
+        .for('update')
+      : [];
+    const itemsById = new Map(lockedItems.map(i => [i.id, i]));
+    if (preview.includedRows.some(r =>
+      !r.inventoryUnitId || itemsById.get(r.inventoryItemId)?.unitId !== r.inventoryUnitId)) {
+      throw Object.assign(new Error('Inventory item unit changed or is unavailable; reload the preview.'),
+        { code: 'COUNT_UNIT_CHANGED' });
+    }
+    // The approved source is also part of the unit claim. Hold its rows until
+    // commit, and reject parsed or raw evidence that changed after preview.
+    const sourceRows = new Map<string, InventoryImportRow>();
+    const sourceIds = preview.includedRows.map(r => r.sourceRowId);
+    for (let i = 0; i < sourceIds.length; i += 500) {
+      const locked: InventoryImportRow[] = await tx.select().from(inventoryImportRows)
+        .where(and(eq(inventoryImportRows.batchId, batchId), inArray(inventoryImportRows.id, sourceIds.slice(i, i + 500))))
+        .for('update');
+      for (const row of locked) sourceRows.set(row.id, row);
+    }
+    if (preview.includedRows.some(r =>
+      !sourceRows.has(r.sourceRowId) ||
+      countUnitSourceFingerprint(sourceRows.get(r.sourceRowId)!) !== r.sourceFingerprint)) {
+      throw Object.assign(new Error('Count source evidence changed; reload the preview.'),
+        { code: 'COUNT_SOURCE_CHANGED' });
+    }
+    const unresolvedRowsUnderLock = new Map<string, InventoryImportRow>();
+    for (let i = 0; i < unresolvedLinkValues.length; i += 500) {
+      const ids = unresolvedLinkValues.slice(i, i + 500).map(v => v.importRowId);
+      const locked: InventoryImportRow[] = await tx.select().from(inventoryImportRows)
+        .where(and(eq(inventoryImportRows.batchId, batchId), inArray(inventoryImportRows.id, ids)))
+        .for('update');
+      for (const row of locked) unresolvedRowsUnderLock.set(row.id, row);
+    }
+    if (unresolvedLinkValues.some(v => {
+      const row = unresolvedRowsUnderLock.get(v.importRowId);
+      return !row || sourceEvidenceHash(row) !== v.evidenceHash ||
+        countUnitSourceFingerprint(row) !== v.fingerprint;
+    })) {
+      throw Object.assign(new Error('Unresolved source evidence changed; reload the preview.'),
+        { code: 'COUNT_SOURCE_CHANGED' });
+    }
+
     // Create storageLocations entries for any new locations
     for (const locName of preview.locations) {
       const norm = normalizeLocationName(locName);
@@ -1257,7 +1359,7 @@ export async function createCountSession(
 
     for (const row of preview.includedRows) {
       const item = itemsById.get(row.inventoryItemId);
-      const unitId = item?.unitId && validUnitIds.has(item.unitId) ? item.unitId : fallbackUnitId;
+      const unitId = item!.unitId;
       const qty = row.totalUnits ?? (row.count1 ?? 0) + (row.count2 ?? 0) + (row.count3 ?? 0);
       // Extended cost comes from the authoritative raw source cell — the same
       // value reconciliation measures against. Using the parsed column (or a

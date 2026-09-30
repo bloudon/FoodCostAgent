@@ -1,23 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { getAppBaseUrl, PROD_APP_BASE_URL } from "@/lib/appBaseUrl";
 
 function getDefaultUrl(): string {
-  if (__DEV__ && Platform.OS === "web" && typeof window !== "undefined") {
-    return window.location.origin;
-  }
-  // On native dev builds, point to the local Replit dev domain so testers
-  // can exercise the full pipeline (including voice-waste) without needing
-  // the endpoints deployed to production first.
-  // Note: consumers append "/api/mobile/..." so this must NOT include "/api".
-  if (__DEV__ && Platform.OS !== "web") {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    if (domain) return `https://${domain}`;
-  }
-  return "https://app.fnbcostpro.com";
+  return getAppBaseUrl();
 }
 
-const PROD_URL = "https://app.fnbcostpro.com";
+const PROD_URL = PROD_APP_BASE_URL;
 const DEFAULT_URL = getDefaultUrl();
 const URL_STORAGE_KEY = "fnb_backend_url";
 const URL_STORAGE_KEY_LEGACY = "@fnb_backend_url";

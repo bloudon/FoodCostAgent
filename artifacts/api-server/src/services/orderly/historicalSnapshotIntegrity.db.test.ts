@@ -141,13 +141,15 @@ beforeAll(async () => {
       batchId: ID.batchRawParsed,
       rowIndex: 1,
       sheetName: 'Inventory Detail',
-      rawData: { 'Item Code': 'AAA', 'Total Cost': `$${RAW_VALUE.toFixed(2)}` },
+      rawData: { 'Item Code': 'AAA', 'Pack Size': '1/1 EA', 'Total Units': RAW_QTY, 'Total Cost': `$${RAW_VALUE.toFixed(2)}` },
       rawDescription: 'Raw vs parsed',
       cleanedDescription: 'Raw vs parsed',
       sourceItemCode: 'AAA',
       itemCodeStatus: 'valid',
       storageLocation: 'Liquor Cage',
       totalUnits: RAW_QTY,
+      caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'EA',
+      countUnit3: 'EA', count3: RAW_QTY,
       totalCost: STALE_PARSED_VALUE,
       packagePrice: 1,
       rowStatus: 'matched',
@@ -160,13 +162,15 @@ beforeAll(async () => {
       batchId: ID.batchNoGeometry,
       rowIndex: 1,
       sheetName: 'Inventory Detail',
-      rawData: { 'Item Code': 'AAA', 'Total Cost': `$${RAW_VALUE.toFixed(2)}` },
+      rawData: { 'Item Code': 'AAA', 'Pack Size': '1/1 EA', 'Total Units': RAW_QTY, 'Total Cost': `$${RAW_VALUE.toFixed(2)}` },
       rawDescription: 'Counted',
       cleanedDescription: 'Counted',
       sourceItemCode: 'AAA',
       itemCodeStatus: 'valid',
       storageLocation: 'Liquor Cage',
       totalUnits: RAW_QTY,
+      caseQuantity: 1, innerPackQuantity: 1, baseUnitQuantity: 1, baseUnit: 'EA',
+      countUnit3: 'EA', count3: RAW_QTY,
       totalCost: RAW_VALUE,
       rowStatus: 'matched',
       resolvedInventoryItemId: ID.itemA,
@@ -298,7 +302,7 @@ describe.skipIf(SKIP)('historical snapshot integrity', () => {
     expect(retained.rowIndex).toBe(2);
   });
 
-  it('rolls the whole snapshot back when the persisted valuation does not reconcile', async () => {
+  it('refuses an unrepresentable count before persisting anything', async () => {
     await expect(
       createCountSession({
         batchId: ID.batchRollback,
@@ -306,7 +310,7 @@ describe.skipIf(SKIP)('historical snapshot integrity', () => {
         userId: ID.admin,
         storeId: ID.store,
       }),
-    ).rejects.toThrow(/does not reconcile|rolled back/i);
+    ).rejects.toMatchObject({ code: 'COUNT_UNIT_UNVERIFIED' });
 
     // Nothing may survive: no session, no lines, no evidence links. A protected
     // historical session left behind here could not be repaired or deleted
@@ -318,9 +322,7 @@ describe.skipIf(SKIP)('historical snapshot integrity', () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it('leaves the batch importable again after a rolled-back attempt', async () => {
-    // The rollback must not poison the batch via the "already converted" guard —
-    // a failed import that permanently blocks retry is its own dead end.
+  it('leaves the batch available for review after a blocked attempt', async () => {
     await expect(
       createCountSession({
         batchId: ID.batchRollback,
@@ -328,6 +330,6 @@ describe.skipIf(SKIP)('historical snapshot integrity', () => {
         userId: ID.admin,
         storeId: ID.store,
       }),
-    ).rejects.toThrow(/does not reconcile|rolled back/i);
+    ).rejects.toMatchObject({ code: 'COUNT_UNIT_UNVERIFIED' });
   });
 });

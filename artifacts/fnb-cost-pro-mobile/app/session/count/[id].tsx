@@ -27,11 +27,16 @@ import { useSessionInventory, InventoryItem, InventorySection } from "@/hooks/us
 import { useUpdateItemCount } from "@/hooks/useUpdateItemCount";
 import { useScan } from "@/context/ScanContext";
 import CatchWeightScanModal from "@/components/CatchWeightScanModal";
+import { isWholeCaseConfiguration } from "@/lib/sessionItemDisplay";
 
 interface ItemRowProps {
   item: InventoryItem;
   count: number;
   onChangeCount: (value: number) => void;
+  onSavePackage: (caseQty: number, containerQty: number) => Promise<{
+    caseQty: number;
+    containerQty: number;
+  } | null>;
   onTap: () => void;
   onScanCatchWeight?: () => void;
   colors: ReturnType<typeof useColors>;
@@ -41,13 +46,55 @@ function formatItemCount(count: number, isCatchWeight: boolean): string {
   return isCatchWeight ? count.toFixed(2) : String(count);
 }
 
-function ItemRow({ item, count, onChangeCount, onTap, onScanCatchWeight, colors }: ItemRowProps) {
+function formatContainerLabel(label: string | null): string {
+  const normalized = label?.trim().toLowerCase() || "container";
+  const plural = normalized.endsWith("s") ? normalized : `${normalized}s`;
+  return plural.charAt(0).toUpperCase() + plural.slice(1);
+}
+
+function ItemRow({ item, count, onChangeCount, onSavePackage, onTap, onScanCatchWeight, colors }: ItemRowProps) {
+  const { i18n } = useTranslation();
   const [inputVal, setInputVal] = useState(formatItemCount(count, !!item.isCatchWeightCategory));
+  const [caseVal, setCaseVal] = useState(item.caseQty == null ? "" : String(item.caseQty));
+  const [containerVal, setContainerVal] = useState(item.containerQty == null ? "" : String(item.containerQty));
+  const confirmedPackageRef = useRef({
+    caseQty: item.caseQty,
+    containerQty: item.containerQty,
+  });
   const inputRef = useRef<TextInput>(null);
+  const isPackage =
+    item.countMode === "package" || item.countMode === "unconfigured";
+  const isWholeCase = isWholeCaseConfiguration(item);
+  const hasPackageSetup = item.countStatus === "ready";
+  const hasHistoricalLoose = item.countStatus === "historicalLoose" || (item.looseUnits ?? 0) > 0;
 
   useEffect(() => {
     setInputVal(formatItemCount(count, !!item.isCatchWeightCategory));
   }, [count, item.isCatchWeightCategory]);
+
+  useEffect(() => {
+    setCaseVal(item.caseQty == null ? "" : String(item.caseQty));
+    setContainerVal(item.containerQty == null ? "" : String(item.containerQty));
+    confirmedPackageRef.current = {
+      caseQty: item.caseQty,
+      containerQty: item.containerQty,
+    };
+  }, [item.caseQty, item.containerQty]);
+
+  const savePackage = async () => {
+    const cases = Math.max(0, parseFloat(caseVal) || 0);
+    const containers = Math.max(0, parseFloat(containerVal) || 0);
+    const confirmed = await onSavePackage(cases, isWholeCase ? 0 : containers);
+    if (confirmed) {
+      confirmedPackageRef.current = confirmed;
+      setCaseVal(String(confirmed.caseQty));
+      setContainerVal(String(confirmed.containerQty));
+    } else {
+      const previous = confirmedPackageRef.current;
+      setCaseVal(previous.caseQty == null ? "" : String(previous.caseQty));
+      setContainerVal(previous.containerQty == null ? "" : String(previous.containerQty));
+    }
+  };
 
   const handleInputBlur = () => {
     const parsed = parseFloat(inputVal);
@@ -101,9 +148,59 @@ function ItemRow({ item, count, onChangeCount, onTap, onScanCatchWeight, colors 
             </Text>
           </View>
         ) : null}
+        {isPackage && isWholeCase ? (
+          <Text style={[styles.packageNotice, { color: colors.mutedForeground }]}>
+            Contents unspecified
+          </Text>
+        ) : null}
       </Pressable>
 
       <View style={styles.countControls}>
+        {isPackage ? (
+          hasHistoricalLoose ? (
+            <Text style={[styles.packageNotice, { color: colors.mutedForeground }]}>
+              Historical count preserved: {item.looseUnits} {item.unit}
+            </Text>
+          ) : !hasPackageSetup ? (
+            <Text style={[styles.packageNotice, { color: colors.mutedForeground }]} testID={`count-configuration-required-${item.id}`}>
+              {i18n.language.startsWith("es")
+                ? "Se requiere configurar la unidad física de conteo"
+                : item.countBlockedReason || "Counting setup required"}
+            </Text>
+          ) : (
+            <View style={styles.packageInputs}>
+              <View style={styles.packageInputGroup}>
+                <Text style={[styles.packageLabel, { color: colors.mutedForeground }]}>
+                  {isWholeCase ? "Whole cases" : "Cases"}
+                </Text>
+                <TextInput
+                  style={[styles.packageInput, { borderColor: colors.border, color: colors.foreground }]}
+                  value={caseVal}
+                  onChangeText={setCaseVal}
+                  onBlur={() => { void savePackage(); }}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  testID={`package-case-input-${item.id}`}
+                />
+              </View>
+              {!isWholeCase ? <View style={styles.packageInputGroup}>
+                <Text style={[styles.packageLabel, { color: colors.mutedForeground }]}>
+                  {formatContainerLabel(item.containerLabel)}
+                </Text>
+                <TextInput
+                  style={[styles.packageInput, { borderColor: colors.border, color: colors.foreground }]}
+                  value={containerVal}
+                  onChangeText={setContainerVal}
+                  onBlur={() => { void savePackage(); }}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  testID={`package-container-input-${item.id}`}
+                />
+              </View> : null}
+            </View>
+          )
+        ) : (
+          <>
         {item.isCatchWeightCategory && onScanCatchWeight ? (
           <Pressable
             style={({ pressed }) => [styles.cwScanBtn, { opacity: pressed ? 0.65 : 1 }]}
@@ -135,6 +232,8 @@ function ItemRow({ item, count, onChangeCount, onTap, onScanCatchWeight, colors 
         maxLength={8}
         testID={`count-input-${item.id}`}
       />
+          </>
+        )}
       </View>
     </View>
   );
@@ -178,7 +277,7 @@ export default function CountScreen() {
   // Row text inputs are explicit typed direct-sets; the local display is
   // reconciled from the server-returned quantity after every save so a stale
   // local view never survives (relative/scan additions go through addQty).
-  const { saveCount, flushAll, hasSaveError, clearSaveError, clearAllCounts } = useUpdateItemCount(
+  const { saveCount, savePackageCount, flushAll, hasSaveError, clearSaveError, clearAllCounts } = useUpdateItemCount(
     id ?? "",
     (lineId, serverQty) => {
       setLocalCounts((prev) => ({ ...prev, [lineId]: serverQty }));
@@ -186,6 +285,7 @@ export default function CountScreen() {
   );
 
   const [localCounts, setLocalCounts] = useState<Record<string, number>>({});
+  const [search, setSearch] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isClearingAll, setIsClearingAll] = useState(false);
@@ -269,6 +369,7 @@ export default function CountScreen() {
 
   const handleItemTap = useCallback(
     (item: InventoryItem) => {
+      if (item.countMode === "package" || item.countMode === "unconfigured") return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       router.push({
         pathname: "/session/item",
@@ -337,6 +438,23 @@ export default function CountScreen() {
 
   const progress = totalItems > 0 ? countedItems / totalItems : 0;
   const progressPct = Math.round(progress * 100);
+  const visibleSections = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return sections;
+    return sections
+      .map((section) => ({
+        ...section,
+        data: section.data.filter((item) =>
+          [
+            item.name,
+            item.categoryName,
+            item.locationName,
+            item.containerLabel,
+          ].some((value) => value?.toLowerCase().includes(query))
+        ),
+      }))
+      .filter((section) => section.data.length > 0);
+  }, [sections, search]);
 
   const handleBack = useCallback(async () => {
     await flushAll();
@@ -403,12 +521,21 @@ export default function CountScreen() {
         item={item}
         count={localCounts[item.id] ?? item.currentCount}
         onChangeCount={(v) => handleChangeCount(item.id, v)}
+        onSavePackage={async (caseQty, containerQty) => {
+          const confirmed = await savePackageCount(item.id, caseQty, containerQty);
+          return confirmed
+            ? {
+                caseQty: confirmed.caseQty,
+                containerQty: confirmed.containerQty,
+              }
+            : null;
+        }}
         onTap={() => handleItemTap(item)}
         onScanCatchWeight={item.isCatchWeightCategory ? () => handleScanCatchWeight(item) : undefined}
         colors={colors}
       />
     ),
-    [localCounts, handleChangeCount, handleItemTap, handleScanCatchWeight, colors]
+    [localCounts, handleChangeCount, handleItemTap, handleScanCatchWeight, savePackageCount, colors]
   );
 
   const keyExtractor = useCallback((item: InventoryItem) => item.id, []);
@@ -534,6 +661,28 @@ export default function CountScreen() {
             </View>
           </View>
         )}
+
+        {!isLoading && !error && totalItems > 0 && (
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={17} color="#D97706" />
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search items..."
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="count-search-input"
+            />
+            {search.length > 0 && (
+              <Pressable onPress={() => setSearch("")} hitSlop={8} testID="clear-count-search">
+                <Feather name="x-circle" size={17} color="rgba(255,255,255,0.7)" />
+              </Pressable>
+            )}
+          </View>
+        )}
       </View>
 
       {hasSaveError && (
@@ -583,9 +732,19 @@ export default function CountScreen() {
             <Text style={styles.goBackBtnText}>{t("count.goBack")}</Text>
           </Pressable>
         </View>
+      ) : visibleSections.length === 0 ? (
+        <View style={styles.centeredContainer}>
+          <Feather name="search" size={36} color={colors.mutedForeground} />
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            No matching items
+          </Text>
+          <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
+            Try a different item, category, location, or counting unit.
+          </Text>
+        </View>
       ) : (
         <SectionList
-          sections={sections}
+          sections={visibleSections}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
@@ -692,6 +851,25 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: "#22C55E",
+  },
+  searchContainer: {
+    height: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217,119,6,0.65)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  searchInput: {
+    flex: 1,
+    height: 42,
+    color: "#fff",
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    paddingVertical: 0,
   },
 
   segmentCard: {
@@ -873,6 +1051,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  packageInputs: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  packageInputGroup: {
+    alignItems: "center",
+    gap: 3,
+  },
+  packageLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  packageInput: {
+    width: 62,
+    height: 42,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
+    paddingHorizontal: 3,
+  },
+  packageNotice: {
+    maxWidth: 145,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: "right",
+    fontFamily: "Inter_500Medium",
   },
   cwScanBtn: {
     width: 36,

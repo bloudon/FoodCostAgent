@@ -1,0 +1,13 @@
+A. Tenant/store and candidate sessions; applied=0 is only a draft indicator, not proof of no lines
+   company   |               store_id               |     store_name      |              session_id              | count_date | source_inventory_date |                    session_name                     | applied | is_historical_import | source_system |           source_batch_id            | persisted_lines | nonzero_lines | lines_with_parts
+-------------+--------------------------------------+---------------------+--------------------------------------+------------+-----------------------+-----------------------------------------------------+---------+----------------------+---------------+--------------------------------------+-----------------+---------------+------------------
+ Bay Hill CC | 9935864e-8904-4a93-9ea5-b11702960a8b | Bay Hill CC's Store | a454cf0a-dba2-46b5-b191-06ae67fb55e6 | 2026-05-31 | 2026-05-31            | Imported from Orderly — May_2026.xlsx — 2026-05-31  |       0 |                    1 | ORDERLY       | cdcfeead-8fa4-4b84-a3b8-9e8b0fa62c55 |            2512 |          2512 |             2512
+ Bay Hill CC | 9935864e-8904-4a93-9ea5-b11702960a8b | Bay Hill CC's Store | af1bea97-b199-4864-9968-dacd03d3d1a8 | 2026-06-30 | 2026-06-30            | Imported from Orderly — June_2026.xlsx — 2026-06-30 |       0 |                    1 | ORDERLY       | 1be3bb58-c7c7-4091-b749-6bc64724fe4b |            2339 |          2339 |             2339
+(2 rows)
+
+B. Candidate approved source batches; independently verify property/store identity
+               batch_id               | inventory_date |  status  | source_system | source_property_id |           target_store_id            | original_filename | source_rows | resolved_rows
+--------------------------------------+----------------+----------+---------------+--------------------+--------------------------------------+-------------------+-------------+---------------
+ cdcfeead-8fa4-4b84-a3b8-9e8b0fa62c55 | 2026-05-31     | approved | ORDERLY       |                    | 9935864e-8904-4a93-9ea5-b11702960a8b | May_2026.xlsx     |        5358 |          5358
+ 1be3bb58-c7c7-4091-b749-6bc64724fe4b | 2026-06-30     | approved | ORDERLY       | 24472              | 9935864e-8904-4a93-9ea5-b11702960a8b | June_2026.xlsx    |        5409 |          5409
+(2 rows)

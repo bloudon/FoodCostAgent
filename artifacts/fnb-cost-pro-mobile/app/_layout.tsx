@@ -8,7 +8,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Redirect, Stack, router, useSegments } from "expo-router";
+import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { Pressable } from "react-native";
@@ -18,7 +18,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AuthGate } from "@/components/AuthGate";
+import { AuthProvider } from "@/context/AuthContext";
 import { ScanProvider } from "@/context/ScanContext";
 
 SplashScreen.preventAutoHideAsync();
@@ -39,25 +40,6 @@ const HEADER_OPTIONS = {
   } as const,
   headerBackTitle: "Back",
 } as const;
-
-function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  const segments = useSegments();
-
-  const isOnLoginScreen = segments[0] === "login";
-
-  if (isLoading) return null;
-
-  if (!user && !isOnLoginScreen) {
-    return <Redirect href="/login" />;
-  }
-
-  if (user && isOnLoginScreen) {
-    return <Redirect href="/" />;
-  }
-
-  return <>{children}</>;
-}
 
 function RootLayoutNav() {
   return (

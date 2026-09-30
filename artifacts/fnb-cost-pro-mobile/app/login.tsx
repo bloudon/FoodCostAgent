@@ -110,22 +110,22 @@ export default function LoginScreen() {
       {displayUrl ? (
         <Image
           source={{ uri: displayUrl }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           resizeMode="cover"
         />
       ) : (
-        <View style={[StyleSheet.absoluteFillObject, styles.bgFallback]} />
+        <View style={[StyleSheet.absoluteFill, styles.bgFallback]} />
       )}
 
       {incomingUrl ? (
         <Animated.Image
           source={{ uri: incomingUrl }}
-          style={[StyleSheet.absoluteFillObject, { opacity: fadeAnim }]}
+          style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}
           resizeMode="cover"
         />
       ) : null}
 
-      <View style={[StyleSheet.absoluteFillObject, styles.overlay]} />
+      <View style={[StyleSheet.absoluteFill, styles.overlay]} />
 
       <KeyboardAvoidingView
         style={styles.content}

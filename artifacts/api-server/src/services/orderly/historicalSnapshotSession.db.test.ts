@@ -34,6 +34,7 @@ const ID = {
   admin: `hs-admin-${RUN}`,
   property: `hs-prop-${RUN}`,
   batch: `hs-batch-${RUN}`,
+  concurrentBatch: `hs-concurrent-${RUN}`,
   itemA: `hs-item-a-${RUN}`,
   itemB: `hs-item-b-${RUN}`,
 };
@@ -100,13 +101,20 @@ beforeAll(async () => {
       batchId: ID.batch,
       rowIndex: 1,
       sheetName: 'Inventory Detail',
-      rawData: { 'Item Code': 'AAA', 'Total Cost': `$${RESOLVED_VALUE.toFixed(2)}` },
+      rawData: { 'Item Code': 'AAA', 'Pack Size': '1/5 EA', 'Total Units': 5, 'Total Cost': `$${RESOLVED_VALUE.toFixed(2)}` },
       rawDescription: 'Counted Item',
       cleanedDescription: 'Counted Item',
       sourceItemCode: 'AAA',
       itemCodeStatus: 'valid',
       storageLocation: 'Liquor Cage',
       totalUnits: 5,
+      caseQuantity: 1,
+      innerPackQuantity: 5,
+      baseUnitQuantity: 1,
+      baseUnit: 'EA',
+      countUnit3: 'EA',
+      countUnit1: 'Case',
+      count1: 1,
       totalCost: RESOLVED_VALUE,
       packagePrice: 240.1,
       rowStatus: 'matched',
@@ -159,8 +167,10 @@ afterAll(async () => {
       .where(inArray(inventoryCountLines.inventoryCountId, sessionIds)).catch(() => {});
   }
   await db.delete(inventoryCounts).where(eq(inventoryCounts.companyId, ID.company)).catch(() => {});
-  await db.delete(inventoryImportRows).where(eq(inventoryImportRows.batchId, ID.batch)).catch(() => {});
-  await db.delete(inventoryImportBatches).where(eq(inventoryImportBatches.id, ID.batch)).catch(() => {});
+  await db.delete(inventoryImportRows)
+    .where(inArray(inventoryImportRows.batchId, [ID.batch, ID.concurrentBatch])).catch(() => {});
+  await db.delete(inventoryImportBatches)
+    .where(inArray(inventoryImportBatches.id, [ID.batch, ID.concurrentBatch])).catch(() => {});
   await db.delete(inventoryItems).where(eq(inventoryItems.companyId, ID.company)).catch(() => {});
   await db.delete(storageLocations).where(eq(storageLocations.companyId, ID.company)).catch(() => {});
   await db.delete(users).where(eq(users.id, ID.admin)).catch(() => {});
@@ -214,6 +224,25 @@ describe.skipIf(SKIP)('historical snapshot session', () => {
       .from(inventoryCounts)
       .where(eq(inventoryCounts.sourceBatchId, ID.batch));
     expect(sessions).toHaveLength(0);
+  });
+
+  it('refuses a source unit mismatch before creating a count session or changing the source', async () => {
+    const [oz] = await db.select({ id: units.id }).from(units).where(eq(units.abbreviation, 'oz')).limit(1);
+    if (!oz) throw new Error('Expected seeded oz unit');
+    await db.update(inventoryItems).set({ unitId: oz.id }).where(eq(inventoryItems.id, ID.itemA));
+    try {
+      const preview = await previewCountSession(ID.batch, ID.company);
+      expect(preview.unitFindings).toEqual([
+        expect.objectContaining({ rowIndex: 1, sourceUnit: 'EA', savedUnit: 'oz', reason: 'unit_mismatch' }),
+      ]);
+      await expect(createCountSession({
+        batchId: ID.batch, companyId: ID.company, userId: ID.admin, storeId: ID.store,
+      })).rejects.toMatchObject({ code: 'COUNT_UNIT_MISMATCH' });
+      expect(await db.select({ id: inventoryCounts.id }).from(inventoryCounts)
+        .where(eq(inventoryCounts.sourceBatchId, ID.batch))).toHaveLength(0);
+    } finally {
+      await db.update(inventoryItems).set({ unitId: eachUnitId }).where(eq(inventoryItems.id, ID.itemA));
+    }
   });
 
   it('persists the snapshot with linked unresolved evidence and reconciles to zero', async () => {
@@ -271,6 +300,32 @@ describe.skipIf(SKIP)('historical snapshot session', () => {
       .from(historicalSessionUnresolvedRows)
       .where(eq(historicalSessionUnresolvedRows.sessionId, countId));
     expect(links).toHaveLength(1);
+  });
+
+  it('serializes simultaneous requests so only one session is created', async () => {
+    await db.insert(inventoryImportBatches).values({
+      id: ID.concurrentBatch, companyId: ID.company, sourceSystem: 'ORDERLY',
+      fileHash: `hash-${ID.concurrentBatch}`, originalFilename: 'Concurrent.xlsx',
+      sheetName: 'Inventory Detail', parserVersion: '1.0',
+      inventoryDate: '2026-06-30', inventoryDateConfirmed: 1, status: 'approved',
+      sourceRowCount: 1, snapshotTotal: 50, targetStoreId: ID.store, sourcePropertyId: ID.property,
+    });
+    await db.insert(inventoryImportRows).values({
+      batchId: ID.concurrentBatch, rowIndex: 1, sheetName: 'Inventory Detail',
+      rawData: { 'Item Code': 'AAA', 'Pack Size': '1/5 EA', 'Total Units': 5, 'Total Cost': '$50.00' },
+      rawDescription: 'Counted Item', sourceItemCode: 'AAA', itemCodeStatus: 'valid',
+      storageLocation: 'Liquor Cage', totalUnits: 5, totalCost: 50,
+      caseQuantity: 1, innerPackQuantity: 5, baseUnitQuantity: 1, baseUnit: 'EA',
+      countUnit1: 'Case', countUnit3: 'EA', count1: 1,
+      rowStatus: 'matched', resolvedInventoryItemId: ID.itemA,
+    });
+    const results = await Promise.allSettled([1, 2].map(() => createCountSession({
+      batchId: ID.concurrentBatch, companyId: ID.company, userId: ID.admin, storeId: ID.store,
+    })));
+    expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
+    expect(await db.select({ id: inventoryCounts.id }).from(inventoryCounts)
+      .where(eq(inventoryCounts.sourceBatchId, ID.concurrentBatch))).toHaveLength(1);
   });
 
   it('rejects a duplicate evidence link for the same session and row', async () => {

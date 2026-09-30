@@ -1148,7 +1148,7 @@ export function registerOrderlyImportRoutes(app: Express): void {
         console.error('[OrderlyImport] create-count-session error:', err);
         const status =
           err.message?.includes('not found') ? 404
-          : err.code === 'BATCH_STORE_MISMATCH' ? 409
+          : ['BATCH_STORE_MISMATCH', 'BATCH_CHANGED', 'COUNT_UNIT_MISMATCH', 'COUNT_UNIT_UNVERIFIED', 'COUNT_UNIT_CHANGED', 'COUNT_SOURCE_CHANGED'].includes(err.code) ? 409
           : err.message?.includes('must be approved') ? 409
           : err.message?.includes('variance') ? 422
           : err.message?.includes('No rows') ? 422

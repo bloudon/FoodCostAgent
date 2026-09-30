@@ -58,7 +58,8 @@ vi.mock("@/i18n", () => ({
 // Imports are resolved AFTER the vi.mock() calls above take effect.
 // ---------------------------------------------------------------------------
 
-import { AuthProvider } from "../context/AuthContext";
+import { AuthProvider, buildMobileLoginUrl } from "../context/AuthContext";
+import { PROD_APP_BASE_URL, resolveAppBaseUrl } from "../lib/appBaseUrl";
 import * as expoRouter from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { setUnauthorizedHandler } from "@workspace/api-client-react";
@@ -88,6 +89,42 @@ async function mountAndGetHandler(): Promise<(data?: unknown) => Promise<void>> 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe("mobile login endpoint", () => {
+  it("uses the supported login route for the Replit API server", () => {
+    expect(buildMobileLoginUrl("https://example.replit.dev")).toBe(
+      "https://example.replit.dev/api/mobile/login",
+    );
+  });
+
+  it("uses the same supported login route for production", () => {
+    expect(buildMobileLoginUrl("https://app.fnbcostpro.com/")).toBe(
+      "https://app.fnbcostpro.com/api/mobile/login",
+    );
+  });
+});
+
+describe("mobile app origin", () => {
+  it("keeps native development login and embedded pages on the Replit origin", () => {
+    expect(
+      resolveAppBaseUrl({
+        isDev: true,
+        platform: "android",
+        domain: "example.replit.dev",
+      }),
+    ).toBe("https://example.replit.dev");
+  });
+
+  it("uses the production origin in release builds", () => {
+    expect(
+      resolveAppBaseUrl({
+        isDev: false,
+        platform: "android",
+        domain: "example.replit.dev",
+      }),
+    ).toBe(PROD_APP_BASE_URL);
+  });
+});
 
 describe("AuthProvider — setUnauthorizedHandler registration", () => {
   beforeEach(() => {

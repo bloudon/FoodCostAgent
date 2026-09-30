@@ -1,0 +1,10 @@
+---
+name: August physical-count boundary
+description: Why Bay Hill August entry and Orderly comparison remain separate evidence paths
+---
+
+The August 31 Bay Hill physical readings belong to the operator, not to the Orderly workbook or an initialized zero baseline. The operator confirmed they will key separate actual readings into the GUI; validate a representative cross-section first rather than requiring the entire list. The existing ordinary development draft is not a disposable test fixture; do not write invented readings into it for acceptance testing. Its older September entries are of unknown measurement provenance and must be preserved but not asserted to be August 31 physical readings. A scoped, read-only workbook reference is valid for comparison without creating an August import or historical count, but unresolved source identity, pack geometry, location, or unit must remain unresolved.
+
+**Why:** There was no approved August Orderly import in development, and a read-only audit found saved entries from before the operator's September 29 handoff, with no evidence tying them to the operator's actual August 31 readings. An isolated test-company fixture proved save/reload safely without contaminating the retained live draft.
+
+**How to apply:** Start with a varied set of matched item/location lines (same unit, lb/oz, package, actual zero, and a blocked negative control). Require the operator to verify and freshly save actual readings before showing physical-versus-source differences for those lines; never infer the business measurement date from a session date alone. Use a clearly isolated, user-authorized development fixture for write acceptance. Do not claim native-device acceptance from a responsive web preview. Keep any VPS release as a separate operator-authorized step.

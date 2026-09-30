@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, unique, index, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, unique, index, uniqueIndex, jsonb, check, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -850,6 +850,9 @@ export const inventoryCountLines = pgTable("inventory_count_lines", {
   looseUnits: real("loose_units"), // number of loose units from opened cases (for case counting)
   unitId: varchar("unit_id").notNull(),
   unitCost: real("unit_cost").notNull().default(0), // price per unit at time of count (snapshot)
+  // Server-written physical conversion for the latest package entry on this line.
+  // Legacy/imported lines intentionally remain null.
+  countPackSnapshot: jsonb("count_pack_snapshot"),
   userId: varchar("user_id"),
   countedAt: timestamp("counted_at").defaultNow(),
 }, (table) => ({
@@ -879,10 +882,90 @@ export const historicalSessionUnresolvedRows = pgTable("historical_session_unres
 
 export const insertInventoryCountLineSchema = createInsertSchema(inventoryCountLines).omit({ 
   id: true,
-  countedAt: true
+  countedAt: true,
+  countPackSnapshot: true,
 });
 export type InsertInventoryCountLine = z.infer<typeof insertInventoryCountLineSchema>;
 export type InventoryCountLine = typeof inventoryCountLines.$inferSelect;
+
+// Approved changes to an inventory item's supplier pack are stored as
+// immutable, effective-dated decisions with the compared pack state.
+export const inventoryItemPackTransitions = pgTable("inventory_item_pack_transitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  fromVendorItemId: varchar("from_vendor_item_id").notNull(),
+  toVendorItemId: varchar("to_vendor_item_id").notNull(),
+  effectiveDate: text("effective_date").notNull(),
+  evidenceNote: text("evidence_note").notNull(),
+  approvedBy: varchar("approved_by").notNull(),
+  fromPackSnapshot: jsonb("from_pack_snapshot").notNull(),
+  toPackSnapshot: jsonb("to_pack_snapshot").notNull(),
+  countingStandardConfirmed: integer("counting_standard_confirmed").notNull().default(0),
+  operationalPackSnapshot: jsonb("operational_pack_snapshot"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueTransition: unique().on(
+    table.companyId,
+    table.inventoryItemId,
+    table.fromVendorItemId,
+    table.toVendorItemId,
+    table.effectiveDate,
+  ),
+  uniqueEffectiveDate: unique().on(table.companyId, table.inventoryItemId, table.effectiveDate),
+  companyItemEffectiveDateIdx: index("inventory_item_pack_transitions_company_item_effective_date_idx")
+    .on(table.companyId, table.inventoryItemId, table.effectiveDate),
+  distinctVendorItems: check(
+    "inventory_item_pack_transitions_from_to_distinct_check",
+    sql`${table.fromVendorItemId} <> ${table.toVendorItemId}`,
+  ),
+}));
+
+export const insertInventoryItemPackTransitionSchema = createInsertSchema(inventoryItemPackTransitions).omit({
+  id: true,
+  companyId: true,
+  approvedBy: true,
+  fromPackSnapshot: true,
+  toPackSnapshot: true,
+  countingStandardConfirmed: true,
+  operationalPackSnapshot: true,
+  createdAt: true,
+});
+
+// Append-only decisions superseding an approval (or an earlier correction).
+// A void has no replacement pack; a correction carries its own frozen snapshots.
+export const inventoryItemPackTransitionCorrections = pgTable("inventory_item_pack_transition_corrections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  originalTransitionId: varchar("original_transition_id").notNull().references(() => inventoryItemPackTransitions.id),
+  supersedesCorrectionId: varchar("supersedes_correction_id").references((): AnyPgColumn => inventoryItemPackTransitionCorrections.id),
+  companyId: varchar("company_id").notNull(),
+  inventoryItemId: varchar("inventory_item_id").notNull(),
+  decision: text("decision").notNull(),
+  effectiveDate: text("effective_date").notNull(),
+  reason: text("reason").notNull(),
+  fromVendorItemId: varchar("from_vendor_item_id"),
+  toVendorItemId: varchar("to_vendor_item_id"),
+  fromPackSnapshot: jsonb("from_pack_snapshot"),
+  toPackSnapshot: jsonb("to_pack_snapshot"),
+  decidedBy: varchar("decided_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  firstDecision: uniqueIndex("pack_corrections_first_decision_idx").on(table.originalTransitionId)
+    .where(sql`${table.supersedesCorrectionId} IS NULL`),
+  uniqueSuperseded: uniqueIndex("pack_corrections_superseded_idx").on(table.supersedesCorrectionId)
+    .where(sql`${table.supersedesCorrectionId} IS NOT NULL`),
+  originalIdx: index("pack_transition_corrections_original_idx").on(table.originalTransitionId),
+  validDecision: check("inventory_item_pack_transition_corrections_decision_check", sql`${table.decision} IN ('correct', 'void')`),
+  validPayload: check("pack_correction_payload_check", sql`
+    (${table.decision} = 'void' AND ${table.fromVendorItemId} IS NULL AND ${table.toVendorItemId} IS NULL
+      AND ${table.fromPackSnapshot} IS NULL AND ${table.toPackSnapshot} IS NULL)
+    OR (${table.decision} = 'correct' AND ${table.fromVendorItemId} IS NOT NULL AND ${table.toVendorItemId} IS NOT NULL
+      AND ${table.fromVendorItemId} <> ${table.toVendorItemId}
+      AND ${table.fromPackSnapshot} IS NOT NULL AND ${table.toPackSnapshot} IS NOT NULL)
+  `),
+}));
+export type InsertInventoryItemPackTransition = z.infer<typeof insertInventoryItemPackTransitionSchema>;
+export type InventoryItemPackTransition = typeof inventoryItemPackTransitions.$inferSelect;
 
 // Inventory Count Entries — individual count additions within a single line
 export const inventoryCountEntries = pgTable("inventory_count_entries", {

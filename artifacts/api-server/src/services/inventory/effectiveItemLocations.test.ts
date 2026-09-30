@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   filterItemsByEffectiveLocation,
   getInventoryItemsByEffectiveLocation,
+  isEffectiveInventoryItemLocation,
   mergeEffectiveInventoryItemLocations,
 } from './effectiveItemLocations';
 
@@ -89,6 +90,17 @@ describe('mergeEffectiveInventoryItemLocations', () => {
     expect(
       filterItemsByEffectiveLocation(items, 'legacy-cellar'),
     ).toEqual([items[1]]);
+  });
+
+  it('accepts only effective item location IDs and rejects missing or foreign locations', () => {
+    const locations = [
+      { id: 'canonical-cellar', name: 'Cellar', isPrimary: true },
+      { id: 'legacy-cooler', name: 'Cooler', isPrimary: false },
+    ];
+    expect(isEffectiveInventoryItemLocation(locations, 'canonical-cellar')).toBe(true);
+    expect(isEffectiveInventoryItemLocation(locations, 'legacy-cooler')).toBe(true);
+    expect(isEffectiveInventoryItemLocation(locations, 'other-company-location')).toBe(false);
+    expect(isEffectiveInventoryItemLocation(locations, undefined)).toBe(false);
   });
 });
 

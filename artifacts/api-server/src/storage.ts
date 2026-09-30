@@ -272,6 +272,7 @@ export interface IStorage {
   getInventoryCountLine(id: string): Promise<InventoryCountLine | undefined>;
   createInventoryCountLine(line: InsertInventoryCountLine): Promise<InventoryCountLine>;
   updateInventoryCountLine(id: string, line: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined>;
+  replaceCountLineAndEntry(id: string, updates: Partial<InventoryCountLine>, userId: string | null): Promise<InventoryCountLine | undefined>;
   atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined>;
   deleteInventoryCountLine(id: string): Promise<void>;
 
@@ -666,7 +667,13 @@ export interface IStorage {
   // Mobile Dashboard & Active Sessions
   getActiveInventoryCounts(companyId: string, storeId?: string): Promise<InventoryCount[]>;
   getRecentAppliedInventoryCounts(companyId: string, storeIds?: string[], limit?: number): Promise<{ id: string; name: string | null; storeId: string | null; countDate: Date; lineCount: number }[]>;
-  getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]>;
+  getInventoryCountProgressBatch(countIds: string[]): Promise<{
+    countId: string;
+    totalItems: number;
+    countedItems: number;
+    distinctItems: number;
+    totalLines: number;
+  }[]>;
 
   // POS Connections
   getPosConnections(companyId: string): Promise<PosConnection[]>;
@@ -803,6 +810,33 @@ function encryptPosConnectionTokenUpdates(
     result.tokenKeyVersion = currentTokenKeyVersion();
   }
   return result;
+}
+
+/**
+ * Lock the item for a package-count write. If counting geometry changed since
+ * the route calculated qty, abort rather than persisting a false snapshot.
+ */
+async function verifyCountPackStillCurrent(tx: any, itemId: string, snapshot: unknown): Promise<void> {
+  if (snapshot == null) return;
+  if (typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new Error("Invalid count pack snapshot");
+  }
+  const expected = snapshot as Record<string, unknown>;
+  const [item] = await tx.select({
+    unitId: inventoryItems.unitId,
+    caseSize: inventoryItems.caseSize,
+    containerSize: inventoryItems.containerSize,
+    casePkgCount: inventoryItems.casePkgCount,
+    containerLabel: inventoryItems.containerLabel,
+  }).from(inventoryItems).where(eq(inventoryItems.id, itemId)).for("share");
+  if (!item ||
+      item.unitId !== expected.unitId ||
+      item.caseSize !== expected.caseSize ||
+      item.containerSize !== expected.containerSize ||
+      item.casePkgCount !== expected.casePkgCount ||
+      item.containerLabel !== expected.containerLabel) {
+    throw new Error("Counting pack changed while saving; reload the item and recount");
+  }
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2455,8 +2489,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInventoryCountLine(insertLine: InsertInventoryCountLine): Promise<InventoryCountLine> {
-    const [line] = await db.insert(inventoryCountLines).values(insertLine).returning();
-    return line;
+    return db.transaction(async (tx: any) => {
+      await verifyCountPackStillCurrent(tx, insertLine.inventoryItemId, (insertLine as any).countPackSnapshot);
+      const [line] = await tx.insert(inventoryCountLines).values(insertLine).returning();
+      return line;
+    });
   }
 
   async updateInventoryCountLine(id: string, updates: Partial<InventoryCountLine>): Promise<InventoryCountLine | undefined> {
@@ -2469,6 +2506,36 @@ export class DatabaseStorage implements IStorage {
     return line || undefined;
   }
 
+  async replaceCountLineAndEntry(
+    id: string,
+    updates: Partial<InventoryCountLine>,
+    userId: string | null,
+  ): Promise<InventoryCountLine | undefined> {
+    return db.transaction(async (tx: any) => {
+      if (updates.countPackSnapshot) {
+        const [existing] = await tx.select({ inventoryItemId: inventoryCountLines.inventoryItemId })
+          .from(inventoryCountLines).where(eq(inventoryCountLines.id, id));
+        if (!existing) return undefined;
+        await verifyCountPackStillCurrent(tx, existing.inventoryItemId, updates.countPackSnapshot);
+      }
+      const [line] = await tx.update(inventoryCountLines)
+        .set(updates)
+        // @ts-ignore
+        .where(eq(inventoryCountLines.id, id))
+        .returning();
+      if (!line) return undefined;
+      await tx.delete(inventoryCountEntries)
+        // @ts-ignore
+        .where(eq(inventoryCountEntries.inventoryCountLineId, id));
+      await tx.insert(inventoryCountEntries).values({
+        inventoryCountLineId: id,
+        qty: line.qty,
+        userId,
+      });
+      return line;
+    });
+  }
+
   async atomicIncrementCountLineQty(id: string, addQty: number, userId: string | null): Promise<{ line: InventoryCountLine; entryQty: number } | undefined> {
     // @ts-ignore
     return db.transaction(async (tx) => {
@@ -2479,6 +2546,7 @@ export class DatabaseStorage implements IStorage {
           caseQty: null,
           containerQty: null,
           looseUnits: null,
+          countPackSnapshot: null,
         })
         // @ts-ignore
         .where(eq(inventoryCountLines.id, id))
@@ -2542,7 +2610,12 @@ export class DatabaseStorage implements IStorage {
       // @ts-ignore
       const newQty = remaining.reduce((sum, e) => sum + e.qty, 0);
       const [updatedLine] = await tx.update(inventoryCountLines)
-        .set({ qty: newQty })
+        .set({
+          qty: newQty,
+          ...(remaining.length === 0
+            ? { caseQty: null, containerQty: null, looseUnits: null, countPackSnapshot: null }
+            : {}),
+        })
         // @ts-ignore
         .where(eq(inventoryCountLines.id, entry.inventoryCountLineId))
         .returning();
@@ -2559,7 +2632,7 @@ export class DatabaseStorage implements IStorage {
       // @ts-ignore
       await tx.delete(inventoryCountEntries).where(eq(inventoryCountEntries.inventoryCountLineId, lineId));
       const [updatedLine] = await tx.update(inventoryCountLines)
-        .set({ qty: 0, caseQty: null, containerQty: null, looseUnits: null })
+        .set({ qty: 0, caseQty: null, containerQty: null, looseUnits: null, countPackSnapshot: null })
         // @ts-ignore
         .where(eq(inventoryCountLines.id, lineId))
         .returning();
@@ -5572,13 +5645,21 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getInventoryCountProgressBatch(countIds: string[]): Promise<{ countId: string; totalItems: number; countedItems: number }[]> {
+  async getInventoryCountProgressBatch(countIds: string[]): Promise<{
+    countId: string;
+    totalItems: number;
+    countedItems: number;
+    distinctItems: number;
+    totalLines: number;
+  }[]> {
     if (countIds.length === 0) return [];
     const rows = await db
       .select({
         countId: inventoryCountLines.inventoryCountId,
         totalItems: sql<number>`count(*)::int`,
         countedItems: sql<number>`count(*) filter (where ${inventoryCountLines.qty} > 0)::int`,
+        distinctItems: sql<number>`count(distinct ${inventoryCountLines.inventoryItemId})::int`,
+        totalLines: sql<number>`count(*)::int`,
       })
       .from(inventoryCountLines)
       // @ts-ignore
@@ -5589,6 +5670,8 @@ export class DatabaseStorage implements IStorage {
       countId: r.countId,
       totalItems: r.totalItems,
       countedItems: r.countedItems,
+      distinctItems: r.distinctItems,
+      totalLines: r.totalLines,
     }));
   }
 

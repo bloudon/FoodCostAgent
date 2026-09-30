@@ -22,6 +22,22 @@ vitest with `DATABASE_URL` pointed at it. Note: suites whose beforeAll depends o
 seeded reference data (e.g. an `ea` unit) will self-skip on a schema-only clone —
 run those against dev, where run-suffixed ids keep them collision-free.
 
+For destructive-route regression suites, clone the schema from the **active
+application connection**, not a similarly named auxiliary database URL. The two
+can point to different schemas even within one workspace; a successful
+schema-only dump from the wrong one may omit tables the route needs. Make the
+fixture suite refuse any connection except its dedicated local database,
+including in teardown, and select the local PostgreSQL driver explicitly.
+
+**Why:** A disposable clone from an auxiliary URL lacked migration-created
+tables; the local app then tried the serverless transport until the driver mode
+was set. A test guard in setup alone is insufficient if teardown still runs
+after a failed setup.
+
+**How to apply:** Confirm the source is the connection used by the running app,
+check required tables after restore, set local driver mode for the test, and
+guard both fixture writes and cleanup before running actual mutation tests.
+
 # Historical count-session destination is the batch's, not the caller's
 
 `createCountSession` must reject any client storeId that differs from the

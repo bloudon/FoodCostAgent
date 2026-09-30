@@ -58,31 +58,27 @@ import type { Company, CompanyStore } from "@shared/schema";
 function SessionCard({ count }: any) {
   const { toast } = useToast();
   const isEmbedded = useEmbedded();
-  const { data: countLines } = useQuery<any[]>({
-    queryKey: ["/api/inventory-count-lines", count.id],
-  });
   const storeName = count.storeName || 'Unknown Store';
   const countDate = count.countDate ? parseCountDate(count.countDate) : new Date(count.countedAt);
-  const totalValue = countLines?.reduce((sum: number, line: any) => sum + (line.qty * (line.unitCost || 0)), 0) || 0;
+  const totalValue = Number(count.totalValue || 0);
+  const sessionTotals = {
+    distinctItems: Number(count.distinctItems || 0),
+    itemLocationLines: Number(count.itemLocationLines || 0),
+  };
   const [, setLocation] = useLocation();
 
   // Build location summary rows from count lines
   const locationRows: { id: string; name: string; value: number; counted: number; total: number }[] = [];
-  if (countLines) {
-    const locMap = new Map<string, { id: string; name: string; value: number; counted: number; total: number }>();
-    for (const line of countLines) {
-      const locId = line.storageLocationId || line.inventoryItem?.storageLocationId || "unknown";
-      const locName = line.storageLocationName || line.inventoryItem?.storageLocationName || "Unknown Location";
-      if (!locMap.has(locId)) {
-        locMap.set(locId, { id: locId, name: locName, value: 0, counted: 0, total: 0 });
-      }
-      const entry = locMap.get(locId)!;
-      entry.value += (line.qty || 0) * (line.unitCost || 0);
-      entry.total += 1;
-      if ((line.qty || 0) > 0) entry.counted += 1;
-    }
-    locationRows.push(...Array.from(locMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  for (const summary of count.locationSummaries || []) {
+    locationRows.push({
+      id: summary.id || summary.locationId || "unknown",
+      name: summary.name || summary.locationName || "Unknown Location",
+      value: Number(summary.value || summary.totalValue || 0),
+      counted: Number(summary.counted || summary.countedItems || 0),
+      total: Number(summary.total || summary.itemLocationLines || 0),
+    });
   }
+  locationRows.sort((a, b) => a.name.localeCompare(b.name));
 
   const deleteSessionMutation = useMutation({
     mutationFn: async () => {
@@ -131,7 +127,9 @@ function SessionCard({ count }: any) {
           </div>
           <div className="text-xs text-muted-foreground truncate">{storeName}</div>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-            <span>{countLines?.length ?? 0} items</span>
+            <span data-testid={`text-session-item-totals-mobile-${count.id}`}>
+              {sessionTotals.distinctItems} items · {sessionTotals.itemLocationLines} item-locations
+            </span>
             <span>·</span>
             <span className="font-mono font-medium text-foreground">${totalValue.toFixed(2)}</span>
             {count.note && <><span>·</span><span className="truncate max-w-[120px] inline-block">{count.note}</span></>}
@@ -143,7 +141,7 @@ function SessionCard({ count }: any) {
             <div className="mt-2">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-muted-foreground" data-testid={`text-session-progress-${count.id}`}>
-                  {count.countedItems ?? 0} of {count.totalItems ?? 0} items counted
+                  {count.countedItems ?? 0} of {count.totalItems ?? 0} item-locations counted
                 </span>
                 <span className="text-xs font-medium text-[#f2690d]">
                   {Math.round(((count.countedItems ?? 0) / (count.totalItems ?? 1)) * 100)}%
@@ -201,10 +199,6 @@ function SessionCard({ count }: any) {
 function SessionRow({ count, inventoryItems, stores, index }: any) {
   const { toast } = useToast();
   
-  const { data: countLines } = useQuery<any[]>({
-    queryKey: ["/api/inventory-count-lines", count.id],
-  });
-  
   // Use storeName from count data (includes store name even if user doesn't have access)
   const storeName = count.storeName || 'Unknown Store';
   // Fallback to countedAt for legacy records without countDate
@@ -231,9 +225,11 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
     },
   });
 
-  const totalValue = countLines?.reduce((sum, line) => {
-    return sum + (line.qty * (line.unitCost || 0));
-  }, 0) || 0;
+  const totalValue = Number(count.totalValue || 0);
+  const sessionTotals = {
+    distinctItems: Number(count.distinctItems || 0),
+    itemLocationLines: Number(count.itemLocationLines || 0),
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -266,7 +262,12 @@ function SessionRow({ count, inventoryItems, stores, index }: any) {
       </TableCell>
       <TableCell data-testid={`text-store-${count.id}`}>{storeName}</TableCell>
       <TableCell>{count.userName || "System"}</TableCell>
-      <TableCell className="text-right font-mono">{countLines?.length || 0}</TableCell>
+      <TableCell className="text-right font-mono" data-testid={`text-session-distinct-items-${count.id}`}>
+        {sessionTotals.distinctItems}
+      </TableCell>
+      <TableCell className="text-right font-mono" data-testid={`text-session-item-locations-${count.id}`}>
+        {sessionTotals.itemLocationLines}
+      </TableCell>
       <TableCell className="text-right font-mono font-semibold" data-testid={`text-session-value-${count.id}`}>
         ${totalValue.toFixed(2)}
       </TableCell>
@@ -345,6 +346,25 @@ export default function InventorySessions() {
     queryKey: ["/api/inventory-counts"],
   });
 
+  const dateKey = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const matchingManualSessions = (storeId: string, date: string) =>
+    (inventoryCounts || []).filter((session: any) =>
+      session.storeId === storeId &&
+      session.countDate?.slice(0, 10) === date &&
+      session.isHistoricalImport !== 1 &&
+      session.sourceSystem !== "ORDERLY" &&
+      session.isPowerSession !== 1
+    );
+  const matchingDialogSessions = dialogStoreId && !isPowerSession
+    ? matchingManualSessions(dialogStoreId, dateKey(countDate))
+    : [];
+  const augustDrafts = (accessibleStores: { id: string; name: string }[]) =>
+    accessibleStores.flatMap((store) =>
+      matchingManualSessions(store.id, "2026-08-31")
+        .map((session: any) => ({ ...session, storeName: store.name }))
+    );
+
   const createSessionMutation = useMutation({
     mutationFn: async () => {
       if (!selectedCompanyId) {
@@ -410,6 +430,14 @@ export default function InventorySessions() {
       toast({
         title: "Store Required",
         description: "Please select a store location for this count session",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (matchingDialogSessions.length > 0) {
+      toast({
+        title: "Count already exists",
+        description: "Open the existing count for this store and date to keep its saved readings.",
         variant: "destructive",
       });
       return;
@@ -500,9 +528,13 @@ export default function InventorySessions() {
 
   // Check which stores need baseline initialization (no applied counts)
   const storesNeedingBaseline = stores.filter(store => {
+    // Bay Hill's August physical readings are never replaced by a zero baseline.
+    if (store.id === "7126a705-64a6-4362-8b62-f08349640442") return false;
     const storeCounts = inventoryCounts?.filter(c => c.storeId === store.id) || [];
     const appliedCounts = storeCounts.filter((c: any) => c.applied === 1);
-    return appliedCounts.length === 0;
+    // Never suggest a zero baseline while real physical readings are being entered.
+    const manualCounts = storeCounts.filter((c: any) => c.isHistoricalImport !== 1 && c.sourceSystem !== "ORDERLY");
+    return appliedCounts.length === 0 && manualCounts.length === 0;
   });
 
   return (
@@ -573,6 +605,31 @@ export default function InventorySessions() {
           <div className="mt-2 text-sm text-muted-foreground">{stores[0].name}</div>
         )}
       </div>
+
+      {!countsLoading && augustDrafts(stores).length > 0 && (
+        <Card className="mb-6 border-emerald-500/50" data-testid="card-august-physical-count">
+          <CardContent className="pt-5 space-y-3">
+            <div>
+              <h2 className="font-semibold">August 31 physical readings</h2>
+              <p className="text-sm text-muted-foreground">
+                Continue the existing location-by-location count. Saved entries are preserved.
+                Orderly is a separate reference, not an entered quantity.
+              </p>
+            </div>
+            {augustDrafts(stores).map((session: any) => (
+              <div key={session.id} className="flex flex-wrap items-center justify-between gap-2 border rounded-md p-3">
+                <div className="text-sm">
+                  <strong>{session.storeName}</strong> · {session.itemLocationLines ?? 0} item-locations
+                  {session.applied === 1 && <span className="ml-2 text-muted-foreground">(applied; read-only)</span>}
+                </div>
+                <Button variant="outline" onClick={() => setLocation(isEmbedded ? `/count/${session.id}/mobile` : `/count/${session.id}`)}>
+                  {session.applied === 1 ? "View count" : "Resume count"}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Zero Baseline Initialization Card - shows for stores without any completed counts */}
       {storesNeedingBaseline.length > 0 && (
@@ -699,6 +756,19 @@ export default function InventorySessions() {
                 </div>
               </div>
             )}
+            {matchingDialogSessions.length > 0 && (
+              <div className="rounded-md border border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-sm" data-testid="existing-count-warning">
+                A regular count already exists for this store and date. Its entries will not be replaced.
+                {matchingDialogSessions.map((session: any) => (
+                  <Button key={session.id} variant="ghost" className="h-auto px-1 underline" onClick={() => {
+                    setDialogOpen(false);
+                    setLocation(isEmbedded ? `/count/${session.id}/mobile` : `/count/${session.id}`);
+                  }}>
+                    Open existing count
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -710,7 +780,7 @@ export default function InventorySessions() {
             </Button>
             <Button
               onClick={handleCreateSession}
-              disabled={createSessionMutation.isPending}
+              disabled={createSessionMutation.isPending || countsLoading || matchingDialogSessions.length > 0}
               data-testid="button-create-session"
             >
               {createSessionMutation.isPending ? "Creating..." : "Create Session"}
@@ -751,7 +821,8 @@ export default function InventorySessions() {
                       <SortableTableHead field="countDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Inventory Date</SortableTableHead>
                       <SortableTableHead field="storeName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>Store</SortableTableHead>
                       <SortableTableHead field="userName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort}>User</SortableTableHead>
-                      <TableHead className="text-right">Items</TableHead>
+                      <TableHead className="text-right">Distinct Items</TableHead>
+                      <TableHead className="text-right">Item-Locations</TableHead>
                       <TableHead className="text-right">Total Value</TableHead>
                       <TableHead>Note</TableHead>
                       <TableHead className="text-right">Actions</TableHead>

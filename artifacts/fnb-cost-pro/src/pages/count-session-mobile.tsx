@@ -42,16 +42,31 @@ import {
   X,
   Camera,
   Home,
+  Search,
+  ListFilter,
   ArrowDownAZ,
   ArrowUpZA,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { LocationReviewDialog } from "@/components/count-session/LocationReviewDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { mergeUpdatedCountLineIntoCache } from "@/lib/count-line-cache";
 import { useUndoableDelete } from "@/hooks/use-undoable-delete";
-import { formatUnitName } from "@/lib/utils";
+import { formatDateString } from "@/lib/utils";
+import { buildPreviousCountLineMap, countLineIdentity, getPreviousCountUnitDisplay } from "@/lib/previous-count-lines";
+import { abbreviateCountUnit, formatPhysicalQuantity, getCountUnitDisplay, isWholeCaseConfiguration, pluralizeCountUnit } from "@/lib/count-unit-display";
 
 type CountMode = "catch" | "case" | "simple";
 type ItemSortDirection = "asc" | "desc";
+
+export function formatMobileCountQuantity(
+  line: any,
+  mode: CountMode,
+): { summary: string; unitLabel: string } {
+  const display = getCountUnitDisplay(line, mode);
+  return { summary: display.summary, unitLabel: display.unitLabel };
+}
 
 function getLineLocationId(line: any): string {
   return line.storageLocationId || line.inventoryItem?.storageLocationId || "unknown";
@@ -85,13 +100,37 @@ export function sortMobileCountLines(
   });
 }
 
+export function getRenderedMobileCountLines(
+  lines: any[] = [],
+  limit = 120,
+): any[] {
+  return lines.slice(0, Math.max(0, limit));
+}
+
+export function mobileCountLinesQueryKey(countId: string) {
+  return ["/api/inventory-count-lines", countId, "mobile-compact"] as const;
+}
+
+export function isMobileBarcodeFallbackCandidate(
+  item: { barcode?: string | null; pluSku?: string | null } | null | undefined,
+  barcode: string,
+): boolean {
+  if (!item) return false;
+  if (item.pluSku && barcode.endsWith(item.pluSku.trim())) return true;
+  return !item.barcode;
+}
+
 export function mobileCategoryAnchor(categoryName: string): string {
   return `mobile-category-${encodeURIComponent(categoryName).replace(/%/g, "-")}`;
 }
 
-function getCountMode(category: any, location: any): CountMode {
-  if (category?.isCatchWeightCategory === 1) return "catch";
-  if (location?.allowCaseCounting === 1) return "case";
+function getCountMode(category: any, _location: any, item: any): CountMode {
+  if (item?.countMode === "catch" || category?.isCatchWeightCategory === 1) {
+    return "catch";
+  }
+  if (item?.countMode === "package" || item?.countMode === "unconfigured") {
+    return "case";
+  }
   return "simple";
 }
 
@@ -125,6 +164,16 @@ export function buildSessionLocations(
   );
 }
 
+function hasRecordedCount(line: any): boolean {
+  return (
+    Number(line?.qty || 0) > 0 ||
+    (line?.entries?.length ?? 0) > 0 ||
+    line?.caseQty != null ||
+    line?.containerQty != null ||
+    line?.looseUnits != null
+  );
+}
+
 function getInitials(fullName: string): string {
   return fullName
     .split(" ")
@@ -147,12 +196,14 @@ function compactRelativeTime(date: Date): string {
 function MobileEntryList({
   entries,
   isCatchWeight,
+  isPackage,
   unitAbbr,
   countId,
   onDeleted,
 }: {
   entries: any[];
   isCatchWeight: boolean;
+  isPackage?: boolean;
   unitAbbr: string;
   countId: string;
   onDeleted?: () => void;
@@ -170,7 +221,7 @@ function MobileEntryList({
   return (
     <div className="border rounded-md divide-y bg-muted/30">
       {withTotals.map((entry: any) => {
-        const qtyDisplay = isCatchWeight
+         const qtyDisplay = isCatchWeight
           ? entry.qty.toFixed(2)
           : String(entry.qty);
         return (
@@ -180,7 +231,7 @@ function MobileEntryList({
             data-testid={`mobile-entry-row-${entry.id}`}
           >
             <span className="font-mono font-semibold text-sm tabular-nums flex-shrink-0">
-              +{qtyDisplay} {unitAbbr}
+               {isPackage ? "Stored entry: " : "+"}{qtyDisplay} {unitAbbr}
             </span>
             {isCatchWeight && (
               <span className="font-mono text-xs text-muted-foreground tabular-nums flex-shrink-0">
@@ -194,7 +245,7 @@ function MobileEntryList({
             </span>
             <button
               onClick={() => {
-                const cacheKey = ["/api/inventory-count-lines", countId];
+                const cacheKey = mobileCountLinesQueryKey(countId);
                 const previousData = queryClient.getQueryData(cacheKey);
                 onDeleted?.();
                 scheduleDelete({
@@ -202,19 +253,26 @@ function MobileEntryList({
                   onOptimisticRemove: () =>
                     queryClient.setQueryData(cacheKey, (old: any) => {
                       if (!old) return old;
-                      return old.map((line: any) => ({
-                        ...line,
-                        entries: (line.entries || []).filter(
-                          (e: any) => e.id !== entry.id
-                        ),
-                      }));
+                      return old.map((line: any) => {
+                        if (!(line.entries || []).some((e: any) => e.id === entry.id)) return line;
+                        const remaining = line.entries.filter((e: any) => e.id !== entry.id);
+                        return {
+                          ...line,
+                          qty: remaining.reduce((sum: number, e: any) => sum + Number(e.qty), 0),
+                          entries: remaining,
+                          ...(remaining.length === 0 ? { caseQty: null, containerQty: null, looseUnits: null } : {}),
+                        };
+                      });
                     }),
                   onCommit: async () => {
-                    await apiRequest(
-                      "DELETE",
-                      `/api/inventory-count-entries/${entry.id}`
-                    );
-                    queryClient.invalidateQueries({ queryKey: cacheKey });
+                    try {
+                      await apiRequest("DELETE", `/api/inventory-count-entries/${entry.id}`);
+                      await queryClient.invalidateQueries({ queryKey: cacheKey });
+                    } catch (error) {
+                      queryClient.setQueryData(cacheKey, previousData);
+                      void queryClient.invalidateQueries({ queryKey: cacheKey });
+                      throw error;
+                    }
                   },
                   onRestore: () =>
                     queryClient.setQueryData(cacheKey, previousData),
@@ -232,7 +290,7 @@ function MobileEntryList({
       <div className="px-3 py-1.5 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">Total</span>
         <span className="font-mono font-bold text-sm tabular-nums">
-          {runningTotal.toFixed(2)} {unitAbbr}
+          {isPackage ? "Stored canonical total: " : ""}{runningTotal.toFixed(2)} {unitAbbr}
         </span>
       </div>
     </div>
@@ -411,21 +469,28 @@ function BarcodeScanner({
 export default function CountSessionMobile() {
   const params = useParams();
   const countId = params.id!;
+  const countLinesQueryKey = mobileCountLinesQueryKey(countId);
   const [, navigate] = useWouterLocation();
   const { toast } = useToast();
 
   // Location switcher
   const [selectedLocId, setSelectedLocId] = useState<string | null>(null);
+  const [isLocationReviewOpen, setIsLocationReviewOpen] = useState(false);
   const [itemSortDirection, setItemSortDirection] =
     useState<ItemSortDirection>("asc");
+  const [itemSearch, setItemSearch] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
+  const [selectedItemFilterId, setSelectedItemFilterId] = useState<string | null>(null);
+  const [showPreviouslyCountedOnly, setShowPreviouslyCountedOnly] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(120);
   // Sheet state
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
-  // Manual case-count toggle (user can switch to case mode regardless of location flag)
-  const [manualCaseMode, setManualCaseMode] = useState(false);
   // Inputs inside the sheet
   const [sheetQty, setSheetQty] = useState("");
   const [sheetCaseQty, setSheetCaseQty] = useState("");
-  const [sheetLooseUnits, setSheetLooseUnits] = useState("");
+  const [sheetContainerQty, setSheetContainerQty] = useState("");
+  const [activeInput, setActiveInput] = useState<"qty" | "case" | "container">("qty");
+  const [showFiltersSheet, setShowFiltersSheet] = useState(false);
   // Apply confirmation
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   // Clear all entries confirmation
@@ -445,9 +510,35 @@ export default function CountSessionMobile() {
   });
 
   const { data: countLines, isLoading: linesLoading } = useQuery<any[]>({
-    queryKey: ["/api/inventory-count-lines", countId],
+    queryKey: countLinesQueryKey,
+    queryFn: async () => {
+      const response = await apiRequest(
+        "GET",
+        `/api/inventory-count-lines/${countId}?compact=mobile`,
+      );
+      return response.json();
+    },
     enabled: !!countId,
   });
+
+  const { data: previousData } = useQuery<{
+    previousCountId: string | null;
+    previousCountDate: string | null;
+    lines: any[];
+    reconciliation?: {
+      locationUnmatchedLines: number;
+      ambiguousLocationLines: number;
+    };
+  }>({
+    queryKey: ["/api/inventory-counts", countId, "previous-lines"],
+    enabled: !!countId,
+  });
+  const previousCountId = previousData?.previousCountId ?? null;
+  const previousCountDate = previousData?.previousCountDate ?? null;
+  const previousLineMap = useMemo(
+    () => buildPreviousCountLineMap(previousData?.lines || []),
+    [previousData?.lines],
+  );
 
   const { data: storageLocations } = useQuery<any[]>({
     queryKey: ["/api/storage-locations"],
@@ -456,6 +547,14 @@ export default function CountSessionMobile() {
   const { data: categoriesData } = useQuery<any[]>({
     queryKey: ["/api/categories"],
   });
+  const categoryById = useMemo(
+    () => new Map((categoriesData || []).map((category: any) => [category.id, category])),
+    [categoriesData],
+  );
+  const lineById = useMemo(
+    () => new Map((countLines || []).map((line: any) => [line.id, line])),
+    [countLines],
+  );
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
@@ -463,6 +562,10 @@ export default function CountSessionMobile() {
   const sessionLocations = useMemo(
     () => buildSessionLocations(countLines, storageLocations),
     [countLines, storageLocations],
+  );
+  const locationById = useMemo(
+    () => new Map((sessionLocations || []).map((location: any) => [location.id, location])),
+    [sessionLocations],
   );
 
   // Initialize selected location to first on load
@@ -482,24 +585,119 @@ export default function CountSessionMobile() {
     [countLines, selectedLocId, itemSortDirection],
   );
 
+  const visibleLocationLines = useMemo(
+    () =>
+      locationLines.filter(
+        (line) =>
+          (!selectedCategoryFilter ||
+            getLineCategoryName(line) === selectedCategoryFilter) &&
+          (!selectedItemFilterId || line.id === selectedItemFilterId) &&
+          (!showPreviouslyCountedOnly ||
+            Number(previousLineMap.get(countLineIdentity(line))?.qty) > 0),
+      ),
+    [
+      locationLines,
+      previousLineMap,
+      selectedCategoryFilter,
+      selectedItemFilterId,
+      showPreviouslyCountedOnly,
+    ],
+  );
+  useEffect(() => {
+    setVisibleLimit(120);
+  }, [
+    selectedLocId,
+    selectedCategoryFilter,
+    selectedItemFilterId,
+    showPreviouslyCountedOnly,
+    itemSearch,
+    itemSortDirection,
+  ]);
+
+  const searchResults = useMemo(() => {
+    const query = itemSearch.trim().toLowerCase();
+    if (!query) return { locations: [], categories: [], items: [] };
+
+    const sessionLines = countLines || [];
+    const locations = sessionLocations
+      .filter((location) => location.name.toLowerCase().includes(query))
+      .map((location) => ({
+        ...location,
+        itemCount: sessionLines.filter(
+          (line) => getLineLocationId(line) === location.id,
+        ).length,
+      }));
+
+    const categories = Array.from(
+      new Set(locationLines.map(getLineCategoryName)),
+    )
+      .filter((category) => category.toLowerCase().includes(query))
+      .map((category) => ({
+        name: category,
+        itemCount: locationLines.filter(
+          (line) => getLineCategoryName(line) === category,
+        ).length,
+      }));
+
+    const locationsById = new Map(
+      sessionLocations.map((location) => [location.id, location.name]),
+    );
+    const items = sessionLines.filter((line) => {
+      const item = line.inventoryItem;
+      const locationName = locationsById.get(getLineLocationId(line));
+      return [
+        item?.name,
+        getLineCategoryName(line),
+        locationName,
+        item?.sourcePackSizeRaw,
+        item?.containerLabel,
+        line.unitAbbreviation,
+        item?.unitName,
+      ].some((value) => String(value ?? "").toLowerCase().includes(query));
+    });
+
+    return { locations, categories, items: items.slice(0, 20) };
+  }, [countLines, itemSearch, locationLines, sessionLocations]);
+
+  const hasSearchResults =
+    searchResults.locations.length > 0 ||
+    searchResults.categories.length > 0 ||
+    searchResults.items.length > 0;
+
   const locationCategories = useMemo(
-    () => Array.from(new Set(locationLines.map(getLineCategoryName))),
-    [locationLines],
+    () => Array.from(new Set(visibleLocationLines.map(getLineCategoryName))),
+    [visibleLocationLines],
+  );
+  const categoryAggregates = useMemo(() => visibleLocationLines.reduce(
+    (aggregates: Record<string, { counted: number; total: number; value: number }>, line) => {
+      const category = getLineCategoryName(line);
+      const aggregate = aggregates[category] || { counted: 0, total: 0, value: 0 };
+      aggregate.total += 1;
+      aggregate.value += (Number(line.qty) || 0) * (Number(line.unitCost) || 0);
+      if (hasRecordedCount(line)) aggregate.counted += 1;
+      aggregates[category] = aggregate;
+      return aggregates;
+    },
+    {},
+  ), [visibleLocationLines]);
+  const renderedLocationLines = useMemo(
+    () => getRenderedMobileCountLines(visibleLocationLines, visibleLimit),
+    [visibleLocationLines, visibleLimit],
   );
 
   // Progress per location
-  const progressByLoc = (countLines || []).reduce<
+  const progressByLoc = useMemo(() => (countLines || []).reduce<
     Record<string, { counted: number; total: number }>
   >((acc, l) => {
     const locId = getLineLocationId(l);
     if (!acc[locId]) acc[locId] = { counted: 0, total: 0 };
     acc[locId].total += 1;
-    if ((l.qty || 0) > 0) acc[locId].counted += 1;
+    if (hasRecordedCount(l)) acc[locId].counted += 1;
     return acc;
-  }, {});
+  }, {}), [countLines]);
 
   // Cost totals derived from cached count lines
-  const costByLoc = (countLines || []).reduce<Record<string, number>>(
+  const costByLoc = useMemo(() => (countLines || []).reduce<Record<string, number>>(
     (acc, l) => {
       if ((l.qty || 0) > 0) {
         const locId = getLineLocationId(l);
@@ -508,15 +706,17 @@ export default function CountSessionMobile() {
       return acc;
     },
     {}
-  );
-  const sessionCostTotal = Object.values(costByLoc).reduce(
+  ), [countLines]);
+  const sessionCostTotal = useMemo(() => Object.values(costByLoc).reduce(
     (sum, v) => sum + v,
     0
-  );
+  ), [costByLoc]);
   const locationCostTotal = selectedLocId ? (costByLoc[selectedLocId] ?? 0) : 0;
 
   function selectLocation(locationId: string) {
     setSelectedLocId(locationId);
+    setSelectedCategoryFilter(null);
+    setSelectedItemFilterId(null);
     requestAnimationFrame(() => {
       itemListRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
@@ -540,27 +740,38 @@ export default function CountSessionMobile() {
   }
 
   // Overall session completion
-  const totalItems = countLines?.length ?? 0;
-  const countedItems = (countLines || []).filter((l) => (l.qty || 0) > 0).length;
+  const countTotals = useMemo(() => (countLines || []).reduce(
+    (totals, line) => {
+      totals.total += 1;
+      if (hasRecordedCount(line)) totals.counted += 1;
+      return totals;
+    },
+    { total: 0, counted: 0 },
+  ), [countLines]);
+  const totalItems = countTotals.total;
+  const countedItems = countTotals.counted;
   const allCounted = totalItems > 0 && countedItems === totalItems;
 
   // Active line + item + mode
-  const activeLine = countLines?.find((l) => l.id === activeLineId) ?? null;
+  const activeLine = (activeLineId ? lineById.get(activeLineId) : null) ?? null;
   const activeItem = activeLine?.inventoryItem ?? null;
-  const activeCategory = categoriesData?.find(
-    (c) => c.id === activeItem?.categoryId
-  );
-  const activeStorageLoc = sessionLocations.find(
-    (l) => l.id === activeLine?.storageLocationId
-  );
-  const baseMode: CountMode = activeLine
-    ? getCountMode(activeCategory, activeStorageLoc)
+  const activeCategory = categoryById.get(activeItem?.categoryId);
+  const activeStorageLoc = locationById.get(activeLine?.storageLocationId);
+  const activeMode: CountMode = activeLine
+    ? getCountMode(activeCategory, activeStorageLoc, activeItem)
     : "simple";
-  // Allow manual switch to case mode for items with a caseSize, unless catch-weight
-  const activeMode: CountMode =
-    baseMode === "simple" && manualCaseMode ? "case" : baseMode;
+  const hasOperationalPackageGeometry =
+    Number(activeItem?.containerSize) > 0 &&
+    Number(activeItem?.casePkgCount) > 0;
+  const hasHistoricalLooseQuantity = Number(activeLine?.looseUnits) > 0;
+  const packageCountingUnavailable =
+    activeMode === "case" &&
+    (!hasOperationalPackageGeometry || hasHistoricalLooseQuantity);
   const activeUnitAbbr =
     activeLine?.unitAbbreviation || activeItem?.unitName || "unit";
+  const activeContainerLabel = activeItem?.containerLabel?.trim() || "container";
+  const activeContainerLabelPlural = pluralizeCountUnit(activeContainerLabel, 2);
+  const activeWholeCase = isWholeCaseConfiguration(activeItem, activeLine?.unitAbbreviation);
 
   // Next uncounted item in current location (after activeLineId)
   const nextLine = (() => {
@@ -568,11 +779,11 @@ export default function CountSessionMobile() {
     const idx = locationLines.findIndex((l) => l.id === activeLineId);
     // First try uncounted items after current
     const remaining = locationLines.slice(idx + 1);
-    const nextUncounted = remaining.find((l) => (l.qty || 0) === 0);
+    const nextUncounted = remaining.find((l) => !hasRecordedCount(l));
     if (nextUncounted) return nextUncounted;
     // Then try uncounted before current
     const before = locationLines.slice(0, idx);
-    return before.find((l) => (l.qty || 0) === 0) ?? null;
+    return before.find((l) => !hasRecordedCount(l)) ?? null;
   })();
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -582,22 +793,28 @@ export default function CountSessionMobile() {
       qty?: number;
       addQty?: number;
       caseQty?: number | null;
+      containerQty?: number | null;
       looseUnits?: number | null;
       accumulate?: boolean;
     }) => {
-      return apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, {
+      const response = await apiRequest("PATCH", `/api/inventory-count-lines/${data.id}`, {
         qty: data.qty,
         addQty: data.addQty,
         caseQty: data.caseQty,
+        containerQty: data.containerQty,
         looseUnits: data.looseUnits,
-        containerQty: null,
         accumulate: data.accumulate ?? false,
       });
+      return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/inventory-count-lines", countId],
-      });
+    onSuccess: (updatedLine: any) => {
+      const line = updatedLine?.line || updatedLine;
+      if (line?.id) {
+        queryClient.setQueryData<any[]>(
+          countLinesQueryKey,
+          (lines) => mergeUpdatedCountLineIntoCache(lines, line),
+        );
+      }
     },
     onError: (error: any) => {
       toast({
@@ -631,12 +848,19 @@ export default function CountSessionMobile() {
 
   const clearLineMutation = useMutation({
     mutationFn: async (lineId: string) => {
-      return apiRequest("POST", `/api/inventory-count-lines/${lineId}/clear`);
+      const response = await apiRequest("POST", `/api/inventory-count-lines/${lineId}/clear`);
+      return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inventory-count-lines", countId] });
+    onSuccess: (line: any) => {
+      queryClient.setQueryData<any[]>(
+        countLinesQueryKey,
+        (lines) => mergeUpdatedCountLineIntoCache(lines, line),
+      );
+      setSheetQty("");
+      setSheetCaseQty("");
+      setSheetContainerQty("");
       setShowClearConfirm(false);
-      toast({ title: "Entries cleared" });
+      toast({ title: "Entries removed", description: "To record zero stock, tap 0 and Save & next." });
     },
     onError: () => {
       toast({ title: "Failed to clear entries", variant: "destructive" });
@@ -646,23 +870,43 @@ export default function CountSessionMobile() {
 
   // ── Sheet helpers ──────────────────────────────────────────────────────────
   function openSheet(lineId: string) {
-    const line = countLines?.find((l) => l.id === lineId);
+    const line = lineById.get(lineId);
     if (!line) return;
     const item = line.inventoryItem;
-    const cat = categoriesData?.find((c) => c.id === item?.categoryId);
-    const loc = sessionLocations.find((l) => l.id === line.storageLocationId);
-    const mode = getCountMode(cat, loc);
+    const cat = categoryById.get(item?.categoryId);
+    const loc = locationById.get(getLineLocationId(line));
+    const mode = getCountMode(cat, loc, item);
+    const containerSize = Number(item?.containerSize);
+    const casePkgCount = Number(item?.casePkgCount);
+    const cannotCountPackage =
+      mode === "case" &&
+      (
+        !Number.isFinite(containerSize) ||
+        containerSize <= 0 ||
+        !Number.isFinite(casePkgCount) ||
+        casePkgCount <= 0 ||
+        Number(line.looseUnits) > 0
+      );
+    if (cannotCountPackage) {
+      toast({
+        title: "Package setup needs review",
+        description:
+          "This item cannot be counted by package until its package size and counting unit are complete.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setActiveLineId(lineId);
-    setManualCaseMode(false);
-
+    setActiveInput(mode === "case" ? "case" : "qty");
     // Pre-fill inputs with existing values if single entry
     if (mode === "case") {
+      const savedPartsReady = getCountUnitDisplay(line, mode).status === "ready";
       setSheetCaseQty(
-        line.caseQty != null ? String(line.caseQty) : ""
+        savedPartsReady && line.caseQty != null ? String(line.caseQty) : ""
       );
-      setSheetLooseUnits(
-        line.looseUnits != null ? String(line.looseUnits) : ""
+      setSheetContainerQty(
+        savedPartsReady && line.containerQty != null ? String(line.containerQty) : ""
       );
       setSheetQty("");
     } else {
@@ -674,7 +918,7 @@ export default function CountSessionMobile() {
           : ""
       );
       setSheetCaseQty("");
-      setSheetLooseUnits("");
+      setSheetContainerQty("");
     }
   }
 
@@ -682,8 +926,7 @@ export default function CountSessionMobile() {
     setActiveLineId(null);
     setSheetQty("");
     setSheetCaseQty("");
-    setSheetLooseUnits("");
-    setManualCaseMode(false);
+    setSheetContainerQty("");
   }
 
   // Auto-focus the primary input when sheet opens
@@ -720,12 +963,16 @@ export default function CountSessionMobile() {
   }, [updateMutation]);
 
   function hasSheetInput(): boolean {
+    const valid = (value: string) =>
+      value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
     if (activeMode === "case") {
       return (
-        sheetCaseQty.trim() !== "" || sheetLooseUnits.trim() !== ""
+        (sheetCaseQty.trim() !== "" || sheetContainerQty.trim() !== "") &&
+        (sheetCaseQty.trim() === "" || valid(sheetCaseQty)) &&
+        (sheetContainerQty.trim() === "" || valid(sheetContainerQty))
       );
     }
-    return sheetQty.trim() !== "";
+    return valid(sheetQty);
   }
 
   function saveAndAdvance() {
@@ -740,9 +987,7 @@ export default function CountSessionMobile() {
         // Check if this location is now complete
         const locProgress = progressByLoc[selectedLocId ?? ""];
         const totalInLoc = locationLines.length;
-        const countedInLoc = locationLines.filter(
-          (l) => (l.qty || 0) > 0
-        ).length;
+        const countedInLoc = locationLines.filter(hasRecordedCount).length;
         if (countedInLoc + 1 >= totalInLoc) {
           // Find next location with uncounted items
           const nextLoc = sessionLocations.find((loc) => {
@@ -763,22 +1008,22 @@ export default function CountSessionMobile() {
       }
     };
 
-    if (!hasInput) {
-      doAdvance();
-      return;
-    }
+    if (!hasInput) return;
 
     if (activeMode === "case") {
       const cases = parseFloat(sheetCaseQty) || 0;
-      const loose = parseFloat(sheetLooseUnits) || 0;
+      const containers = parseFloat(sheetContainerQty) || 0;
       const item = activeLine?.inventoryItem;
-      const qty = cases * (item?.caseSize || 0) + loose;
+      const qty =
+        cases * (item?.casePkgCount || 0) * (item?.containerSize || 0) +
+        containers * (item?.containerSize || 0);
       updateMutation.mutate(
         {
           id: activeLineId,
           qty,
           caseQty: cases,
-          looseUnits: loose,
+          containerQty: activeWholeCase ? 0 : containers,
+          looseUnits: 0,
           accumulate: false,
         },
         { onSuccess: doAdvance }
@@ -790,8 +1035,12 @@ export default function CountSessionMobile() {
           { id: activeLineId, addQty, accumulate: true },
           { onSuccess: doAdvance }
         );
-      } else {
-        doAdvance();
+      } else if (Number(sheetQty) === 0) {
+        // A deliberate zero replaces old weighings; blank input never does.
+        updateMutation.mutate(
+          { id: activeLineId, qty: 0, accumulate: false },
+          { onSuccess: doAdvance },
+        );
       }
     } else {
       const qty = parseFloat(sheetQty) || 0;
@@ -802,20 +1051,33 @@ export default function CountSessionMobile() {
     }
   }
 
+  function skipAndAdvance() {
+    if (nextLine) {
+      openSheet(nextLine.id);
+    } else {
+      closeSheet();
+    }
+  }
+
   function addEntry() {
     if (!activeLineId || !hasSheetInput()) return;
 
     if (activeMode === "case") {
       const cases = parseFloat(sheetCaseQty) || 0;
-      const loose = parseFloat(sheetLooseUnits) || 0;
+      const containers = parseFloat(sheetContainerQty) || 0;
       const item = activeLine?.inventoryItem;
-      const addQty = cases * (item?.caseSize || 0) + loose;
       updateMutation.mutate(
-        { id: activeLineId, addQty, accumulate: true },
+        {
+          id: activeLineId,
+          caseQty: cases,
+          containerQty: activeWholeCase ? 0 : containers,
+          looseUnits: 0,
+          accumulate: false,
+        },
         {
           onSuccess: () => {
             setSheetCaseQty("");
-            setSheetLooseUnits("");
+            setSheetContainerQty("");
             setTimeout(() => {
               primaryInputRef.current?.focus();
             }, 50);
@@ -900,15 +1162,9 @@ export default function CountSessionMobile() {
         // Build candidate suggestions: items whose name or PLU/SKU contains parts of the
         // barcode digits, or items that have no barcode yet (could be the right item).
         const candidates = (countLines ?? [])
-          .filter((l) => {
-            const item = l.inventoryItem;
-            if (!item) return false;
-            // Fuzzy: pluSku contains barcode digits or barcode ends with pluSku
-            if (item.pluSku && barcode.endsWith(item.pluSku.trim())) return true;
-            // Surface items with no barcode set (staff may want to assign this one)
-            if (!item.barcode) return true;
-            return false;
-          })
+          .filter((line) =>
+            isMobileBarcodeFallbackCandidate(line.inventoryItem, barcode),
+          )
           .slice(0, 3)
           .map((l) => l.inventoryItem?.name as string)
           .filter(Boolean);
@@ -944,100 +1200,82 @@ export default function CountSessionMobile() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* ── Compact header — safe-area top padding keeps content below status bar ── */}
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans">
+      {/* ── Header ── */}
       <div
-        className="flex items-center gap-1 px-2 pb-2 border-b bg-background shrink-0"
+        className="flex items-center gap-1 px-2 pb-2 bg-background shrink-0"
         style={{ paddingTop: 'calc(8px + env(safe-area-inset-top, 0px))' }}
       >
-        {/* Back to sessions list */}
         <Button
           variant="ghost"
-          className="gap-1 px-2 shrink-0"
+          size="icon"
+          className="h-11 w-11 shrink-0"
           onClick={() => navigate("/inventory-sessions?embedded=true")}
           data-testid="button-mobile-back"
+          aria-label="Back to count sessions"
         >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="text-sm font-medium">Sessions</span>
+          <ArrowLeft className="h-5 w-5" />
         </Button>
 
-        <div className="flex-1 min-w-0 px-1">
-          <div className="font-semibold text-sm truncate" data-testid="text-mobile-session-title">
-            {count?.storeName ?? "Count Session"}
+        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
+          <div className="text-[17px] font-semibold truncate" data-testid="text-mobile-session-title">
+            Count session
           </div>
-          <div className="text-xs text-muted-foreground">
-            {countedItems} / {totalItems} items counted
+          <div className="text-[13px] text-muted-foreground truncate">
+            Started {formatDateString(count?.countedAt || new Date().toISOString())} · Session ${sessionCostTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
 
-        {/* Barcode scanner */}
         {!isReadOnly && (
           <Button
             variant="ghost"
             size="icon"
+            className="h-11 w-11 shrink-0"
             onClick={() => setShowScanner(true)}
-            className="shrink-0"
             data-testid="button-mobile-scan-barcode"
-            title="Scan barcode"
+            aria-label="Scan barcode"
           >
             <ScanBarcode className="h-5 w-5" />
           </Button>
         )}
 
-        {/* Apply / Locked badge */}
-        {isReadOnly ? (
-          <Badge variant="outline" className="shrink-0 gap-1">
-            <Lock className="h-3 w-3" />
-            {isHistoricalImport ? "Historical" : "Locked"}
-          </Badge>
-        ) : allCounted ? (
-          <Button
-            size="sm"
-            onClick={() => setShowApplyDialog(true)}
-            disabled={applyMutation.isPending}
-            className="shrink-0"
-            data-testid="button-mobile-apply"
-          >
-            <CheckCircle2 className="h-4 w-4 mr-1" />
-            Apply
-          </Button>
-        ) : null}
-
-        {/* Home — return to mobile dashboard */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/dashboard/mobile")}
-          className="shrink-0"
-          data-testid="button-mobile-home"
-          title="Home"
-        >
-          <Home className="h-5 w-5" />
+        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" aria-label="More count actions">
+          <div className="text-xl leading-none -mt-2">⋯</div>
         </Button>
       </div>
 
-      {/* ── Location switcher ── */}
-      <div className="flex gap-2 px-3 py-2 overflow-x-auto shrink-0 border-b scrollbar-none">
+      {/* ── Progress line ── */}
+      <div className="px-4 pb-3 bg-background border-b shrink-0">
+         <div className="flex justify-between items-center text-[13px] font-medium mb-1.5">
+            <span>{countedItems} of {totalItems} counted</span>
+            <span>{totalItems > 0 ? Math.round((countedItems / totalItems) * 100) : 0}%</span>
+         </div>
+         <div className="h-1.5 w-full bg-border rounded-full overflow-hidden">
+            <div
+               className="h-full bg-primary rounded-full"
+               style={{ width: `${totalItems > 0 ? (countedItems / totalItems) * 100 : 0}%` }}
+            />
+         </div>
+      </div>
+
+      {/* ── Location chips ── */}
+      <div className="flex gap-2 px-4 py-3 overflow-x-auto shrink-0 border-b bg-background scrollbar-none h-[68px] items-center">
         {sessionLocations.map((loc) => {
           const prog = progressByLoc[loc.id] ?? { counted: 0, total: 0 };
-          const done = prog.total > 0 && prog.counted === prog.total;
           const active = selectedLocId === loc.id;
           return (
             <button
               key={loc.id}
               onClick={() => selectLocation(loc.id)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
+              className={`flex-shrink-0 flex items-center gap-1.5 px-4 h-11 rounded-full border text-sm font-medium transition-colors ${
                 active
                   ? "bg-primary text-primary-foreground border-primary"
-                  : done
-                  ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"
-                  : "border-border text-muted-foreground hover:text-foreground"
+                  : "bg-surface border-border text-foreground hover:bg-muted"
               }`}
               data-testid={`button-mobile-location-${loc.id}`}
             >
-              {done && !active && <CheckCircle2 className="h-3.5 w-3.5" />}
-              <span className="font-medium">{loc.name}</span>
-              <span className={`text-xs tabular-nums ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+              {loc.name}
+              <span className={`text-[13px] tabular-nums ${active ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                 {prog.counted}/{prog.total}
               </span>
             </button>
@@ -1045,72 +1283,103 @@ export default function CountSessionMobile() {
         })}
       </div>
 
-      {/* ── Category jump navigation + item sorting ── */}
+      {/* ── Filters row ── */}
       {locationLines.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-background shrink-0">
-          <div
-            className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-none"
-            aria-label="Jump to category"
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-background shrink-0">
+          <Button
+            variant="outline"
+            className="h-9 shrink-0 gap-2 px-3 bg-surface border-border hover:bg-muted"
+            onClick={() => setShowFiltersSheet(true)}
+            data-testid="button-mobile-filter-open"
           >
-            {locationCategories.map((category) => (
+            <ListFilter className="h-4 w-4" />
+            <span className="text-[14px] font-semibold">Filters</span>
+          </Button>
+
+          <div
+            className="flex-1 flex gap-2 overflow-x-auto scrollbar-none items-center"
+            aria-label="Active filters"
+          >
+            {selectedCategoryFilter && (
               <button
-                key={category}
                 type="button"
-                onClick={() => jumpToCategory(category)}
-                className="shrink-0 rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                data-testid={`button-mobile-category-${category}`}
+                onClick={() => {
+                  setSelectedCategoryFilter(null);
+                  setSelectedItemFilterId(null);
+                }}
+                className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200 px-3 h-9 text-[13px] font-semibold"
+                data-testid="filter-chip-category"
               >
-                {category}
+                {selectedCategoryFilter}
+                <X className="h-3.5 w-3.5 opacity-60" />
               </button>
-            ))}
+            )}
+
+            {selectedItemFilterId && (
+              <button
+                type="button"
+                onClick={() => setSelectedItemFilterId(null)}
+                className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200 px-3 h-9 text-[13px] font-semibold"
+                data-testid="filter-chip-item"
+              >
+                {lineById.get(selectedItemFilterId)?.inventoryItem?.name ?? "Item"}
+                <X className="h-3.5 w-3.5 opacity-60" />
+              </button>
+            )}
+{showPreviouslyCountedOnly && (
+              <button
+                type="button"
+                onClick={() => setShowPreviouslyCountedOnly(false)}
+                className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200 px-3 h-9 text-[13px] font-semibold"
+                data-testid="filter-chip-previous-nonzero"
+              >
+                Had stock
+                <X className="h-3.5 w-3.5 opacity-60" />
+              </button>
+            )}
+            {!selectedCategoryFilter && !showPreviouslyCountedOnly && (
+               <div className="flex-1" />
+            )}
           </div>
+
           <Button
             variant="outline"
             size="sm"
-            className="h-8 shrink-0 gap-1 px-2"
+            className="h-9 w-9 shrink-0 p-0 bg-surface border-border hover:bg-muted"
             onClick={() =>
               setItemSortDirection((current) => current === "asc" ? "desc" : "asc")
             }
-            aria-label={`Sort item names ${itemSortDirection === "asc" ? "descending" : "ascending"}`}
+            aria-label={`Sort ${itemSortDirection === "asc" ? "descending" : "ascending"}`}
             data-testid="button-mobile-sort-items"
           >
-            {itemSortDirection === "asc" ? (
-              <ArrowDownAZ className="h-4 w-4" />
-            ) : (
-              <ArrowUpZA className="h-4 w-4" />
-            )}
-            <span className="text-xs">Name</span>
+            <span className="text-[12px] font-bold leading-none">A–Z</span>
           </Button>
         </div>
       )}
 
-      {/* ── Cost summary bar ── */}
-      {countedItems > 0 && (
-        <div
-          className="flex items-center justify-between px-4 py-1.5 bg-muted/40 border-b shrink-0"
-          data-testid="cost-summary-bar"
+      {/* ── Location Warning ── */}
+      {(previousData?.reconciliation?.locationUnmatchedLines ?? 0) > 0 && (
+        <button
+          className="flex w-full items-center justify-between border-b border-amber-200 bg-[#FFF4DB] px-4 py-2.5 text-[13px] text-[#7A4A00] font-medium active:bg-[#FDEBB6] transition-colors"
+          data-testid="alert-mobile-previous-location-unmatched"
+          onClick={() => setIsLocationReviewOpen(true)}
         >
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground" data-testid="text-location-cost">
-              {sessionLocations.find((l) => l.id === selectedLocId)?.name ?? "Location"}:
-            </span>
-            <span className="font-mono font-semibold text-foreground tabular-nums" data-testid="value-location-cost">
-              ${locationCostTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>
+              {previousData!.reconciliation!.locationUnmatchedLines} items need a location review
             </span>
           </div>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span>Session total:</span>
-            <span className="font-mono font-semibold text-foreground tabular-nums" data-testid="value-session-cost">
-              ${sessionCostTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </div>
-        </div>
+          <span className="flex items-center gap-0.5 opacity-80">
+            Review <ChevronRight className="h-3.5 w-3.5" />
+          </span>
+        </button>
       )}
 
       {/* ── Item list ── */}
       <div
         ref={itemListRef}
-        className="flex-1 overflow-y-auto scroll-pt-0"
+        className="flex-1 overflow-y-auto scroll-pt-0 bg-surface"
         data-testid="mobile-item-list"
       >
         {locationLines.length === 0 ? (
@@ -1118,113 +1387,318 @@ export default function CountSessionMobile() {
             <Package className="h-8 w-8" />
             <p className="text-sm">No items in this location</p>
           </div>
+        ) : visibleLocationLines.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2"
+            data-testid="mobile-search-empty"
+          >
+            <Search className="h-8 w-8" />
+            <p className="text-sm">No session items match these filters</p>
+          </div>
         ) : (
-          <div className="divide-y">
-            {locationLines.map((line, index) => {
+          <div className="divide-y divide-border">
+             {renderedLocationLines.map((line, index) => {
               const item = line.inventoryItem;
               const categoryName = getLineCategoryName(line);
               const startsCategory =
                 index === 0 ||
-                getLineCategoryName(locationLines[index - 1]) !== categoryName;
-              const cat = categoriesData?.find((c) => c.id === item?.categoryId);
-              const loc = sessionLocations.find(
-                (l) => l.id === line.storageLocationId
-              );
-              const mode = getCountMode(cat, loc);
-              const unitAbbr =
-                line.unitAbbreviation || item?.unitName || "unit";
-              const isCounted = (line.qty || 0) > 0;
-              const entryCount = line.entries?.length ?? 0;
+                getLineCategoryName(visibleLocationLines[index - 1]) !== categoryName;
+              const cat = categoryById.get(item?.categoryId);
+              const loc = locationById.get(getLineLocationId(line));
+              const mode = getCountMode(cat, loc, item);
+              const unitAbbr = line.unitAbbreviation || item?.unitName || "unit";
+
+              const previousLine = previousLineMap.get(countLineIdentity(line));
+              const currentTotalValue = Number(line.qty || 0);
+              const isCounted = hasRecordedCount(line);
+
+              const configuredContainerLabel = item?.containerLabel?.trim() || "container";
+              const containerAbbr = abbreviateCountUnit(configuredContainerLabel);
+
+              const display = getCountUnitDisplay(line, mode);
+              const packLine = display.isPackage ? display.caseDetail || "Counting setup required" : unitAbbr;
+              const rightLine1 = isCounted ? display.summary : "—";
+
+              const prevVal = Number(previousLine?.qty || 0);
+              const diff = currentTotalValue - prevVal;
+              const prevUnit = previousLine?.unitAbbreviation || previousLine?.inventoryItem?.unitName || "unit";
+              const unitMismatch = previousLine && prevUnit !== unitAbbr;
+
+              const previousDisplay = getPreviousCountUnitDisplay(previousLine, line, mode);
+              const packageComparable = mode !== "case" ||
+                (display.containers != null && previousDisplay?.containers != null && !unitMismatch);
+              let rightLine2 = previousDisplay ? `last ${previousDisplay.summary}` : "No prior count";
+              let diffColor = "text-muted-foreground";
+              if (isCounted && previousLine && !unitMismatch && packageComparable) {
+                  const displayDiff = mode === "case" ? display.containers! - previousDisplay!.containers! : diff;
+                  if (displayDiff > 0) { rightLine2 = `+${formatPhysicalQuantity(displayDiff)} ${mode === "case" ? pluralizeCountUnit(configuredContainerLabel, displayDiff) : unitAbbr} vs last`; diffColor = "text-[#2F7D4F]"; }
+                  else if (displayDiff < 0) { rightLine2 = `${formatPhysicalQuantity(displayDiff)} ${mode === "case" ? pluralizeCountUnit(configuredContainerLabel, displayDiff) : unitAbbr} vs last`; diffColor = "text-[#A23B12]"; }
+                  else { rightLine2 = "Same as last"; diffColor = "text-muted-foreground"; }
+              }
 
               return (
                 <Fragment key={line.id}>
                 {startsCategory && (
                   <>
-                    <div
-                      id={mobileCategoryAnchor(categoryName)}
-                      className="h-0"
-                      aria-hidden="true"
-                    />
+                    <div id={mobileCategoryAnchor(categoryName)} className="h-0" aria-hidden="true" />
                     <div
                       id={`${mobileCategoryAnchor(categoryName)}-heading`}
                       tabIndex={-1}
-                      className="sticky top-0 z-10 flex items-center justify-between border-y bg-muted/95 px-4 py-1.5 backdrop-blur-sm focus:outline-none"
+                      className="sticky top-0 z-10 flex items-center justify-between border-b bg-[#F6F4EF] px-4 py-2 focus:outline-none"
                       data-testid={`mobile-category-section-${categoryName}`}
                     >
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <span className="text-[13px] font-bold tracking-wider text-muted-foreground uppercase">
                         {categoryName}
                       </span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
-                        {locationLines.filter((candidate) => getLineCategoryName(candidate) === categoryName).length}
+                      <span className="text-[13px] font-mono font-medium text-muted-foreground">
+                        {categoryAggregates[categoryName]?.counted ?? 0} / {categoryAggregates[categoryName]?.total ?? 0} · ${(categoryAggregates[categoryName]?.value ?? 0).toFixed(2)}
                       </span>
                     </div>
                   </>
                 )}
+
                 <button
                   onClick={() => !isReadOnly && openSheet(line.id)}
-                  className={`w-full min-h-12 flex items-center gap-2 px-3 py-2 text-left hover-elevate ${
-                    isReadOnly ? "cursor-default" : "cursor-pointer"
-                  }`}
+                  className={`w-full min-h-[64px] flex items-center gap-3 px-4 py-3 text-left ${
+                    isReadOnly ? "cursor-default" : "cursor-pointer active:bg-muted/50"
+                  } ${isCounted ? "bg-emerald-50/20" : "bg-surface"}`}
                   data-testid={`button-mobile-item-${line.id}`}
                 >
-                  {/* Counted indicator */}
-                  <div
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      isCounted ? "bg-emerald-500" : "bg-border"
-                    }`}
-                  />
-                  {/* Item info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`font-medium text-sm leading-tight ${
-                          isCounted ? "text-foreground" : "text-muted-foreground"
-                        }`}
+                  <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center ${isCounted ? 'bg-[#2F7D4F]' : 'border-[1.5px] border-dashed border-muted-foreground/40'}`}>
+                    {isCounted && <CheckCircle2 className="w-4 h-4 text-white" />}
+                  </div>
+
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                     <div
+                        className="text-[16px] font-semibold text-foreground truncate"
                         data-testid={`text-mobile-item-name-${line.id}`}
-                      >
+                     >
                         {item?.name ?? "Unknown"}
-                      </span>
-                      {mode === "catch" && (
-                        <Scale className="h-3 w-3 text-amber-500 shrink-0" />
-                      )}
-                      {mode === "case" && (
-                        <Package className="h-3 w-3 text-blue-500 shrink-0" />
-                      )}
-                    </div>
-                    {isCounted && (
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                          {line.qty.toFixed(2)} {formatUnitName(unitAbbr)}
-                        </span>
-                        {entryCount > 1 && (
-                          <span className="ml-1.5 text-muted-foreground/70">
-                            · {entryCount} entries
-                          </span>
+                     </div>
+                     <div className="text-[13px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+                        {packLine}
+                        {unitMismatch && (
+                           <span className="bg-[#FFF4DB] text-[#7A4A00] text-[10px] font-bold px-1.5 py-0.5 rounded uppercase leading-none">UNIT?</span>
                         )}
-                      </div>
-                    )}
+                     </div>
                   </div>
-                  {/* Unit + cost */}
-                  <div className="text-right shrink-0 max-w-[34%]">
-                    <div className="text-[11px] text-muted-foreground truncate">{unitAbbr}</div>
-                    {isCounted && (
-                      <div className="text-xs font-mono font-medium">
-                        ${(line.qty * (line.unitCost || 0)).toFixed(2)}
-                      </div>
-                    )}
+
+                  <div className="shrink-0 flex flex-col items-end justify-center">
+                     <div className={`text-[20px] font-mono font-semibold ${isCounted ? 'text-foreground' : 'text-muted-foreground opacity-50'}`}>
+                        {rightLine1}
+                     </div>
+                     <div
+                        className={`text-[13px] font-mono ${diffColor}`}
+                        data-testid={`text-mobile-previous-count-${line.id}`}
+                     >
+                        {rightLine2}
+                     </div>
                   </div>
-                  {!isReadOnly && (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  )}
                 </button>
                 </Fragment>
               );
             })}
           </div>
         )}
+         {visibleLocationLines.length > renderedLocationLines.length && (
+           <div className="p-3 border-t">
+             <Button
+               variant="outline"
+               className="w-full"
+               onClick={() => setVisibleLimit((limit) => limit + 120)}
+               data-testid="button-mobile-load-more"
+             >
+               Load more ({visibleLocationLines.length - renderedLocationLines.length} remaining)
+             </Button>
+           </div>
+         )}
       </div>
 
-      {/* ── Entry Sheet (top drawer — stays above keyboard) ── */}
+      <div className="relative shrink-0 border-t bg-background">
+
+        {itemSearch.trim() && (
+          <div
+            id="mobile-session-search-results"
+            className="absolute bottom-full left-0 right-0 z-30 max-h-[55vh] overflow-y-auto border-t bg-background shadow-2xl"
+            data-testid="mobile-session-search-results"
+          >
+            {!hasSearchResults ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                No locations, categories, or items in this session match “{itemSearch.trim()}”
+              </div>
+            ) : (
+              <div className="divide-y">
+                {searchResults.locations.length > 0 && (
+                  <div className="p-2">
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Locations
+                    </div>
+                    {searchResults.locations.map((location) => (
+                      <button
+                        key={location.id}
+                        type="button"
+                        onClick={() => {
+                          selectLocation(location.id);
+                          setItemSearch("");
+                        }}
+                        className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
+                        data-testid={`search-result-location-${location.id}`}
+                      >
+                        <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate text-sm font-medium">{location.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {location.itemCount} {location.itemCount === 1 ? "item" : "items"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchResults.categories.length > 0 && (
+                  <div className="p-2">
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Categories in this location
+                    </div>
+                    {searchResults.categories.map((category) => (
+                      <button
+                        key={category.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategoryFilter(category.name);
+                          setSelectedItemFilterId(null);
+                          setItemSearch("");
+                          requestAnimationFrame(() =>
+                            itemListRef.current?.scrollTo({ top: 0, behavior: "auto" }),
+                          );
+                        }}
+                        className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
+                        data-testid={`search-result-category-${category.name}`}
+                      >
+                        <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate text-sm font-medium">{category.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {category.itemCount} {category.itemCount === 1 ? "item" : "items"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchResults.items.length > 0 && (
+                  <div className="p-2">
+                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Items in this session
+                    </div>
+                    {searchResults.items.map((line) => {
+                      const itemLocation = sessionLocations.find(
+                        (location) => location.id === getLineLocationId(line),
+                      );
+                      return (
+                        <button
+                          key={line.id}
+                          type="button"
+                          onClick={() => {
+                            selectLocation(getLineLocationId(line));
+                            setSelectedCategoryFilter(getLineCategoryName(line));
+                            setSelectedItemFilterId(line.id);
+                            setItemSearch("");
+                            if (!isReadOnly) {
+                              setTimeout(() => openSheet(line.id), 80);
+                            }
+                          }}
+                          className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-muted"
+                          data-testid={`search-result-item-${line.id}`}
+                        >
+                          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium">
+                              {line.inventoryItem?.name ?? "Unknown"}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {itemLocation?.name ?? "Unknown location"} · {getLineCategoryName(line)}
+                            </span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+
+         <div className="flex items-center gap-2 px-4 h-16" data-testid="mobile-session-toolbar">
+           <Button
+             variant="ghost"
+             size="icon"
+             onClick={() => navigate("/dashboard/mobile")}
+             className="shrink-0"
+             data-testid="button-mobile-home"
+             title="Home"
+           >
+             <Home className="h-5 w-5" />
+           </Button>
+           <div className="relative min-w-0 flex-1">
+             <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+             <Input
+               value={itemSearch}
+               onChange={(event) => setItemSearch(event.target.value)}
+               placeholder="Search or scan…"
+               className="h-12 pl-10 bg-surface border-border text-base rounded-lg shadow-sm"
+               type="search"
+               data-testid="input-mobile-item-search"
+             />
+             {itemSearch.length > 0 && (
+               <button
+                 onClick={() => setItemSearch("")}
+                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                 data-testid="button-clear-mobile-item-search"
+               >
+                 <X className="h-5 w-5" />
+               </button>
+             )}
+           </div>
+         </div>
+      </div>
+
+      <Sheet open={showFiltersSheet} onOpenChange={setShowFiltersSheet}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          <SheetHeader className="mb-4 text-left">
+            <SheetTitle>Filters</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-6 pb-4">
+             <div className="flex items-center justify-between">
+                <div className="text-sm font-medium">Had stock (Last &gt; 0)</div>
+                <Button
+                   variant={showPreviouslyCountedOnly ? "default" : "outline"}
+                   onClick={() => setShowPreviouslyCountedOnly(!showPreviouslyCountedOnly)}
+                   data-testid="button-mobile-filter-previous-nonzero"
+                >
+                   {showPreviouslyCountedOnly ? "On" : "Off"}
+                </Button>
+             </div>
+             <div className="space-y-3">
+                <div className="text-sm font-medium">Category</div>
+                <div className="flex flex-wrap gap-2">
+                   {locationCategories.map(cat => (
+                      <Button
+                         key={cat}
+                         variant={selectedCategoryFilter === cat ? "default" : "outline"}
+                         size="sm"
+                         onClick={() => setSelectedCategoryFilter(selectedCategoryFilter === cat ? null : cat)}
+                         data-testid={`button-mobile-category-${cat}`}
+                      >
+                         {cat}
+                      </Button>
+                   ))}
+                </div>
+             </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Entry Sheet ── */}
       <Sheet
         open={!!activeLineId}
         onOpenChange={(open) => {
@@ -1232,232 +1706,265 @@ export default function CountSessionMobile() {
         }}
       >
         <SheetContent
-          side="top"
-          className="h-auto max-h-[88vh] flex flex-col rounded-b-2xl px-0 pt-0"
+          side="bottom"
+          className="h-auto max-h-[96vh] flex flex-col rounded-t-[24px] px-0 py-0 bg-[#F6F4EF]"
         >
-          {activeLine && activeItem && (
-            <>
-              {/* ── Primary action — TOP of card so it's always visible above keyboard ── */}
-              <div className="px-5 pt-5 pb-4 shrink-0">
-                {!isReadOnly ? (
-                  <Button
-                    className="w-full h-13 text-base font-semibold"
-                    onClick={saveAndAdvance}
-                    disabled={updateMutation.isPending}
-                    data-testid="button-mobile-save-next"
-                  >
-                    {updateMutation.isPending
-                      ? "Saving…"
-                      : nextLine
-                      ? activeMode === "catch" && !hasSheetInput()
-                        ? "Next Item →"
-                        : "Save & Next →"
-                      : activeMode === "catch" && !hasSheetInput()
-                      ? "Done"
-                      : "Save & Done"}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    className="w-full h-13"
-                    onClick={closeSheet}
-                    data-testid="button-mobile-close-readonly"
-                  >
-                    Close
-                  </Button>
-                )}
-              </div>
+          {activeLine && activeItem && (() => {
+             const cat = categoryById.get(activeItem?.categoryId);
+             const loc = locationById.get(getLineLocationId(activeLine));
+             const mode = getCountMode(cat, loc, activeItem);
 
-              {/* ── Item name + metadata ── */}
-              <SheetHeader className="px-5 pb-4 shrink-0 border-b">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <SheetTitle className="text-lg font-semibold flex-1 min-w-0 truncate">
-                    {activeItem.name}
-                  </SheetTitle>
-                  {activeMode === "catch" && (
-                    <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700">
-                      <Scale className="h-3 w-3" />
-                      Catch Weight
-                    </Badge>
-                  )}
-                  {/* Case mode toggle — shown for any item with a case size that isn't catch-weight */}
-                  {baseMode !== "catch" && activeItem?.caseSize > 0 && (
-                    <button
-                      onClick={() => {
-                        setManualCaseMode((prev) => !prev);
-                        setSheetCaseQty("");
-                        setSheetLooseUnits("");
-                        setSheetQty("");
-                      }}
-                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
-                        activeMode === "case"
-                          ? "bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                      data-testid="button-toggle-case-mode"
-                    >
-                      <Package className="h-3 w-3" />
-                      By Case
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-1">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span>{sessionLocations.find((l) => l.id === activeLine.storageLocationId)?.name ?? "Unknown"}</span>
-                  <span>·</span>
-                  <span>{activeUnitAbbr}</span>
-                  {activeLine.unitCost > 0 && (
-                    <>
-                      <span>·</span>
-                      <span>${(activeLine.unitCost || 0).toFixed(4)}/{activeUnitAbbr}</span>
-                    </>
-                  )}
-                </div>
-              </SheetHeader>
+             const unitAbbr = activeLine.unitAbbreviation || activeItem.unitName || "unit";
+              const configuredContainerLabel = activeItem?.containerLabel?.trim() || "container";
+             const containerAbbr = abbreviateCountUnit(configuredContainerLabel);
 
-              {/* ── Scrollable body: entry history + qty input ── */}
-              <div className="overflow-y-auto flex-1 px-5 space-y-5 py-5">
-                {/* Entry history with delete */}
-                {(activeLine.entries?.length ?? 0) > 0 && (
-                  <MobileEntryList
-                    entries={activeLine.entries}
-                    isCatchWeight={activeMode === "catch"}
-                    unitAbbr={activeUnitAbbr}
-                    countId={countId}
-                  />
-                )}
+             const hasPackageGeometry = Number(activeItem?.containerSize) > 0 && Number(activeItem?.casePkgCount) > 0;
+              const isTwoLevel = mode === "case" && hasPackageGeometry && !(Number(activeLine.looseUnits) > 0);
+              const activeDisplay = getCountUnitDisplay(activeLine, mode);
 
-                {/* Clear all entries — near the entries it affects */}
-                {!isReadOnly && (activeLine?.entries?.length ?? 0) >= 2 && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowClearConfirm(true)}
-                    disabled={clearLineMutation.isPending}
-                    data-testid="button-mobile-clear-all-entries"
-                  >
-                    Clear all entries
-                  </Button>
-                )}
+             const previousLine = previousLineMap.get(countLineIdentity(activeLine));
+             const prevVal = Number(previousLine?.qty || 0);
+             const previousUnitAbbr =
+               previousLine?.unitAbbreviation ||
+               previousLine?.inventoryItem?.unitName ||
+               unitAbbr;
+             const unitsComparable = !previousLine || previousUnitAbbr === unitAbbr;
+              const previousDisplay = getPreviousCountUnitDisplay(previousLine, activeLine, mode);
+              const previousPackageReady = !isTwoLevel || previousDisplay?.containers != null;
 
-                {/* Input section */}
-                {!isReadOnly && (
-                  <div className="space-y-4">
-                    {activeMode === "case" ? (
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-muted-foreground">
-                            Cases {activeItem?.caseSize ? `(× ${activeItem.caseSize} ${activeUnitAbbr})` : ""}
-                          </label>
-                          <Input
-                            ref={primaryInputRef}
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            step="1"
-                            placeholder="0"
-                            value={sheetCaseQty}
-                            onChange={(e) => setSheetCaseQty(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") saveAndAdvance();
-                            }}
-                            className="h-14 text-xl text-center font-mono"
-                            data-testid="input-mobile-case-qty"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-muted-foreground">
-                            Loose {activeUnitAbbr}
-                          </label>
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                            value={sheetLooseUnits}
-                            onChange={(e) => setSheetLooseUnits(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") saveAndAdvance();
-                            }}
-                            className="h-14 text-xl text-center font-mono"
-                            data-testid="input-mobile-loose-units"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-muted-foreground">
-                            {activeMode === "catch"
-                              ? `Package weight (${activeUnitAbbr})`
-                              : `Quantity (${activeUnitAbbr})`}
-                          </label>
-                          <Input
-                            ref={primaryInputRef}
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            step={activeMode === "catch" ? "0.01" : "1"}
-                            placeholder="0"
-                            value={sheetQty}
-                            onChange={(e) => setSheetQty(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                if (activeMode === "catch") {
-                                  addEntry();
-                                } else {
-                                  saveAndAdvance();
-                                }
-                              }
-                            }}
-                            className="h-16 text-3xl text-center font-mono"
-                            data-testid="input-mobile-qty"
-                          />
-                        </div>
-                        {activeMode === "catch" && typeof window !== "undefined" && "ReactNativeWebView" in window && (
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={triggerNativeCatchWeightScan}
-                            disabled={catchWeightScanPending || updateMutation.isPending}
-                            data-testid="button-mobile-scan-catch-weight"
-                          >
-                            <Scale className="h-4 w-4 mr-2" />
-                            {catchWeightScanPending ? "Waiting for scale…" : "Scan from scale"}
-                          </Button>
-                        )}
-                      </div>
-                    )}
+             let typedQty = isTwoLevel
+               ? (Number(sheetCaseQty)||0) * activeItem.casePkgCount + (Number(sheetContainerQty)||0)
+               : (Number(sheetQty)||0);
+             const currentCanonicalQty = isTwoLevel
+               ? typedQty * Number(activeItem.containerSize)
+               : typedQty;
 
-                    {/* Add Entry button — for catch weight this is the primary action */}
-                    {(activeMode === "catch" || (activeLine.entries?.length ?? 0) > 0) && (
-                      <Button
-                        variant={activeMode === "catch" ? "default" : "outline"}
-                        className="w-full"
-                        onClick={addEntry}
-                        disabled={updateMutation.isPending || !hasSheetInput()}
-                        data-testid="button-mobile-add-entry"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        {activeMode === "catch" ? "Add Package" : "Add Entry"}
+             const diffCanonical = unitsComparable ? currentCanonicalQty - prevVal : 0;
+              const diff = isTwoLevel && previousDisplay?.containers != null
+                ? typedQty - previousDisplay.containers
+               : diffCanonical;
+             const displayUnitAbbr = activeWholeCase
+               ? pluralizeCountUnit("whole case", 2)
+               : isTwoLevel ? containerAbbr : unitAbbr;
+             let diffColor = "text-muted-foreground";
+              let diffText = !previousLine ? "No prior count" :
+                !unitsComparable || !previousPackageReady ? "Prior count needs review; change unavailable" : "Same as last";
+              if (previousLine && unitsComparable && previousPackageReady && diff > 0) { diffText = `+${diff.toFixed(2)} ${displayUnitAbbr} vs last count`; diffColor = "text-[#2F7D4F]"; }
+              else if (previousLine && unitsComparable && previousPackageReady && diff < 0) { diffText = `${diff.toFixed(2)} ${displayUnitAbbr} vs last count`; diffColor = "text-[#A23B12]"; }
+
+             return (
+               <>
+                 <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
+                    <Button variant="ghost" size="icon" className="w-11 h-11" onClick={closeSheet} aria-label="Close count entry">
+                     <X className="w-6 h-6" />
+                   </Button>
+                   <div className="text-[14px] font-semibold text-muted-foreground">
+                      {getLineCategoryName(activeLine)} · {visibleLocationLines.findIndex(l => l.id === activeLine.id) + 1} of {visibleLocationLines.filter(l => getLineCategoryName(l) === getLineCategoryName(activeLine)).length}
+                   </div>
+                   <div className="flex">
+                       <Button variant="ghost" size="icon" className="w-11 h-11" aria-label="Previous item" onClick={() => {
+                        const idx = locationLines.findIndex(l => l.id === activeLine.id);
+                        if (idx > 0) openSheet(locationLines[idx-1].id);
+                      }}>
+                         <ChevronRight className="w-6 h-6 rotate-180" />
                       </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+                       <Button variant="ghost" size="icon" className="w-11 h-11" aria-label="Next item" onClick={() => {
+                        const idx = locationLines.findIndex(l => l.id === activeLine.id);
+                        if (idx < locationLines.length - 1) openSheet(locationLines[idx+1].id);
+                      }}>
+                         <ChevronRight className="w-6 h-6" />
+                      </Button>
+                   </div>
+                 </div>
 
-      {/* ── Clear all entries confirmation dialog ── */}
+                 <div className="px-5 shrink-0 flex-1 overflow-y-auto">
+                    <h2 className="text-[24px] font-bold text-foreground leading-tight mb-3">
+                       {activeItem.name}
+                    </h2>
+                    <div className="flex flex-wrap gap-2 mb-5">
+                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface border rounded-md text-[13px] font-medium text-foreground">
+                          <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                          {loc?.name}
+                       </span>
+                       {activeWholeCase ? (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-surface border rounded-md text-[13px] font-medium text-foreground">
+                             Contents unspecified
+                          </span>
+                       ) : isTwoLevel && (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-surface border rounded-md text-[13px] font-medium text-foreground">
+                             {activeItem.casePkgCount} {containerAbbr} / case
+                          </span>
+                       )}
+                       <span className="inline-flex items-center px-2.5 py-1 bg-surface border rounded-md text-[13px] font-medium text-foreground font-mono">
+                            {activeDisplay.price}
+                       </span>
+                    </div>
+
+                    <div className="flex items-center justify-between border-[1.5px] border-dashed border-border rounded-[12px] p-3 mb-5">
+                       <div>
+                          <div className="text-[12px] font-semibold uppercase text-muted-foreground mb-1">
+                             Last count · {previousCountDate ? new Date(previousCountDate).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) : 'N/A'}
+                          </div>
+                          <div className="text-[17px] font-mono font-bold">
+                              {previousDisplay?.summary ?? "No prior count"}
+                          </div>
+                       </div>
+                       <Button
+                          variant="outline"
+                          className="bg-surface h-10 px-4 font-semibold text-[14px]"
+                          onClick={() => {
+                              if (isTwoLevel && previousLine && previousPackageReady) {
+                                setSheetCaseQty(String(previousLine.caseQty || 0));
+                                setSheetContainerQty(String(previousLine.containerQty || 0));
+                             } else {
+                                setSheetQty(String(prevVal));
+                             }
+                          }}
+                            disabled={!previousLine || !unitsComparable || !previousPackageReady}
+                       >
+                          Same as last
+                       </Button>
+                    </div>
+
+                    <div className="flex gap-3 mb-4">
+                       {isTwoLevel && activeWholeCase ? (
+                          <div
+                             className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'case' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
+                             onClick={() => setActiveInput('case')}
+                          >
+                             <div className="text-[13px] font-semibold text-foreground mb-3">
+                                Whole cases
+                             </div>
+                             <div className="flex items-center justify-between">
+                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String(Math.max(0, (Number(sheetCaseQty)||0) - 1))); }}>-</Button>
+                                <div className="text-[34px] font-mono font-bold leading-none">{sheetCaseQty || '—'}</div>
+                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String((Number(sheetCaseQty)||0) + 1)); }}>+</Button>
+                             </div>
+                          </div>
+                       ) : isTwoLevel ? (
+                          <>
+                             <div
+                                className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'case' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
+                                onClick={() => setActiveInput('case')}
+                             >
+                                <div className="text-[13px] font-semibold text-foreground mb-3 flex items-center justify-between">
+                                   Cases <span className="font-medium text-muted-foreground">× {activeItem.casePkgCount}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String(Math.max(0, (Number(sheetCaseQty)||0) - 1))); }}>-</Button>
+                                    <div className="text-[34px] font-mono font-bold leading-none">{sheetCaseQty || '—'}</div>
+                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String((Number(sheetCaseQty)||0) + 1)); }}>+</Button>
+                                </div>
+                             </div>
+                             <div
+                                className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'container' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
+                                onClick={() => setActiveInput('container')}
+                             >
+                                <div className="text-[13px] font-semibold text-foreground capitalize mb-3 flex items-center justify-between">
+                                     {pluralizeCountUnit(configuredContainerLabel, 2)}
+                                </div>
+                                <div className="flex items-center justify-between">
+                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetContainerQty(String(Math.max(0, (Number(sheetContainerQty)||0) - 1))); }}>-</Button>
+                                    <div className="text-[34px] font-mono font-bold leading-none">{sheetContainerQty || '—'}</div>
+                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetContainerQty(String((Number(sheetContainerQty)||0) + 1)); }}>+</Button>
+                                </div>
+                             </div>
+                          </>
+                       ) : (
+                          <div
+                             className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'qty' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
+                             onClick={() => setActiveInput('qty')}
+                          >
+                             <div className="text-[13px] font-semibold text-foreground capitalize mb-3 flex items-center justify-between">
+                                 {unitAbbr}
+                             </div>
+                             <div className="flex items-center justify-between">
+                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetQty(String(Math.max(0, (Number(sheetQty)||0) - 1))); }}>-</Button>
+                                 <div className="text-[34px] font-mono font-bold leading-none flex-1 text-center">{sheetQty || '—'}</div>
+                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetQty(String((Number(sheetQty)||0) + 1)); }}>+</Button>
+                             </div>
+                          </div>
+                       )}
+                    </div>
+                     <p className="text-xs text-muted-foreground mb-3">
+                       {hasSheetInput()
+                         ? "Save & next records this count. Clear only erases the current input."
+                         : "No quantity entered. Tap 0 to record no stock, or Skip to leave this item uncounted."}
+                     </p>
+                     {(activeLine.entries?.length ?? 0) > 0 && (
+                       <div className="mb-3 space-y-2">
+                         <div className="flex items-center justify-between">
+                           <span className="text-xs font-semibold">Saved entries</span>
+                           <Button type="button" variant="outline" size="sm"
+                             onClick={() => setShowClearConfirm(true)}
+                             data-testid="button-mobile-clear-all-entries">
+                             Clear all entries
+                           </Button>
+                         </div>
+                         <MobileEntryList
+                           entries={activeLine.entries}
+                           isCatchWeight={mode === "catch"}
+                            isPackage={mode === "case"}
+                           unitAbbr={unitAbbr}
+                           countId={countId}
+                         />
+                       </div>
+                     )}
+
+                    <div className="bg-[#E2DED6]/50 rounded-[12px] px-4 py-3 mb-2 flex justify-between items-center">
+                       <div className="text-[15px] font-mono font-semibold">
+                            {!hasSheetInput() ? "No count entered" : isTwoLevel
+                              ? `= ${formatPhysicalQuantity(typedQty)} ${pluralizeCountUnit(configuredContainerLabel, typedQty)}`
+                             : `= ${currentCanonicalQty.toFixed(2)} ${unitAbbr}`}
+                       </div>
+                       <div className="text-[15px] font-mono font-semibold text-[#2F7D4F]">
+                            {hasSheetInput() ? `$${(currentCanonicalQty * Number(activeLine.unitCost || 0)).toFixed(2)}` : "—"}
+                       </div>
+                    </div>
+                     <div className={`text-[13px] font-mono mb-4 px-2 ${diffColor}`}>
+                        {hasSheetInput() ? diffText : "Enter a quantity to compare with last count"}
+                    </div>
+                 </div>
+
+                 <div className="flex-1" />
+
+                 <CustomKeypad
+                    onPress={(key) => {
+                       const currentVal = activeInput === 'case' ? sheetCaseQty : (activeInput === 'container' ? sheetContainerQty : sheetQty);
+                       const setter = activeInput === 'case' ? setSheetCaseQty : (activeInput === 'container' ? setSheetContainerQty : setSheetQty);
+
+                        if (key === 'Skip') { skipAndAdvance(); return; }
+                       if (key === 'Field →') {
+                          if (isTwoLevel && !activeWholeCase) setActiveInput(activeInput === 'case' ? 'container' : 'case');
+                          return;
+                       }
+                       if (key === '⌫') { setter(currentVal.slice(0, -1)); return; }
+                       if (key === 'Clear') { setter(""); return; }
+                       if (key === '½') { setter(String((Number(currentVal)||0) + 0.5)); return; }
+                       if (key === '.') { if (!currentVal.includes('.')) setter(currentVal + '.'); return; }
+
+                       setter(currentVal === '0' ? key : currentVal + key);
+                    }}
+                 />
+
+                 <Button
+                    className="w-full rounded-none h-14 bg-[#C2410C] hover:bg-[#A23B12] text-white text-[17px] font-bold pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-3 flex items-start justify-center"
+                    onClick={saveAndAdvance}
+                     disabled={!hasSheetInput() || updateMutation.isPending || packageCountingUnavailable}
+                 >
+                    {updateMutation.isPending ? "Saving…" : "Save & next →"}
+                 </Button>
+               </>
+             );
+          })()}
+        </SheetContent>
+      </Sheet>      {/* ── Clear all entries confirmation dialog ── */}
       <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Clear all entries?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all entries and reset the count for this item to zero. This cannot be undone.
+              This removes the saved entries and leaves this item uncounted. To record zero stock afterward, tap 0 and Save & next. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1566,6 +2073,51 @@ export default function CountSessionMobile() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LocationReviewDialog
+        countId={countId}
+        isOpen={isLocationReviewOpen}
+        onOpenChange={setIsLocationReviewOpen}
+        onSelectLine={(lineId, itemId, locationName) => {
+          setSelectedItemFilterId(lineId);
+          if (locationName) {
+            const loc = sessionLocations.find((l: any) => l.name === locationName);
+            if (loc) {
+              setSelectedLocId(loc.id);
+            }
+          }
+          setActiveLineId(lineId);
+          requestAnimationFrame(() => {
+            if (!isReadOnly) openSheet(lineId);
+          });
+        }}
+      />
     </div>
   );
+}
+
+function CustomKeypad({ onPress }: { onPress: (key: string) => void }) {
+   const keys = [
+      '1', '2', '3', '⌫',
+      '4', '5', '6', 'Clear',
+      '7', '8', '9', '½',
+      'Skip', '0', '.', 'Field →'
+   ];
+   return (
+      <div className="grid grid-cols-4 gap-2 bg-[#E2DED6] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+         {keys.map(key => (
+            <button
+               key={key}
+               onClick={() => onPress(key)}
+               className={`h-[50px] rounded-[8px] text-[18px] font-semibold active:bg-black/10 ${
+                  ['⌫', 'Clear', '½', 'Skip', 'Field →'].includes(key)
+                     ? 'bg-[#D5D0C6] text-foreground'
+                     : 'bg-surface text-foreground shadow-sm'
+               }`}
+            >
+               {key}
+            </button>
+         ))}
+      </div>
+   );
 }

@@ -8,11 +8,13 @@ import { initObjectStorageCleanup } from "./objectStorageCleanup";
 import { ensureAccountingClassificationSchema } from "./services/accountingClassificationMigration";
 import { ensureInventoryItemRemediationSchema } from "./migrations/inventoryItemRemediation";
 import { ensureHistoricalSessionUnresolvedRowsSchema } from "./migrations/historicalSessionUnresolvedRows";
+import { ensureCountPackSnapshotSchema } from "./migrations/countPackSnapshot";
 import { ensureVendorItemUniquenessSchema } from "./migrations/vendorItemUniqueness";
 import { ensureInventoryItemNumberSchema } from "./migrations/inventoryItemNumbers";
 import { ensureOrderlyPackIdentityEvidenceSchema } from "./migrations/orderlyPackIdentityEvidence";
 import { ensureOrderlyReviewDecisionsSchema } from "./migrations/orderlyReviewDecisions";
 import { ensureOrderlyApprovalJobsSchema } from "./migrations/orderlyApprovalJobs";
+import { ensureInventoryItemPackTransitionsSchema } from "./migrations/inventoryItemPackTransitions";
 import { db } from "./db";
 import { startApprovalJobRecovery } from "./services/orderly/orderlyApprovalJobs";
 
@@ -71,6 +73,14 @@ if (Number.isNaN(port) || port <= 0) {
     process.exit(1);
   }
 
+  try {
+    await ensureCountPackSnapshotSchema(db);
+    logger.info("[Migration] count pack snapshot schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: count pack snapshot schema initialization failed");
+    process.exit(1);
+  }
+
   // Vendor-item uniqueness invariant (PM-approved after the Gate 2 duplicate
   // cleanup). Verifies live data BEFORE creating the partial unique index and
   // fails closed if violating rows exist — serving without the invariant would
@@ -104,6 +114,14 @@ if (Number.isNaN(port) || port <= 0) {
     logger.info("[Migration] Orderly approval jobs schema ready");
   } catch (err) {
     logger.error({ err }, "Fatal: Orderly approval jobs schema initialization failed — refusing to start");
+    process.exit(1);
+  }
+
+  try {
+    await ensureInventoryItemPackTransitionsSchema(db);
+    logger.info("[Migration] inventory item pack transitions schema ready");
+  } catch (err) {
+    logger.error({ err }, "Fatal: inventory item pack transitions schema initialization failed — refusing to start");
     process.exit(1);
   }
 

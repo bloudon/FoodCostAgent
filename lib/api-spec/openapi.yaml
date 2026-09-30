@@ -11,6 +11,86 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /inventory-counts/readiness:
+    get:
+      operationId: getInventoryCountReadiness
+      summary: Read-only store-scoped physical count readiness
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: storeId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Active store item assignments, omissions, blockers, and per-location line totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCountReadiness"
+        "403":
+          description: Store access denied
+        "404":
+          description: Store not found in the active company
+  /inventory-counts/{id}/august-reference:
+    get:
+      operationId: getAugustInventoryCountReference
+      summary: Read-only comparison with the packaged August 31 Orderly workbook for Bay Hill
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Per-line comparison with the packaged source workbook; source SHA-256 and sheet provenance are returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AugustCountReference"
+        "403":
+          description: Store access denied
+        "404":
+          description: Count session not found
+        "409":
+          description: Count is not an ordinary manual count dated August 31, 2026
+  /inventory-items/{id}/pack-history/transitions/{transitionId}/corrections:
+    post:
+      operationId: appendSupplierPackCorrection
+      summary: Append a company administrator correction or void to a supplier replacement approval
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: transitionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierPackCorrectionInput"
+      responses:
+        "201":
+          description: Append-only correction decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierPackCorrection"
+        "403":
+          description: Company administrator access required
+        "404":
+          description: Approval not found in this company and item
+        "409":
+          description: Stale correction version
+        "422":
+          description: Supplier products are not verified for the item
   /healthz:
     get:
       operationId: healthCheck
@@ -25,7 +105,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_session
   schemas:
+    InventoryCountReadiness:
+      type: object
+      required: [storeId, activeItems, totalLines, unassigned, blocked, locations]
+      properties:
+        storeId: { type: string }
+        activeItems: { type: array, items: { type: object, additionalProperties: true } }
+        totalLines: { type: number, description: Whole-number count of count lines }
+        unassigned: { type: array, items: { type: object, required: [id, name, reason], properties: { id: { type: string }, name: { type: string }, reason: { type: string } } } }
+        blocked: { type: array, items: { type: object, required: [id, name, reason], properties: { id: { type: string }, name: { type: string }, reason: { type: string } } } }
+        locations: { type: array, items: { type: object, required: [id, name, itemCount], properties: { id: { type: string }, name: { type: string }, itemCount: { type: number, description: Whole-number count of assigned items } } } }
+    AugustCountReference:
+      type: object
+      required: [batch, rows, unresolved]
+      properties:
+        batch:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [date, filename]
+              properties:
+                date: { type: ["string", "null"], format: date }
+                filename: { type: string }
+                sourceType: { type: string, enum: [packaged_workbook] }
+                sourcePropertyId: { type: string }
+                sha256: { type: string }
+                sheetName: { type: string }
+                sourceRowCount: { type: number, description: Whole-number source row count }
+                dateBasis: { type: string }
+        rows: { type: array, items: { type: object, additionalProperties: true } }
+        unresolved: { type: array, items: { type: object, additionalProperties: true } }
+    SupplierPackCorrectionInput:
+      type: object
+      required: [decision, effectiveDate, reason, expectedCorrectionId]
+      properties:
+        decision: { type: string, enum: [correct, void] }
+        effectiveDate: { type: string, format: date }
+        reason: { type: string, minLength: 10, maxLength: 500 }
+        expectedCorrectionId: { type: ["string", "null"] }
+        fromVendorItemId: { type: string }
+        toVendorItemId: { type: string }
+    SupplierPackCorrection:
+      type: object
+      required: [id, originalTransitionId, decision, effectiveDate, reason, decidedBy, createdAt]
+      properties:
+        id: { type: string }
+        originalTransitionId: { type: string }
+        supersedesCorrectionId: { type: ["string", "null"] }
+        decision: { type: string, enum: [correct, void] }
+        effectiveDate: { type: string, format: date }
+        reason: { type: string }
+        decidedBy: { type: string }
+        createdAt: { type: string, format: date-time }
     HealthStatus:
       type: object
       properties:

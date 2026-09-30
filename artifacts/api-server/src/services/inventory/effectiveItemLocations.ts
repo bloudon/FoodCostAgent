@@ -28,6 +28,13 @@ export interface EffectiveInventoryItemLocation {
   isPrimary: boolean;
 }
 
+export function isEffectiveInventoryItemLocation(
+  locations: readonly Pick<EffectiveInventoryItemLocation, 'id'>[],
+  locationId: string | null | undefined,
+): boolean {
+  return !!locationId && locations.some((location) => location.id === locationId);
+}
+
 export function filterItemsByEffectiveLocation<
   T extends { locations: Array<{ id: string }> },
 >(items: T[], locationId?: string): T[] {

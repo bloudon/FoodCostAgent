@@ -160,7 +160,9 @@
     "noItemsCounted": "No items counted yet in this {{type}}",
     "tryAgain": "Try Again",
     "itemCount_one": "{{count}} item in {{group}}",
-    "itemCount_other": "{{count}} items in {{group}}"
+    "itemCount_other": "{{count}} items in {{group}}",
+    "counted": "Counted",
+    "notCounted": "Not counted"
   },
   "inventory": {
     "title": "Inventory"
