@@ -1333,6 +1333,7 @@ export default function CountSession() {
         count.sourceSystem !== "ORDERLY" &&
         count.isPowerSession !== 1 && (
           <div className="mb-4 space-y-3" data-testid="august-reference-section">
+            {import.meta.env.DEV && (
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               Enter the physical readings taken August 31 by storage location. The dated Orderly
               workbook is reference evidence only; it will not fill or change this count.
@@ -1347,8 +1348,9 @@ export default function CountSession() {
                 {showAugustReference ? "Hide Orderly comparison" : "Compare with August Orderly"}
               </Button>
             </div>
+            )}
             {countId && count.storeId && <AugustCountReadiness countId={countId} storeId={count.storeId} countLines={countLines} />}
-            {showAugustReference && countId && <AugustOrderlyReference countId={countId} />}
+            {import.meta.env.DEV && showAugustReference && countId && <AugustOrderlyReference countId={countId} />}
           </div>
         )}
 

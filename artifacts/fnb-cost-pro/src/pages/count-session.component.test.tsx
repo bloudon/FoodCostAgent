@@ -45,6 +45,11 @@ const countLines = [
   },
 ];
 let extraPreviousLines: any[] = [];
+let countMetadata: Record<string, unknown> = {};
+
+vi.mock("@/components/count-session/AugustOrderlyReference", () => ({
+  default: () => <div data-testid="august-reference-comparison">Development workbook comparison</div>,
+}));
 
 vi.mock("wouter", () => ({
   useParams: () => ({ id: "count-1" }),
@@ -67,8 +72,23 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => {
     const key = queryKey.join("/");
     if (key === "/api/inventory-counts/count-1") {
-      return { data: { id: "count-1", countedAt: "2026-09-16T12:00:00Z", canEdit: true, applied: 0 }, isLoading: false };
+      return { data: { id: "count-1", countedAt: "2026-09-16T12:00:00Z", canEdit: true, applied: 0, ...countMetadata }, isLoading: false };
     }
+    if (key === "/api/inventory-counts/readiness/store-1/count-1") return {
+      data: {
+        storeId: "store-1",
+        activeItems: countLines.map(line => ({
+          inventoryItemId: line.inventoryItemId,
+          name: line.inventoryItem.name,
+          locations: [{ id: line.storageLocationId, name: line.storageLocationName }],
+        })),
+        totalLines: countLines.length,
+        unassigned: [],
+        blocked: [],
+        locations: [{ id: "walk-in", name: "Walk In", itemCount: 2 }, { id: "freezer", name: "Freezer", itemCount: 1 }],
+      },
+      isLoading: false,
+    };
     if (key === "/api/inventory-count-lines/count-1") return { data: countLines, isLoading: false };
     if (key === "/api/inventory-counts/count-1/location-review") return {
       data: {
@@ -154,9 +174,45 @@ describe("count session grouped entry layout", () => {
     scrollIntoView.mockClear();
     mutate.mockClear();
     extraPreviousLines = [];
+    countMetadata = {};
+    vi.stubEnv("DEV", true);
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps August readiness and counting in production without the development workbook helper", () => {
+    vi.stubEnv("DEV", false);
+    countMetadata = { countDate: "2026-08-31", storeId: "store-1", isHistoricalImport: 0, isPowerSession: 0 };
+    render(<CountSession />);
+
+    expect(screen.getByTestId("card-count-readiness")).toBeInTheDocument();
+    expect(screen.getByText("3 assigned item-location lines represented in the session (not necessarily physically entered).")).toBeInTheDocument();
+    expect(screen.queryByTestId("button-toggle-august-reference")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Enter the physical readings taken August 31/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Earlier saved values in this draft/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("august-reference-comparison")).not.toBeInTheDocument();
+    expect(screen.getByTestId("button-apply-count")).toBeInTheDocument();
+    expect(screen.getByTestId("button-edit-item-item-apple")).toBeInTheDocument();
+    expect(screen.getByText(/prior item history but no safe location match/)).toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("retains the workbook banner and toggle in development alongside readiness", () => {
+    countMetadata = { countDate: "2026-08-31", storeId: "store-1", isHistoricalImport: 0, isPowerSession: 0 };
+    render(<CountSession />);
+
+    expect(screen.getByTestId("card-count-readiness")).toBeInTheDocument();
+    expect(screen.getByText(/Enter the physical readings taken August 31/)).toBeInTheDocument();
+    expect(screen.queryByTestId("august-reference-comparison")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("button-toggle-august-reference"));
+    expect(screen.getByTestId("august-reference-comparison")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("button-toggle-august-reference"));
+    expect(screen.queryByTestId("august-reference-comparison")).not.toBeInTheDocument();
+    expect(mutate).not.toHaveBeenCalled();
+  });
 
   it("labels an unconfigured item's canonical unit and lets staff describe a 1.5-lb physical case", async () => {
     countLines.push({

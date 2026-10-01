@@ -102,6 +102,12 @@ export function registerAugustCountRoutes(app: Express): void {
    *       409: { description: Count session is not an ordinary manual August 31 session }
    */
   app.get('/api/inventory-counts/:id/august-reference', requireAuth, async (req, res) => {
+    // This packaged workbook is a development comparison fixture, not a
+    // production counting tool. Fail closed for production and unknown runtimes;
+    // the ordinary readiness endpoint below remains available.
+    if (process.env.NODE_ENV !== 'development') {
+      return res.status(404).json({ error: 'Not found' });
+    }
     try {
       const companyId = (req as any).companyId as string | undefined;
       const user = (req as any).user;
