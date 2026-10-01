@@ -116,6 +116,7 @@ const countLines = [
 let mobileLines = countLines.map((line) => ({ ...line }));
 let previousWineUnitId = "ml-current";
 let scheduledDelete: any;
+let mutationPending = false;
 
 vi.mock("wouter", () => ({
   useParams: () => ({ id: "count-1" }),
@@ -266,18 +267,23 @@ vi.mock("@tanstack/react-query", () => ({
         })
         .catch((error) => onError?.(error));
     },
-    isPending: false,
+    isPending: mutationPending,
   }),
 }));
 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CountSessionMobile from "./count-session-mobile";
 
+function typeQty(testId: string, value: string) {
+  fireEvent.change(screen.getByTestId(testId), { target: { value } });
+}
+
 describe("mobile count category navigation", () => {
   beforeEach(() => {
     mobileLines = countLines.map((line) => ({ ...line }));
     previousWineUnitId = "ml-current";
     scheduledDelete = null;
+    mutationPending = false;
     vi.mocked(apiRequest).mockReset();
     vi.mocked(queryClient.setQueryData).mockClear();
     scrollTo.mockClear();
@@ -293,6 +299,70 @@ describe("mobile count category navigation", () => {
   });
 
   afterEach(cleanup);
+
+  it("bounds the entry sheet and scrolls details without shrinking save controls", async () => {
+    mobileLines[0] = {
+      ...mobileLines[0],
+      inventoryItem: {
+        ...mobileLines[0].inventoryItem,
+        name: "BANANA BREAD FLAVOR PACK IND BAGS (30 B — long item title",
+      },
+    };
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    expect(screen.getByTestId("mobile-count-entry-sheet")).toHaveClass(
+      "h-[96vh]", "max-h-[96dvh]", "overflow-hidden", "gap-0",
+    );
+    const details = screen.getByTestId("mobile-count-entry-details");
+    expect(details).toHaveClass("min-h-0", "flex-1", "overflow-y-auto");
+    expect(details).not.toHaveClass("shrink-0");
+    const save = screen.getByRole("button", { name: /Save & next/ });
+    expect(save).toHaveClass("shrink-0", "min-h-14");
+    expect(details.contains(save)).toBe(false);
+    expect(screen.getByTestId("input-mobile-count-qty")).toHaveAttribute("inputmode", "decimal");
+    expect(screen.getByTestId("input-mobile-count-qty")).not.toHaveFocus();
+    expect(screen.queryByRole("button", { name: "7", exact: true })).not.toBeInTheDocument();
+  });
+
+  it("keeps the entered reading and current item when a save fails", async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new Error("Count could not be saved"));
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    typeQty("input-mobile-count-qty", "1");
+    fireEvent.click(screen.getByRole("button", { name: /Save & next/ }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
+      "PATCH", "/api/inventory-count-lines/line-apple",
+      expect.objectContaining({ qty: 1, accumulate: false }),
+    ));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Apple" })).toBeInTheDocument());
+    expect(screen.getByText("= 1.00 lb")).toBeInTheDocument();
+    expect(queryClient.setQueryData).not.toHaveBeenCalled();
+  });
+
+  it("protects the draft and blocks navigation/clearing during a pending save", async () => {
+    mobileLines[0] = {
+      ...mobileLines[0], qty: 3,
+      entries: [{ id: "saved-entry", qty: 3, enteredAt: new Date().toISOString() }],
+    };
+    const view = render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    typeQty("input-mobile-count-qty", "4");
+    mutationPending = true;
+    view.rerender(<CountSessionMobile />);
+    for (const name of ["Close count entry", "Previous item", "Next item", "Same as last", "Skip", "Clear"]) {
+      expect(screen.getByRole("button", { name, exact: true })).toBeDisabled();
+    }
+    expect(screen.getByTestId("button-mobile-clear-all-entries")).toBeDisabled();
+    const deleteEntry = screen.getByTestId("button-mobile-delete-entry-saved-entry");
+    expect(deleteEntry).toBeDisabled();
+    fireEvent.click(deleteEntry);
+    expect(scheduledDelete).toBeNull();
+    expect(screen.getByTestId("input-mobile-count-qty")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("button-sheet-close"));
+    expect(screen.getByTestId("mobile-count-entry-sheet")).toBeInTheDocument();
+    expect(screen.getByTestId("input-mobile-count-qty")).toHaveValue("4");
+    expect(apiRequest).not.toHaveBeenCalledWith("PATCH", expect.anything(), expect.anything());
+  });
 
   it("opens a read-only location review from the mobile warning", async () => {
     render(<CountSessionMobile />);
@@ -498,7 +568,7 @@ describe("mobile count category navigation", () => {
     expect(screen.getByText(/No quantity entered/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Save & next/ })).toBeDisabled();
     expect(apiRequest).not.toHaveBeenCalledWith("PATCH", expect.anything(), expect.anything());
-    fireEvent.click(screen.getByRole("button", { name: "0", exact: true }));
+    typeQty("input-mobile-count-qty", "0");
     expect(screen.getByRole("button", { name: /Save & next/ })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /Save & next/ }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
@@ -592,7 +662,7 @@ describe("mobile count category navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Field →" }));
     fireEvent.click(screen.getByRole("button", { name: "Clear", exact: true }));
     expect(screen.getByRole("button", { name: /Save & next/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "0", exact: true }));
+    typeQty("input-mobile-count-container", "0");
     fireEvent.click(screen.getByRole("button", { name: /Save & next/ }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
       "PATCH", "/api/inventory-count-lines/line-wine",
@@ -617,7 +687,7 @@ describe("mobile count category navigation", () => {
     fireEvent.click(screen.getByTestId("button-mobile-location-cellar"));
     fireEvent.click(screen.getByTestId("button-mobile-item-line-whiskey"));
     expect(screen.getByRole("button", { name: /Save & next/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "0", exact: true }));
+    typeQty("input-mobile-count-qty", "0");
     fireEvent.click(screen.getByRole("button", { name: /Save & next/ }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
       "PATCH", "/api/inventory-count-lines/line-whiskey",
@@ -626,5 +696,56 @@ describe("mobile count category navigation", () => {
     expect(vi.mocked(apiRequest).mock.calls.some((call) =>
       call[2] && "addQty" in (call[2] as object) && (call[2] as any).addQty > 0,
     )).toBe(false);
+  });
+
+  it("accepts comma decimals and saves the normalized quantity", async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ json: async () => ({ id: "line-apple", qty: 2.5, entries: [] }) } as Response);
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    typeQty("input-mobile-count-qty", "2,5");
+    expect(screen.getByTestId("input-mobile-count-qty")).toHaveValue("2.5");
+    fireEvent.click(screen.getByRole("button", { name: /Save & next/ }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(
+      "PATCH", "/api/inventory-count-lines/line-apple",
+      expect.objectContaining({ qty: 2.5, accumulate: false }),
+    ));
+  });
+
+  it("rejects malformed input and allows partial decimals and blank", async () => {
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    const field = screen.getByTestId("input-mobile-count-qty");
+    typeQty("input-mobile-count-qty", "3.");
+    expect(field).toHaveValue("3.");
+    for (const bad of ["-1", "1e3", "abc", "1.2.3", "Infinity", "1,2,3"]) {
+      typeQty("input-mobile-count-qty", bad);
+      expect(field).toHaveValue("3.");
+    }
+    typeQty("input-mobile-count-qty", "");
+    expect(field).toHaveValue("");
+    expect(screen.getByRole("button", { name: /Save & next/ })).toBeDisabled();
+  });
+
+  it("adjusts drafts with plus, minus, and half without saving", async () => {
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-apple"));
+    fireEvent.click(screen.getByTestId("input-mobile-count-qty-plus"));
+    fireEvent.click(screen.getByRole("button", { name: "Add one half" }));
+    expect(screen.getByTestId("input-mobile-count-qty")).toHaveValue("1.5");
+    fireEvent.click(screen.getByTestId("input-mobile-count-qty-minus"));
+    fireEvent.click(screen.getByTestId("input-mobile-count-qty-minus"));
+    expect(screen.getByTestId("input-mobile-count-qty")).toHaveValue("0");
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it("Enter moves cases to containers without saving", async () => {
+    render(<CountSessionMobile />);
+    fireEvent.click(await screen.findByTestId("button-mobile-item-line-wine"));
+    const cases = screen.getByTestId("input-mobile-count-case");
+    expect(cases).toHaveAttribute("enterkeyhint", "next");
+    expect(screen.getByTestId("input-mobile-count-container")).toHaveAttribute("enterkeyhint", "done");
+    fireEvent.keyDown(cases, { key: "Enter" });
+    expect(screen.getByTestId("input-mobile-count-container")).toHaveFocus();
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 });

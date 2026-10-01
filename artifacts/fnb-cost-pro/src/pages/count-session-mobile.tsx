@@ -49,6 +49,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCountEditorViewport } from "@/hooks/use-count-editor-viewport";
+import { CountQuantityField, adjustQuantityText } from "@/components/count-session/CountQuantityField";
 import { LocationReviewDialog } from "@/components/count-session/LocationReviewDialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { mergeUpdatedCountLineIntoCache } from "@/lib/count-line-cache";
@@ -200,6 +202,7 @@ function MobileEntryList({
   unitAbbr,
   countId,
   onDeleted,
+  mutationsDisabled = false,
 }: {
   entries: any[];
   isCatchWeight: boolean;
@@ -207,6 +210,7 @@ function MobileEntryList({
   unitAbbr: string;
   countId: string;
   onDeleted?: () => void;
+  mutationsDisabled?: boolean;
 }) {
   const scheduleDelete = useUndoableDelete();
 
@@ -244,7 +248,10 @@ function MobileEntryList({
               {compactRelativeTime(new Date(entry.enteredAt))}
             </span>
             <button
+              type="button"
+              disabled={mutationsDisabled}
               onClick={() => {
+                if (mutationsDisabled) return;
                 const cacheKey = mobileCountLinesQueryKey(countId);
                 const previousData = queryClient.getQueryData(cacheKey);
                 onDeleted?.();
@@ -278,7 +285,7 @@ function MobileEntryList({
                     queryClient.setQueryData(cacheKey, previousData),
                 });
               }}
-              className="text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0"
+              className="text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0 disabled:opacity-40"
               title="Remove this entry"
               data-testid={`button-mobile-delete-entry-${entry.id}`}
             >
@@ -503,6 +510,7 @@ export default function CountSessionMobile() {
 
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const itemListRef = useRef<HTMLDivElement>(null);
+  const entryViewportStyle = useCountEditorViewport(!!activeLineId);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const { data: count, isLoading: countLoading } = useQuery<any>({
@@ -860,7 +868,7 @@ export default function CountSessionMobile() {
       setSheetCaseQty("");
       setSheetContainerQty("");
       setShowClearConfirm(false);
-      toast({ title: "Entries removed", description: "To record zero stock, tap 0 and Save & next." });
+      toast({ title: "Entries removed", description: "To record zero stock, enter 0 and Save & next." });
     },
     onError: () => {
       toast({ title: "Failed to clear entries", variant: "destructive" });
@@ -929,17 +937,20 @@ export default function CountSessionMobile() {
     setSheetContainerQty("");
   }
 
-  // Auto-focus the primary input when sheet opens
-  // @ts-ignore
-  useEffect(() => {
-    if (activeLineId) {
-      const timer = setTimeout(() => {
-        primaryInputRef.current?.focus();
-        primaryInputRef.current?.select();
-      }, 120);
-      return () => clearTimeout(timer);
-    }
-  }, [activeLineId]);
+  const containerInputRef = useRef<HTMLInputElement>(null);
+  const fieldsDisabled = updateMutation.isPending || clearLineMutation.isPending || packageCountingUnavailable;
+  const activeValue = activeMode === "case"
+    ? (activeInput === "container" ? sheetContainerQty : sheetCaseQty)
+    : sheetQty;
+  function setActiveValue(value: string) {
+    if (activeMode === "case") {
+      if (activeInput === "container") setSheetContainerQty(value);
+      else setSheetCaseQty(value);
+    } else setSheetQty(value);
+  }
+  function blurActiveField() {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }
 
   // Listen for catch-weight scan results from the native Expo layer
   useEffect(() => {
@@ -976,7 +987,7 @@ export default function CountSessionMobile() {
   }
 
   function saveAndAdvance() {
-    if (!activeLineId) return;
+    if (!activeLineId || updateMutation.isPending || clearLineMutation.isPending) return;
     const hasInput = hasSheetInput();
 
     const doAdvance = () => {
@@ -1702,12 +1713,14 @@ export default function CountSessionMobile() {
       <Sheet
         open={!!activeLineId}
         onOpenChange={(open) => {
-          if (!open) closeSheet();
+          if (!open && !updateMutation.isPending && !clearLineMutation.isPending) closeSheet();
         }}
       >
         <SheetContent
           side="bottom"
-          className="h-auto max-h-[96vh] flex flex-col rounded-t-[24px] px-0 py-0 bg-[#F6F4EF]"
+          className="h-[96vh] max-h-[96dvh] flex flex-col gap-0 overflow-hidden rounded-t-[24px] px-0 py-0 bg-[#F6F4EF]"
+          style={entryViewportStyle}
+          data-testid="mobile-count-entry-sheet"
         >
           {activeLine && activeItem && (() => {
              const cat = categoryById.get(activeItem?.categoryId);
@@ -1755,20 +1768,20 @@ export default function CountSessionMobile() {
              return (
                <>
                  <div className="flex items-center justify-between px-3 pt-3 pb-2 shrink-0">
-                    <Button variant="ghost" size="icon" className="w-11 h-11" onClick={closeSheet} aria-label="Close count entry">
+                    <Button variant="ghost" size="icon" className="w-11 h-11" disabled={updateMutation.isPending || clearLineMutation.isPending} onClick={closeSheet} aria-label="Close count entry">
                      <X className="w-6 h-6" />
                    </Button>
                    <div className="text-[14px] font-semibold text-muted-foreground">
                       {getLineCategoryName(activeLine)} · {visibleLocationLines.findIndex(l => l.id === activeLine.id) + 1} of {visibleLocationLines.filter(l => getLineCategoryName(l) === getLineCategoryName(activeLine)).length}
                    </div>
                    <div className="flex">
-                       <Button variant="ghost" size="icon" className="w-11 h-11" aria-label="Previous item" onClick={() => {
+                       <Button variant="ghost" size="icon" className="w-11 h-11" disabled={updateMutation.isPending || clearLineMutation.isPending} aria-label="Previous item" onClick={() => {
                         const idx = locationLines.findIndex(l => l.id === activeLine.id);
                         if (idx > 0) openSheet(locationLines[idx-1].id);
                       }}>
                          <ChevronRight className="w-6 h-6 rotate-180" />
                       </Button>
-                       <Button variant="ghost" size="icon" className="w-11 h-11" aria-label="Next item" onClick={() => {
+                       <Button variant="ghost" size="icon" className="w-11 h-11" disabled={updateMutation.isPending || clearLineMutation.isPending} aria-label="Next item" onClick={() => {
                         const idx = locationLines.findIndex(l => l.id === activeLine.id);
                         if (idx < locationLines.length - 1) openSheet(locationLines[idx+1].id);
                       }}>
@@ -1777,11 +1790,14 @@ export default function CountSessionMobile() {
                    </div>
                  </div>
 
-                 <div className="px-5 shrink-0 flex-1 overflow-y-auto">
-                    <h2 className="text-[24px] font-bold text-foreground leading-tight mb-3">
+                 <div
+                   className="px-5 min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                   data-testid="mobile-count-entry-details"
+                 >
+                    <h2 className="text-[19px] font-bold text-foreground leading-tight mb-1.5">
                        {activeItem.name}
                     </h2>
-                    <div className="flex flex-wrap gap-2 mb-5">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface border rounded-md text-[13px] font-medium text-foreground">
                           <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                           {loc?.name}
@@ -1800,7 +1816,43 @@ export default function CountSessionMobile() {
                        </span>
                     </div>
 
-                    <div className="flex items-center justify-between border-[1.5px] border-dashed border-border rounded-[12px] p-3 mb-5">
+                    <div className="flex gap-2 mb-2">
+                       {isTwoLevel && activeWholeCase ? (
+                          <CountQuantityField id="count-field-case" testId="input-mobile-count-case" label="Whole cases"
+                            value={sheetCaseQty} onChange={setSheetCaseQty} active={activeInput === 'case'}
+                            onFocus={() => setActiveInput('case')} enterKeyHint="done" onEnter={() => blurActiveField()}
+                            disabled={fieldsDisabled} inputRef={primaryInputRef} />
+                       ) : isTwoLevel ? (
+                          <>
+                             <CountQuantityField id="count-field-case" testId="input-mobile-count-case" label="Cases" hint={`x ${activeItem.casePkgCount}`}
+                               value={sheetCaseQty} onChange={setSheetCaseQty} active={activeInput === 'case'}
+                               onFocus={() => setActiveInput('case')} enterKeyHint="next"
+                               onEnter={() => { setActiveInput('container'); containerInputRef.current?.focus(); }}
+                               disabled={fieldsDisabled} inputRef={primaryInputRef} />
+                             <CountQuantityField id="count-field-container" testId="input-mobile-count-container" label={pluralizeCountUnit(configuredContainerLabel, 2)}
+                               value={sheetContainerQty} onChange={setSheetContainerQty} active={activeInput === 'container'}
+                               onFocus={() => setActiveInput('container')} enterKeyHint="done" onEnter={() => blurActiveField()}
+                               disabled={fieldsDisabled} inputRef={containerInputRef} />
+                          </>
+                       ) : (
+                          <CountQuantityField id="count-field-qty" testId="input-mobile-count-qty" label={unitAbbr}
+                            value={sheetQty} onChange={setSheetQty} active={activeInput === 'qty'}
+                            onFocus={() => setActiveInput('qty')} enterKeyHint="done" onEnter={() => blurActiveField()}
+                            disabled={fieldsDisabled} inputRef={primaryInputRef} />
+                       )}
+                    </div>
+                    <div className="flex gap-2 mb-3">
+                       <Button type="button" variant="outline" size="sm" className="h-9 flex-1 bg-surface" disabled={fieldsDisabled} onClick={() => setActiveValue("")}>Clear</Button>
+                       <Button type="button" variant="outline" size="sm" className="h-9 flex-1 bg-surface" aria-label="Add one half"
+                         disabled={fieldsDisabled} onClick={() => setActiveValue(adjustQuantityText(activeValue, 0.5))}>+½</Button>
+                       {isTwoLevel && !activeWholeCase && (
+                         <Button type="button" variant="outline" size="sm" className="h-9 flex-1 bg-surface"
+                           disabled={fieldsDisabled}
+                           onClick={() => { const n = activeInput === 'case' ? 'container' : 'case'; setActiveInput(n); (n === 'case' ? primaryInputRef : containerInputRef).current?.focus(); }}>Field →</Button>
+                       )}
+                       <Button type="button" variant="outline" size="sm" className="h-9 flex-1 bg-surface" disabled={updateMutation.isPending || clearLineMutation.isPending} onClick={skipAndAdvance}>Skip</Button>
+                    </div>
+                    <div className="flex items-center justify-between border-[1.5px] border-dashed border-border rounded-[12px] px-3 py-2 mb-2">
                        <div>
                           <div className="text-[12px] font-semibold uppercase text-muted-foreground mb-1">
                              Last count · {previousCountDate ? new Date(previousCountDate).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) : 'N/A'}
@@ -1820,82 +1872,22 @@ export default function CountSessionMobile() {
                                 setSheetQty(String(prevVal));
                              }
                           }}
-                            disabled={!previousLine || !unitsComparable || !previousPackageReady}
+                             disabled={updateMutation.isPending || clearLineMutation.isPending || !previousLine || !unitsComparable || !previousPackageReady}
                        >
                           Same as last
                        </Button>
                     </div>
-
-                    <div className="flex gap-3 mb-4">
-                       {isTwoLevel && activeWholeCase ? (
-                          <div
-                             className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'case' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
-                             onClick={() => setActiveInput('case')}
-                          >
-                             <div className="text-[13px] font-semibold text-foreground mb-3">
-                                Whole cases
-                             </div>
-                             <div className="flex items-center justify-between">
-                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String(Math.max(0, (Number(sheetCaseQty)||0) - 1))); }}>-</Button>
-                                <div className="text-[34px] font-mono font-bold leading-none">{sheetCaseQty || '—'}</div>
-                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String((Number(sheetCaseQty)||0) + 1)); }}>+</Button>
-                             </div>
-                          </div>
-                       ) : isTwoLevel ? (
-                          <>
-                             <div
-                                className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'case' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
-                                onClick={() => setActiveInput('case')}
-                             >
-                                <div className="text-[13px] font-semibold text-foreground mb-3 flex items-center justify-between">
-                                   Cases <span className="font-medium text-muted-foreground">× {activeItem.casePkgCount}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String(Math.max(0, (Number(sheetCaseQty)||0) - 1))); }}>-</Button>
-                                    <div className="text-[34px] font-mono font-bold leading-none">{sheetCaseQty || '—'}</div>
-                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetCaseQty(String((Number(sheetCaseQty)||0) + 1)); }}>+</Button>
-                                </div>
-                             </div>
-                             <div
-                                className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'container' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
-                                onClick={() => setActiveInput('container')}
-                             >
-                                <div className="text-[13px] font-semibold text-foreground capitalize mb-3 flex items-center justify-between">
-                                     {pluralizeCountUnit(configuredContainerLabel, 2)}
-                                </div>
-                                <div className="flex items-center justify-between">
-                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetContainerQty(String(Math.max(0, (Number(sheetContainerQty)||0) - 1))); }}>-</Button>
-                                    <div className="text-[34px] font-mono font-bold leading-none">{sheetContainerQty || '—'}</div>
-                                   <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetContainerQty(String((Number(sheetContainerQty)||0) + 1)); }}>+</Button>
-                                </div>
-                             </div>
-                          </>
-                       ) : (
-                          <div
-                             className={`flex-1 bg-surface border-2 rounded-[12px] p-3 ${activeInput === 'qty' ? 'border-[#C2410C] bg-orange-50/50' : 'border-border'}`}
-                             onClick={() => setActiveInput('qty')}
-                          >
-                             <div className="text-[13px] font-semibold text-foreground capitalize mb-3 flex items-center justify-between">
-                                 {unitAbbr}
-                             </div>
-                             <div className="flex items-center justify-between">
-                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetQty(String(Math.max(0, (Number(sheetQty)||0) - 1))); }}>-</Button>
-                                 <div className="text-[34px] font-mono font-bold leading-none flex-1 text-center">{sheetQty || '—'}</div>
-                                <Button variant="outline" size="icon" className="w-[40px] h-[40px] shrink-0 bg-surface rounded-[8px]" onClick={(e) => { e.stopPropagation(); setSheetQty(String((Number(sheetQty)||0) + 1)); }}>+</Button>
-                             </div>
-                          </div>
-                       )}
-                    </div>
                      <p className="text-xs text-muted-foreground mb-3">
                        {hasSheetInput()
                          ? "Save & next records this count. Clear only erases the current input."
-                         : "No quantity entered. Tap 0 to record no stock, or Skip to leave this item uncounted."}
+                         : "No quantity entered. Enter 0 to record no stock, or Skip to leave this item uncounted."}
                      </p>
                      {(activeLine.entries?.length ?? 0) > 0 && (
                        <div className="mb-3 space-y-2">
                          <div className="flex items-center justify-between">
                            <span className="text-xs font-semibold">Saved entries</span>
                            <Button type="button" variant="outline" size="sm"
+                             disabled={updateMutation.isPending || clearLineMutation.isPending}
                              onClick={() => setShowClearConfirm(true)}
                              data-testid="button-mobile-clear-all-entries">
                              Clear all entries
@@ -1907,6 +1899,7 @@ export default function CountSessionMobile() {
                             isPackage={mode === "case"}
                            unitAbbr={unitAbbr}
                            countId={countId}
+                            mutationsDisabled={updateMutation.isPending || clearLineMutation.isPending}
                          />
                        </div>
                      )}
@@ -1926,31 +1919,10 @@ export default function CountSessionMobile() {
                     </div>
                  </div>
 
-                 <div className="flex-1" />
-
-                 <CustomKeypad
-                    onPress={(key) => {
-                       const currentVal = activeInput === 'case' ? sheetCaseQty : (activeInput === 'container' ? sheetContainerQty : sheetQty);
-                       const setter = activeInput === 'case' ? setSheetCaseQty : (activeInput === 'container' ? setSheetContainerQty : setSheetQty);
-
-                        if (key === 'Skip') { skipAndAdvance(); return; }
-                       if (key === 'Field →') {
-                          if (isTwoLevel && !activeWholeCase) setActiveInput(activeInput === 'case' ? 'container' : 'case');
-                          return;
-                       }
-                       if (key === '⌫') { setter(currentVal.slice(0, -1)); return; }
-                       if (key === 'Clear') { setter(""); return; }
-                       if (key === '½') { setter(String((Number(currentVal)||0) + 0.5)); return; }
-                       if (key === '.') { if (!currentVal.includes('.')) setter(currentVal + '.'); return; }
-
-                       setter(currentVal === '0' ? key : currentVal + key);
-                    }}
-                 />
-
                  <Button
-                    className="w-full rounded-none h-14 bg-[#C2410C] hover:bg-[#A23B12] text-white text-[17px] font-bold pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-3 flex items-start justify-center"
+                    className="w-full shrink-0 rounded-none min-h-14 h-auto bg-[#C2410C] hover:bg-[#A23B12] text-white text-[17px] font-bold pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 flex items-center justify-center"
                     onClick={saveAndAdvance}
-                     disabled={!hasSheetInput() || updateMutation.isPending || packageCountingUnavailable}
+                     disabled={!hasSheetInput() || updateMutation.isPending || clearLineMutation.isPending || packageCountingUnavailable}
                  >
                     {updateMutation.isPending ? "Saving…" : "Save & next →"}
                  </Button>
@@ -1964,7 +1936,7 @@ export default function CountSessionMobile() {
           <AlertDialogHeader>
             <AlertDialogTitle>Clear all entries?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the saved entries and leaves this item uncounted. To record zero stock afterward, tap 0 and Save & next. This cannot be undone.
+              This removes the saved entries and leaves this item uncounted. To record zero stock afterward, enter 0 and Save & next. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1973,7 +1945,7 @@ export default function CountSessionMobile() {
               onClick={() => {
                 if (activeLineId) clearLineMutation.mutate(activeLineId);
               }}
-              disabled={clearLineMutation.isPending}
+              disabled={updateMutation.isPending || clearLineMutation.isPending}
               data-testid="button-mobile-confirm-clear"
             >
               {clearLineMutation.isPending ? "Clearing…" : "Clear all entries"}
@@ -2094,30 +2066,4 @@ export default function CountSessionMobile() {
       />
     </div>
   );
-}
-
-function CustomKeypad({ onPress }: { onPress: (key: string) => void }) {
-   const keys = [
-      '1', '2', '3', '⌫',
-      '4', '5', '6', 'Clear',
-      '7', '8', '9', '½',
-      'Skip', '0', '.', 'Field →'
-   ];
-   return (
-      <div className="grid grid-cols-4 gap-2 bg-[#E2DED6] p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-         {keys.map(key => (
-            <button
-               key={key}
-               onClick={() => onPress(key)}
-               className={`h-[50px] rounded-[8px] text-[18px] font-semibold active:bg-black/10 ${
-                  ['⌫', 'Clear', '½', 'Skip', 'Field →'].includes(key)
-                     ? 'bg-[#D5D0C6] text-foreground'
-                     : 'bg-surface text-foreground shadow-sm'
-               }`}
-            >
-               {key}
-            </button>
-         ))}
-      </div>
-   );
 }

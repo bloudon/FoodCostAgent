@@ -18,6 +18,12 @@ die() {
   exit 1
 }
 
+readonly EXPECTED_GIT_SHA_IS_SET="${EXPECTED_GIT_SHA+x}"
+if [[ "$EXPECTED_GIT_SHA_IS_SET" = "x" ]]; then
+  [[ "$EXPECTED_GIT_SHA" =~ ^[0-9a-f]{40}$ ]] \
+    || die "EXPECTED_GIT_SHA must be exactly 40 lowercase hexadecimal characters."
+fi
+
 readonly EXPECTED_APP_DIR="/home/administrator/apps/CostPro/fnbcostpro"
 readonly EXPECTED_BRANCH="main"
 readonly EXPECTED_PM2_NAME="fnbcostpro"
@@ -63,8 +69,23 @@ case "$(git remote get-url origin)" in
 esac
 
 git fetch --prune origin
+readonly FETCHED_GIT_SHA="$(git rev-parse --verify "refs/remotes/origin/${BRANCH}^{commit}")"
+[[ "$FETCHED_GIT_SHA" =~ ^[0-9a-f]{40}$ ]] \
+  || die "Could not resolve origin/$BRANCH to a full lowercase Git commit SHA."
+if [[ "$EXPECTED_GIT_SHA_IS_SET" = "x" ]]; then
+  [[ "$FETCHED_GIT_SHA" = "$EXPECTED_GIT_SHA" ]] \
+    || die "Fetched origin/$BRANCH commit does not match EXPECTED_GIT_SHA."
+fi
+
 git switch "$BRANCH"
-git pull --ff-only origin "$BRANCH"
+git merge --ff-only "$FETCHED_GIT_SHA"
+readonly UPDATED_GIT_SHA="$(git rev-parse --verify HEAD)"
+[[ "$UPDATED_GIT_SHA" = "$FETCHED_GIT_SHA" ]] \
+  || die "Checkout HEAD does not match the captured origin/$BRANCH commit."
+if [[ "$EXPECTED_GIT_SHA_IS_SET" = "x" ]]; then
+  [[ "$UPDATED_GIT_SHA" = "$EXPECTED_GIT_SHA" ]] \
+    || die "Checkout HEAD does not match EXPECTED_GIT_SHA."
+fi
 [[ -z "$(git status --porcelain)" ]] || die "Checkout became dirty after the fast-forward update."
 
 verify_pm2_target() {
